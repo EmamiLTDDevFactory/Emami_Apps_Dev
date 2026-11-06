@@ -31,6 +31,31 @@ const VIEWS = {
 };
 const VIEW_IDS = Object.keys(VIEWS).filter((v) => v && v !== 'all');
 
+/*
+   v7 data scope (Authorization cockpit, middleware/permission.js -> req.scope). visibility 'all' (the default, and
+   always for Admins) adds NOTHING, so every query stays exactly as before. 'groups' = my groups' tickets + 'own';
+   'own' = assigned to me or watched by me. The agent id is an integer read from the database (never request input),
+   so it is written into the SQL directly and existing parameter numbers are untouched.
+*/
+function scopeSql(scope, agentId) {
+    const v = scope?.visibility || 'all';
+    if (v === 'all') return '';
+    const me = Number(agentId);
+    if (!Number.isInteger(me)) throw new Error('scope: invalid agent id');
+    const own = `(t."agentId" = ${me} OR EXISTS (SELECT 1 FROM samadhan.ticket_watchers sw WHERE sw."ticketId" = t.id AND sw."agentId" = ${me}))`;
+    if (v === 'own') return own;
+    return `(${own} OR t."groupId" IN (SELECT sg."groupId" FROM samadhan.group_members sg WHERE sg."agentId" = ${me}))`;
+}
+/** LIVE plus the caller's scope: drop-in for ${LIVE} in user-facing queries (identical text when the scope is 'all'). */
+const liveFor = (req) => { const s = scopeSql(req.scope, req.agent?.id); return s ? `${LIVE} AND ${s}` : LIVE; };
+/** True when the caller may see this ticket under their scope (always true for scope 'all'). */
+async function ticketVisible(pool, req, ticketId) {
+    const s = scopeSql(req.scope, req.agent?.id);
+    if (!s) return true;
+    const { rows } = await pool.query(`SELECT 1 FROM samadhan.tickets t WHERE t.id = $1 AND ${s}`, [ticketId]);
+    return rows.length > 0;
+}
+
 const SORTS = {
     created: 't."createdAt" DESC', created_asc: 't."createdAt" ASC', updated: 't."updatedAt" DESC',
     activity: 't."lastActivityAt" DESC NULLS LAST', due: 't."resolutionDueAt" ASC NULLS LAST',
@@ -47,7 +72,7 @@ const DUE_OPTIONS = ['overdue', 'today', 'tomorrow', 'next8h'];
  * Builds WHERE / ORDER BY for a ticket list from query-string filters.
  * Returns { where: string (with WHERE), params, order }.
  */
-function ticketFilter(qy, agentId) {
+function ticketFilter(qy, agentId, scope = null) {
     const where = [];
     const params = [];
     const p = (v) => { params.push(v); return `$${params.length}`; };
@@ -56,6 +81,8 @@ function ticketFilter(qy, agentId) {
     // The agent's id becomes a parameter only for views that use it (Postgres refuses unused parameters).
     const viewSql = VIEWS[view]('{{me}}');
     where.push(viewSql.includes('{{me}}') ? viewSql.split('{{me}}').join(p(agentId)) : viewSql);
+    const scoped = scopeSql(scope, agentId);
+    if (scoped) where.push(scoped);
 
     // Every list filter takes one value or several, comma separated ("4,5" = Resolved or Closed).
     const ints = (v) => String(v).split(',').map(Number).filter(Number.isInteger);
@@ -121,4 +148,4 @@ function ticketFilter(qy, agentId) {
     return { where: `WHERE ${where.join(' AND ')}`, params, order: SORTS[qy.sort] || SORTS.created };
 }
 
-module.exports = { CREATED_WITHIN, DUE_OPTIONS, IST_TODAY, LIVE, OVERDUE, SORTS, VIEW_IDS, VIEWS, ticketFilter };
+module.exports = { CREATED_WITHIN, DUE_OPTIONS, IST_TODAY, LIVE, OVERDUE, SORTS, VIEW_IDS, VIEWS, liveFor, scopeSql, ticketFilter, ticketVisible };

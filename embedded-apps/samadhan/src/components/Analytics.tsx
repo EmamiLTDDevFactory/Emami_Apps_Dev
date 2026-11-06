@@ -39,8 +39,8 @@ const dayLabel = (day: string) => new Date(`${day.slice(0, 10)}T00:00:00Z`).toLo
 const rowsOf = (list: NameValue[]): BarRow[] => list.map((r) => ({ key: r.name, label: r.name, value: r.value }));
 
 export default function Analytics() {
-  const { isSupervisor } = useSamadhan();
-  if (!isSupervisor) return <Card><Empty icon={Lock} title="Supervisors and admins only">Ask an admin if you need team analytics.</Empty></Card>;
+  const { can } = useSamadhan();
+  if (!can('screen.analytics')) return <Card><Empty icon={Lock} title="Supervisors and admins only">Ask an admin if you need team analytics.</Empty></Card>;
   return <AnalyticsScreen />;
 }
 

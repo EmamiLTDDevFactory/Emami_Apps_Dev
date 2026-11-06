@@ -151,7 +151,13 @@ const apiSuite = (label, api, db, appId, schema = 'samadhan') => run(`API suite:
     expect: (o) => /ALL PASSED/.test(o) && !/^FAIL/m.test(o),
     detail: (o) => `${(o.match(/^PASS/gm) || []).length} pass, ${(o.match(/^FAIL/gm) || []).length} fail`,
 });
-const migrate = (db, dir) => run(`migrate ${dir} 7.0-rename on ${db}`, process.execPath, [path.join(__dirname, '..', 'db', 'migrate.js'), dir, '7.0-rename', '--yes'], { env: { ...SAFE_ENV, PGDATABASE: db } });
+const migrate = (db, dir, id = '7.0-rename') => run(`migrate ${dir} ${id} on ${db}`, process.execPath, [path.join(__dirname, '..', 'db', 'migrate.js'), dir, id, '--yes'], { env: { ...SAFE_ENV, PGDATABASE: db } });
+// v7 Phase 2: Authorization cockpit, permission middleware and data scope (tests/authz.api.test.js).
+const authzSuite = (label, db, appId, schema = 'samadhan') => run(`Authz suite: ${label}`, process.execPath, [path.join(__dirname, 'authz.api.test.js')], {
+    env: { ...SAFE_ENV, SAMADHAN_TEST_ALLOW: '1', SAMADHAN_TEST_API: `http://localhost:${API_PORT}/api/samadhan`, SAMADHAN_TEST_PG: `postgres://postgres@localhost:${PG_PORT}/${db}`, SAMADHAN_TEST_APP_ID: appId, SAMADHAN_TEST_SCHEMA: schema },
+    expect: (o) => /ALL PASSED/.test(o) && !/^FAIL/m.test(o),
+    detail: (o) => `${(o.match(/^PASS/gm) || []).length} pass, ${(o.match(/^FAIL/gm) || []).length} fail`,
+});
 
 const BASELINE_SMOKE = {
     'GET /api/health': 200, 'GET /api/access/me': 400, 'GET /api/admin/apps': 401, 'GET /api/me/notifications': 401, 'GET /api/dev-tracker/': 404,
@@ -248,7 +254,7 @@ async function e2e() {
     record('backend syntax (node --check)', !syntaxBad.length, syntaxBad.join(', ') || `${jsFiles.length} files`, 'backend syntax');
     // 2. Unit
     const nodeTest = (o) => `${(o.match(/ℹ pass (\d+)/) || [])[1] || 0} pass, ${(o.match(/ℹ fail (\d+)/) || [])[1] || 0} fail`;
-    run('Samadhan unit tests', process.execPath, ['--test', path.join(__dirname, 'unit.test.js'), path.join(__dirname, 'rename.test.js')], { detail: nodeTest });
+    run('Samadhan unit tests', process.execPath, ['--test', path.join(__dirname, 'unit.test.js'), path.join(__dirname, 'rename.test.js'), path.join(__dirname, 'permissions.test.js')], { detail: nodeTest });
     run('shared backend tests (npm test)', npm, ['test'], { cwd: BACKEND, detail: nodeTest });
     // 3. Database suites
     const pg = await ensurePg();
@@ -257,6 +263,13 @@ async function e2e() {
     } else {
         freshDb('samadhan_test'); await startBackend('samadhan_test');
         apiSuite('new path /api/samadhan, grants under samadhan', 'samadhan', 'samadhan_test', 'samadhan');
+        authzSuite('cockpit, permissions, data scope', 'samadhan_test', 'samadhan');
+        // 7.1-auth rollback: without the cockpit tables everyone has exactly the old role behaviour; then up again.
+        freshDb('samadhan_test'); await startBackend('samadhan_test'); await stopBackend();
+        migrate('samadhan_test', 'down', '7.1-auth'); await startBackend('samadhan_test');
+        apiSuite('after migrate down 7.1-auth (no cockpit tables: base roles only)', 'samadhan', 'samadhan_test', 'samadhan');
+        await stopBackend(); migrate('samadhan_test', 'up', '7.1-auth'); await startBackend('samadhan_test');
+        authzSuite('after migrate up 7.1-auth again', 'samadhan_test', 'samadhan');
         freshDb('samadhan_test'); await startBackend('samadhan_test');
         apiSuite('old path /api/setu, grants under setu (compatibility)', 'setu', 'samadhan_test', 'setu');
         freshDb('samadhan_test'); await startBackend('samadhan_test');
@@ -276,6 +289,7 @@ async function e2e() {
             freshDb('legacy_test'); await startBackend('legacy_test'); await stopBackend();
             migrate('legacy_test', 'down'); await startBackend('legacy_test');
             apiSuite('legacy schema setu (rename not run yet), old grants', 'samadhan', 'legacy_test', 'setu', 'setu');
+            authzSuite('legacy schema setu, old grants', 'legacy_test', 'setu', 'setu');
             await stopBackend();
         } else record('v6 template database', false, 'could not be built from the v6 code');
         await smoke();

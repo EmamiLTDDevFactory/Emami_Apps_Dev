@@ -8,6 +8,7 @@
  * the /dev-api prefix. NEXT_PUBLIC_SAMADHAN_API_URL (or the older NEXT_PUBLIC_SETU_API_URL) overrides it (local development).
  */
 import { getHubToken } from './hub';
+import type { Scope, Visibility } from './permissions';
 import type {
   ActivityItem, AdminAgent, AdminField, AdminGroup, AgentPrefs, Analytics, Article, ArticleRow, AuditEvent, AutomationRule, BellEvent, BellItem, Breakdown, Company,
   ContactDetail, ContactMatch, ContactRow, Counts, Dashboard, DashboardInsights, DayWindow, Distributor, EmailTemplate, Me, Meta, ParkedMail, PresenceAgent,
@@ -26,7 +27,7 @@ function apiBase(): string {
 
 /** 401 = no/expired hub session, 403 = signed in but no Samadhan access (or not allowed for that action). */
 export class ApiError extends Error {
-  constructor(message: string, readonly status: number) {
+  constructor(message: string, readonly status: number, readonly data?: Record<string, unknown> | null) {
     super(message);
   }
 }
@@ -61,7 +62,7 @@ async function request<T = Json>(method: string, path: string, body?: unknown): 
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data?.success) {
-    const err = new ApiError(data?.error || 'Something went wrong. Please try again.', res.status);
+    const err = new ApiError(data?.error || 'Something went wrong. Please try again.', res.status, data);
     if (res.status === 401) onUnauthorized?.(err.message);
     throw err;
   }
@@ -93,7 +94,7 @@ export const portalCsatAnswer = (token: string, rating: 1 | 2 | 3, comment: stri
 
 // ---------- Me & reference data ----------
 export const getMe = () =>
-  get<{ me: Me; agentStatuses: Meta['agentStatuses']; mailEnabled: boolean; whatsappEnabled: boolean; prefs: AgentPrefs; bellEvents: BellEvent[] }>('/me');
+  get<{ me: Me; agentStatuses: Meta['agentStatuses']; mailEnabled: boolean; whatsappEnabled: boolean; prefs: AgentPrefs; bellEvents: BellEvent[]; permissions?: string[]; scope?: Scope }>('/me');
 /** Only the keys sent change (bellMuted, emailMuted, listView, pageSize, dashboardWidgets, defaultVariants). */
 export const savePrefs = (prefs: Partial<AgentPrefs>) => request<{ prefs: AgentPrefs }>('PUT', '/me/preferences', prefs).then((r) => r.prefs);
 export const searchContacts = (q: string) => get<{ items: ContactMatch[] }>(`/contacts/search${qs({ q })}`).then((r) => r.items);
@@ -247,6 +248,42 @@ export const admin = {
   scenarios: () => get<{ scenarios: Scenario[] }>('/admin/scenarios').then((r) => r.scenarios),
   saveScenario: (b: { id?: number; name: string; description: string; actions: ScenarioAction[] }) => request('POST', '/admin/scenarios', b),
   deleteScenario: (id: number) => request('DELETE', `/admin/scenarios/${id}`),
+};
+
+// ---------- v7 Authorization cockpit (Admin only; backend routes/authz.js) ----------
+export interface AuthzProfile { id: number | null; code: string; name: string; description?: string | null; mode: 'add' | 'restrict' | 'base'; keys: string[]; active: boolean; system: boolean; users?: number; scopePreset?: Record<string, unknown> }
+export interface SodWarning { id: string; text: string; email?: string; name?: string; agentId?: number }
+export interface AuthzUserRow { id: number; name: string; email: string; role: Role; active: boolean; lastSeenAt: string | null; profiles: string[]; overrides: number; visibility: Visibility }
+export interface AuthzAssigned { profileId: number; code: string; name: string; mode: 'add' | 'restrict'; keys: string[]; active: boolean; validFrom: string | null; validTo: string | null; reason: string; createdBy: string | null; createdAt: string }
+export interface AuthzOverride { key: string; effect: 'grant' | 'deny'; expiresAt: string | null; reason: string; createdBy: string | null; createdAt: string }
+export interface AuthzAccess {
+  agent: { id: number; name: string; email: string; role: Role; active: boolean; lastSeenAt: string | null };
+  baseProfile: string; profiles: AuthzAssigned[]; overrides: AuthzOverride[]; scope: Scope;
+  effective: string[]; screens: string[]; added: string[]; removed: string[]; unused: string[]; sod: SodWarning[];
+}
+export interface AuthzLogEntry { id: number; actorEmail: string | null; action: string; target: string | null; before: unknown; after: unknown; reason: string | null; createdAt: string }
+export interface AuthzReviewRow { id: number; name: string; email: string; role: Role; lastSeenAt: string | null; profiles: string[]; visibility: Visibility; expiring: { what: string; at: string }[]; expired: number; unused: string[]; sod: string[] }
+export interface AuthzOverview { usersByRole: Partial<Record<Role, number>>; customProfiles: number; expiringIn7Days: number; confidentialUsers: number; sodWarnings: SodWarning[]; recentChanges: AuthzLogEntry[] }
+export interface UserAccessPatch {
+  profiles?: { profileId: number; validFrom?: string | null; validTo?: string | null }[];
+  overrides?: { key: string; effect: 'grant' | 'deny'; expiresAt?: string | null }[];
+  scope?: { visibility: Visibility };
+  reason: string; acceptSod?: boolean;
+}
+export const authz = {
+  catalogue: () => get<{ catalogue: Record<string, string[]>; visibility: Visibility[]; sodRules: { id: string; text: string; keys: string[] }[] }>('/admin/authz/catalogue'),
+  overview: () => get<AuthzOverview>('/admin/authz/overview'),
+  profiles: () => get<{ system: AuthzProfile[]; profiles: AuthzProfile[] }>('/admin/authz/profiles'),
+  createProfile: (b: { name: string; description?: string; mode?: 'add' | 'restrict'; keys?: string[]; copyOf?: string | number | null; reason: string }) =>
+    request<{ profile: AuthzProfile }>('POST', '/admin/authz/profiles', b).then((r) => r.profile),
+  saveProfile: (id: number, b: { name?: string; description?: string; mode?: 'add' | 'restrict'; keys?: string[]; active?: boolean; reason: string; acceptSod?: boolean }) =>
+    request<{ profile: AuthzProfile }>('PUT', `/admin/authz/profiles/${id}`, b).then((r) => r.profile),
+  users: (q = '') => get<{ users: AuthzUserRow[] }>(`/admin/authz/users${qs({ q })}`).then((r) => r.users),
+  user: (id: number) => get<{ access: AuthzAccess }>(`/admin/authz/users/${id}`).then((r) => r.access),
+  saveUser: (id: number, b: UserAccessPatch) => request<{ access: AuthzAccess }>('PUT', `/admin/authz/users/${id}`, b).then((r) => r.access),
+  review: () => get<{ users: AuthzReviewRow[] }>('/admin/authz/review').then((r) => r.users),
+  revokeExpired: () => request<{ people: number }>('POST', '/admin/authz/review/revoke-expired', {}).then((r) => r.people),
+  log: (q: { q?: string; from?: string; to?: string } = {}) => get<{ entries: AuthzLogEntry[] }>(`/admin/authz/log${qs(q)}`).then((r) => r.entries),
 };
 
 export type { ActivityItem };

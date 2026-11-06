@@ -37,7 +37,12 @@ const SORTS = [
 const EXPORT_PREF = 'samadhan.exportColumns';
 
 export default function Tickets({ preset }: { preset: TicketQuery }) {
-  const { me, meta, openTicket, isSupervisor, isAdmin, setListIds, prefs } = useSamadhan();
+  const { me, meta, openTicket, can, setListIds, prefs } = useSamadhan();
+  // v7 permission keys (same people as the old Supervisor / Admin checks by default).
+  const isAdmin = can('admin.general');
+  const canExport = can('ticket.export');
+  const canShareViews = can('views.share');
+  const canPurge = can('ticket.purge');
   // Where the list opens and how long a page is: the agent's own choice, else the Admin default.
   const startView = prefs.listView ?? meta.options['list.defaultView'] ?? 'open';
   const pageSize = Number(prefs.pageSize || meta.options['list.pageSize']) || 50;
@@ -190,7 +195,7 @@ export default function Tickets({ preset }: { preset: TicketQuery }) {
             <Filter size={14} /> Filters{activeFilters.length > 0 && <span className="num rounded-md bg-accent/15 px-1.5 text-2xs text-accent">{activeFilters.length}</span>}
           </Button>
           <Button size="md" onClick={() => setDialog('save')} title="Save these filters as a view"><Bookmark size={14} /> <span className="hidden xl:inline">Save view</span></Button>
-          {isSupervisor && <Button size="md" onClick={() => setDialog('export')} title="Export the tickets in this list"><Download size={14} /> <span className="hidden xl:inline">Export</span></Button>}
+          {canExport && <Button size="md" onClick={() => setDialog('export')} title="Export the tickets in this list"><Download size={14} /> <span className="hidden xl:inline">Export</span></Button>}
           <Button size="md" onClick={load} disabled={busy} aria-label="Refresh"><RefreshCw size={14} className={busy ? 'animate-spin' : ''} /></Button>
         </div>
       </div>
@@ -232,7 +237,7 @@ export default function Tickets({ preset }: { preset: TicketQuery }) {
       {error && <Notice onClose={() => setError('')}>{error}</Notice>}
       {info && <Notice tone="good" onClose={() => setInfo('')}>{info}</Notice>}
 
-      {picked.size > 0 && <BulkBar count={picked.size} view={view} busy={busy} onAction={bulk} onMerge={() => setDialog('merge')} isAdmin={isAdmin} />}
+      {picked.size > 0 && <BulkBar count={picked.size} view={view} busy={busy} onAction={bulk} onMerge={() => setDialog('merge')} isAdmin={canPurge} />}
 
       <Card bodyClass="p-0">
         {!rows ? (
@@ -294,8 +299,8 @@ export default function Tickets({ preset }: { preset: TicketQuery }) {
         )}
       </Card>
 
-      <SaveViewDialog open={dialog === 'save'} onClose={() => setDialog(null)} query={query} canShare={isSupervisor} onSaved={(id) => { setDialog(null); setSavedId(id); setInfo('View saved - find it under More views.'); load(); }} />
-      {isSupervisor && <ExportDialog open={dialog === 'export'} onClose={() => setDialog(null)} query={query} total={total} title={title} />}
+      <SaveViewDialog open={dialog === 'save'} onClose={() => setDialog(null)} query={query} canShare={canShareViews} onSaved={(id) => { setDialog(null); setSavedId(id); setInfo('View saved - find it under More views.'); load(); }} />
+      {canExport && <ExportDialog open={dialog === 'export'} onClose={() => setDialog(null)} query={query} total={total} title={title} />}
       <MergeDialog open={dialog === 'merge'} onClose={() => setDialog(null)} ids={[...picked]} rows={rows ?? []} onMerge={(primaryId) => { setDialog(null); bulk('merge', { primaryId }); }} />
     </div>
   );

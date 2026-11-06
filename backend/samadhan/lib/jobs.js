@@ -94,6 +94,8 @@ async function runJobs({ force = false } = {}) {
             try { out.mail = await ingestMail(); } catch (err) { out.mail = { error: err.message }; console.error('[samadhan] mail ingest:', err.message); }
             try { await runSlaChecks(); out.sla = 'ok'; } catch (err) { out.sla = { error: err.message }; console.error('[samadhan] sla checks:', err.message); }
             try { out.timeRules = await runTimeTriggers(); } catch (err) { out.timeRules = { error: err.message }; console.error('[samadhan] time rules:', err.message); }
+            // v7 Authorization cockpit: temporary access ends by itself; Admins get a quarterly access-review reminder.
+            try { const authz = require('./authz'); out.accessExpired = await authz.revokeExpired(); out.recertReminder = await authz.recertificationReminder(); } catch (err) { if (err.code !== '42P01') console.error('[samadhan] authz jobs:', err.message); }
             // Bell entries are kept for 30 days.
             try { out.bellPurged = (await pool.query(`DELETE FROM samadhan.notifications WHERE "createdAt" < now() - interval '30 days'`)).rowCount; } catch (err) { console.error('[samadhan] bell purge:', err.message); }
             await client.query(

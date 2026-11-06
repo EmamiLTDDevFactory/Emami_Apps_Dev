@@ -1,6 +1,7 @@
 'use client';
 import { createContext, useContext } from 'react';
 import type { TicketQuery } from './api';
+import type { Scope } from './permissions';
 import type { AgentPrefs, Me, Meta } from './types';
 
 export type Screen = 'dashboard' | 'tickets' | 'board' | 'new' | 'reports' | 'admin' | 'ticket' | 'helpdesk' | 'analytics' | 'contacts' | 'solutions';
@@ -21,8 +22,13 @@ export interface Samadhan {
   /** Ticket ids of the list the agent last opened a ticket from (Previous / Next on the ticket screen). */
   listIds: number[];
   setListIds: (ids: number[]) => void;
+  /** Base role from Manage Access (kept for display; use can() for what a person may do). */
   isSupervisor: boolean;
   isAdmin: boolean;
+  /** v7: true when the person holds this permission key (Authorization cockpit; falls back to the role rules on an older backend). */
+  can: (key: string) => boolean;
+  /** v7 data scope: which tickets the person sees (all / groups / own). */
+  scope: Scope;
   /** The agent's own settings (My preferences). */
   prefs: AgentPrefs;
 }

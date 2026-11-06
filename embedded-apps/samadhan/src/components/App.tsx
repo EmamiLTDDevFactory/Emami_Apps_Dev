@@ -4,11 +4,12 @@ import { ArrowLeft, BarChart3, BookOpen, Calendar, Columns3, FileSpreadsheet, He
 import { ApiError, getMe, getMeta, setAvailability, setUnauthorizedHandler, type TicketQuery } from '@/lib/api';
 import { BASE_PATH } from '@/lib/config';
 import { SamadhanContext, type NewTicketPreset, type Screen, type Samadhan } from '@/lib/context';
+import { makeCan, SCREEN_KEY, type Scope } from '@/lib/permissions';
 import { hasHubSession } from '@/lib/hub';
 import type { AgentPrefs, Availability, BellEvent, Me, Meta } from '@/lib/types';
 import MyPreferences from './MyPreferences';
 import { useScreenHistory } from '@/lib/useScreenHistory';
-import { Avatar, Button, cx } from './ui';
+import { Avatar, Button, Notice, cx } from './ui';
 import Dashboard from './Dashboard';
 import Tickets from './Tickets';
 import TicketView from './TicketView';
@@ -29,7 +30,7 @@ const Analytics = dynamic(() => import('./Analytics'), { loading });
 const Contacts = dynamic(() => import('./Contacts'), { loading });
 const Solutions = dynamic(() => import('./Solutions'), { loading });
 
-type NavItem = { id: Screen; label: string; hint: string; icon: LucideIcon; show?: (s: { sup: boolean; admin: boolean }) => boolean };
+type NavItem = { id: Screen; label: string; hint: string; icon: LucideIcon };
 const NAV: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', hint: "Today's queue and trends", icon: LayoutDashboard },
   { id: 'helpdesk', label: 'Helpdesk dashboard', hint: 'Region, status, type, source', icon: PieChart },
@@ -38,9 +39,9 @@ const NAV: NavItem[] = [
   { id: 'new', label: 'New ticket', hint: 'On behalf of a requester', icon: PlusCircle },
   { id: 'contacts', label: 'Contacts', hint: 'Requesters and companies', icon: Users },
   { id: 'solutions', label: 'Solutions', hint: 'Knowledge base articles', icon: BookOpen },
-  { id: 'analytics', label: 'Analytics', hint: 'SLA, agents, CSAT, trends', icon: BarChart3, show: (s) => s.sup },
-  { id: 'reports', label: 'Daily report', hint: 'Excel in the template order', icon: FileSpreadsheet, show: (s) => s.sup },
-  { id: 'admin', label: 'Admin', hint: 'Agents, SLA, fields, templates', icon: Settings, show: (s) => s.admin },
+  { id: 'analytics', label: 'Analytics', hint: 'SLA, agents, CSAT, trends', icon: BarChart3 },
+  { id: 'reports', label: 'Daily report', hint: 'Excel in the template order', icon: FileSpreadsheet },
+  { id: 'admin', label: 'Admin', hint: 'Agents, SLA, fields, templates', icon: Settings },
 ];
 
 const AVAIL_DOT: Record<Availability, string> = {
@@ -53,7 +54,18 @@ type State =
   | { kind: 'expired'; message: string }
   | { kind: 'denied'; message: string }
   | { kind: 'error'; message: string }
-  | { kind: 'ready'; me: Me; meta: Meta; mailEnabled: boolean; whatsappEnabled: boolean; bellEvents: BellEvent[]; prefs: AgentPrefs };
+  | { kind: 'ready'; me: Me; meta: Meta; mailEnabled: boolean; whatsappEnabled: boolean; bellEvents: BellEvent[]; prefs: AgentPrefs; permissions?: string[]; scope: Scope };
+
+const SCREENS = Object.keys(SCREEN_KEY) as Screen[];
+/** ?screen=<id> deep link (e.g. the hub inbox points Admins at ?screen=admin). The screen guard still applies. */
+function screenFromUrl(): Screen | null {
+  try {
+    const v = new URLSearchParams(window.location.search).get('screen');
+    return v && (SCREENS as string[]).includes(v) && v !== 'ticket' ? (v as Screen) : null;
+  } catch {
+    return null;
+  }
+}
 
 /** ?ticket=<id> deep link (hub notifications and emails point there). */
 function ticketFromUrl(): number | null {
@@ -87,6 +99,7 @@ export default function App() {
   const [menu, setMenu] = useState(false);
   const [today, setToday] = useState('');
   const [availBusy, setAvailBusy] = useState(false);
+  const [denied, setDenied] = useState(false);
 
   const { back } = useScreenHistory(state.kind === 'ready' ? { screen, ticketId } : null, (s) => {
     setScreen(s.screen);
@@ -104,11 +117,15 @@ export default function App() {
       setState({
         kind: 'ready', me: me.me, meta, mailEnabled: me.mailEnabled, whatsappEnabled: me.whatsappEnabled,
         bellEvents: me.bellEvents ?? ['requester_reply'], prefs: me.prefs ?? {},
+        permissions: me.permissions, scope: me.scope ?? { visibility: 'all' },
       });
       const deep = ticketFromUrl();
+      const wanted = screenFromUrl();
       if (deep) {
         setTicketId(deep);
         setScreen('ticket');
+      } else if (wanted) {
+        setScreen(wanted);
       }
     } catch (e) {
       const err = e instanceof ApiError ? e : new ApiError('Something went wrong.', 0);
@@ -133,6 +150,7 @@ export default function App() {
   const ctx: Samadhan | null = useMemo(() => {
     if (state.kind !== 'ready') return null;
     const sup = state.me.role === 'Supervisor' || state.me.role === 'Admin';
+    const can = makeCan(state.me.role, state.permissions);
     return {
       me: state.me,
       meta: state.meta,
@@ -147,9 +165,20 @@ export default function App() {
       setListIds,
       isSupervisor: sup,
       isAdmin: state.me.role === 'Admin',
+      can,
+      scope: state.scope,
       prefs: state.prefs,
     };
   }, [state, reloadMeta, listIds]);
+
+  // Screen guard (v7 §K 9.1): a screen the person may not use - from the menu, a deep link or a typed ?screen= - goes to
+  // their first allowed screen with a notice. The API refuses the data anyway (403); this only keeps the page honest.
+  useEffect(() => {
+    if (!ctx || ctx.can(SCREEN_KEY[screen])) return;
+    const fallback = NAV.find((n) => ctx.can(SCREEN_KEY[n.id]))?.id ?? 'dashboard';
+    setScreen(fallback);
+    setDenied(true);
+  }, [ctx, screen]);
 
   if (state.kind === 'checking') {
     return <div className="grid h-screen place-items-center bg-bg"><div className="h-9 w-9 animate-spin rounded-full border-[3px] border-accent border-t-transparent" /></div>;
@@ -187,7 +216,8 @@ export default function App() {
   }
 
   const { me, meta } = state;
-  const visibleNav = NAV.filter((n) => !n.show || n.show({ sup: ctx.isSupervisor, admin: ctx.isAdmin }));
+  const visibleNav = NAV.filter((n) => ctx.can(SCREEN_KEY[n.id]));
+  const allowed = (s: Screen) => ctx.can(SCREEN_KEY[s]);
   const activeNav = screen === 'ticket' ? 'tickets' : screen;
 
   const changeAvailability = async (v: Availability) => {
@@ -271,22 +301,23 @@ export default function App() {
             <GlobalSearch />
             <Bell events={state.bellEvents} muted={state.prefs.bellMuted ?? []} onSettings={() => setPrefsOpen('notifications')} />
             <button type="button" onClick={() => window.dispatchEvent(new Event('samadhan:shortcuts'))} className="hidden h-8 items-center gap-1 rounded-lg border border-line px-2 text-2xs font-semibold text-muted hover:text-ink md:flex" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts"><Keyboard size={13} /> ?</button>
-            <Button size="sm" variant="primary" onClick={() => ctx.go('new')}><PlusCircle size={14} /> <span className="hidden sm:inline">New ticket</span></Button>
+            {allowed('new') && <Button size="sm" variant="primary" onClick={() => ctx.go('new')}><PlusCircle size={14} /> <span className="hidden sm:inline">New ticket</span></Button>}
             <div className="hidden items-center gap-1.5 rounded-full border border-line bg-bg px-2.5 py-1 md:flex"><Calendar size={13} className="text-accent" /><span className="text-[11.5px] font-bold">{today}</span></div>
           </header>
           <main className="scroll-thin min-h-0 flex-1 overflow-y-auto p-3 lg:p-5">
             <div className="mx-auto max-w-7xl">
-              {screen === 'dashboard' && <Dashboard />}
-              {screen === 'tickets' && <Tickets key={preset.n} preset={preset.q} />}
-              {screen === 'ticket' && ticketId && <TicketView key={ticketId} id={ticketId} />}
-              {screen === 'new' && <NewTicket key={newPreset.n} preset={newPreset.p} />}
-              {screen === 'helpdesk' && <Helpdesk />}
-              {screen === 'contacts' && <Contacts />}
-              {screen === 'solutions' && <Solutions />}
-              {screen === 'analytics' && ctx.isSupervisor && <Analytics />}
-              {screen === 'board' && <Board />}
-              {screen === 'reports' && ctx.isSupervisor && <Reports />}
-              {screen === 'admin' && ctx.isAdmin && <Admin />}
+              {denied && <div className="mb-3"><Notice tone="warn" onClose={() => setDenied(false)}>You don&apos;t have access to that screen. Ask a Samadhan admin if you need it.</Notice></div>}
+              {screen === 'dashboard' && allowed('dashboard') && <Dashboard />}
+              {screen === 'tickets' && allowed('tickets') && <Tickets key={preset.n} preset={preset.q} />}
+              {screen === 'ticket' && ticketId && allowed('ticket') && <TicketView key={ticketId} id={ticketId} />}
+              {screen === 'new' && allowed('new') && <NewTicket key={newPreset.n} preset={newPreset.p} />}
+              {screen === 'helpdesk' && allowed('helpdesk') && <Helpdesk />}
+              {screen === 'contacts' && allowed('contacts') && <Contacts />}
+              {screen === 'solutions' && allowed('solutions') && <Solutions />}
+              {screen === 'analytics' && allowed('analytics') && <Analytics />}
+              {screen === 'board' && allowed('board') && <Board />}
+              {screen === 'reports' && allowed('reports') && <Reports />}
+              {screen === 'admin' && allowed('admin') && <Admin />}
             </div>
             <Shortcuts />
             <MyPreferences

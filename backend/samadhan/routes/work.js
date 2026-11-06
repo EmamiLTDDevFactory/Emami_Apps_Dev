@@ -3,16 +3,18 @@ const express = require('express');
 const { pool } = require('../db/pool');
 const { EMAIL_RE, PHONE_RE } = require('../constants');
 const { LIST_COLUMNS, LIST_FROM } = require('../lib/queries');
-const { LIVE, ticketFilter } = require('../lib/ticketQuery');
+const { liveFor, ticketFilter } = require('../lib/ticketQuery');
 const { audit, fail, intOrNull, wrap } = require('../lib/util');
-const { isAdmin, requireSupervisor } = require('../middleware/auth');
 
 const router = express.Router();
 
 // ---------- Routes: to-dos, saved views, search, contacts & companies, Solutions (knowledge base) ----------
 
 const text = (v, max) => String(v ?? '').trim().slice(0, max);
-const isSupervisorRole = (req) => ['Supervisor', 'Admin'].includes(req.agent.role);
+// v7 permissions (middleware/permission.js): drafts are visible to whoever may edit articles; others' views / variants may
+// be changed by whoever has admin.general (Admins). Same people as the pre-v7 role checks.
+const seesDrafts = (req) => req.can('article.edit');
+const managesAll = (req) => req.can('admin.general');
 
 // ---- To-dos: private to each agent, optionally tied to a ticket ----
 router.get('/todos', wrap(async (req, res) => {
@@ -76,9 +78,9 @@ router.post('/views', wrap(async (req, res) => {
     const name = text(b.name, 80);
     if (!name) throw fail(400, 'Give the view a name.');
     const shared = b.shared === true;
-    if (shared && !isSupervisorRole(req)) throw fail(403, 'Only supervisors and admins can share a view with everyone.');
+    if (shared && !req.can('views.share')) throw fail(403, 'Only supervisors and admins can share a view with everyone.');
     const query = Object.fromEntries(VIEW_KEYS.filter((k) => b.query?.[k] !== undefined && b.query[k] !== '').map((k) => [k, text(b.query[k], 2000)]));
-    ticketFilter(query, req.agent.id); // refuses unknown views / bad dates before saving
+    ticketFilter(query, req.agent.id, req.scope); // refuses unknown views / bad dates before saving
     const mine = await pool.query('SELECT count(*)::int AS n FROM samadhan.saved_views WHERE "ownerAgentId" = $1', [req.agent.id]);
     if (mine.rows[0].n >= 25) throw fail(400, 'You have 25 saved views - delete one first.');
     const { rows } = await pool.query(
@@ -91,7 +93,7 @@ router.post('/views', wrap(async (req, res) => {
 router.delete('/views/:id', wrap(async (req, res) => {
     const { rowCount } = await pool.query(
         'DELETE FROM samadhan.saved_views WHERE id = $1 AND ("ownerAgentId" = $2 OR $3)',
-        [Number(req.params.id), req.agent.id, isAdmin(req)],
+        [Number(req.params.id), req.agent.id, managesAll(req)],
     );
     if (!rowCount) throw fail(404, 'View not found, or it is not yours to delete.');
     res.json({ success: true });
@@ -118,7 +120,7 @@ router.post('/variants', wrap(async (req, res) => {
     const name = text(b.name, 80);
     if (!name) throw fail(400, 'Give the variant a name.');
     const shared = b.shared === true;
-    if (shared && !isSupervisorRole(req)) throw fail(403, 'Only supervisors and admins can share a variant with everyone.');
+    if (shared && !req.can('report.variants.share')) throw fail(403, 'Only supervisors and admins can share a variant with everyone.');
     const config = b.config && typeof b.config === 'object' ? b.config : {};
     const json = JSON.stringify(config);
     if (json.length > 50_000) throw fail(400, 'That variant is too large.');
@@ -126,7 +128,7 @@ router.post('/variants', wrap(async (req, res) => {
     if (id) {
         const { rows } = await pool.query(
             `UPDATE samadhan.variants SET name = $3, shared = $4, config = $5, "updatedAt" = now() WHERE id = $1 AND ("ownerAgentId" = $2 OR $6) RETURNING id`,
-            [id, req.agent.id, name, shared, json, isAdmin(req)],
+            [id, req.agent.id, name, shared, json, managesAll(req)],
         );
         if (!rows.length) throw fail(404, 'Variant not found, or it is not yours to change.');
         return res.json({ success: true, id });
@@ -141,7 +143,7 @@ router.post('/variants', wrap(async (req, res) => {
 }));
 
 router.delete('/variants/:id', wrap(async (req, res) => {
-    const { rowCount } = await pool.query('DELETE FROM samadhan.variants WHERE id = $1 AND ("ownerAgentId" = $2 OR $3)', [Number(req.params.id), req.agent.id, isAdmin(req)]);
+    const { rowCount } = await pool.query('DELETE FROM samadhan.variants WHERE id = $1 AND ("ownerAgentId" = $2 OR $3)', [Number(req.params.id), req.agent.id, managesAll(req)]);
     if (!rowCount) throw fail(404, 'Variant not found, or it is not yours to delete.');
     res.json({ success: true });
 }));
@@ -151,7 +153,7 @@ router.get('/search', wrap(async (req, res) => {
     const term = text(req.query.q, 100).replace(/^#/, '');
     if (term.length < 2 && !/^\d+$/.test(term)) return res.json({ success: true, tickets: [], contacts: [], articles: [] });
     const like = `%${term}%`;
-    const f = ticketFilter({ q: term, sort: 'updated' }, req.agent.id);
+    const f = ticketFilter({ q: term, sort: 'updated' }, req.agent.id, req.scope);
     const [tickets, contacts, articles] = await Promise.all([
         pool.query(`SELECT ${LIST_COLUMNS} ${LIST_FROM} ${f.where} ORDER BY ${f.order} LIMIT 8`, f.params),
         pool.query(
@@ -162,7 +164,7 @@ router.get('/search', wrap(async (req, res) => {
         pool.query(
             `SELECT id, title, category, status FROM samadhan.articles WHERE (status = 'published' OR $2) AND (title ILIKE $1 OR array_to_string(tags, ' ') ILIKE $1)
              ORDER BY views DESC LIMIT 5`,
-            [like, isSupervisorRole(req)],
+            [like, seesDrafts(req)],
         ),
     ]);
     res.json({ success: true, tickets: tickets.rows, contacts: contacts.rows, articles: articles.rows });
@@ -182,7 +184,7 @@ router.get('/contacts', wrap(async (req, res) => {
             `SELECT c.id, c.name, c.email, c.phone, c.mobile, c."companyId", co.name AS "companyName", c."createdAt",
                     count(t.id)::int AS tickets, count(t.id) FILTER (WHERE NOT s."isResolved")::int AS open, max(t."createdAt") AS "lastTicketAt"
              FROM samadhan.contacts c LEFT JOIN samadhan.companies co ON co.id = c."companyId"
-             LEFT JOIN samadhan.tickets t ON t."requesterId" = c.id AND ${LIVE}
+             LEFT JOIN samadhan.tickets t ON t."requesterId" = c.id AND ${liveFor(req)}
              LEFT JOIN samadhan.ticket_statuses s ON s.id = t."statusId"
              ${w} GROUP BY c.id, co.name ORDER BY max(t."createdAt") DESC NULLS LAST, c.name LIMIT 50 OFFSET ${(page - 1) * 50}`,
             params,
@@ -200,7 +202,7 @@ router.get('/contacts/:id', wrap(async (req, res) => {
     )).rows[0];
     if (!contact) throw fail(404, 'Contact not found.');
     const [tickets, calls, stats] = await Promise.all([
-        pool.query(`SELECT ${LIST_COLUMNS} ${LIST_FROM} WHERE t."requesterId" = $1 AND ${LIVE} ORDER BY t."createdAt" DESC LIMIT 50`, [id]),
+        pool.query(`SELECT ${LIST_COLUMNS} ${LIST_FROM} WHERE t."requesterId" = $1 AND ${liveFor(req)} ORDER BY t."createdAt" DESC LIMIT 50`, [id]),
         pool.query(
             `SELECT cl.*, a.name AS "agentName", t.subject AS "ticketSubject" FROM samadhan.call_logs cl JOIN samadhan.tickets t ON t.id = cl."ticketId"
              JOIN samadhan.agents a ON a.id = cl."agentId" WHERE t."requesterId" = $1 ORDER BY cl."createdAt" DESC LIMIT 20`,
@@ -209,7 +211,7 @@ router.get('/contacts/:id', wrap(async (req, res) => {
         pool.query(
             `SELECT count(*)::int AS total, count(*) FILTER (WHERE NOT s."isResolved")::int AS open,
                     (SELECT round(avg(r.rating), 2) FROM samadhan.csat_responses r JOIN samadhan.tickets x ON x.id = r."ticketId" WHERE x."requesterId" = $1) AS "csatAvg"
-             FROM samadhan.tickets t JOIN samadhan.ticket_statuses s ON s.id = t."statusId" WHERE t."requesterId" = $1 AND ${LIVE}`,
+             FROM samadhan.tickets t JOIN samadhan.ticket_statuses s ON s.id = t."statusId" WHERE t."requesterId" = $1 AND ${liveFor(req)}`,
             [id],
         ),
     ]);
@@ -257,15 +259,15 @@ router.get('/companies', wrap(async (req, res) => {
     const { rows } = await pool.query(
         `SELECT co.id, co.name, co.description, co.domains,
                 (SELECT count(*)::int FROM samadhan.contacts c WHERE c."companyId" = co.id AND c."anonymizedAt" IS NULL) AS contacts,
-                (SELECT count(*)::int FROM samadhan.tickets t JOIN samadhan.ticket_statuses s ON s.id = t."statusId" WHERE t."companyId" = co.id AND NOT s."isResolved" AND ${LIVE}) AS open,
-                (SELECT count(*)::int FROM samadhan.tickets t WHERE t."companyId" = co.id AND ${LIVE}) AS tickets
+                (SELECT count(*)::int FROM samadhan.tickets t JOIN samadhan.ticket_statuses s ON s.id = t."statusId" WHERE t."companyId" = co.id AND NOT s."isResolved" AND ${liveFor(req)}) AS open,
+                (SELECT count(*)::int FROM samadhan.tickets t WHERE t."companyId" = co.id AND ${liveFor(req)}) AS tickets
          FROM samadhan.companies co ORDER BY co.name`,
     );
     res.json({ success: true, items: rows });
 }));
 
 router.post('/companies', wrap(async (req, res) => {
-    requireSupervisor(req);
+    if (!req.can('company.create')) throw fail(403, 'Supervisors and admins only.');
     const b = req.body ?? {};
     const name = text(b.name, 200);
     if (!name) throw fail(400, 'Company name is needed.');
@@ -290,7 +292,7 @@ router.post('/companies', wrap(async (req, res) => {
 // ---- Solutions (knowledge base). Everyone reads published articles; supervisors and admins write. ----
 router.get('/articles', wrap(async (req, res) => {
     const term = text(req.query.q, 100);
-    const params = [isSupervisorRole(req)];
+    const params = [seesDrafts(req)];
     const where = [`(a.status = 'published' OR $1)`];
     if (term) { params.push(`%${term}%`); where.push(`(a.title ILIKE $${params.length} OR a.body ILIKE $${params.length} OR array_to_string(a.tags, ' ') ILIKE $${params.length})`); }
     if (req.query.category) { params.push(text(req.query.category, 100)); where.push(`a.category = $${params.length}`); }
@@ -307,19 +309,20 @@ router.get('/articles/:id', wrap(async (req, res) => {
     const { rows } = await pool.query(
         `UPDATE samadhan.articles a SET views = views + 1 WHERE a.id = $1 AND (a.status = 'published' OR $2)
          RETURNING a.*, (SELECT name FROM samadhan.agents WHERE id = a."authorAgentId") AS "authorName"`,
-        [Number(req.params.id), isSupervisorRole(req)],
+        [Number(req.params.id), seesDrafts(req)],
     );
     if (!rows.length) throw fail(404, 'Article not found.');
     res.json({ success: true, article: rows[0] });
 }));
 
 router.post('/articles', wrap(async (req, res) => {
-    requireSupervisor(req);
+    if (!req.can('article.edit')) throw fail(403, 'Supervisors and admins only.');
     const b = req.body ?? {};
     const title = text(b.title, 300);
     const body = String(b.body ?? '').trim().slice(0, 50000);
     if (!title || !body) throw fail(400, 'An article needs a title and some text.');
     const status = b.status === 'published' ? 'published' : 'draft';
+    if (status === 'published' && !req.can('article.publish')) throw fail(403, 'You may save drafts, but publishing needs article.publish.');
     const tags = (Array.isArray(b.tags) ? b.tags : String(b.tags || '').split(','))
         .map((x) => String(x).trim().toLowerCase()).filter(Boolean).slice(0, 15);
     const vals = [text(b.category, 100) || 'General', text(b.folder, 100) || 'General', title, body, status, tags, req.agent.id];
@@ -343,7 +346,7 @@ router.post('/articles', wrap(async (req, res) => {
 }));
 
 router.delete('/articles/:id', wrap(async (req, res) => {
-    requireSupervisor(req);
+    if (!req.can('article.edit')) throw fail(403, 'Supervisors and admins only.');
     await pool.query('DELETE FROM samadhan.articles WHERE id = $1', [Number(req.params.id)]);
     await audit(req.verifiedEmail, 'article_deleted', { id: Number(req.params.id) });
     res.json({ success: true });

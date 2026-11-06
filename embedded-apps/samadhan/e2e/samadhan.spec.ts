@@ -140,3 +140,40 @@ test('keyboard: "?" opens the shortcuts list', async ({ page }) => {
   await expect(page.getByRole('dialog')).toBeVisible();
   expect(problems).toEqual([]);
 });
+
+// ---------- v7 Phase 2: screen guard and Authorization cockpit ----------
+
+test('screen guard: an Agent typing ?screen=admin lands on an allowed screen with a notice', async ({ page }) => {
+  const problems = watch(page);
+  await signIn(page, data.agent);
+  await page.goto('/apps/samadhan/?screen=admin');
+  await expect(page.getByText("You don't have access to that screen")).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Admin', exact: true })).toHaveCount(0);
+  expect(problems).toEqual([]);
+});
+
+test('screen guard: a Supervisor typing ?screen=reports opens the Daily report', async ({ page }) => {
+  const problems = watch(page);
+  await signIn(page, data.sup);
+  await page.goto('/apps/samadhan/?screen=reports');
+  await page.waitForLoadState('networkidle');
+  await expect(page.getByText("You don't have access to that screen")).toHaveCount(0);
+  expect(problems).toEqual([]);
+});
+
+test('Admin: the Authorization cockpit opens and every tab loads', async ({ page }) => {
+  const problems = watch(page);
+  await signIn(page, data.admin);
+  await page.goto('/apps/samadhan/?screen=admin');
+  await page.getByRole('tab', { name: 'Authorization cockpit' }).click();
+  for (const tab of ['Overview', 'Role profiles', 'Permission matrix', 'User access', 'Access review', 'Change log']) {
+    await page.getByRole('tab', { name: tab, exact: true }).click();
+    await page.waitForLoadState('networkidle');
+  }
+  await page.getByRole('tab', { name: 'Role profiles', exact: true }).click();
+  await expect(page.getByText('Auditor (read-only)')).toBeVisible();
+  await page.getByRole('tab', { name: 'User access', exact: true }).click();
+  await page.getByRole('button', { name: 'Open' }).first().click();
+  await expect(page.getByText('Effective access (saved)')).toBeVisible();
+  expect(problems).toEqual([]);
+});

@@ -14,12 +14,14 @@ import ScenariosTab from './Scenarios';
 import { GeneralTab } from './General';
 import { AccessTab } from './Access';
 import { StatusesTab } from './Statuses';
+import { AuthzTab } from './Authz';
 
-type TabId = 'general' | 'access' | 'statuses' | 'agents' | 'groups' | 'sla' | 'hours' | 'severity' | 'fields' | 'templates' | 'canned' | 'scenarios' | 'distributors' | 'settings' | 'channels' | 'automations' | 'contacts' | 'audit' | 'parked';
+type TabId = 'general' | 'authz' | 'access' | 'statuses' | 'agents' | 'groups' | 'sla' | 'hours' | 'severity' | 'fields' | 'templates' | 'canned' | 'scenarios' | 'distributors' | 'settings' | 'channels' | 'automations' | 'contacts' | 'audit' | 'parked';
 const TABS: { id: TabId; label: string }[] = [
   { id: 'general', label: 'General' },
   { id: 'agents', label: 'Agents' },
   { id: 'access', label: 'Roles & access' },
+  { id: 'authz', label: 'Authorization cockpit' },
   { id: 'groups', label: 'Groups' },
   { id: 'sla', label: 'SLA' },
   { id: 'hours', label: 'Business hours' },
@@ -75,6 +77,7 @@ export default function Admin() {
         {tab === 'general' && <GeneralTab />}
         {tab === 'agents' && <AgentsTab />}
         {tab === 'access' && <AccessTab />}
+        {tab === 'authz' && <AuthzTab onOpenTab={setTab} />}
         {tab === 'statuses' && <StatusesTab />}
         {tab === 'groups' && <GroupsTab />}
         {tab === 'sla' && <SlaTab />}

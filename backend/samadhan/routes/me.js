@@ -4,7 +4,7 @@ const { pool } = require('../db/pool');
 const { AGENT_EMAIL_TEMPLATES, AGENT_STATUSES, BELL_EVENTS, CALL_MODES, CALL_OUTCOMES, MAIL_ENABLED, PRIORITIES, SEVERITIES } = require('../constants');
 const { bellConfig } = require('../lib/bell');
 const { DEFAULTS, sources, uiOptions } = require('../lib/config');
-const { VIEW_IDS } = require('../lib/ticketQuery');
+const { VIEW_IDS, scopeSql } = require('../lib/ticketQuery');
 const { deleteCanned, saveCanned } = require('../lib/canned');
 const { fail, setting, wrap } = require('../lib/util');
 const { whatsappReady } = require('../lib/whatsapp');
@@ -18,6 +18,8 @@ router.get('/me', wrap(async (req, res) => {
     res.json({
         success: true, me: req.agent, agentStatuses: AGENT_STATUSES, mailEnabled: MAIL_ENABLED, whatsappEnabled: whatsappReady(),
         prefs: prefs.rows[0]?.prefs ?? {}, bellEvents: bell.events, bellAudience: bell.audience,
+        // v7: effective permission keys and data scope (middleware/permission.js); the frontend's can() reads these.
+        permissions: [...req.permissions].sort(), scope: req.scope,
     });
 }));
 
@@ -62,6 +64,10 @@ router.put('/me/preferences', wrap(async (req, res) => {
 router.get('/notifications', wrap(async (req, res) => {
     const where = ['n."agentId" = $1'];
     const params = [req.agent.id];
+    // v7 data scope: bell entries about tickets outside the person's scope are not shown (nothing changes for scope 'all').
+    const scoped = scopeSql(req.scope, req.agent.id);
+    const inScope = scoped ? ` AND EXISTS (SELECT 1 FROM samadhan.tickets t WHERE t.id = n."ticketId" AND ${scoped})` : '';
+    if (scoped) where.push(inScope.slice(5));
     if (req.query.unread === '1') where.push('n."readAt" IS NULL');
     const events = String(req.query.events || '').split(',').filter((e) => BELL_EVENTS.includes(e));
     if (events.length) { params.push(events); where.push(`n.event = ANY($${params.length}::text[])`); }
@@ -72,8 +78,8 @@ router.get('/notifications', wrap(async (req, res) => {
              WHERE ${where.join(' AND ')} ORDER BY n.id DESC LIMIT 31`,
             params,
         ),
-        pool.query('SELECT count(*)::int AS n FROM samadhan.notifications WHERE "agentId" = $1 AND "readAt" IS NULL', [req.agent.id]),
-        pool.query('SELECT event, count(*)::int AS n FROM samadhan.notifications WHERE "agentId" = $1 AND "readAt" IS NULL GROUP BY event', [req.agent.id]),
+        pool.query(`SELECT count(*)::int AS n FROM samadhan.notifications n WHERE n."agentId" = $1 AND n."readAt" IS NULL${inScope}`, [req.agent.id]),
+        pool.query(`SELECT n.event, count(*)::int AS n FROM samadhan.notifications n WHERE n."agentId" = $1 AND n."readAt" IS NULL${inScope} GROUP BY n.event`, [req.agent.id]),
     ]);
     res.json({
         success: true, items: items.rows.slice(0, 30), more: items.rows.length > 30, unread: unread.rows[0].n,

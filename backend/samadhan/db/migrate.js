@@ -72,6 +72,85 @@ const MIGRATIONS = [
             return 'renamed back';
         },
     },
+    {
+        // Phase 2: Authorization cockpit (master prompt §K). New tables only; nothing existing is changed. Runs by
+        // itself at start-up. Down drops exactly these tables (and with them every cockpit row - the base roles in
+        // Manage Access are untouched, so everyone falls back to today's Agent / Supervisor / Admin behaviour).
+        id: '7.1-auth',
+        describe: 'Authorization cockpit tables (auth_profiles, auth_user_profiles, auth_user_scope, auth_permission_overrides, auth_change_log, auth_permission_usage) + 8 seeded custom profiles',
+        async up(client) {
+            const S = ident(activeSchema());
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.auth_profiles (
+                id serial PRIMARY KEY,
+                code text NOT NULL UNIQUE,
+                name text NOT NULL,
+                description text,
+                mode text NOT NULL DEFAULT 'add' CHECK (mode IN ('add', 'restrict')),
+                keys text[] NOT NULL DEFAULT '{}',
+                "scopePreset" jsonb NOT NULL DEFAULT '{}',
+                active boolean NOT NULL DEFAULT true,
+                "seedKey" text,
+                "createdAt" timestamptz NOT NULL DEFAULT now(),
+                "updatedAt" timestamptz NOT NULL DEFAULT now())`);
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.auth_user_profiles (
+                id serial PRIMARY KEY,
+                "agentId" int NOT NULL REFERENCES ${S}.agents(id) ON DELETE CASCADE,
+                "profileId" int NOT NULL REFERENCES ${S}.auth_profiles(id) ON DELETE CASCADE,
+                "validFrom" timestamptz,
+                "validTo" timestamptz,
+                reason text NOT NULL,
+                "createdBy" text,
+                "createdAt" timestamptz NOT NULL DEFAULT now(),
+                UNIQUE ("agentId", "profileId"))`);
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.auth_user_scope (
+                "agentId" int PRIMARY KEY REFERENCES ${S}.agents(id) ON DELETE CASCADE,
+                visibility text NOT NULL DEFAULT 'all' CHECK (visibility IN ('all', 'groups', 'own')),
+                workspaces jsonb NOT NULL DEFAULT '"all"',
+                applications jsonb NOT NULL DEFAULT '"all"',
+                "updatedBy" text,
+                "updatedAt" timestamptz NOT NULL DEFAULT now())`);
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.auth_permission_overrides (
+                id serial PRIMARY KEY,
+                "agentId" int NOT NULL REFERENCES ${S}.agents(id) ON DELETE CASCADE,
+                key text NOT NULL,
+                effect text NOT NULL CHECK (effect IN ('grant', 'deny')),
+                "expiresAt" timestamptz,
+                reason text NOT NULL,
+                "createdBy" text,
+                "createdAt" timestamptz NOT NULL DEFAULT now(),
+                UNIQUE ("agentId", key))`);
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.auth_change_log (
+                id serial PRIMARY KEY,
+                "actorEmail" text,
+                action text NOT NULL,
+                target text,
+                before jsonb,
+                after jsonb,
+                reason text,
+                "createdAt" timestamptz NOT NULL DEFAULT now())`);
+            await q(client, `CREATE INDEX IF NOT EXISTS auth_change_log_created_idx ON ${S}.auth_change_log ("createdAt")`);
+            // Last use of each permission per person (Access review: "unused in 90 days"); written in batches.
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.auth_permission_usage (
+                "agentId" int NOT NULL REFERENCES ${S}.agents(id) ON DELETE CASCADE,
+                key text NOT NULL,
+                "lastUsedAt" timestamptz NOT NULL,
+                PRIMARY KEY ("agentId", key))`);
+            const { SEED_PROFILES } = require('../lib/authSeed');
+            for (const p of SEED_PROFILES) {
+                await q(client, `INSERT INTO ${S}.auth_profiles (code, name, description, mode, keys, "scopePreset", "seedKey")
+                                 VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (code) DO NOTHING`,
+                [p.code, p.name, p.description, p.mode, p.keys, JSON.stringify(p.scopePreset), `7.1-auth:${p.code}`]);
+            }
+            return `tables created, ${SEED_PROFILES.length} custom profiles seeded`;
+        },
+        async down(client) {
+            const S = ident(activeSchema());
+            for (const t of ['auth_permission_usage', 'auth_change_log','auth_permission_overrides', 'auth_user_scope', 'auth_user_profiles', 'auth_profiles']) {
+                await q(client, `DROP TABLE IF EXISTS ${S}.${t}`);
+            }
+            return 'cockpit tables dropped';
+        },
+    },
 ];
 
 async function applied(client, schema) {

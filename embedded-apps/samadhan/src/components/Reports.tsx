@@ -81,7 +81,9 @@ const errText = (e: unknown, fallback: string) => (e instanceof Error ? e.messag
  * a variant; the agent's default variant is applied and loaded on opening the screen.
  */
 export default function Reports() {
-  const { me, isSupervisor, isAdmin } = useSamadhan();
+  const { me, can } = useSamadhan();
+  const isAdmin = can('admin.general'); // v7: change anyone's variant
+  const isSupervisor = can('report.variants.share');
   const [range, setRange] = useState<Range>('today');
   const [from, setFrom] = useState(istToday());
   const [to, setTo] = useState(istToday());

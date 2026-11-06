@@ -8,7 +8,8 @@ const { seed } = require('./seed');
 // starts fast it runs only when the stored schema version differs from SCHEMA_VERSION: bump it whenever this
 // file or seed.js changes.
 // 7: v7 migrations (db/migrate.js) - the schema rename step is recorded; it is run by an operator, never here.
-const SCHEMA_VERSION = 7;
+// 8: v7.1 Authorization cockpit tables (migration 7.1-auth, applied by migrate.startup()).
+const SCHEMA_VERSION = 8;
 
 async function initSchema() {
     // Which schema this database uses: samadhan, or the legacy setu until the v7.0 rename has been run.

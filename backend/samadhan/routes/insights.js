@@ -4,12 +4,13 @@ const { dashboardInsights, ticketInsights } = require('../lib/insights');
 const { fail, wrap } = require('../lib/util');
 
 const router = express.Router();
-const isSupervisor = (req) => req.agent.role === 'Supervisor' || req.agent.role === 'Admin';
 
 // Queue-level insights and action points (shared by everyone; regenerated at most every 30 minutes, or on demand
-// by a Supervisor / Admin).
+// by anyone with insights.refresh - Supervisor / Admin by default).
 router.get('/insights/dashboard', wrap(async (req, res) => {
-    const refresh = req.query.refresh === '1' && isSupervisor(req);
+    // Queue-wide insights summarise every ticket, so people with a narrowed scope (cockpit) get none.
+    if (req.scope?.visibility && req.scope.visibility !== 'all') return res.json({ success: true, insights: null, scoped: true });
+    const refresh = req.query.refresh === '1' && req.can('insights.refresh');
     res.json({ success: true, insights: await dashboardInsights({ refresh }) });
 }));
 
@@ -17,7 +18,7 @@ router.get('/insights/dashboard', wrap(async (req, res) => {
 router.get('/tickets/:id/insights', wrap(async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) throw fail(400, 'Invalid ticket number.');
-    res.json({ success: true, ...(await ticketInsights(id, { generate: req.query.generate === '1' })) });
+    res.json({ success: true, ...(await ticketInsights(id, { generate: req.query.generate === '1' && req.can('insights.ai') })) });
 }));
 
 module.exports = router;
