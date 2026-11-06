@@ -6,7 +6,8 @@
      node backend/samadhan/tests/gate.js --quick    # without the E2E browser run
 
    Needs: the throwaway Postgres on localhost:55432 (trust, see TEST-PLAN §A; started here if it is not running and
-   %LOCALAPPDATA%\samadhan-test-pg exists), Microsoft Edge (E2E). Uses ports 4191 (backend) and 3250 (static site).
+   %LOCALAPPDATA%\samadhan-test-pg exists, restarted once if it hangs in crash recovery; server log in that folder's
+   server.log), Microsoft Edge (E2E). Uses ports 4191 (backend) and 3250 (static site).
    Mail, WhatsApp, notification emails and AI are off; a random JWT secret is made for each run (never the real one).
    The v6 template database `golden_v6` is made once from the v6 code (git commit V6_COMMIT) in a temporary worktree.
 */
@@ -38,15 +39,26 @@ fs.writeFileSync(logFile, '');
 const log = (s) => fs.appendFileSync(logFile, `${s}\n`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Every result is recorded AND printed (a failure that is only recorded showed up as "1 of 8 failed" with no FAIL line).
+function record(name, ok, detail = '', label = name, ms = null) {
+    results.push({ name, ok, ms, detail });
+    console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}${detail ? `  (${detail})` : ''}${ms === null ? '' : `  ${Math.round(ms / 1000)} s`}`);
+}
+// npm/npx run through node itself: no `shell: true` (Node 24+ warns DEP0190 about unescaped args), same behaviour.
+function resolveCmd(cmd, args) {
+    const m = /^(npm|npx)(\.cmd)?$/.exec(cmd);
+    const cli = m && path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', `${m[1]}-cli.js`);
+    return cli && fs.existsSync(cli) ? { cmd: process.execPath, args: [cli, ...args], shell: false } : { cmd, args, shell: /\.cmd$/.test(cmd) };
+}
+
 function run(name, cmd, args, opts = {}) {
     const t0 = Date.now();
-    const r = spawnSync(cmd, args, { cwd: opts.cwd || ROOT, env: { ...process.env, ...(opts.env || {}) }, encoding: 'utf8', shell: opts.shell ?? /\.cmd$/.test(cmd), maxBuffer: 64 * 1024 * 1024 });
+    const c = resolveCmd(cmd, args);
+    const r = spawnSync(c.cmd, c.args, { cwd: opts.cwd || ROOT, env: { ...process.env, ...(opts.env || {}) }, encoding: 'utf8', shell: opts.shell ?? c.shell, maxBuffer: 64 * 1024 * 1024 });
     const out = `${r.stdout || ''}${r.stderr || ''}`;
     log(`\n===== ${name} (exit ${r.status}) =====\n${out}`);
     const ok = r.status === 0 && (!opts.expect || opts.expect(out));
-    const detail = opts.detail ? opts.detail(out) : '';
-    results.push({ name, ok, ms: Date.now() - t0, detail });
-    console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? `  (${detail})` : ''}  ${Math.round((Date.now() - t0) / 1000)} s`);
+    record(name, ok, opts.detail ? opts.detail(out) : '', name, Date.now() - t0);
     return { ok, out };
 }
 const psql = (db, sql) => spawnSync(path.join(PG_BIN, 'psql'), ['-h', 'localhost', '-p', String(PG_PORT), '-U', 'postgres', '-d', db, '-v', 'ON_ERROR_STOP=1', '-qAtc', sql], { encoding: 'utf8' });
@@ -89,15 +101,27 @@ async function stopBackend() {
     await sleep(300);
 }
 
-function pgRunning() { return psql('postgres', 'select 1').status === 0; }
+let pgError = '';
+function pgRunning() { const r = psql('postgres', 'select 1'); pgError = (r.stderr || '').trim().split('\n').pop() || ''; return r.status === 0; }
+const PG_DIR = path.join(process.env.LOCALAPPDATA || os.homedir(), 'samadhan-test-pg');
+// Started through pg_ctl with -l, so the server log is kept in PG_DIR\server.log (it used to go nowhere).
+const pgCtl = (...a) => spawnSync(path.join(PG_BIN, 'pg_ctl'), ['-D', path.join(PG_DIR, 'data'), ...a], { encoding: 'utf8', timeout: 120000 });
+async function waitPg(seconds) { for (let i = 0; i < seconds && !pgRunning(); i++) await sleep(1000); return pgRunning(); }
 async function ensurePg() {
-    if (pgRunning()) return true;
-    const dir = path.join(process.env.LOCALAPPDATA || os.homedir(), 'samadhan-test-pg');
-    if (!fs.existsSync(path.join(dir, 'data'))) return false;
-    spawn(path.join(PG_BIN, 'postgres'), ['-D', path.join(dir, 'data'), '-p', String(PG_PORT), '-c', 'listen_addresses=localhost'], { cwd: dir, detached: true, stdio: 'ignore' }).unref();
+    if (pgRunning()) return { ok: true };
+    if (!fs.existsSync(path.join(PG_DIR, 'data'))) return { ok: false, why: `not running and no ${PG_DIR}` };
+    const start = () => pgCtl('start', '-W', '-l', path.join(PG_DIR, 'server.log'), '-o', `-p ${PG_PORT} -c listen_addresses=localhost`);
+    // Already running but not answering (e.g. "in recovery mode") is a server that is still recovering: no second start.
+    if (pgCtl('status').status !== 0) { console.log('      starting the test Postgres'); start(); }
     // After an unclean stop Postgres first recovers (fsync of the data folder): allow up to 5 minutes.
-    for (let i = 0; i < 300 && !pgRunning(); i++) await sleep(1000);
-    return pgRunning();
+    if (await waitPg(300)) return { ok: true };
+    // Still not answering: on 2026-11-06 a recovery hung for over 20 minutes and only a restart cleared it.
+    // This is the throwaway test cluster (every test database is rebuilt each run), so one forced restart is safe.
+    console.log(`      test Postgres not ready after 5 min (${pgError}); restarting it once`);
+    pgCtl('stop', '-m', 'immediate', '-w', '-t', '60');
+    start();
+    if (await waitPg(300)) return { ok: true };
+    return { ok: false, why: `not ready after a restart: ${pgError}; see ${path.join(PG_DIR, 'server.log')}` };
 }
 
 // The v6 database, made by the v6 code itself: the starting point of the upgrade test.
@@ -149,8 +173,7 @@ async function smoke() {
         if (s !== v) bad.push(`${k}: ${s} (baseline ${v})`);
     }
     await stopBackend();
-    results.push({ name: 'zero impact: no-DB smoke of every app route = BASELINE.md (+ /api/samadhan = /api/setu)', ok: !bad.length, detail: bad.join('; ') || `${Object.keys(want).length} routes` });
-    console.log(`${bad.length ? 'FAIL' : 'PASS'}  zero impact smoke  ${bad.join('; ')}`);
+    record('zero impact: no-DB smoke of every app route = BASELINE.md (+ /api/samadhan = /api/setu)', !bad.length, bad.join('; ') || `${Object.keys(want).length} routes`, 'zero impact smoke');
 }
 
 // Allowed paths (docs/v7 PLAN / §T2.1): Samadhan-owned + the Samadhan lines of these shared files.
@@ -165,8 +188,7 @@ function pathGuard() {
         ...spawnSync('git', ['ls-files', '--others', '--exclude-standard'], { cwd: ROOT, encoding: 'utf8' }).stdout.split('\n'),
     ].map((s) => s.trim()).filter(Boolean));
     const bad = [...names].filter((n) => !ALLOWED.some((re) => re.test(n)));
-    results.push({ name: 'path guard: changes only in allowed paths', ok: !bad.length, detail: bad.join(', ') || `${names.size} files` });
-    console.log(`${bad.length ? 'FAIL' : 'PASS'}  path guard  ${bad.join(', ') || `${names.size} files`}`);
+    record('path guard: changes only in allowed paths', !bad.length, bad.join(', ') || `${names.size} files`, 'path guard');
 }
 
 async function e2e() {
@@ -190,6 +212,16 @@ async function e2e() {
     run('redirect stub build', process.execPath, ['build.js'], { cwd: STUB });
     const web = spawn(process.execPath, [path.join(FRONT, 'e2e', 'serve.js'), String(WEB_PORT)], { stdio: 'ignore' });
     await sleep(800);
+    // Warm-up: the backend sits idle through the E2E build, and its first request afterwards can take several seconds
+    // (gate run of 2026-11-06: /me took 6.7 s and the first test timed out on the spinner). Each persona makes the
+    // app's first two calls once here so the browser tests measure the app, not a cold start.
+    for (const k of ['agent', 'sup', 'admin']) {
+        for (const p of ['me', 'meta']) {
+            const t = Date.now();
+            const r = await fetch(`${api}/${p}`, { headers: { Authorization: `Bearer ${data[k].token}`, Origin: `http://localhost:${WEB_PORT}` } }).catch((e) => ({ status: `error ${e.message}` }));
+            log(`warm-up ${k} /${p}: ${r.status} in ${Date.now() - t} ms`);
+        }
+    }
     try {
         run('E2E (Playwright, Edge, desktop + 360 px)', npx, ['playwright', 'test', '--config', 'e2e/playwright.config.ts'], {
             cwd: FRONT, env: { E2E_DATA: JSON.stringify(data) },
@@ -213,15 +245,15 @@ async function e2e() {
     (function walk(d) { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const f = path.join(d, e.name); if (e.isDirectory()) { if (e.name !== 'node_modules') walk(f); } else if (e.name.endsWith('.js')) jsFiles.push(f); } })(path.join(BACKEND, 'samadhan'));
     jsFiles.push(path.join(BACKEND, 'server.js'), path.join(BACKEND, 'notifications.js'), path.join(STUB, 'build.js'));
     const syntaxBad = jsFiles.filter((f) => spawnSync(process.execPath, ['--check', f]).status !== 0);
-    results.push({ name: 'backend syntax (node --check)', ok: !syntaxBad.length, detail: syntaxBad.join(', ') || `${jsFiles.length} files` });
-    console.log(`${syntaxBad.length ? 'FAIL' : 'PASS'}  backend syntax  ${jsFiles.length} files`);
+    record('backend syntax (node --check)', !syntaxBad.length, syntaxBad.join(', ') || `${jsFiles.length} files`, 'backend syntax');
     // 2. Unit
     const nodeTest = (o) => `${(o.match(/ℹ pass (\d+)/) || [])[1] || 0} pass, ${(o.match(/ℹ fail (\d+)/) || [])[1] || 0} fail`;
     run('Samadhan unit tests', process.execPath, ['--test', path.join(__dirname, 'unit.test.js'), path.join(__dirname, 'rename.test.js')], { detail: nodeTest });
     run('shared backend tests (npm test)', npm, ['test'], { cwd: BACKEND, detail: nodeTest });
     // 3. Database suites
-    if (!(await ensurePg())) {
-        results.push({ name: 'test database localhost:55432', ok: false, detail: 'not running and no %LOCALAPPDATA%\\samadhan-test-pg' });
+    const pg = await ensurePg();
+    if (!pg.ok) {
+        record(`test database localhost:${PG_PORT}`, false, `${pg.why}; every database step skipped`);
     } else {
         freshDb('samadhan_test'); await startBackend('samadhan_test');
         apiSuite('new path /api/samadhan, grants under samadhan', 'samadhan', 'samadhan_test', 'samadhan');
@@ -245,7 +277,7 @@ async function e2e() {
             migrate('legacy_test', 'down'); await startBackend('legacy_test');
             apiSuite('legacy schema setu (rename not run yet), old grants', 'samadhan', 'legacy_test', 'setu', 'setu');
             await stopBackend();
-        } else results.push({ name: 'v6 template database', ok: false, detail: 'could not be built from the v6 code' });
+        } else record('v6 template database', false, 'could not be built from the v6 code');
         await smoke();
         if (!QUICK) await e2e();
     }
