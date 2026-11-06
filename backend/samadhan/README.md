@@ -1,0 +1,228 @@
+# Samadhan backend
+
+API for **Samadhan** (Emami helpdesk), mounted at `/api/samadhan` by `backend/server.js`.
+The frontend lives in `embedded-apps/samadhan`. Data lives in its own `samadhan` Postgres schema.
+
+> **Formerly Setu.** Before v7 the internal name was `setu` (folder `backend/setu`, `/api/setu`, schema `setu`,
+> `SETU_*` settings). Everything was renamed to `samadhan` in v7 Phase 1, with compatibility kept — see
+> "Samadhan v7 (schema v7)" below.
+
+## Layout
+
+```
+backend/samadhan/
+  index.js               router: scheduler route, then sign-in + rate limit, then the feature routes
+  constants.js           roles, statuses, priorities, editable fields, mail settings
+  db/
+    schema.js            CREATE SCHEMA / TABLE / INDEX IF NOT EXISTS (30 tables)
+    seed.js              base configuration, inserted only when missing (Admin edits are never overwritten)
+    ready.js             startup promise every request waits for
+    install.sql          the same schema + seed as one script, for a DBA install (see "Database")
+  lib/                   business logic, no HTTP
+    businessHours.js     working-time arithmetic in Asia/Kolkata, holidays (calendar cached for 1 min)
+    sla.js               targets per group / priority, due dates, pause time
+    severity.js          Category -> Function severity matrix
+    assignment.js        round robin within a group (row lock, Available agents only)
+    automation.js        rule conditions (all / any, operators, time measures)
+    config.js            Admin > General options with their defaults (helpdesk name, CSAT wording, export limit, ...)
+    ticketQuery.js       ticket list views, filters and sorts (list, counts, export, saved views); spam / trash excluded
+    ticketOps.js         resolve checks (required fields, open children), watch, link, merge, spam / trash, scenarios,
+                         collision detection, CSAT survey link
+    tickets.js           create, update, replies / notes / forwards, automation actions
+    notify.js            email templates, requester mail, agent notifications (Emami Apps inbox)
+    mail.js              Microsoft Graph send, subject parsing, noise filter, sender verification
+    mailIngest.js        support mailbox -> tickets (one message never blocks the rest)
+    insights.js          insights & action points: live checks (rules) + analysis (AI, or rules without a key)
+    ai.js                Claude client: structured JSON output, refusal fallback, caching, personal-data masking
+    jobs.js              scheduled checks: SLA reminders / violations, time automations, mailbox intake
+    queries.js, util.js  shared SQL fragments, helpers, error handling
+  middleware/
+    auth.js              hub session token + Samadhan grant + role; deactivated agents blocked
+    rateLimit.js         per-person request limits
+    bell.js              in-app bell: which events, who sees them, per-agent mute
+    canned.js            shared (Admin) and personal (one agent only) canned responses
+    whatsapp.js          WhatsApp Cloud API: webhook signature, inbound messages, sending replies
+    whatsappIngest.js    WhatsApp message -> new ticket or reply on the sender's open WhatsApp ticket
+  routes/                me.js (+ bell, preferences, personal canned, contact search), tickets.js (+ calls, bulk, export,
+                         merge, links, watch, scenarios, presence), work.js (to-dos, saved views, search, contacts,
+                         companies, Solutions articles, report variants), reports.js (+ Helpdesk breakdown,
+                         dashboard overview, analytics); admin.js also has roles & access, statuses, settings
+                         (board, dashboard, daily report), insights.js, admin.js, jobs.js,
+                         public.js (requester portal + WhatsApp webhook: no hub sign-in, their own limits)
+  tests/                 unit.test.js (no DB), api.test.js (end to end, local DB only), mock-anthropic.js
+                         (AI stand-in for tests) - see tests/README.md
+```
+
+## Access
+
+Sign-in is the Emami Apps hub session (no separate login). Access is the **Samadhan** grant in Manage Access (app id `samadhan`; grants made before v7 under `setu` still count); the
+grant's role decides what a person can do:
+
+| Role | Can |
+| --- | --- |
+| Agent | work any ticket: reply, note, forward, change fields and status, board, new tickets, time log |
+| Supervisor | Agent + daily report (it contains requester phone numbers and emails) |
+| Admin | Supervisor + Admin screens and "Run scheduled checks now" |
+
+An Admin can deactivate a Samadhan agent (Admin > Agents); a deactivated agent is refused even with a grant.
+
+## Channels, last activity, bell, calls
+
+- **Ways in**: email (support mailbox), the **requester portal** (`/apps/samadhan/portal/`, no Emami Apps login: name + email
+  required, acknowledgement emailed, status check by ticket number + email), **WhatsApp** (Meta Cloud API webhook,
+  replies go back on WhatsApp), and agents logging a ticket on someone's behalf (requester email required).
+- **Last activity** on every ticket (created, status change, assignment, agent / requester reply, note, forward, call):
+  shown in the list, filterable and sortable.
+- **Bell** in the Samadhan header: Admin > Channels & bell picks the events (default: requester replies only) and who sees
+  them (the ticket's agent, its group, or everyone); each agent can mute events for themselves. Kept 30 days.
+- **Calls**: Call buttons (tel: or Microsoft Teams, Admin's choice) on every number on the ticket, and a call log
+  (direction, outcome, length, notes) shown in the conversation.
+- **Canned responses**: shared ones (Admin) plus personal ones per agent that nobody else - Admins included - sees.
+- **Multi-option filters** on the ticket list (status, priority, severity, group, agent, source, type, last activity)
+  and a **Pending** view; the daily report can be filtered on any of its 36 columns before download.
+
+## Insights and action points
+
+- **Dashboard** (`GET /api/samadhan/insights/dashboard`): a headline, themes, risks and prioritised action points for the
+  whole queue, from live numbers (overdue, unassigned per group, agent availability, category spikes week on week,
+  distributors with repeat tickets, tickets waiting on requesters, SLA breach rate). Shared by everyone and kept for
+  30 minutes; a Supervisor or Admin can refresh it.
+- **Ticket** (`GET /api/samadhan/tickets/:id/insights`): live checks (first response / resolution due or overdue,
+  unassigned, requester waiting for a reply, fatal not escalated, fields missing before resolving, repeat
+  distributor). With `?generate=1` (the "Analyse ticket" button): summary, sentiment, a Category -> Function
+  suggestion from the configured list only (one click to apply), likely root cause, next steps and a draft reply the
+  agent can put in the reply box and edit. Kept until the ticket changes.
+- **AI**: Claude (`claude-opus-5-5`) through the Anthropic SDK, when `ANTHROPIC_API_KEY` is set on the backend (the
+  same key the rest of the backend uses). Without a key, or if the AI declines or is unavailable, the same screens
+  are filled by built-in rules and marked "Built-in" - nothing breaks. Answers are constrained to a JSON schema;
+  email addresses and phone numbers are masked before anything is sent; ticket text is treated as data, not
+  instructions; suggestions are always checked against Samadhan's own lists before they are shown. Nothing the AI
+  writes is sent or saved on a ticket without an agent choosing to.
+- **Cost control**: analysis runs only when an agent asks; results are cached (ticket until it changes, dashboard
+  30 minutes); the stable system prompt is prompt-cached; new AI requests are limited to 20 per person per minute.
+
+## Security measures
+
+- **Authentication**: hub JWT, HS256 only, expiry enforced; purpose-bound tokens signed with the same secret (the
+  emailed magic sign-in link) are refused; the email in the token must be well formed.
+- **Authorisation**: every route requires the grant; Supervisor / Admin checks on the server, not just hidden in the UI.
+- **Input**: every write goes through an allow-list of fields with length limits; numbers, dates, emails and enums
+  validated; unknown statuses / agents / groups rejected; all SQL parameterised (sort orders from a fixed list).
+- **Concurrent edits**: the ticket screen sends the version it loaded; a save over someone else's newer change is
+  refused with 409 instead of silently overwriting it.
+- **Rate limiting** (per signed-in person, per backend copy): 300 reads, 60 writes and 10 heavy calls (report,
+  distributor upload, scheduled checks) a minute; 429 with Retry-After beyond that. Never keyed on IP address,
+  because the whole office shares one. The API Gateway throttling in front of the backend is the outer layer.
+- **Email content**: stored as received, sanitised in the browser (DOMPurify) - no scripts, handlers, forms,
+  frames or positioned overlays; email boxes are paint-contained; remote images (tracking pixels) are held back
+  until the agent clicks "Show images". Agent-typed text is HTML-escaped. Template placeholders are escaped.
+- **Mailbox abuse**: only the requester or someone already on the thread can add to a ticket; replies whose sender
+  fails SPF / DKIM / DMARC are parked, not threaded; more than 20 new tickets an hour from one sender are parked;
+  auto-replies and notification loops are parked; ticket numbers in subjects are bounded.
+- **Excel report**: cells that would start a formula (= + - @) are neutralised.
+- **Portal** (no sign-in): a honeypot field for bots; 5 tickets per 10 minutes per client address, 10 per email a day and
+  300 an hour in all; status lookup needs the ticket number and the requester's email and returns no ticket text.
+- **WhatsApp webhook**: every POST must carry Meta's `X-Hub-Signature-256` for the app secret (checked against the body
+  as Meta serialises it, so the shared server's JSON parser is not changed); the GET verification needs the verify token.
+- **Personal canned responses** and the **bell** are scoped to the signed-in agent on the server.
+- **Privacy**: Admin > Contacts removes a person's name, email and phone, their words on their tickets, and their
+  address from conversations, activity and parked mail. Logs never contain email addresses or message text.
+- **Audit**: admin changes, report downloads and contact removal are written to `samadhan.audit_events`
+  (Admin > Audit log); every ticket change, automation and email is in the ticket's activity log.
+- **Errors**: unexpected errors return a generic message; details go to the server log only.
+
+## Performance
+
+- Backend cold start: the schema / seed setup runs only when its version changes (one query otherwise).
+- SLA policies, the severity matrix and the business calendar are cached in memory for a minute and cleared the
+  moment an Admin edits them, so ticket changes no longer re-read them each time.
+- The scheduled SLA check asks Postgres only for tickets that are due soon or late and not yet flagged, instead of
+  loading every open ticket.
+- Partial indexes on open tickets' due times, a GIN index for tag filters, indexes for agent + status, last update,
+  distributor and sender email.
+- Frontend: Admin, Board and the report load only when opened; the spreadsheet library loads only for an export or
+  upload; one shared clock drives every SLA countdown; the dashboard stops refreshing while its tab is hidden and
+  catches up when the agent comes back; search waits for typing to pause.
+
+## Scale and reliability
+
+- Stateless request handling: any number of backend copies (Lambda instances) can serve Samadhan at once.
+- Scheduled checks run under a Postgres advisory lock and a shared "last run" time, so only one copy runs them
+  and nobody gets duplicate reminders or double automation actions.
+- Round-robin assignment locks the group row, so two simultaneous new tickets never go to the same agent by race.
+- Indexes on status, agent, group, created time, requester and Category / Function; lists are paginated (max 200),
+  the board is capped at 600 open tickets.
+- Each Lambda copy holds up to 10 database connections (`backend/db.js`). If Samadhan traffic grows to many
+  concurrent copies, put RDS Proxy / PgBouncer in front of Postgres.
+
+## Configuration (backend environment)
+
+Every `SAMADHAN_<X>` setting falls back to the pre-v7 `SETU_<X>` when it is not set, so existing server settings keep working.
+
+| Variable | Purpose |
+| --- | --- |
+| `PGHOST` `PGPORT` `PGDATABASE` `PGUSER` `PGPASSWORD` | shared Emami Apps Postgres (already set for the backend) |
+| `HUB_AUTH_JWT_SECRET` | hub session signing secret (already set) |
+| `HUB_INTERNAL_API_SECRET` | lets a scheduler call `POST /api/samadhan/jobs/run` with header `x-internal-secret` |
+| `SAMADHAN_MAIL_ENABLED` | `true` to read the support mailbox and email requesters; default `false` (replies are saved, no mail) |
+| `SAMADHAN_MAILBOX` | support mailbox address (default `emami.helpdesk@emamigroup.com`) |
+| `ANTHROPIC_API_KEY` | turns on AI analysis (already used by other backend modules); unset = built-in insights only |
+| `SAMADHAN_AI_ENABLED` | `false` switches Samadhan's AI off even when a key is set (default on) |
+| `SAMADHAN_WHATSAPP_ENABLED` | `true` to connect WhatsApp (default off: WhatsApp replies are saved on the ticket only) |
+| `SAMADHAN_WHATSAPP_TOKEN` / `SAMADHAN_WHATSAPP_PHONE_NUMBER_ID` | Meta WhatsApp Cloud API access token and the helpdesk number's id |
+| `SAMADHAN_WHATSAPP_APP_SECRET` | Meta app secret - webhook signatures are checked with it |
+| `SAMADHAN_WHATSAPP_VERIFY_TOKEN` | any string; enter the same one in Meta when adding the webhook `https://<api>/api/samadhan/whatsapp/webhook` (the old `/api/setu/...` URL keeps working) |
+| `SAMADHAN_WHATSAPP_API_VERSION` | Graph API version (default `v21.0`) |
+
+Mail uses the Microsoft Graph app registration from `backend/ccbTeams.js`; it needs the **Mail.ReadWrite** and
+**Mail.Send** application permissions, ideally limited to the support mailbox with an Exchange application
+access policy. Agent notifications go through `backend/notifications.js` (hub bell + Outlook).
+
+## Database
+
+On first start the backend creates the `samadhan` schema, tables and base configuration itself. If the backend's
+database user may not create schemas, or the database is not reachable from where you are, a DBA can run
+`db/install.sql` once instead (it refuses to run twice). Ticket numbers start at 100000.
+
+## Scheduled checks
+
+They run on normal traffic at most every 5 minutes, and every 5 minutes in a long-running backend. For a fixed
+schedule, have EventBridge (or any scheduler) call:
+
+```
+POST https://<api>/api/samadhan/jobs/run
+x-internal-secret: <HUB_INTERNAL_API_SECRET>
+```
+
+## Tests
+
+See `tests/README.md`. Unit tests: `node --test backend/samadhan/tests/unit.test.js`.
+
+## Samadhan v7 (schema v7)
+
+Phase 1 renamed the internal name `setu` to `samadhan` (formerly Setu) without changing any behaviour:
+
+| What | Now | Kept for compatibility |
+| --- | --- | --- |
+| Folder | `backend/samadhan/` | — |
+| API | `/api/samadhan/*` | `/api/setu/*` answers the same, with `Deprecation`, `Sunset` (`SAMADHAN_LEGACY_SUNSET`, default 2027-05-31) and `Link` headers; callers are logged once a minute per path |
+| Schema | `samadhan` (`SAMADHAN_DB_SCHEMA`, one place: `db/pool.js`) | if only `setu` exists the backend uses it and logs a warning, until the rename is run |
+| Manage Access app id | `samadhan` | grants under `setu` are accepted; new grants follow the id in use (`lib/access.js`) |
+| Settings | `SAMADHAN_*` | `SETU_*` read when the new name is not set |
+| Links | `/apps/samadhan/?ticket=`, `/apps/samadhan/portal/?csat=` | `/apps/setu/...` forwards (`embedded-apps/setu` stub) |
+| Scheduler lock | `hashtext('samadhan.scheduled_jobs')` | the old lock is taken too |
+| Not renamed (stored keys) | hub inbox de-duplication key `setu:<id>:<template>`; the old-text migration strings in `db/schema.js` / `install.sql` | — |
+
+### Migrations
+
+`db/migrate.js` runs v7 steps, each in one transaction with a down script, recorded in `samadhan.schema_migrations`:
+
+```
+node backend/samadhan/db/migrate.js status
+node backend/samadhan/db/migrate.js up 7.0-rename --yes     # ALTER SCHEMA setu RENAME TO samadhan
+node backend/samadhan/db/migrate.js down 7.0-rename --yes   # back to setu
+```
+
+`7.0-rename` is explicit: the backend never renames the schema by itself. Stop (or restart right after) the backend
+around it. It refuses if anything outside the tables refers to `setu.` by name. A new database is created as
+`samadhan` directly.

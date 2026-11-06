@@ -67,15 +67,18 @@ apiRouter.use('/salescode', require('./salescode'));
 // CCB meetings, approvals → Dev Tracker assignments) — own ccb schema, own routes under /change-control,
 // self-contained in changeControl.js. Access rides on the dev-tracker grant; CCB roles live in ccb.roles.
 apiRouter.use('/change-control', require('./changeControl'));
-// Setu (Emami Secondary Support helpdesk: tickets, SLA on business hours, severity matrix, automations, M365 mailbox)
-// — own setu schema, own routes under /setu, self-contained in the backend/setu/ folder. Access is the 'setu' grant; its role
-// (Agent / Supervisor / Admin) decides what a person can do there.
-// Isolated: if Setu ever failed to load, only /setu answers 503 - every other app on this backend is unaffected.
+// Samadhan, formerly Setu (Emami helpdesk: tickets, SLA on business hours, severity matrix, automations, M365 mailbox)
+// — own samadhan schema, own routes under /samadhan, self-contained in the backend/samadhan/ folder. Access is the Samadhan
+// grant (app id 'samadhan', or 'setu' from before the rename); its role (Agent / Supervisor / Admin) decides what a person can do.
+// /setu is the pre-rename path, kept as an alias (deprecation headers) for old clients and the WhatsApp webhook.
+// Isolated: if Samadhan ever failed to load, only /samadhan and /setu answer 503 - every other app on this backend is unaffected.
 try {
-    apiRouter.use('/setu', require('./setu'));
+    const samadhan = require('./samadhan');
+    apiRouter.use('/samadhan', samadhan);
+    apiRouter.use('/setu', samadhan.legacyAlias, samadhan);
 } catch (err) {
-    console.error('[setu] failed to load, Setu is unavailable:', err.message);
-    apiRouter.use('/setu', (req, res) => res.status(503).json({ success: false, error: 'Samadhan is temporarily unavailable.' }));
+    console.error('[samadhan] failed to load, Samadhan is unavailable:', err.message);
+    apiRouter.use(['/samadhan', '/setu'], (req, res) => res.status(503).json({ success: false, error: 'Samadhan is temporarily unavailable.' }));
 }
 // Emami Apps notifications — one inbox per person across apps (hub bell, in-app bells, Outlook email).
 // Under /me so it rides the existing /api/me proxy rule. See notifications.js.
@@ -164,7 +167,7 @@ async function requireAccessManager(req, res, next) {
  * (fm-po-deviation) has no Admin/User distinction — everyone granted access gets the single
  * 'User' role. Costing Cockpit (bom-cost-explorer) adds Planner: may upload and edit production plans
  * (Admin may too; SAP's own authority check still applies). */
-const VALID_ROLES_BY_APP = { 'audit-capa': ['CQA', 'Depot', 'View'], 'payment-tracking': ['User', 'Admin', 'Finance', 'Super Admin'], 'fm-po-deviation': ['User'], 'bom-cost-explorer': ['User', 'Admin', 'Planner'], 'setu': ['Agent', 'Supervisor', 'Admin'] };
+const VALID_ROLES_BY_APP = { 'audit-capa': ['CQA', 'Depot', 'View'], 'payment-tracking': ['User', 'Admin', 'Finance', 'Super Admin'], 'fm-po-deviation': ['User'], 'bom-cost-explorer': ['User', 'Admin', 'Planner'], 'setu': ['Agent', 'Supervisor', 'Admin'], 'samadhan': ['Agent', 'Supervisor', 'Admin'] };
 const DEFAULT_VALID_ROLES = ['User', 'Admin'];
 function validRolesForApp(appId) {
     return VALID_ROLES_BY_APP[appId] || DEFAULT_VALID_ROLES;

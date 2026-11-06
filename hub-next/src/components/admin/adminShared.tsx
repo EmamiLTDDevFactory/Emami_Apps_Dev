@@ -37,7 +37,7 @@ export function roleOptionsFor(appId: string): AppRole[] {
   if (appId === AUDIT_CAPA_APP_ID) return ['Depot', 'View', 'CQA'];
   if (appId === PAYMENT_TRACKING_APP_ID) return ['User', 'Admin', 'Finance', 'Super Admin'];
   if (appId === 'bom-cost-explorer') return ['User', 'Admin', 'Planner']; // Planner: upload / edit production plans
-  if (appId === 'setu') return ['Agent', 'Supervisor', 'Admin']; // Supervisor: daily report; Admin: Setu configuration
+  if (appId === 'setu' || appId === 'samadhan') return ['Agent', 'Supervisor', 'Admin']; // Samadhan (formerly Setu). Supervisor: daily report; Admin: Samadhan configuration
   if (SINGLE_GRANT_APP_IDS.has(appId)) return ['User'];
   return ['User', 'Admin'];
 }

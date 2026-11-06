@@ -1,28 +1,9 @@
 {
-  "name": "setu",
-  "version": "1.0.0",
+  "name": "samadhan-legacy-redirect",
   "private": true,
-  "description": "Samadhan (Setu): Emami Secondary Support helpdesk (tickets, SLA, severity matrix, automations) on the shared Emami Apps backend",
+  "version": "1.0.0",
+  "description": "Samadhan was called Setu before v7 and lived at /apps/setu. This stub keeps every old link working (ticket deep links, CSAT survey links, the requester portal, bookmarks): it publishes tiny pages at /apps/setu/ and /apps/setu/portal/ that forward to the same place under /apps/samadhan/, keeping the query string and hash. No framework or dependencies; build.js writes dist/.",
   "scripts": {
-    "dev": "next dev -p 3250",
-    "build": "next build && node scripts/rename-export.js",
-    "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "dompurify": "^3.2.4",
-    "lucide-react": "^0.469.0",
-    "next": "14.2.35",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "xlsx": "^0.18.5"
-  },
-  "devDependencies": {
-    "@types/node": "^20.17.9",
-    "@types/react": "^18.3.18",
-    "@types/react-dom": "^18.3.5",
-    "autoprefixer": "^10.4.20",
-    "postcss": "^8.4.49",
-    "tailwindcss": "^3.4.17",
-    "typescript": "^5.7.2"
+    "build": "node build.js"
   }
 }
