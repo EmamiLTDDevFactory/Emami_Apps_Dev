@@ -157,8 +157,12 @@ backend tests 51/51), pushed `Feature/Animesh` (fast-forward `d3d2d72..9cda884`)
 Dev backend deployed (RENAME-FOLLOWUPS §1, first box): `/api/samadhan` and `/api/setu` both live on port 4001, legacy
 schema `setu` in use, only `emami-hub-backend-dev` restarted. Production untouched (user: "do not push production").
 
-**Now (STOP, each needs the user's OK):** nginx route `/dev-api/api/samadhan/` (sudo; public URL is 404 until then, the
-app falls back to `/api/setu`); schema rename `7.0-rename` on the dev DB; then Phase 2 (needs Q-S1 storage, Q-P1).
+Dev DB schema rename `7.0-rename` applied 2026-11-06 (approved): schema `samadhan`, 1333 tickets intact.
+nginx route: sudo password not accepted, nothing changed — the user runs `add-samadhan-nginx-route.sh` interactively
+(public `/dev-api/api/samadhan/` is 404 until then; the app falls back to `/api/setu`).
+Master prompt `docs/SAMADHAN_MASTER_PROMPT_FINAL.md` added to git (user).
+
+**Now (STOP):** Phase 2 needs Q-S1 (storage) and Q-P1 (permission defaults).
 
 Earlier plan (kept for reference):
 

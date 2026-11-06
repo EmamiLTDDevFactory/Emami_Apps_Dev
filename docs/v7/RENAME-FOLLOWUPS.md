@@ -10,13 +10,16 @@ Tick each one off here (edit this file) so the next session knows.
       `/portal/config` 200 on both, change-control 401; log: legacy schema `setu` in use). Copy `backend/samadhan` to `~/samadhan-upload` and run `deploy-dev-server.sh` (`backend/samadhan/deploy/README.md`
       steps 1–3). It replaces the server's old `setu/` folder (kept as a backup) and the old mount in its `server.js`.
       Check: `/api/samadhan/me` → 401 and `/api/setu/me` → 401 on `localhost:4001`.
-- [ ] nginx: run `add-samadhan-nginx-route.sh` once (sudo). It adds `/dev-api/api/samadhan/` and keeps
+- [ ] nginx: run `add-samadhan-nginx-route.sh` once (sudo). **Tried 2026-11-06: the sudo password was not accepted (nothing
+      changed); the user runs it interactively:** `ssh -t emamiadmin@172.17.2.21 "bash ~/add-samadhan-nginx-route.sh"` (script is already in `~`). It adds `/dev-api/api/samadhan/` and keeps
       `/dev-api/api/setu/`. Until then the frontend falls back to `/api/setu` by itself, so the order does not matter.
 - [ ] Production backend and its nginx: the same two steps through your normal release process (not done by Claude).
 
 ## 2. Database schema rename (once per database, after step 1)
 
-- [ ] **Dev** (`10.17.12.4` / `Devhubfactory`, needs your approval first): on the server
+- [x] **Done 2026-11-06 (approved):** `7.0-rename` applied on Devhubfactory; only schema `samadhan` exists, 1333 tickets intact, dev
+      backend restarted and serving. Production uses its own database `Prdhubfactory` (no Setu/Samadhan there). Original text:
+      **Dev** (`10.17.12.4` / `Devhubfactory`, needs your approval first): on the server
       `node samadhan/db/migrate.js status`, then `node samadhan/db/migrate.js up 7.0-rename --yes && pm2 restart emami-hub-backend-dev`.
       Before that, confirm no other running copy of the **old** code uses this database (for example production on the
       same database): an old copy would stop finding the `setu` schema. Undo: `down 7.0-rename --yes`.
