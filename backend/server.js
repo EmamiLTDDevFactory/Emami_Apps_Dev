@@ -86,6 +86,8 @@ apiRouter.use('/me/cost-watch', require('./costWatch'));
 apiRouter.use('/me/cascade-pricing', require('./cascadePricing'));
 // Material master requests -> SAP ZMM_MDM_SRV (server side; the app is static). Rides /api/me; see mmMdm.js.
 apiRouter.use('/me/mm-mdm', require('./mmMdm'));
+// Auditee Response (replaces WD ZAUDIT_TOOL) -> SAP ZIT_MSD_TOOL_INTERNAL_AUDIT_SRV (server side). Rides /api/me; see auditeeResponse.js.
+apiRouter.use('/me/auditee', require('./auditeeResponse'));
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /** First and last name from a request body — both required, trimmed, single-spaced, max 60 chars. */
@@ -173,6 +175,10 @@ function validRolesForApp(appId) {
  * use the moment they're added to the hub; Admin access on top of this default still has to be
  * granted explicitly through Manage Access, same as any other app. */
 const DEFAULT_GRANTED_APPS = ['mediclaim', 'term-policy'];
+/** Apps open to EVERY active signed-in hub user without a Manage Access grant: GET /access/me reports them as granted ('User'),
+ * so their tiles render unlocked for everyone; the app's own backend checks only the session (see auditeeResponse.js).
+ * An explicit grant (e.g. Admin) still wins. */
+const OPEN_TO_ALL_APPS = ['auditee-response'];
 /** Hub-wide role (emami_apps.authorized_users.access_level) — distinct from the per-app roles
  * above. Order matters for the permission checks in the access-level route below. */
 const ACCESS_LEVELS = ['Super Admin', 'Admin', 'Viewer'];
@@ -585,7 +591,10 @@ apiRouter.get('/access/me', async (req, res) => {
             [email]
         );
         const row = rows[0];
-        res.json({ success: true, accessLevel: row?.access_level || 'Viewer', apps: row?.apps || [] });
+        const apps = row?.apps || [];
+        // Open-to-all apps for every known hub user (an inactive user cannot sign in, so no is_active check is needed here).
+        if (row) for (const appId of OPEN_TO_ALL_APPS) if (!apps.some((a) => a.appId === appId)) apps.push({ appId, role: 'User' });
+        res.json({ success: true, accessLevel: row?.access_level || 'Viewer', apps });
     } catch (err) {
         console.error('[access] Failed to load own access for', email, ':', err.message);
         res.status(500).json({ success: false, error: 'Could not load access.' });
