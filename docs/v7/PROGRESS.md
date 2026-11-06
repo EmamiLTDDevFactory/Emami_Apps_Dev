@@ -8,7 +8,7 @@ Resume here in a new session: read this file and `docs/SAMADHAN_MASTER_PROMPT_FI
 |---|---|
 | C (working agreement) | done |
 | 0 (discovery, baseline, plan) | done — **approved 2026-11-05** ("approved", no individual answers) |
-| 1 (rename + harness) | **code done, committed locally; full gate NOT yet green** (gate run stopped by Claude Code for low memory — see Phase 1 status) |
+| 1 (rename + harness) | **code done, full gate GREEN (run 5, 23/23)**; zero-impact rebuild 14 of 26 done (stopped for low memory); not pushed |
 | 2 – 9 | not started |
 
 ### Decisions taken at the Phase-0 STOP (approval without individual answers → recommended options)
@@ -73,13 +73,17 @@ Postgres for low memory during the Playwright run (the session was idle at the t
 - Cause in both runs: the machine has 15.7 GB and only ≈3.5–4.5 GB free with the user's normal apps open. The E2E step
   (Next build + backend + Postgres + Edge) does not fit alongside them.
 
+**Gate run 5 (2026-11-06): GREEN, 23 of 23 in 14 min** — E2E 19 passed, 1 skipped by design (keyboard test on the
+360 px layout). Gate changes (hung-Postgres restart, backend warm-up before E2E, every result printed) committed in
+`a864fc7`. Details: `TEST-REPORT.md`.
+
+**Zero-impact rebuild (2026-11-06):** one app at a time, no `CI=true`. 14 of 26 done, all match the baseline or build
+cleanly (hub-next +2 files, expected: `apps/samadhan/` page). `expense` fails to install with the same remote-`xlsx`
+EALLOWREMOTE as `cascade-pricing` (environment). Stopped by Claude Code for low memory during `market-rate` (Expo).
+
 **Not done yet (blocks the push):**
-- E2E suite: never completed (runs 2 and 4 were stopped for low memory). Needs more free memory (close Edge/Teams/other
-  apps, or reboot), then the **whole** gate again (§T.1).
-- Zero-impact rebuild of the other 21 apps (baseline partial too).
-- `TEST-REPORT.md` for Phase 1.
-- Zero-impact rebuild of the other 21 apps (baseline partial too).
-- `TEST-REPORT.md` for Phase 1.
+- Zero-impact build of the remaining 13 apps: market-rate, mediclaim, mm-mdm, mouldhealthcheck, payment-tracking,
+  po-followup, rate-auction, rc-portal, salescode, sap-agent, shelf-life-deviation, term-policy, timesheet.
 
 ## Done (Phase 0)
 
@@ -147,11 +151,9 @@ update reminder «30» min; problem detection «3» incidents / 7 days; external
 
 ## Next
 
-**Now:** free memory (stop the leftover headless Edge processes, close other apps, ideally ≥ 6 GB free), then say
-"run the gate". I then restart the test Postgres
-(`postgres -D %LOCALAPPDATA%\samadhan-test-pg\data -p 55432`, from that folder), run `node backend/samadhan/tests/gate.js`,
-fix anything red and re-run the whole gate, run the zero-impact builds one app at a time, write TEST-REPORT.md, and
-ask before pushing `feature/samadhan-v7` (then `main`, after Q-G3). After the push: STOP for RENAME-FOLLOWUPS.
+**Now:** free memory (close Edge/Teams/other apps, ideally ≥ 6 GB free), then say "run the remaining builds". I build
+the 13 apps above one at a time (`zero-impact-builds.js`, only those 13), add them to TEST-REPORT §2, commit, and ask before
+pushing `feature/samadhan-v7` (then `main`, after Q-G3). After the push: STOP for RENAME-FOLLOWUPS.
 
 Earlier plan (kept for reference):
 
@@ -163,7 +165,7 @@ Earlier plan (kept for reference):
 - Read the docs in `docs/v7/`. `git status` shows only new docs + `embedded-apps/setu/CLAUDE.md`; no code changed.
 
 ## Test status
-Baseline only (BASELINE.md). No code changed, so no gate run yet.
+Phase 1: full gate green (run 5, 2026-11-06) — `TEST-REPORT.md`.
 
 ## Shared-file changes (Phase 1, Samadhan lines only)
 - `backend/server.js`: the Setu mount block → Samadhan mount at `/samadhan` + `/setu` alias (12 lines); `VALID_ROLES_BY_APP` gains `'samadhan'` (keeps `'setu'`).
