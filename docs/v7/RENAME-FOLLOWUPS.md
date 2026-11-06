@@ -10,8 +10,8 @@ Tick each one off here (edit this file) so the next session knows.
       `/portal/config` 200 on both, change-control 401; log: legacy schema `setu` in use). Copy `backend/samadhan` to `~/samadhan-upload` and run `deploy-dev-server.sh` (`backend/samadhan/deploy/README.md`
       steps 1–3). It replaces the server's old `setu/` folder (kept as a backup) and the old mount in its `server.js`.
       Check: `/api/samadhan/me` → 401 and `/api/setu/me` → 401 on `localhost:4001`.
-- [ ] nginx: run `add-samadhan-nginx-route.sh` once (sudo). **Tried 2026-11-06: the sudo password was not accepted (nothing
-      changed); the user runs it interactively:** `ssh -t emamiadmin@172.17.2.21 "bash ~/add-samadhan-nginx-route.sh"` (script is already in `~`). It adds `/dev-api/api/samadhan/` and keeps
+- [ ] nginx: run `add-samadhan-nginx-route.sh` once (sudo). **2026-11-06: not done - `emamiadmin` has no sudo rights
+      (not in the sudo group).** The server admin runs: `sudo bash /home/emamiadmin/add-samadhan-nginx-route.sh` (script already there). It adds `/dev-api/api/samadhan/` and keeps
       `/dev-api/api/setu/`. Until then the frontend falls back to `/api/setu` by itself, so the order does not matter.
 - [ ] Production backend and its nginx: the same two steps through your normal release process (not done by Claude).
 

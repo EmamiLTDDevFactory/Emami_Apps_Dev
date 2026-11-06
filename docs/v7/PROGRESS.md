@@ -158,7 +158,7 @@ Dev backend deployed (RENAME-FOLLOWUPS §1, first box): `/api/samadhan` and `/ap
 schema `setu` in use, only `emami-hub-backend-dev` restarted. Production untouched (user: "do not push production").
 
 Dev DB schema rename `7.0-rename` applied 2026-11-06 (approved): schema `samadhan`, 1333 tickets intact.
-nginx route: sudo password not accepted, nothing changed — the user runs `add-samadhan-nginx-route.sh` interactively
+nginx route: not done — `emamiadmin` has no sudo rights; the server admin runs `sudo bash /home/emamiadmin/add-samadhan-nginx-route.sh`
 (public `/dev-api/api/samadhan/` is 404 until then; the app falls back to `/api/setu`).
 Master prompt `docs/SAMADHAN_MASTER_PROMPT_FINAL.md` added to git (user).
 
