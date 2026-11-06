@@ -42,6 +42,14 @@ The one skip is by design, not a weakened test: the keyboard-shortcut test does 
 - Frontends: `hub-next` is the only other frontend with a changed file (2 lines). Every other embedded app is
   byte-identical to `origin/main`, so a build on this branch is also its baseline.
 
+**Decision (user, 2026-11-06): other apps are not installed or built any more.** Only Samadhan is tested. The
+zero-impact proof for other apps is: (a) the path guard — no file of another app changes, and (b) the no-DB smoke —
+every other app's backend route answers exactly as in the baseline. Both are in the gate. The rebuild below was run
+inside the other apps' folders (OneDrive) without asking; it was stopped and the generated folders (`node_modules`,
+`dist`, `out`, `.next`, `.expo`) were deleted from every other app and from `hub-next`. No tracked file was changed.
+
+Record of that partial rebuild (kept for reference only):
+
 **Rebuild of every app (2026-11-06, one at a time, no `CI=true`, existing `node_modules` reused when complete):
 stopped by Claude Code for low memory after 14 of 26 projects, during `market-rate` (Expo/Metro bundle). Not a build failure.**
 
@@ -80,8 +88,6 @@ Every built project matches its baseline or, where no baseline exists, builds cl
 ## 4. Known limitations
 
 - None for Samadhan code.
-- Zero-impact rebuild incomplete: 13 apps not built yet (low memory on this machine). Their source is byte-identical
-  to `origin/main` (path guard), so this branch cannot change their build; building them is still required by §T2 before the push.
 - TEST-PLAN §C says the gate writes this report itself; it writes `gate-last.json`/`.log` instead and this file is
   written from them. Planned for Phase 2.
 - Environment (pre-existing, not caused by this branch; see `BASELINE.md`): `cascade-pricing` needs npm to allow its

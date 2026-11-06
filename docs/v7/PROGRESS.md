@@ -8,7 +8,7 @@ Resume here in a new session: read this file and `docs/SAMADHAN_MASTER_PROMPT_FI
 |---|---|
 | C (working agreement) | done |
 | 0 (discovery, baseline, plan) | done — **approved 2026-11-05** ("approved", no individual answers) |
-| 1 (rename + harness) | **code done, full gate GREEN (run 5, 23/23)**; zero-impact rebuild 14 of 26 done (stopped for low memory); not pushed |
+| 1 (rename + harness) | **code done, full gate GREEN (run 5, 23/23)**; not pushed (push plan awaiting the user's OK) |
 | 2 – 9 | not started |
 
 ### Decisions taken at the Phase-0 STOP (approval without individual answers → recommended options)
@@ -81,9 +81,10 @@ Postgres for low memory during the Playwright run (the session was idle at the t
 cleanly (hub-next +2 files, expected: `apps/samadhan/` page). `expense` fails to install with the same remote-`xlsx`
 EALLOWREMOTE as `cascade-pricing` (environment). Stopped by Claude Code for low memory during `market-rate` (Expo).
 
-**Not done yet (blocks the push):**
-- Zero-impact build of the remaining 13 apps: market-rate, mediclaim, mm-mdm, mouldhealthcheck, payment-tracking,
-  po-followup, rate-auction, rc-portal, salescode, sap-agent, shelf-life-deviation, term-policy, timesheet.
+**Decision (user, 2026-11-06): do not install, build or otherwise touch other apps — not even git-ignored folders.**
+Only Samadhan is tested. Other-app safety = path guard + no-DB route smoke (both in the gate). The partial rebuild was
+stopped and every generated folder it left in other apps / hub-next was deleted (TEST-REPORT §2). Never run
+`baseline-builds.js` / `zero-impact-builds.js` again.
 
 ## Done (Phase 0)
 
@@ -151,9 +152,9 @@ update reminder «30» min; problem detection «3» incidents / 7 days; external
 
 ## Next
 
-**Now:** free memory (close Edge/Teams/other apps, ideally ≥ 6 GB free), then say "run the remaining builds". I build
-the 13 apps above one at a time (`zero-impact-builds.js`, only those 13), add them to TEST-REPORT §2, commit, and ask before
-pushing `feature/samadhan-v7` (then `main`, after Q-G3). After the push: STOP for RENAME-FOLLOWUPS.
+**Now:** waiting for the user's OK on the push plan (target branch: there is no `dev` branch on origin). Before pushing:
+merge latest `origin/main` (6 new commits on 2026-11-06, no conflicts in a dry run; `backend/server.js` and
+`hub-next/src/data/mockData.ts` changed on both sides), re-run the full gate, then push. After the push: STOP for RENAME-FOLLOWUPS.
 
 Earlier plan (kept for reference):
 
