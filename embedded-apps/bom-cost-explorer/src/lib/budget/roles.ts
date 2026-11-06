@@ -15,10 +15,10 @@ export const canDisplayBudget = (role: string): boolean => BUDGET_DISPLAY_ROLES.
 export const canInitiateBudget = (role: string): boolean => BUDGET_INIT_ROLES.includes(role);
 export const canApproveBudget = (role: string): boolean => BUDGET_APPROVE_ROLES.includes(role);
 
-/** The tabs of the Budget page for a role: Admin all three, budget-init the first two, budget-approve Approvals only, anyone else none (fails closed). */
+/** The tabs of the Budget page for a role: Admin all four, budget-init the first three, budget-approve Approvals only, anyone else none (fails closed). */
 export function budgetTabsFor(role: string): BudgetTab[] {
-  if (role === 'Admin') return ['run', 'checklist', 'approvals'];
-  if (role === 'budget-init') return ['run', 'checklist'];
+  if (role === 'Admin') return ['run', 'hierarchy', 'checklist', 'approvals'];
+  if (role === 'budget-init') return ['run', 'hierarchy', 'checklist'];
   if (role === 'budget-approve') return ['approvals'];
   return [];
 }
