@@ -103,9 +103,41 @@ function logLine(c: SapConfig, set: string, params: Record<string, string | unde
   console.info(`[sap] system=${c.system} set=${set} filterLen=${params.$filter?.length ?? 0}${params.$expand ? ` expand=${params.$expand}` : ''} status=${status} ms=${ms}${rows !== undefined ? ` rows=${rows}` : ''}`);
 }
 
+/**
+ * Connection check before a costing call (browser only). The gateway is HTTP/1.1: a costing request that lands on an idle keep-alive socket the
+ * proxy has dropped, or waits for a new one, can sit in the browser for tens of seconds before it is even sent (seen in a HAR: 38 s "blocked", 10 s
+ * on the server). A costing call must never be sent twice, so a cheap read (ConfigItemSet, 1 row) goes first: if it does not answer in
+ * WARM_TIMEOUT_MS it is cancelled (which closes that socket) and tried once more on a fresh one. Any answer counts, even an error status. Skipped
+ * when the gateway answered in the last WARM_IDLE_MS, in node and for the mock. Never throws.
+ */
+export const WARM_IDLE_MS = 8_000;
+export const WARM_TIMEOUT_MS = 6_000;
+let lastAnswerAt = 0;
+export const noteGatewayAnswer = (at = Date.now()) => { lastAnswerAt = at; };
+export async function warmConnection(c: SapConfig, doFetch: typeof fetch, outer?: AbortSignal, now: () => number = Date.now): Promise<void> {
+  if (typeof window === 'undefined' || c.mock || now() - lastAnswerAt < WARM_IDLE_MS) return;
+  const url = buildUrl('ConfigItemSet', { $top: '1' }, c);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (outer?.aborted) return;
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), WARM_TIMEOUT_MS);
+    const onAbort = () => ctl.abort();
+    outer?.addEventListener('abort', onAbort, { once: true });
+    try {
+      await doFetch(url, { method: 'GET', headers: { Accept: 'application/json', ...authHeaders(c) }, signal: ctl.signal, cache: 'no-store' });
+      lastAnswerAt = now();
+      return;
+    } catch { /* stuck or unreachable: try once more, then let the real call report it */ } finally {
+      clearTimeout(timer);
+      outer?.removeEventListener('abort', onAbort);
+    }
+  }
+}
+
 async function once(c: SapConfig, path: string, params: Record<string, string | undefined>, opts: SapGetOptions): Promise<SapRawResponse> {
   const doFetch = await transport(c);
   const url = buildUrl(path, params, c);
+  if (opts.costing) await warmConnection(c, doFetch, opts.signal);
   const started = Date.now();
   const timeout = opts.timeoutMs ?? (opts.costing ? COSTING_TIMEOUT_MS : c.timeoutMs);
   const link = linkedSignal(opts.signal, opts.noTimeout ? null : timeout);
@@ -128,6 +160,7 @@ async function once(c: SapConfig, path: string, params: Record<string, string | 
     link.done();
   }
   const ms = Date.now() - started;
+  noteGatewayAnswer();
   const header = res.headers.get('sap-message');
   const messages = parseSapMessageHeader(header);
   const text = await res.text();
