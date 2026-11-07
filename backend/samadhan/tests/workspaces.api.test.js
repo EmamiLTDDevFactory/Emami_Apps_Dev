@@ -248,6 +248,23 @@ const ticket = (who, body) => call(who, 'POST', '/tickets', { requesterName: 'Ra
     r = await call(ADMIN, 'PUT', '/admin/mail-classification', { ai: false, threshold: 0.85, defaultCode: 'SS', prefixInSubject: true });
     check(r.status === 200 && r.body.settings.threshold === 0.85, 'mail classification settings saved');
 
+    // ---- data scope by workspace / application (cockpit, §K 9.3) ----
+    r = await call(ADMIN, 'PUT', `/admin/authz/users/${a2.id}`, { scope: { workspaces: ['SAP'] }, reason: 'SAP desk only' });
+    check(r.status === 200, 'cockpit: A2 limited to the SAP workspace', r.body?.error);
+    r = await call(A2, 'GET', '/tickets?view=all');
+    check(r.body.items.length > 0 && r.body.items.every((x) => x.workspaceId === ws.SAP.id), 'scoped list shows SAP tickets only', r.body.items.map((x) => x.workspaceId));
+    r = await call(A2, 'GET', `/tickets/${dflt.id}`); check(r.status === 404, 'a Secondary Sales ticket is 404 for the SAP-only agent');
+    r = await call(A2, 'GET', `/tickets/${t1.id}`); check(r.status === 200, 'the SAP ticket is visible');
+    r = await call(A2, 'GET', '/tickets/counts'); check(r.status === 200, 'counts work under a workspace scope');
+    r = await call(A2, 'GET', '/insights/dashboard'); check(r.body.insights === null && r.body.scoped === true, 'queue-wide insights hidden for a narrowed scope');
+    r = await call(A2, 'GET', '/me'); check(JSON.stringify(r.body.scope.workspaces) === '["SAP"]', '/me shows the workspace scope', r.body.scope);
+    r = await call(ADMIN, 'PUT', `/admin/authz/users/${a2.id}`, { scope: { workspaces: 'all', applications: ['DMS'] }, reason: 'DMS only' });
+    r = await call(A2, 'GET', '/tickets?view=all');
+    check(r.body.items.length > 0 && r.body.items.every((x) => x.applicationId === app('DMS').id), 'application scope: DMS tickets only', r.body.items.length);
+    r = await call(ADMIN, 'PUT', `/admin/authz/users/${a2.id}`, { scope: { workspaces: ['bad key'] }, reason: 'x' }); check(r.status === 400, 'invalid workspace key -> 400');
+    r = await call(ADMIN, 'PUT', `/admin/authz/users/${a2.id}`, { scope: { workspaces: 'all', applications: 'all' }, reason: 'back to all' });
+    r = await call(A2, 'GET', `/tickets/${dflt.id}`); check(r.status === 200, 'scope back to all');
+
     await db.end();
     console.log(fails ? `\n${fails} FAILED` : '\nALL PASSED');
     process.exit(fails ? 1 : 0);

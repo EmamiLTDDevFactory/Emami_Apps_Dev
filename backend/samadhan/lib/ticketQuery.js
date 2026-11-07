@@ -41,14 +41,29 @@ const VIEW_IDS = Object.keys(VIEWS).filter((v) => v && v !== 'all');
    'own' = assigned to me or watched by me. The agent id is an integer read from the database (never request input),
    so it is written into the SQL directly and existing parameter numbers are untouched.
 */
+// v7 Phase 3: the scope may also be limited to some workspaces (keys) and / or applications (codes). 'all' or an empty
+// list = no limit. Keys and codes are checked against a strict pattern before they are written into the SQL.
+const scopeList = (v, re) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string' && re.test(x)) : []);
+const KEY_RE = /^[A-Z][A-Z0-9_]{1,19}$/;
+const CODE_RE = /^[A-Z0-9]{2,8}$/;
+/** True when the scope shows less than everything (visibility, workspaces or applications). */
+const isNarrowed = (scope) => Boolean(scope && ((scope.visibility && scope.visibility !== 'all')
+    || scopeList(scope.workspaces, KEY_RE).length || scopeList(scope.applications, CODE_RE).length));
+
 function scopeSql(scope, agentId) {
     const v = scope?.visibility || 'all';
-    if (v === 'all') return '';
-    const me = Number(agentId);
-    if (!Number.isInteger(me)) throw new Error('scope: invalid agent id');
-    const own = `(t."agentId" = ${me} OR EXISTS (SELECT 1 FROM samadhan.ticket_watchers sw WHERE sw."ticketId" = t.id AND sw."agentId" = ${me}))`;
-    if (v === 'own') return own;
-    return `(${own} OR t."groupId" IN (SELECT sg."groupId" FROM samadhan.group_members sg WHERE sg."agentId" = ${me}))`;
+    const parts = [];
+    if (v !== 'all') {
+        const me = Number(agentId);
+        if (!Number.isInteger(me)) throw new Error('scope: invalid agent id');
+        const own = `(t."agentId" = ${me} OR EXISTS (SELECT 1 FROM samadhan.ticket_watchers sw WHERE sw."ticketId" = t.id AND sw."agentId" = ${me}))`;
+        parts.push(v === 'own' ? own : `(${own} OR t."groupId" IN (SELECT sg."groupId" FROM samadhan.group_members sg WHERE sg."agentId" = ${me}))`);
+    }
+    const ws = scopeList(scope?.workspaces, KEY_RE);
+    if (ws.length) parts.push(`t."workspaceId" IN (SELECT sw2.id FROM samadhan.workspaces sw2 WHERE sw2.key IN (${ws.map((k) => `'${k}'`).join(', ')}))`);
+    const apps = scopeList(scope?.applications, CODE_RE);
+    if (apps.length) parts.push(`t."applicationId" IN (SELECT sa.id FROM samadhan.applications sa WHERE sa.code IN (${apps.map((k) => `'${k}'`).join(', ')}))`);
+    return parts.length ? (parts.length === 1 ? parts[0] : `(${parts.join(' AND ')})`) : '';
 }
 /** LIVE plus the caller's scope: drop-in for ${LIVE} in user-facing queries (identical text when the scope is 'all'). */
 const liveFor = (req) => { const s = scopeSql(req.scope, req.agent?.id); return s ? `${LIVE} AND ${s}` : LIVE; };
@@ -162,4 +177,4 @@ function ticketFilter(qy, agentId, scope = null) {
     return { where: `WHERE ${where.join(' AND ')}`, params, order: SORTS[qy.sort] || SORTS.created };
 }
 
-module.exports = { NEEDS_CLASSIFICATION, CREATED_WITHIN, DUE_OPTIONS, IST_TODAY, LIVE, OVERDUE, SORTS, VIEW_IDS, VIEWS, liveFor, scopeSql, ticketFilter, ticketVisible };
+module.exports = { NEEDS_CLASSIFICATION, isNarrowed, CREATED_WITHIN, DUE_OPTIONS, IST_TODAY, LIVE, OVERDUE, SORTS, VIEW_IDS, VIEWS, liveFor, scopeSql, ticketFilter, ticketVisible };

@@ -9,7 +9,7 @@ const router = express.Router();
 // by anyone with insights.refresh - Supervisor / Admin by default).
 router.get('/insights/dashboard', wrap(async (req, res) => {
     // Queue-wide insights summarise every ticket, so people with a narrowed scope (cockpit) get none.
-    if (req.scope?.visibility && req.scope.visibility !== 'all') return res.json({ success: true, insights: null, scoped: true });
+    if (require('../lib/ticketQuery').isNarrowed(req.scope)) return res.json({ success: true, insights: null, scoped: true });
     const refresh = req.query.refresh === '1' && req.can('insights.refresh');
     res.json({ success: true, insights: await dashboardInsights({ refresh }) });
 }));

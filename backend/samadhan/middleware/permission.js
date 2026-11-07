@@ -110,8 +110,8 @@ async function loadAccess(agent) {
             pool.query(`SELECT p.keys, p.mode, p.active, up."validFrom", up."validTo" FROM samadhan.auth_user_profiles up
                         JOIN samadhan.auth_profiles p ON p.id = up."profileId" WHERE up."agentId" = $1`, [agent.id]).then((r) => r.rows),
             pool.query('SELECT key, effect, "expiresAt" FROM samadhan.auth_permission_overrides WHERE "agentId" = $1', [agent.id]).then((r) => r.rows),
-            pool.query('SELECT visibility FROM samadhan.auth_user_scope WHERE "agentId" = $1', [agent.id])
-                .then((r) => (r.rows[0] ? { visibility: r.rows[0].visibility } : { ...DEFAULT_SCOPE })),
+            pool.query('SELECT visibility, workspaces, applications FROM samadhan.auth_user_scope WHERE "agentId" = $1', [agent.id])
+                .then((r) => (r.rows[0] ? { visibility: r.rows[0].visibility, workspaces: r.rows[0].workspaces ?? 'all', applications: r.rows[0].applications ?? 'all' } : { ...DEFAULT_SCOPE })),
         ]);
     } catch (err) {
         // Cockpit tables not there (migration 7.1-auth rolled back): base role only, exactly as before v7.
@@ -171,8 +171,8 @@ async function permissionGate(req, res, next) {
  * Scope 'all' (the default) skips this entirely.
  */
 async function withinScope(req) {
-    if (!req.scope || req.scope.visibility === 'all') return true;
-    const { ticketVisible } = require('../lib/ticketQuery');
+    const { isNarrowed, ticketVisible } = require('../lib/ticketQuery');
+    if (!isNarrowed(req.scope)) return true;
     const ids = [];
     const m = /^\/tickets\/(\d+)(?:\/|$)/.exec(req.path);
     if (m) ids.push(Number(m[1]));
