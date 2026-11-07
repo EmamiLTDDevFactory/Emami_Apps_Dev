@@ -72,6 +72,124 @@ const MIGRATIONS = [
             return 'renamed back';
         },
     },
+    {
+        // Phase 2: Authorization cockpit (master prompt §K). New tables only; nothing existing is changed. Runs by
+        // itself at start-up. Down drops exactly these tables (and with them every cockpit row - the base roles in
+        // Manage Access are untouched, so everyone falls back to today's Agent / Supervisor / Admin behaviour).
+        id: '7.1-auth',
+        describe: 'Authorization cockpit tables (auth_profiles, auth_user_profiles, auth_user_scope, auth_permission_overrides, auth_change_log, auth_permission_usage) + 8 seeded custom profiles',
+        async up(client) {
+            const S = ident(activeSchema());
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.auth_profiles (
+                id serial PRIMARY KEY,
+                code text NOT NULL UNIQUE,
+                name text NOT NULL,
+                description text,
+                mode text NOT NULL DEFAULT 'add' CHECK (mode IN ('add', 'restrict')),
+                keys text[] NOT NULL DEFAULT '{}',
+                "scopePreset" jsonb NOT NULL DEFAULT '{}',
+                active boolean NOT NULL DEFAULT true,
+                "seedKey" text,
+                "createdAt" timestamptz NOT NULL DEFAULT now(),
+                "updatedAt" timestamptz NOT NULL DEFAULT now())`);
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.auth_user_profiles (
+                id serial PRIMARY KEY,
+                "agentId" int NOT NULL REFERENCES ${S}.agents(id) ON DELETE CASCADE,
+                "profileId" int NOT NULL REFERENCES ${S}.auth_profiles(id) ON DELETE CASCADE,
+                "validFrom" timestamptz,
+                "validTo" timestamptz,
+                reason text NOT NULL,
+                "createdBy" text,
+                "createdAt" timestamptz NOT NULL DEFAULT now(),
+                UNIQUE ("agentId", "profileId"))`);
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.auth_user_scope (
+                "agentId" int PRIMARY KEY REFERENCES ${S}.agents(id) ON DELETE CASCADE,
+                visibility text NOT NULL DEFAULT 'all' CHECK (visibility IN ('all', 'groups', 'own')),
+                workspaces jsonb NOT NULL DEFAULT '"all"',
+                applications jsonb NOT NULL DEFAULT '"all"',
+                "updatedBy" text,
+                "updatedAt" timestamptz NOT NULL DEFAULT now())`);
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.auth_permission_overrides (
+                id serial PRIMARY KEY,
+                "agentId" int NOT NULL REFERENCES ${S}.agents(id) ON DELETE CASCADE,
+                key text NOT NULL,
+                effect text NOT NULL CHECK (effect IN ('grant', 'deny')),
+                "expiresAt" timestamptz,
+                reason text NOT NULL,
+                "createdBy" text,
+                "createdAt" timestamptz NOT NULL DEFAULT now(),
+                UNIQUE ("agentId", key))`);
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.auth_change_log (
+                id serial PRIMARY KEY,
+                "actorEmail" text,
+                action text NOT NULL,
+                target text,
+                before jsonb,
+                after jsonb,
+                reason text,
+                "createdAt" timestamptz NOT NULL DEFAULT now())`);
+            await q(client, `CREATE INDEX IF NOT EXISTS auth_change_log_created_idx ON ${S}.auth_change_log ("createdAt")`);
+            // Last use of each permission per person (Access review: "unused in 90 days"); written in batches.
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.auth_permission_usage (
+                "agentId" int NOT NULL REFERENCES ${S}.agents(id) ON DELETE CASCADE,
+                key text NOT NULL,
+                "lastUsedAt" timestamptz NOT NULL,
+                PRIMARY KEY ("agentId", key))`);
+            const { SEED_PROFILES } = require('../lib/authSeed');
+            for (const p of SEED_PROFILES) {
+                await q(client, `INSERT INTO ${S}.auth_profiles (code, name, description, mode, keys, "scopePreset", "seedKey")
+                                 VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (code) DO NOTHING`,
+                [p.code, p.name, p.description, p.mode, p.keys, JSON.stringify(p.scopePreset), `7.1-auth:${p.code}`]);
+            }
+            return `tables created, ${SEED_PROFILES.length} custom profiles seeded`;
+        },
+        async down(client) {
+            const S = ident(activeSchema());
+            for (const t of ['auth_permission_usage', 'auth_change_log', 'auth_permission_overrides', 'auth_user_scope', 'auth_user_profiles', 'auth_profiles']) {
+                await q(client, `DROP TABLE IF EXISTS ${S}.${t}`);
+            }
+            return 'cockpit tables dropped';
+        },
+    },
+    {
+        // Phase 2: attachments (master prompt §L). A new table plus one new counter column on tickets (default 0, so
+        // existing rows and every existing query are unaffected). The unused v1 table "attachments" is left untouched.
+        // Down drops the metadata only - the files on the SFTP server stay where they are (list them first
+        // with: SELECT "storageRef" FROM <schema>.ticket_attachments if they should be removed too).
+        id: '7.1-attachments',
+        describe: 'ticket_attachments table + tickets."attachmentCount"',
+        async up(client) {
+            const S = ident(activeSchema());
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.ticket_attachments (
+                id serial PRIMARY KEY,
+                "ticketId" int NOT NULL REFERENCES ${S}.tickets(id) ON DELETE CASCADE,
+                "conversationId" int REFERENCES ${S}.conversations(id) ON DELETE SET NULL,
+                "fileName" text NOT NULL,
+                "contentType" text NOT NULL,
+                size bigint NOT NULL CHECK (size >= 0),
+                sha256 text,
+                "storageAdapter" text NOT NULL,
+                "storageKey" text NOT NULL,
+                "storageRef" text NOT NULL,
+                channel text NOT NULL CHECK (channel IN ('agent', 'portal', 'email')),
+                "uploadedByAgentId" int REFERENCES ${S}.agents(id) ON DELETE SET NULL,
+                "inlineCid" text,
+                "scanStatus" text NOT NULL DEFAULT 'not_scanned' CHECK ("scanStatus" IN ('not_scanned', 'clean', 'infected', 'failed')),
+                "createdAt" timestamptz NOT NULL DEFAULT now(),
+                "deletedAt" timestamptz,
+                "deletedReason" text)`);
+            await q(client, `CREATE INDEX IF NOT EXISTS ticket_attachments_ticket_idx ON ${S}.ticket_attachments ("ticketId") WHERE "deletedAt" IS NULL`);
+            await q(client, `CREATE INDEX IF NOT EXISTS ticket_attachments_conv_idx ON ${S}.ticket_attachments ("conversationId") WHERE "conversationId" IS NOT NULL`);
+            await q(client, `ALTER TABLE ${S}.tickets ADD COLUMN IF NOT EXISTS "attachmentCount" int NOT NULL DEFAULT 0`);
+            return 'ticket_attachments created, tickets."attachmentCount" added';
+        },
+        async down(client) {
+            const S = ident(activeSchema());
+            await q(client, `DROP TABLE IF EXISTS ${S}.ticket_attachments`);
+            await q(client, `ALTER TABLE ${S}.tickets DROP COLUMN IF EXISTS "attachmentCount"`);
+            return 'ticket_attachments dropped, tickets."attachmentCount" dropped (files on the storage server are not touched)';
+        },
+    },
 ];
 
 async function applied(client, schema) {

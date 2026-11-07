@@ -4,16 +4,15 @@ const { pool } = require('../db/pool');
 const { PRIORITIES, SEVERITIES } = require('../constants');
 const { businessMinutesBetween, loadCalendar } = require('../lib/businessHours');
 const { audit, fail, istDayStart, stripTags, wrap } = require('../lib/util');
-const { requireSupervisor } = require('../middleware/auth');
 const { LIST_COLUMNS, LIST_FROM } = require('../lib/queries');
-const { LIVE } = require('../lib/ticketQuery');
+const { liveFor } = require('../lib/ticketQuery');
 
 const router = express.Router();
 
 // ---------- Routes: board, dashboard, reports ----------
 
 router.get('/board', wrap(async (req, res) => {
-    const where = ['NOT s."isClosed"', LIVE];
+    const where = ['NOT s."isClosed"', liveFor(req)];
     const params = [];
     if (req.query.mine === '1') { params.push(req.agent.id); where.push(`t."agentId" = $${params.length}`); }
     if (req.query.groupId) { params.push(Number(req.query.groupId)); where.push(`t."groupId" = $${params.length}`); }
@@ -37,32 +36,32 @@ router.get('/dashboard', wrap(async (req, res) => {
                     count(*) FILTER (WHERE t."agentId" = $1 AND NOT s."isClosed")::int AS mine,
                     count(*) FILTER (WHERE NOT s."isResolved" AND t."resolutionDueAt" >= date_trunc('day', now() AT TIME ZONE 'Asia/Kolkata') AT TIME ZONE 'Asia/Kolkata'
                                      AND t."resolutionDueAt" < date_trunc('day', now() AT TIME ZONE 'Asia/Kolkata') AT TIME ZONE 'Asia/Kolkata' + interval '1 day')::int AS "dueToday"
-             FROM samadhan.tickets t JOIN samadhan.ticket_statuses s ON s.id = t."statusId" WHERE ${LIVE}`,
+             FROM samadhan.tickets t JOIN samadhan.ticket_statuses s ON s.id = t."statusId" WHERE ${liveFor(req)}`,
             [req.agent.id],
         ),
         pool.query(
             `SELECT s.id, s.name, count(t.id)::int AS n FROM samadhan.ticket_statuses s
-             LEFT JOIN samadhan.tickets t ON t."statusId" = s.id AND ${LIVE} WHERE NOT s."isClosed" GROUP BY s.id ORDER BY s.position`,
+             LEFT JOIN samadhan.tickets t ON t."statusId" = s.id AND ${liveFor(req)} WHERE NOT s."isClosed" GROUP BY s.id ORDER BY s.position`,
         ),
         pool.query(
             `SELECT t.severity, count(*)::int AS n FROM samadhan.tickets t JOIN samadhan.ticket_statuses s ON s.id = t."statusId"
-             WHERE NOT s."isResolved" AND ${LIVE} GROUP BY t.severity`,
+             WHERE NOT s."isResolved" AND ${liveFor(req)} GROUP BY t.severity`,
         ),
-        pool.query(`SELECT "createdAt" FROM samadhan.tickets t WHERE "createdAt" >= $1 AND ${LIVE}`, [yesterday]),
-        pool.query(`SELECT count(*)::int AS n FROM samadhan.tickets t WHERE "resolvedAt" >= $1 AND ${LIVE}`, [today]),
-        pool.query(`SELECT "createdAt", "firstRespondedAt" FROM samadhan.tickets t WHERE "firstRespondedAt" >= $1 AND ${LIVE}`, [today]),
-        pool.query(`SELECT "resolvedAt", "resolutionDueAt" FROM samadhan.tickets t WHERE "resolvedAt" >= $1 AND "resolutionDueAt" IS NOT NULL AND ${LIVE}`, [today]),
+        pool.query(`SELECT "createdAt" FROM samadhan.tickets t WHERE "createdAt" >= $1 AND ${liveFor(req)}`, [yesterday]),
+        pool.query(`SELECT count(*)::int AS n FROM samadhan.tickets t WHERE "resolvedAt" >= $1 AND ${liveFor(req)}`, [today]),
+        pool.query(`SELECT "createdAt", "firstRespondedAt" FROM samadhan.tickets t WHERE "firstRespondedAt" >= $1 AND ${liveFor(req)}`, [today]),
+        pool.query(`SELECT "resolvedAt", "resolutionDueAt" FROM samadhan.tickets t WHERE "resolvedAt" >= $1 AND "resolutionDueAt" IS NOT NULL AND ${liveFor(req)}`, [today]),
         pool.query(
             `SELECT a.id, a.name, a.availability, count(t.id)::int AS open
              FROM samadhan.agents a
-             LEFT JOIN samadhan.tickets t ON t."agentId" = a.id AND t."statusId" IN (SELECT id FROM samadhan.ticket_statuses WHERE NOT "isResolved") AND ${LIVE}
+             LEFT JOIN samadhan.tickets t ON t."agentId" = a.id AND t."statusId" IN (SELECT id FROM samadhan.ticket_statuses WHERE NOT "isResolved") AND ${liveFor(req)}
              WHERE a.active GROUP BY a.id ORDER BY open DESC, a.name LIMIT 20`,
         ),
         // Unresolved tickets per group and status (Freshdesk "Unresolved tickets by group").
         pool.query(
             `SELECT coalesce(g.name, 'No group') AS "group", t."groupId", s.id AS "statusId", count(*)::int AS n
              FROM samadhan.tickets t JOIN samadhan.ticket_statuses s ON s.id = t."statusId" LEFT JOIN samadhan.groups g ON g.id = t."groupId"
-             WHERE NOT s."isResolved" AND ${LIVE} GROUP BY 1, 2, 3`,
+             WHERE NOT s."isResolved" AND ${liveFor(req)} GROUP BY 1, 2, 3`,
         ),
         pool.query(
             `SELECT ac.id, ac."ticketId", ac.action, ac.details, ac."createdAt", a.name AS "actorName", t.subject
@@ -109,14 +108,14 @@ router.get('/dashboard', wrap(async (req, res) => {
 router.get('/dashboard/overview', wrap(async (req, res) => {
     const days = [7, 14, 30, 60].includes(Number(req.query.days)) ? Number(req.query.days) : 30;
     const IST_DAY = `date_trunc('day', now() AT TIME ZONE 'Asia/Kolkata')`;
-    const OPEN = `JOIN samadhan.ticket_statuses s ON s.id = t."statusId" WHERE ${LIVE} AND NOT s."isResolved"`;
+    const OPEN = `JOIN samadhan.ticket_statuses s ON s.id = t."statusId" WHERE ${liveFor(req)} AND NOT s."isResolved"`;
     const [backlog, ageing, sla, csat, leaders, regionStatus, categories, sources, risk, hourly] = await Promise.all([
         pool.query(
             `SELECT to_char(d, 'YYYY-MM-DD') AS day,
-                    (SELECT count(*)::int FROM samadhan.tickets t WHERE ${LIVE} AND t."createdAt" < (d + interval '1 day') AT TIME ZONE 'Asia/Kolkata'
+                    (SELECT count(*)::int FROM samadhan.tickets t WHERE ${liveFor(req)} AND t."createdAt" < (d + interval '1 day') AT TIME ZONE 'Asia/Kolkata'
                         AND (t."resolvedAt" IS NULL OR t."resolvedAt" >= (d + interval '1 day') AT TIME ZONE 'Asia/Kolkata')) AS open,
-                    (SELECT count(*)::int FROM samadhan.tickets t WHERE ${LIVE} AND t."createdAt" >= d AT TIME ZONE 'Asia/Kolkata' AND t."createdAt" < (d + interval '1 day') AT TIME ZONE 'Asia/Kolkata') AS created,
-                    (SELECT count(*)::int FROM samadhan.tickets t WHERE ${LIVE} AND t."resolvedAt" >= d AT TIME ZONE 'Asia/Kolkata' AND t."resolvedAt" < (d + interval '1 day') AT TIME ZONE 'Asia/Kolkata') AS resolved
+                    (SELECT count(*)::int FROM samadhan.tickets t WHERE ${liveFor(req)} AND t."createdAt" >= d AT TIME ZONE 'Asia/Kolkata' AND t."createdAt" < (d + interval '1 day') AT TIME ZONE 'Asia/Kolkata') AS created,
+                    (SELECT count(*)::int FROM samadhan.tickets t WHERE ${liveFor(req)} AND t."resolvedAt" >= d AT TIME ZONE 'Asia/Kolkata' AND t."resolvedAt" < (d + interval '1 day') AT TIME ZONE 'Asia/Kolkata') AS resolved
              FROM generate_series(${IST_DAY} - make_interval(days => $1 - 1), ${IST_DAY}, interval '1 day') AS d ORDER BY d`,
             [days],
         ),
@@ -133,7 +132,7 @@ router.get('/dashboard/overview', wrap(async (req, res) => {
                     count(*) FILTER (WHERE t."resolvedAt" >= now() - make_interval(days => $1) AND NOT t."resViolated" AND (t."resolutionDueAt" IS NULL OR t."resolvedAt" <= t."resolutionDueAt"))::int AS "resolvedInSla",
                     count(*) FILTER (WHERE NOT s."isResolved" AND (t."resolutionDueAt" < now() OR (t."firstRespondedAt" IS NULL AND t."firstResponseDueAt" < now())))::int AS overdue,
                     count(*) FILTER (WHERE NOT s."isResolved")::int AS open
-             FROM samadhan.tickets t JOIN samadhan.ticket_statuses s ON s.id = t."statusId" WHERE ${LIVE}`,
+             FROM samadhan.tickets t JOIN samadhan.ticket_statuses s ON s.id = t."statusId" WHERE ${liveFor(req)}`,
             [days],
         ),
         pool.query(`SELECT rating, count(*)::int AS n FROM samadhan.csat_responses WHERE "createdAt" >= now() - make_interval(days => $1) GROUP BY rating`, [days]),
@@ -143,16 +142,16 @@ router.get('/dashboard/overview', wrap(async (req, res) => {
                     count(t.id) FILTER (WHERE t."resolvedAt" IS NULL)::int AS open,
                     round(avg(extract(epoch FROM t."firstRespondedAt" - t."createdAt") / 60) FILTER (WHERE t."firstRespondedAt" >= now() - interval '7 days'))::int AS "avgFirstResponseMins",
                     (SELECT round(100.0 * count(*) FILTER (WHERE r.rating = 3) / NULLIF(count(*), 0)) FROM samadhan.csat_responses r WHERE r."agentId" = a.id AND r."createdAt" >= now() - interval '30 days')::int AS "csatPct"
-             FROM samadhan.agents a LEFT JOIN samadhan.tickets t ON t."agentId" = a.id AND ${LIVE}
+             FROM samadhan.agents a LEFT JOIN samadhan.tickets t ON t."agentId" = a.id AND ${liveFor(req)}
              WHERE a.active GROUP BY a.id HAVING count(t.id) > 0 ORDER BY resolved DESC, open DESC LIMIT 10`,
         ),
         pool.query(`SELECT coalesce(nullif(t.region, ''), 'None') AS region, s.id AS "statusId", s.name AS status, count(*)::int AS n FROM samadhan.tickets t ${OPEN} GROUP BY 1, 2, 3`),
         pool.query(`SELECT coalesce(nullif(t.category, ''), 'Uncategorised') AS name, count(*)::int AS value FROM samadhan.tickets t ${OPEN} GROUP BY 1 ORDER BY 2 DESC LIMIT 12`),
-        pool.query(`SELECT t.source AS name, count(*)::int AS value FROM samadhan.tickets t WHERE ${LIVE} AND t."createdAt" >= now() - make_interval(days => $1) GROUP BY 1 ORDER BY 2 DESC`, [days]),
+        pool.query(`SELECT t.source AS name, count(*)::int AS value FROM samadhan.tickets t WHERE ${liveFor(req)} AND t."createdAt" >= now() - make_interval(days => $1) GROUP BY 1 ORDER BY 2 DESC`, [days]),
         pool.query(
             `SELECT t.id, t.subject, t.severity, t.priority, t."resolutionDueAt", t."firstResponseDueAt", t."firstRespondedAt", a.name AS "agentName", s.name AS "statusName"
              FROM samadhan.tickets t JOIN samadhan.ticket_statuses s ON s.id = t."statusId" LEFT JOIN samadhan.agents a ON a.id = t."agentId"
-             WHERE ${LIVE} AND NOT s."isResolved" AND NOT s."pausesSla"
+             WHERE ${liveFor(req)} AND NOT s."isResolved" AND NOT s."pausesSla"
                AND (t."resolutionDueAt" < now() + interval '2 hours' OR (t."firstRespondedAt" IS NULL AND t."firstResponseDueAt" < now() + interval '2 hours'))
              ORDER BY LEAST(t."resolutionDueAt", CASE WHEN t."firstRespondedAt" IS NULL THEN t."firstResponseDueAt" END) LIMIT 12`,
         ),
@@ -160,7 +159,7 @@ router.get('/dashboard/overview', wrap(async (req, res) => {
             `SELECT extract(hour FROM t."createdAt" AT TIME ZONE 'Asia/Kolkata')::int AS hour,
                     count(*) FILTER (WHERE t."createdAt" >= ${IST_DAY} AT TIME ZONE 'Asia/Kolkata')::int AS today,
                     round(count(*) FILTER (WHERE t."createdAt" < ${IST_DAY} AT TIME ZONE 'Asia/Kolkata') / 7.0, 1)::float AS avg
-             FROM samadhan.tickets t WHERE ${LIVE} AND t."createdAt" >= (${IST_DAY} - interval '7 days') AT TIME ZONE 'Asia/Kolkata' GROUP BY 1 ORDER BY 1`,
+             FROM samadhan.tickets t WHERE ${liveFor(req)} AND t."createdAt" >= (${IST_DAY} - interval '7 days') AT TIME ZONE 'Asia/Kolkata' GROUP BY 1 ORDER BY 1`,
         ),
     ]);
     const s = sla.rows[0];
@@ -194,7 +193,7 @@ router.get('/dashboard/breakdown', wrap(async (req, res) => {
     const params = [days];
     let extra = '';
     if (req.query.groupId) { params.push(Number(req.query.groupId) || 0); extra = ` AND t."groupId" = $${params.length}`; }
-    const base = `FROM samadhan.tickets t JOIN samadhan.ticket_statuses s ON s.id = t."statusId" WHERE ${LIVE} AND t."createdAt" >= now() - make_interval(days => $1)${extra}`;
+    const base = `FROM samadhan.tickets t JOIN samadhan.ticket_statuses s ON s.id = t."statusId" WHERE ${liveFor(req)} AND t."createdAt" >= now() - make_interval(days => $1)${extra}`;
     const by = (expr, onlyOpen = false, limit = 15) => pool.query(
         `SELECT coalesce(nullif(${expr}::text, ''), 'None') AS name, count(*)::int AS value ${base}${onlyOpen ? ' AND NOT s."isResolved"' : ''}
          GROUP BY 1 ORDER BY value DESC LIMIT ${limit}`,
@@ -223,7 +222,7 @@ router.get('/dashboard/breakdown', wrap(async (req, res) => {
  * agent performance, territory / category mix, arrival heat-map, CSAT and calls for the last 7, 30 or 90 days.
  */
 router.get('/analytics', wrap(async (req, res) => {
-    requireSupervisor(req);
+    if (!req.can('screen.analytics')) throw fail(403, 'Supervisors and admins only.');
     const days = [7, 30, 90].includes(Number(req.query.days)) ? Number(req.query.days) : 30;
     const params = [days];
     let extra = '';
@@ -232,7 +231,7 @@ router.get('/analytics', wrap(async (req, res) => {
         `SELECT t.id, t."createdAt", t."firstRespondedAt", t."resolvedAt", t."firstResponseDueAt", t."resolutionDueAt", t."frViolated", t."resViolated",
                 t."agentId", t.priority, t.severity, t.source, t.type, t.category, t.region, t.state, t.depot, s.name AS "statusName", s."isResolved"
          FROM samadhan.tickets t JOIN samadhan.ticket_statuses s ON s.id = t."statusId"
-         WHERE ${LIVE} AND t."createdAt" >= now() - make_interval(days => $1)${extra}`,
+         WHERE ${liveFor(req)} AND t."createdAt" >= now() - make_interval(days => $1)${extra}`,
         params,
     );
     const ids = T.map((t) => t.id);
@@ -341,7 +340,7 @@ const istCell = (d) => (d ? new Date(d).toLocaleString('sv-SE', { timeZone: 'Asi
 
 router.get('/reports/daily', wrap(async (req, res) => {
     // The report includes requesters' phone numbers and emails: supervisors and admins only.
-    requireSupervisor(req);
+    if (!req.can('screen.reports')) throw fail(403, 'Supervisors and admins only.');
     const { from, to } = req.query;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(from || '') || !/^\d{4}-\d{2}-\d{2}$/.test(to || '')) throw fail(400, 'Give from and to as YYYY-MM-DD.');
     const { rows } = await pool.query(
@@ -349,7 +348,7 @@ router.get('/reports/daily', wrap(async (req, res) => {
                 c.mobile AS "requesterMobile", c.phone AS "requesterPhone", c.email AS "requesterEmail"
          FROM samadhan.tickets t JOIN samadhan.ticket_statuses s ON s.id = t."statusId" JOIN samadhan.contacts c ON c.id = t."requesterId"
          LEFT JOIN samadhan.agents a ON a.id = t."agentId"
-         WHERE t."createdAt" BETWEEN $1::timestamptz AND $2::timestamptz AND ${LIVE} ORDER BY t.id`,
+         WHERE t."createdAt" BETWEEN $1::timestamptz AND $2::timestamptz AND ${liveFor(req)} ORDER BY t.id`,
         [`${from}T00:00:00+05:30`, `${to}T23:59:59.999+05:30`],
     );
     const now = new Date();

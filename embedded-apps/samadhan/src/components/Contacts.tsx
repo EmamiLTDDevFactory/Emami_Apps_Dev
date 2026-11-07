@@ -392,7 +392,8 @@ function ContactForm({ contact, companies, onCancel, onSaved }: { contact: Conta
 type CompanyDraft = { id?: number; name: string; description: string; domains: string };
 
 function CompanyList({ companies, error, onError, reload, onPick }: { companies: Company[] | null; error: string; onError: (m: string) => void; reload: () => Promise<void>; onPick: (c: Company) => void }) {
-  const { isSupervisor } = useSamadhan();
+  const { can } = useSamadhan();
+  const isSupervisor = can('company.create'); // v7: whoever may create / edit companies (Supervisor + Admin by default)
   const [edit, setEdit] = useState<CompanyDraft | null>(null);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState('');

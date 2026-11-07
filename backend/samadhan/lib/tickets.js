@@ -9,7 +9,7 @@ const { sendMail } = require('./mail');
 const { emailRequester, loadTicket, notifyAgents, renderTemplate } = require('./notify');
 const { severityFor } = require('./severity');
 const { computeDueDates, nextResponseDue, pausedMinutes } = require('./sla');
-const { logActivity, setting, stripTags, touchActivity, updateRow } = require('./util');
+const { esc, fail, logActivity, setting, stripTags, ticketLink, touchActivity, updateRow } = require('./util');
 const { htmlToWhatsAppText, sendWhatsApp } = require('./whatsapp');
 
 async function runActions(ticketId, actions, ruleName) {
@@ -242,10 +242,35 @@ async function updateTicket(id, patch, actorAgentId, opts = {}) {
     return t;
 }
 
+/**
+ * v7: files picked for a reply / forward (already uploaded to this ticket). Up to the outbound limit they travel with
+ * the email; above it the email lists them with a link that needs a Samadhan sign-in (§L). Returns { files, linksHtml }.
+ */
+async function outboundFiles(ticketId, ids) {
+    const want = [...new Set((ids ?? []).map(Number).filter(Number.isInteger))].slice(0, 20);
+    if (!want.length) return { rows: [], files: [], linksHtml: '' };
+    const { limits, readAttachment } = require('./attachments');
+    const rows = (await pool.query('SELECT * FROM samadhan.ticket_attachments WHERE id = ANY($1::int[]) AND "ticketId" = $2 AND "deletedAt" IS NULL', [want, ticketId])).rows;
+    if (rows.length !== want.length) throw fail(400, 'One of the chosen files is not on this ticket.');
+    const total = rows.reduce((n, r) => n + Number(r.size), 0);
+    const maxMb = (await limits()).outboundMb;
+    if (total <= maxMb * 1024 * 1024) {
+        const files = [];
+        for (const r of rows) files.push({ name: r.fileName, contentType: r.contentType, buffer: await readAttachment(r) });
+        return { rows, files, linksHtml: '' };
+    }
+    const { APP_URL } = require('../../ccbTeams');
+    const items = rows.map((r) => `<li>${esc(r.fileName)} (${(Number(r.size) / 1048576).toFixed(1)} MB)</li>`).join('');
+    const linksHtml = `<p>The files are larger than ${maxMb} MB together, so they are not attached. Open them in Samadhan (sign-in needed): <a href="${APP_URL}${ticketLink(ticketId)}">ticket #${ticketId}</a></p><ul>${items}</ul>`;
+    return { rows, files: [], linksHtml };
+}
+
 async function addAgentMessage(ticketId, m, agent) {
     const t = await loadTicket(ticketId);
     const now = new Date();
     let html = m.html;
+    const out = m.kind === 'NOTE' ? { rows: [], files: [], linksHtml: '' } : await outboundFiles(ticketId, m.attachmentIds);
+    if (out.linksHtml) html = `${html}${out.linksHtml}`;
     let to = (m.to ?? []).map((x) => x.toLowerCase());
     const cc = (m.cc ?? []).map((x) => x.toLowerCase());
     const withAgent = { ...t, agentName: agent.name };
@@ -262,18 +287,23 @@ async function addAgentMessage(ticketId, m, agent) {
     } else if (m.kind === 'REPLY') {
         to = t.requesterEmail ? [t.requesterEmail, ...to.filter((x) => x !== t.requesterEmail)] : to;
         const signature = await renderTemplate('reply.signature', withAgent);
-        html = `${m.html}${signature ? `<br>${signature.html}` : ''}`;
-        await sendMail({ to, cc, subject: `Re: ${t.subject} [#${t.id}]`, html });
+        html = `${html}${signature ? `<br>${signature.html}` : ''}`;
+        await sendMail({ to, cc, subject: `Re: ${t.subject} [#${t.id}]`, html, attachments: out.files });
     } else if (m.kind === 'FORWARD') {
         const fwd = await renderTemplate('forward.signature', withAgent);
-        html = `${m.html}${fwd ? `<br>${fwd.html}` : ''}<hr>${t.description}`;
-        await sendMail({ to, cc, subject: `Fwd: ${t.subject} [#${t.id}]`, html });
+        html = `${html}${fwd ? `<br>${fwd.html}` : ''}<hr>${t.description}`;
+        await sendMail({ to, cc, subject: `Fwd: ${t.subject} [#${t.id}]`, html, attachments: out.files });
     }
 
-    await pool.query(
-        `INSERT INTO samadhan.conversations ("ticketId", kind, "bodyHtml", "bodyText", "agentId", "toEmails", "ccEmails", channel) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    const conv = await pool.query(
+        `INSERT INTO samadhan.conversations ("ticketId", kind, "bodyHtml", "bodyText", "agentId", "toEmails", "ccEmails", channel) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
         [ticketId, m.kind, html, stripTags(html), agent.id, to, cc, viaWhatsApp ? 'whatsapp' : 'email'],
     );
+    // v7: files uploaded in the composer belong to this message (paperclip on the conversation).
+    const linkIds = [...new Set([...out.rows.map((r) => r.id), ...((m.kind === 'NOTE' ? m.attachmentIds : []) ?? []).map(Number).filter(Number.isInteger)])];
+    if (linkIds.length) {
+        await pool.query('UPDATE samadhan.ticket_attachments SET "conversationId" = $1 WHERE id = ANY($2::int[]) AND "ticketId" = $3 AND "conversationId" IS NULL', [conv.rows[0].id, linkIds, ticketId]);
+    }
 
     if (m.kind === 'REPLY') {
         const data = { nextResponseDueAt: null, updatedAt: now };

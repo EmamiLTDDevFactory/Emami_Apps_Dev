@@ -9,7 +9,8 @@ Resume here in a new session: read this file and `docs/SAMADHAN_MASTER_PROMPT_FI
 | C (working agreement) | done |
 | 0 (discovery, baseline, plan) | done — **approved 2026-11-05** ("approved", no individual answers) |
 | 1 (rename + harness) | **code done, full gate GREEN (run 5, 23/23)**; not pushed (push plan awaiting the user's OK) |
-| 2 – 9 | not started |
+| 2 (permissions, cockpit, data scope, attachments) | **code done, gate GREEN 31/31 (2026-11-07)**; not pushed (asking the user) |
+| 3 – 9 | not started |
 
 ### Decisions taken at the Phase-0 STOP (approval without individual answers → recommended options)
 - Q-R1 **Option A** (app id `samadhan`, `setu` kept as alias; one line in access-tracker). Q-R2 redirect stub
@@ -162,7 +163,15 @@ nginx route: not done — `emamiadmin` has no sudo rights; the server admin runs
 (public `/dev-api/api/samadhan/` is 404 until then; the app falls back to `/api/setu`).
 Master prompt `docs/SAMADHAN_MASTER_PROMPT_FINAL.md` added to git (user).
 
-**Now (STOP):** Phase 2 needs Q-S1 (storage) and Q-P1 (permission defaults).
+**Phase 2 (2026-11-06 → 07; Q-P1 = PLAN §7 defaults; Q-S1 = SFTP server, host-to-host): code done, gate GREEN.**
+- Commits (local): `8675596` permissions + cockpit + scope, `926637d` attachments WIP, `9d23b4e` SFTP adapter +
+  Samadhan-only `package.json` (user chose option 1), `3957f01` attachments UI, `3d70706` gate `--stages`, then docs.
+- Notes: `PHASE-2-NOTES.md`. Test report: `TEST-REPORT.md` (Phase 2, 31/31).
+- Next: merge the latest `origin/main`, re-run the gate parts touched by the merge, **ask** before pushing
+  `Feature/Animesh` then `main` (never production); then the dev backend deploy (ask). Attachments stay off on dev until
+  the admin team sets `SAMADHAN_STORAGE=sftp` and the `SAMADHAN_SFTP_*` values on the server.
+- Still with the server admin: nginx route (Phase 1). User: rotate the `emamiadmin` password.
+- After Phase 2: STOP for review.
 
 Earlier plan (kept for reference):
 

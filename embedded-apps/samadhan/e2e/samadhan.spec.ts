@@ -140,3 +140,90 @@ test('keyboard: "?" opens the shortcuts list', async ({ page }) => {
   await expect(page.getByRole('dialog')).toBeVisible();
   expect(problems).toEqual([]);
 });
+
+// ---------- v7 Phase 2: screen guard and Authorization cockpit ----------
+
+test('screen guard: an Agent typing ?screen=admin lands on an allowed screen with a notice', async ({ page }) => {
+  const problems = watch(page);
+  await signIn(page, data.agent);
+  await page.goto('/apps/samadhan/?screen=admin');
+  await expect(page.getByText("You don't have access to that screen")).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Admin', exact: true })).toHaveCount(0);
+  expect(problems).toEqual([]);
+});
+
+test('screen guard: a Supervisor typing ?screen=reports opens the Daily report', async ({ page }) => {
+  const problems = watch(page);
+  await signIn(page, data.sup);
+  await page.goto('/apps/samadhan/?screen=reports');
+  await page.waitForLoadState('networkidle');
+  await expect(page.getByText("You don't have access to that screen")).toHaveCount(0);
+  expect(problems).toEqual([]);
+});
+
+test('Admin: the Authorization cockpit opens and every tab loads', async ({ page }) => {
+  const problems = watch(page);
+  await signIn(page, data.admin);
+  await page.goto('/apps/samadhan/?screen=admin');
+  await page.getByRole('tab', { name: 'Authorization cockpit' }).click();
+  for (const tab of ['Overview', 'Role profiles', 'Permission matrix', 'User access', 'Access review', 'Change log']) {
+    await page.getByRole('tab', { name: tab, exact: true }).click();
+    await page.waitForLoadState('networkidle');
+  }
+  await page.getByRole('tab', { name: 'Role profiles', exact: true }).click();
+  await expect(page.getByText('Auditor (read-only)')).toBeVisible();
+  await page.getByRole('tab', { name: 'User access', exact: true }).click();
+  // exact: on the phone layout the header also has an "Open menu" button.
+  await page.getByRole('button', { name: 'Open', exact: true }).first().click();
+  await expect(page.getByText('Effective access (saved)')).toBeVisible();
+  expect(problems).toEqual([]);
+});
+
+// ---------- v7 Phase 2: attachments (the gate runs the backend with the local test file store) ----------
+
+const PNG_BYTES = Buffer.concat([
+  Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex'),
+  Buffer.from('1f15c4890000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082', 'hex'),
+]);
+
+test('attachments: an agent adds a file to a ticket and previews it', async ({ page }) => {
+  const problems = watch(page);
+  await signIn(page, data.agent);
+  await page.goto(`/apps/samadhan/?ticket=${data.ticketId}`);
+  const card = page.getByTestId('attachments-card');
+  await card.locator('input[type=file]').setInputFiles({ name: `e2e-${test.info().project.name}.png`, mimeType: 'image/png', buffer: PNG_BYTES });
+  await card.getByRole('button', { name: /Upload 1 file/ }).click();
+  await expect(card.getByText('1 file(s) added.')).toBeVisible();
+  await card.getByRole('button', { name: `Preview e2e-${test.info().project.name}.png` }).click();
+  await expect(page.getByRole('dialog').locator('img')).toBeVisible();
+  expect(problems).toEqual([]);
+});
+
+test('attachments: a file goes with a private note and shows a paperclip on it', async ({ page }) => {
+  const problems = watch(page);
+  await signIn(page, data.agent);
+  await page.goto(`/apps/samadhan/?ticket=${data.ticketId}`);
+  await page.getByRole('tab', { name: /note/i }).first().click();
+  const name = `note-${test.info().project.name}.txt`;
+  await page.getByRole('textbox', { name: 'Message' }).fill('see the log');
+  await page.getByTestId('composer-files').locator('input[type=file]').setInputFiles({ name, mimeType: 'text/plain', buffer: Buffer.from('e2e log line\n') });
+  await page.getByRole('button', { name: 'Add note' }).click();
+  await expect(page.getByText('Note added.')).toBeVisible();
+  await expect(page.getByLabel('Attached files').getByRole('button', { name })).toBeVisible();
+  expect(problems).toEqual([]);
+});
+
+test('attachments: the portal accepts a screenshot with a new ticket', async ({ page }) => {
+  const problems = watch(page);
+  await page.goto('/apps/samadhan/portal/');
+  await page.getByLabel(/Your name/).fill('E2E Portal');
+  await page.getByLabel(/^Email/).fill(`portal-${test.info().project.name}@test.samadhan.local`);
+  await page.getByLabel(/^Subject/).fill('Portal with a screenshot');
+  await page.getByLabel(/Describe the issue/).fill('The order screen shows an error, screenshot attached.');
+  await page.getByTestId('file-tray').locator('input[type=file]').setInputFiles({ name: 'error.png', mimeType: 'image/png', buffer: PNG_BYTES });
+  await expect(page.getByText('error.png')).toBeVisible();
+  await page.getByRole('button', { name: 'Submit ticket' }).click();
+  await expect(page.getByText(/Ticket #\d+ raised/)).toBeVisible();
+  await expect(page.getByText('These files could not be added')).toHaveCount(0);
+  expect(problems).toEqual([]);
+});

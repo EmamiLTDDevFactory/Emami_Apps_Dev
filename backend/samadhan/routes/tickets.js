@@ -6,17 +6,16 @@ const { CALL_OUTCOMES, EMAIL_RE, PATCHABLE, PHONE_RE, PRIORITIES } = require('..
 const { option, sources } = require('../lib/config');
 const { loadTicket } = require('../lib/notify');
 const { CREATE_FIELDS, LONG_TEXT_FIELDS, addAgentMessage, createTicket, updateTicket } = require('../lib/tickets');
-const { LIVE, VIEWS, VIEW_IDS, ticketFilter } = require('../lib/ticketQuery');
+const { LIVE, VIEWS, VIEW_IDS, liveFor, scopeSql, ticketFilter } = require('../lib/ticketQuery');
 const { assertResolvable, hideTickets, linkTickets, mergeTickets, presence, runScenario, setWatching } = require('../lib/ticketOps');
 const { audit, fail, intOrNull, logActivity, stripTags, textToHtml, touchActivity, updateRow, wrap } = require('../lib/util');
-const { isAdmin, requireSupervisor } = require('../middleware/auth');
 
 const router = express.Router();
 
 // ---------- Routes: tickets ----------
 
 router.get('/tickets', wrap(async (req, res) => {
-    const { where, params, order } = ticketFilter(req.query, req.agent.id);
+    const { where, params, order } = ticketFilter(req.query, req.agent.id, req.scope);
     const pageSize = Math.min(200, Math.max(10, Number(req.query.pageSize) || 50));
     const page = Math.max(1, Number(req.query.page) || 1);
     const [items, total] = await Promise.all([
@@ -31,7 +30,7 @@ router.get('/tickets/counts', wrap(async (req, res) => {
     const [builtIn, saved] = await Promise.all([
         pool.query(
             `SELECT ${VIEW_IDS.map((v) => `count(*) FILTER (WHERE ${VIEWS[v]('$1')})::int AS "${v}"`).join(', ')}, count(*) FILTER (WHERE ${LIVE})::int AS "all"
-             FROM samadhan.tickets t JOIN samadhan.ticket_statuses s ON s.id = t."statusId"`,
+             FROM samadhan.tickets t JOIN samadhan.ticket_statuses s ON s.id = t."statusId"${scopeSql(req.scope, req.agent.id) ? ` WHERE ${scopeSql(req.scope, req.agent.id)}` : ''}`,
             [req.agent.id],
         ),
         pool.query('SELECT id, query FROM samadhan.saved_views WHERE "ownerAgentId" = $1 OR shared ORDER BY id LIMIT 30', [req.agent.id]),
@@ -39,7 +38,7 @@ router.get('/tickets/counts', wrap(async (req, res) => {
     const counts = { ...builtIn.rows[0] };
     await Promise.all(saved.rows.map(async (v) => {
         try {
-            const f = ticketFilter(v.query ?? {}, req.agent.id);
+            const f = ticketFilter(v.query ?? {}, req.agent.id, req.scope);
             counts[`saved:${v.id}`] = (await pool.query(`SELECT count(*)::int AS n ${LIST_FROM} ${f.where}`, f.params)).rows[0].n;
         } catch {
             counts[`saved:${v.id}`] = null;
@@ -62,14 +61,17 @@ const EXPORT_COLUMNS = {
     'Resolution SLA': (t) => (t.resolutionDueAt ? (t.resViolated || (t.resolvedAt ?? new Date()) > t.resolutionDueAt ? 'SLA violated' : 'Within SLA') : ''),
     CSAT: (t) => ({ 3: 'Extremely satisfied', 2: 'Neither satisfied nor dissatisfied', 1: 'Extremely dissatisfied' })[t.csatRating] ?? '',
 };
+// v7 columns that can be picked but are not in the default export (so the default file stays exactly as before).
+const OPTIONAL_EXPORT_COLUMNS = { Attachments: (t) => t.attachmentCount ?? 0 };
+const exportColumn = (c) => EXPORT_COLUMNS[c] || OPTIONAL_EXPORT_COLUMNS[c];
 const safeCell = (v) => (typeof v === 'string' && /^[=+\-@\t\r]/.test(v) ? `'${v}` : v);
 const istCell = (v) => (v instanceof Date ? v.toLocaleString('sv-SE', { timeZone: 'Asia/Kolkata' }) : v ?? '');
 
 router.get('/tickets/export', wrap(async (req, res) => {
-    requireSupervisor(req);
-    const { where, params, order } = ticketFilter(req.query, req.agent.id);
+    if (!req.can('ticket.export')) throw fail(403, 'Supervisors and admins only.');
+    const { where, params, order } = ticketFilter(req.query, req.agent.id, req.scope);
     const maxRows = Number(await option('export.maxRows')) || 5000;
-    const wanted = String(req.query.columns || '').split(',').map((c) => c.trim()).filter((c) => EXPORT_COLUMNS[c]);
+    const wanted = String(req.query.columns || '').split(',').map((c) => c.trim()).filter((c) => exportColumn(c));
     const columns = wanted.length ? wanted : Object.keys(EXPORT_COLUMNS);
     const { rows } = await pool.query(
         `SELECT t.*, c.name AS "requesterName", c.email AS "requesterEmail", a.name AS "agentName", g.name AS "groupName", s.name AS "statusName",
@@ -78,11 +80,11 @@ router.get('/tickets/export', wrap(async (req, res) => {
         params,
     );
     if (rows.length > maxRows) throw fail(400, `More than ${maxRows.toLocaleString('en-IN')} tickets match. Narrow the filters (for example a date range) and export again.`);
-    const out = rows.map((t) => columns.map((c) => safeCell(istCell(EXPORT_COLUMNS[c](t)))));
+    const out = rows.map((t) => columns.map((c) => safeCell(istCell(exportColumn(c)(t)))));
     await audit(req.verifiedEmail, 'tickets_exported', { rows: out.length, view: req.query.view ?? '', columns: columns.length });
     res.json({ success: true, columns, rows: out });
 }));
-router.get('/tickets/export/columns', wrap(async (req, res) => res.json({ success: true, columns: Object.keys(EXPORT_COLUMNS) })));
+router.get('/tickets/export/columns', wrap(async (req, res) => res.json({ success: true, columns: [...Object.keys(EXPORT_COLUMNS), ...Object.keys(OPTIONAL_EXPORT_COLUMNS)] })));
 
 function cleanFields(body) {
     const out = {};
@@ -164,7 +166,7 @@ router.get('/tickets/:id', wrap(async (req, res) => {
             `SELECT tl.*, a.name AS "agentName" FROM samadhan.time_logs tl JOIN samadhan.agents a ON a.id = tl."agentId" WHERE tl."ticketId" = $1 ORDER BY tl."createdAt" DESC`,
             [id],
         ),
-        pool.query(`${related} WHERE t."requesterId" = $1 AND t.id <> $2 AND ${LIVE} ORDER BY t."createdAt" DESC LIMIT 10`, [t.requesterId, id]),
+        pool.query(`${related} WHERE t."requesterId" = $1 AND t.id <> $2 AND ${liveFor(req)} ORDER BY t."createdAt" DESC LIMIT 10`, [t.requesterId, id]),
         pool.query(
             `SELECT cl.*, a.name AS "agentName" FROM samadhan.call_logs cl JOIN samadhan.agents a ON a.id = cl."agentId" WHERE cl."ticketId" = $1 ORDER BY cl."createdAt"`,
             [id],
@@ -182,6 +184,8 @@ router.get('/tickets/:id', wrap(async (req, res) => {
         watchers: watchers.rows, watching: watchers.rows.some((w) => w.id === req.agent.id),
         links: links.rows, children: children.rows, parent: parent.rows[0] ?? null,
         csat: csat.rows[0] ?? null, todos: todos.rows,
+        // v7: files on the ticket (empty when attachments are not set up on this database).
+        attachments: await require('../lib/attachments').listAttachments(id).catch((err) => { if (err.code === '42P01') return []; throw err; }),
     });
 }));
 
@@ -229,7 +233,7 @@ router.post('/tickets/bulk', wrap(async (req, res) => {
     const failed = [];
     let done = [];
     if (['spam', 'unspam', 'trash', 'restore', 'purge'].includes(action)) {
-        if (action === 'purge' && !isAdmin(req)) throw fail(403, 'Only admins can delete tickets for good.');
+        if (action === 'purge' && !req.can('ticket.purge')) throw fail(403, 'Only admins can delete tickets for good.');
         done = await hideTickets(ids, action, req.agent.id);
         if (action === 'purge') await audit(req.verifiedEmail, 'tickets_purged', { ids: done });
     } else if (action === 'watch' || action === 'unwatch') {
@@ -320,7 +324,10 @@ router.post('/tickets/:id/messages', wrap(async (req, res) => {
     const statusAfter = intOrNull(b.statusAfter);
     if (Number.isNaN(statusAfter)) throw fail(400, 'Invalid status.');
     if (statusAfter) await assertResolvable(statusAfter, await loadTicket(id));
-    const { delivery } = await addAgentMessage(id, { kind, html: textToHtml(text.slice(0, 50000)), to, cc }, req.agent);
+    // v7: files uploaded in the composer (ids on this ticket) go with the message.
+    const attachmentIds = Array.isArray(b.attachmentIds) ? b.attachmentIds : [];
+    if (attachmentIds.length && kind !== 'NOTE' && !req.can('attachment.download')) throw fail(403, 'You cannot send files.');
+    const { delivery } = await addAgentMessage(id, { kind, html: textToHtml(text.slice(0, 50000)), to, cc, attachmentIds }, req.agent);
     if (statusAfter) await updateTicket(id, { statusId: statusAfter }, req.agent.id);
     res.status(201).json({ success: true, delivery });
 }));

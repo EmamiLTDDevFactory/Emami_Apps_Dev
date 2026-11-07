@@ -46,6 +46,8 @@ router.get('/portal/config', wrap(async (req, res) => {
     res.json({
         success: true, enabled: true, categories: await categories(),
         helpdeskName: await option('general.helpdeskName'), intro: await option('portal.intro'), supportEmail: await option('general.supportEmail'),
+        // v7: requesters may add files after submitting (portal limits).
+        files: require('../lib/storage').storageInfo().enabled ? { limits: (await require('../lib/attachments').limits()).portal } : null,
     });
 }));
 
@@ -93,7 +95,12 @@ router.post('/portal/tickets', wrap(async (req, res) => {
         fields,
         notifyRequester: true,
     });
-    res.status(201).json({ success: true, ticket: { id: t.id } });
+    // v7: when attachments are on, a 30-minute token lets the requester add files to this one ticket (routes/attachments.js).
+    const { portalUploadToken } = require('./attachments');
+    const { storageInfo } = require('../lib/storage');
+    const { limits } = require('../lib/attachments');
+    const files = storageInfo().enabled ? { uploadToken: portalUploadToken(t.id), limits: (await limits()).portal } : null;
+    res.status(201).json({ success: true, ticket: { id: t.id }, ...(files ? { files } : {}) });
 }));
 
 /** Status of one ticket for the person who raised it: ticket number + their email must match. No conversation text. */

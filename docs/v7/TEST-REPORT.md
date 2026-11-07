@@ -3,6 +3,43 @@
 Branch `feature/samadhan-v7` (local, not pushed). Gate commit: `a864fc7`. Machine: Windows 11, Node v26.13.0,
 PostgreSQL 18 (throwaway cluster on localhost:55432), Microsoft Edge (Playwright 1.49.1).
 
+## Phase 2 (permissions, cockpit, data scope, attachments) — gate GREEN, 31 of 31
+
+**2026-11-07, commit `3d70706` + the gate fix below.** Run in parts with `--stages=` (same steps as a full run): the
+machine had about 3.5 GB free and Claude Code stopped two full runs for low memory. Nothing failed in either stopped run.
+
+| # | Step | Result |
+|---|---|---|
+| 1 | Frontend typecheck | pass |
+| 2 | Frontend lint | pass, 0 errors, 2 warnings (= baseline) |
+| 3 | Frontend production build | pass |
+| 4 | Backend syntax (`node --check`) | pass, 67 files |
+| 5 | Samadhan unit tests (unit, rename, permissions, attachments) | **32 / 32** |
+| 6 | Shared backend tests (`npm test`) | **51 / 51** |
+| 7 | API suite, `/api/samadhan` | **130 / 130** |
+| 8 | Authz suite (cockpit, permissions, data scope) | **59 / 59** |
+| 9–12 | `7.1-auth` down → API suite with base roles only (**130 / 130**) → up → Authz suite (**59 / 59**) | pass |
+| 13–15 | `7.1-attachments` down → up → Attachments suite on local storage | **50 / 50** |
+| 16 | API suite, old path `/api/setu` | **130 / 130** |
+| 17 | Golden daily report + export, new database | byte-identical |
+| 18–24 | v6 database: golden before the rename, `7.0-rename` up / down / up, golden after each | all byte-identical |
+| 25–27 | Legacy schema `setu`: down on `legacy_test`, API suite (**130 / 130**), Authz suite (**59 / 59**) | pass |
+| 28 | Zero-impact no-DB smoke | 18 routes = baseline |
+| 29 | E2E build + redirect stub build | pass |
+| 30 | E2E (Playwright, Edge, desktop + 360 px) incl. screen guard, cockpit, attachments | **31 passed, 1 skipped** (keyboard test on phone, by design) |
+| 31 | Path guard | pass, 58 files |
+
+Also checked by hand: the SFTP adapter against a real SFTP server (write, read back, delete, path traversal refused,
+wrong host key refused; the throwaway folder was removed).
+
+Fixed in the gate during Phase 2: the test Postgres crashed when memory ran out (11:21) and then accepted connections
+without serving them (Windows error 487). The gate's health check waited forever. It now has a 20 s limit, the wait is
+time-based, and a server that ignores `pg_ctl stop` is ended through its own `postmaster.pid`. `--stages=` was added.
+
+---
+
+# Phase 1
+
 ## 1. Gate (`node backend/samadhan/tests/gate.js`, full run incl. E2E)
 
 **Run 5, 2026-11-06: GREEN — 23 of 23 passed in 14 min.** Raw: `docs/v7/test-artifacts/gate-last.json` / `gate-last.log` (git-ignored).

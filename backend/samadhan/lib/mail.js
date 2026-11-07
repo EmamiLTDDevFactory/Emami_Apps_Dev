@@ -16,13 +16,16 @@ async function graph(path, init = {}) {
 }
 
 /** Sends from the helpdesk mailbox, or logs when mail is switched off (development, shadow mode). */
-async function sendMail({ to, cc = [], subject, html }) {
+async function sendMail({ to, cc = [], subject, html, attachments = [] }) {
     const rcpt = (list) => list.filter((a) => EMAIL_RE.test(a)).map((address) => ({ emailAddress: { address } }));
     if (!rcpt(to).length) return;
     if (!MAIL_ENABLED) {
-        console.info(`[samadhan] mail disabled - would send "${String(subject).slice(0, 60)}" to ${to.length} recipient(s)`);
+        console.info(`[samadhan] mail disabled - would send "${String(subject).slice(0, 60)}" to ${to.length} recipient(s)${attachments.length ? ` with ${attachments.length} file(s)` : ''}`);
         return;
     }
+    // v7: with files, the mail is built as a draft (small files attached directly, larger ones through an upload
+    // session - Graph's one-call sendMail only takes about 3 MB) and then sent. Without files nothing changes.
+    if (attachments.length) return sendWithFiles({ to: rcpt(to), cc: rcpt(cc), subject, html, attachments });
     try {
         await graph(`/users/${encodeURIComponent(MAILBOX)}/sendMail`, {
             method: 'POST',
@@ -33,6 +36,38 @@ async function sendMail({ to, cc = [], subject, html }) {
         });
     } catch (err) {
         console.error('[samadhan] send mail failed:', err.message);
+    }
+}
+
+async function sendWithFiles({ to, cc, subject, html, attachments }) {
+    const box = `/users/${encodeURIComponent(MAILBOX)}`;
+    try {
+        const draft = await graph(`${box}/messages`, { method: 'POST', body: JSON.stringify({ subject, body: { contentType: 'HTML', content: html }, toRecipients: to, ccRecipients: cc }) });
+        for (const a of attachments) {
+            if (a.buffer.length < 3 * 1024 * 1024) {
+                await graph(`${box}/messages/${draft.id}/attachments`, {
+                    method: 'POST',
+                    body: JSON.stringify({ '@odata.type': '#microsoft.graph.fileAttachment', name: a.name, contentType: a.contentType, contentBytes: a.buffer.toString('base64') }),
+                });
+                continue;
+            }
+            const session = await graph(`${box}/messages/${draft.id}/attachments/createUploadSession`, {
+                method: 'POST', body: JSON.stringify({ AttachmentItem: { attachmentType: 'file', name: a.name, size: a.buffer.length, contentType: a.contentType } }),
+            });
+            const CHUNK = 4 * 320 * 1024; // multiple of 320 KiB, as Graph requires
+            for (let start = 0; start < a.buffer.length; start += CHUNK) {
+                const end = Math.min(start + CHUNK, a.buffer.length);
+                const r = await fetch(session.uploadUrl, {
+                    method: 'PUT',
+                    headers: { 'Content-Length': String(end - start), 'Content-Range': `bytes ${start}-${end - 1}/${a.buffer.length}` },
+                    body: a.buffer.subarray(start, end),
+                });
+                if (!r.ok) throw new Error(`Graph attachment upload failed: ${r.status}`);
+            }
+        }
+        await graph(`${box}/messages/${draft.id}/send`, { method: 'POST' });
+    } catch (err) {
+        console.error('[samadhan] send mail with files failed:', err.message);
     }
 }
 

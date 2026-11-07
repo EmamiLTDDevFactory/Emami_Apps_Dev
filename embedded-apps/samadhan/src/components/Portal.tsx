@@ -1,10 +1,12 @@
 'use client';
 import { useEffect, useState, type ReactNode } from 'react';
 import { ArrowLeft, BookOpen, CheckCircle2, ChevronDown, ChevronRight, Frown, Headset, LifeBuoy, Meh, Search, Send, Smile, type LucideIcon } from 'lucide-react';
-import { portalArticles, portalConfig, portalCreate, portalCsat, portalCsatAnswer, portalStatus, type CsatSurvey, type PortalArticle, type PortalTicketStatus } from '@/lib/api';
+import { portalArticles, portalConfig, portalCreate, portalUpload, portalCsat, portalCsatAnswer, portalStatus, type CsatSurvey, type PortalArticle, type PortalTicketStatus } from '@/lib/api';
 import { BASE_PATH } from '@/lib/config';
 import { fmtDateTime } from '@/lib/format';
 import { Button, Field, Notice, Pill, Spinner, Tabs, cx, inputBase, inputCls, textareaCls } from './ui';
+import { FileTray, usePendingFiles } from './Attachments';
+import { blobOf, uploadName } from '@/lib/files';
 
 const EMPTY = { name: '', email: '', phone: '', distributorCode: '', category: '', subject: '', description: '', website: '' };
 const EMAIL_RE = /^[^\s@']+@[^\s@']+\.[^\s@']+$/;
@@ -15,7 +17,7 @@ const EMAIL_RE = /^[^\s@']+@[^\s@']+\.[^\s@']+$/;
  */
 export default function Portal() {
   const [tab, setTab] = useState<'new' | 'status'>('new');
-  const [config, setConfig] = useState<{ enabled: boolean; categories?: string[]; helpdeskName?: string; intro?: string; supportEmail?: string } | null>(null);
+  const [config, setConfig] = useState<Awaited<ReturnType<typeof portalConfig>> | null>(null);
   const [error, setError] = useState('');
   // A survey link from the ticket-closed email (?csat=<token>) shows the survey instead of the portal.
   const [csat, setCsat] = useState<{ token: string; home: string } | null>(null);
@@ -57,7 +59,7 @@ export default function Portal() {
           <>
             {intro && <p className="whitespace-pre-line text-sm text-muted">{intro}</p>}
             <Tabs label="Portal" value={tab} onChange={setTab} tabs={[{ id: 'new', label: 'Raise a ticket' }, { id: 'status', label: 'Check a ticket' }]} />
-            {tab === 'new' ? <><ArticleSearch /><NewRequest categories={config.categories ?? []} /></> : <StatusCheck />}
+            {tab === 'new' ? <><ArticleSearch /><NewRequest categories={config.categories ?? []} files={config.files ?? null} /></> : <StatusCheck />}
           </>
         )}
         <p className="pt-2 text-center text-2xs text-faint">You can also email <a className="text-accent" href={`mailto:${supportEmail}`}>{supportEmail}</a>. Please do not share passwords or OTPs in a ticket.</p>
@@ -66,7 +68,9 @@ export default function Portal() {
   );
 }
 
-function NewRequest({ categories }: { categories: string[] }) {
+function NewRequest({ categories, files }: { categories: string[]; files: { limits: { perFileMb: number; filesPerAction: number } } | null }) {
+  const tray = usePendingFiles(files?.limits.perFileMb ?? 5, files?.limits.filesPerAction ?? 5);
+  const [fileNote, setFileNote] = useState('');
   const [f, setF] = useState(EMPTY);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -79,6 +83,15 @@ function NewRequest({ categories }: { categories: string[] }) {
     setError('');
     try {
       const t = await portalCreate(f);
+      // v7: files go up right after the ticket exists, with the one-ticket upload token from the answer.
+      const failed: string[] = [];
+      if (t.files && t.id > 0) {
+        for (const p of tray.ready) {
+          try { await portalUpload(t.id, t.files.uploadToken, blobOf(p), uploadName(p)); } catch (e) { failed.push(`${p.name} (${e instanceof Error ? e.message : 'not sent'})`); }
+        }
+      }
+      setFileNote(failed.length ? `These files could not be added: ${failed.join(', ')}. Reply to the confirmation email to send them.` : '');
+      tray.clear();
       setDone({ id: t.id, email: f.email.trim() });
       setF(EMPTY);
     } catch (e) {
@@ -93,6 +106,7 @@ function NewRequest({ categories }: { categories: string[] }) {
       <div className="rounded-2xl border border-good/30 bg-panel p-6 text-center shadow-card">
         <CheckCircle2 size={32} className="mx-auto text-good" />
         <h2 className="mt-2 text-lg font-extrabold">Ticket {done.id > 0 ? `#${done.id}` : ''} raised</h2>
+        {fileNote && <div className="mt-2 text-left"><Notice tone="warn">{fileNote}</Notice></div>}
         <p className="mt-1 text-sm text-muted">We have emailed a confirmation to {done.email}. The helpdesk team will reply there; keep the ticket number in the subject when you write again.</p>
         <Button className="mt-4" onClick={() => setDone(null)}>Raise another ticket</Button>
       </div>
@@ -116,8 +130,15 @@ function NewRequest({ categories }: { categories: string[] }) {
       )}
       <Field label="Subject" required><input className={inputCls} value={f.subject} onChange={(e) => set({ subject: e.target.value })} maxLength={300} /></Field>
       <Field label="Describe the issue" required hint="What happened, on which app / screen, and any error message">
-        <textarea rows={6} className={textareaCls} value={f.description} onChange={(e) => set({ description: e.target.value })} maxLength={10000} />
+        <textarea rows={6} className={textareaCls} value={f.description} onChange={(e) => set({ description: e.target.value })} maxLength={10000} onPaste={files ? tray.onPaste : undefined} />
       </Field>
+      {files && (
+        <div>
+          <span className="mb-1 block text-2xs font-bold uppercase tracking-wide text-muted">Screenshots or files</span>
+          <FileTray files={tray} maxFiles={files.limits.filesPerAction} label="Add files"
+            hint={`Optional - up to ${files.limits.filesPerAction} files, ${files.limits.perFileMb} MB each. You can also paste a screenshot into the description box.`} />
+        </div>
+      )}
       {/* Left empty by people; bots that fill every field are turned away quietly. */}
       <input type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" className="absolute -left-[9999px] h-px w-px opacity-0" value={f.website} onChange={(e) => set({ website: e.target.value })} />
       {error && <Notice onClose={() => setError('')}>{error}</Notice>}

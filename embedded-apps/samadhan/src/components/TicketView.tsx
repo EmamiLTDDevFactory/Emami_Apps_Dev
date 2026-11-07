@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import DOMPurify from 'dompurify';
 import { ArrowRightLeft, Clock, Forward, Lock, Mail, MessageCircle, MessageSquare, Pencil, Phone, PhoneIncoming, PhoneOutgoing, Reply, Save, Send, User, Zap } from 'lucide-react';
 import { addMessage, addTimeLog, getTicket, updateTicket } from '@/lib/api';
@@ -14,6 +14,8 @@ import { INSERT_REPLY_EVENT, TicketAssist } from './Insights';
 import { InsertArticleButton } from './Solutions';
 import { CsatCard, PresenceBar, RelatedTickets, TicketBanners, TicketTodos, TicketToolbar, fillCanned } from './TicketExtras';
 import { Avatar, Button, Card, Field, Notice, Pill, Skeleton, Spinner, Tabs, cx, inputBase, inputCls, textareaCls } from './ui';
+import { AttachmentsCard, FileTray, Paperclips, uploadPending, usePendingFiles } from './Attachments';
+import { sizeOf } from '@/lib/files';
 
 /**
  * Email bodies are untrusted: keep formatting, drop scripts, forms, style blocks, event handlers and positioning.
@@ -102,6 +104,7 @@ function TicketScreen({ data, reload }: { data: TicketDetail; reload: () => Prom
         <div className="space-y-4">
           <TicketAssist ticket={t} reload={reload} />
           <Properties ticket={t} reload={reload} />
+          <AttachmentsCard ticketId={t.id} files={data.attachments ?? []} reload={reload} />
           <RelatedTickets data={data} reload={reload} />
           <Requester data={data} reload={reload} />
           <CsatCard data={data} />
@@ -169,6 +172,9 @@ function TicketHeader({ ticket: t, reload }: Props & { reload: () => Promise<voi
 
 function Thread({ data }: { data: TicketDetail }) {
   const { ticket: t, conversations, calls } = data;
+  // v7: files per message (portal uploads have no message of their own: they go with the description).
+  const files = data.attachments ?? [];
+  const filesOf = (convId: number | null) => files.filter((a) => (convId === null ? a.conversationId === null && a.channel === 'portal' : a.conversationId === convId));
   // Tickets created from email already carry the first message as an INCOMING conversation.
   const showDescription = !conversations.some((c) => c.kind === 'INCOMING') && t.description;
   // Messages and phone calls in one timeline.
@@ -183,7 +189,7 @@ function Thread({ data }: { data: TicketDetail }) {
   return (
     <div className="space-y-3">
       {showDescription && (
-        <Message kind="INCOMING" who={t.requesterName} sub={[t.requesterEmail ?? t.requesterPhone ?? '', t.source === 'Portal' ? 'via portal' : ''].filter(Boolean).join(' · ')} at={t.createdAt} html={t.description} />
+        <Message kind="INCOMING" who={t.requesterName} sub={[t.requesterEmail ?? t.requesterPhone ?? '', t.source === 'Portal' ? 'via portal' : ''].filter(Boolean).join(' · ')} at={t.createdAt} html={t.description} footer={<Paperclips files={filesOf(null)} ticketId={t.id} />} />
       )}
       {entries.map((e) => (e.call ? <CallEntry key={e.key} call={e.call} /> : e.c && (
         <Message
@@ -194,6 +200,7 @@ function Thread({ data }: { data: TicketDetail }) {
           sub={e.c.kind === 'INCOMING' ? e.c.fromPhone ?? e.c.fromEmail ?? '' : sentTo(e.c)}
           at={e.c.createdAt}
           html={e.c.bodyHtml}
+          footer={<Paperclips files={filesOf(e.c.id)} ticketId={t.id} />}
         />
       )))}
       {!showDescription && entries.length === 0 && <p className="text-sm text-muted">No messages yet.</p>}
@@ -221,7 +228,7 @@ function CallEntry({ call }: { call: CallLog }) {
   );
 }
 
-function Message({ kind, who, sub, at, html, whatsapp }: { kind: Conversation['kind']; who: string; sub: string; at: string; html: string; whatsapp?: boolean }) {
+function Message({ kind, who, sub, at, html, whatsapp, footer }: { kind: Conversation['kind']; who: string; sub: string; at: string; html: string; whatsapp?: boolean; footer?: ReactNode }) {
   const s = KIND_STYLE[kind];
   const [loadImages, setLoadImages] = useState(false);
   const clean = useMemo(() => safeHtml(html, loadImages), [html, loadImages]);
@@ -246,12 +253,16 @@ function Message({ kind, who, sub, at, html, whatsapp }: { kind: Conversation['k
         </div>
       )}
       <div className="mail-body" dangerouslySetInnerHTML={{ __html: clean.html }} />
+      {footer}
     </article>
   );
 }
 
 function Composer({ ticket: t, reload, onTyping }: Props & { reload: () => Promise<void>; onTyping: (typing: boolean) => void }) {
-  const { me, meta, mailEnabled, whatsappEnabled } = useSamadhan();
+  const { me, meta, mailEnabled, whatsappEnabled, attachments, can } = useSamadhan();
+  const lim = attachments?.limits;
+  const withFiles = Boolean(attachments?.enabled) && can('attachment.upload');
+  const tray = usePendingFiles(lim?.agent.perFileMb ?? 10, lim?.agent.filesPerAction ?? 10);
   const viaWhatsApp = t.source === 'WhatsApp' && Boolean(t.requesterMobile || t.requesterPhone);
   const [kind, setKind] = useState<'REPLY' | 'NOTE' | 'FORWARD'>('REPLY');
   const [text, setText] = useState('');
@@ -321,9 +332,17 @@ function Composer({ ticket: t, reload, onTyping }: Props & { reload: () => Promi
     setBusy(true);
     setMsg(null);
     try {
-      const delivery = await addMessage(t.id, { kind, text, ...(statusAfter ? { statusAfter: Number(statusAfter) } : {}), ...(kind === 'FORWARD' ? { to, cc } : kind === 'REPLY' && cc && !viaWhatsApp ? { cc } : {}) });
+      // v7: files go up first; the message then carries their ids (they are linked to it on the server).
+      let attachmentIds: number[] = [];
+      if (withFiles && tray.ready.length) {
+        const up = await uploadPending(t.id, tray.ready);
+        if (up.errors.length) throw new Error(`Nothing was sent - ${up.errors.join(' · ')}`);
+        attachmentIds = up.saved.map((a) => a.id);
+      }
+      const delivery = await addMessage(t.id, { kind, text, attachmentIds, ...(statusAfter ? { statusAfter: Number(statusAfter) } : {}), ...(kind === 'FORWARD' ? { to, cc } : kind === 'REPLY' && cc && !viaWhatsApp ? { cc } : {}) });
       setStatusAfter('');
       setText('');
+      tray.clear();
       setTo('');
       setCc('');
       if (delivery) {
@@ -397,10 +416,17 @@ function Composer({ ticket: t, reload, onTyping }: Props & { reload: () => Promi
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKey}
+          onPaste={withFiles && !viaWhatsApp ? tray.onPaste : undefined}
           placeholder={kind === 'NOTE' ? 'Only agents see private notes.' : 'Write your message. Type /code then Tab to insert a canned response.'}
           className={cx(textareaCls, kind === 'NOTE' && 'bg-[#FFFBEF]')}
           aria-label="Message"
         />
+        {withFiles && !viaWhatsApp && (
+          <FileTray files={tray} maxFiles={lim?.agent.filesPerAction ?? 10} compact testId="composer-files"
+            hint={kind !== 'NOTE' && lim && tray.ready.reduce((n, p) => n + sizeOf(p), 0) > lim.outboundMb * 1048576
+              ? `Over ${lim.outboundMb} MB together: the email will carry a sign-in link instead of the files.`
+              : `or drop / paste a screenshot · max ${lim?.agent.perFileMb ?? 10} MB each`} />
+        )}
         {msg && <Notice tone={msg.tone} onClose={() => setMsg(null)}>{msg.text}</Notice>}
         <div className="flex flex-wrap items-center justify-end gap-2">
           <select aria-label="Then set status" value={statusAfter} onChange={(e) => setStatusAfter(e.target.value)} className={cx('h-9 max-w-[240px] text-xs', inputBase)} title="Change the status in the same step (required fields are checked first)">

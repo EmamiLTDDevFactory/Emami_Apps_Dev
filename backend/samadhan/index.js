@@ -3,6 +3,7 @@ const express = require('express');
 const { ready } = require('./db/ready');
 const { initSchema } = require('./db/schema');
 const { requireAccess } = require('./middleware/auth');
+const { permissionGate } = require('./middleware/permission');
 const { rateLimit } = require('./middleware/rateLimit');
 
 /*
@@ -35,13 +36,18 @@ const router = express.Router();
 router.use(require('./routes/jobs'));
 // Requester portal and WhatsApp webhook: no hub sign-in, their own limits (routes/public.js).
 router.use(require('./routes/public'));
-router.use(requireAccess, rateLimit);
+// Signed 5-minute file links and the portal upload (routes/attachments.js) - checked by their own tokens.
+router.use(require('./routes/attachments').publicRouter);
+// Every signed-in route also passes the permission gate (middleware/permission.js: one rule per route, v7 Phase 2).
+router.use(requireAccess, rateLimit, permissionGate);
 router.use(require('./routes/me'));
 router.use(require('./routes/tickets'));
 router.use(require('./routes/work'));
 router.use(require('./routes/reports'));
 router.use(require('./routes/insights'));
+router.use(require('./routes/attachments').router);
 router.use('/admin', require('./routes/admin'));
+router.use('/admin/authz', require('./routes/authz'));
 
 // ---------- /api/setu: the pre-v7 path, kept as an alias ----------
 // Formerly Setu. Old browser tabs, the Meta WhatsApp webhook and any integration still calling /api/setu get the same

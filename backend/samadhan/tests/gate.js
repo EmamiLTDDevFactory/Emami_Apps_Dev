@@ -28,6 +28,11 @@ const PG_PORT = 55432;
 const API_PORT = 4191;
 const WEB_PORT = 3250;
 const QUICK = process.argv.includes('--quick');
+// --stages=static,unit,db,golden,e2e runs only those parts (db = api,rollback,attach,compat) (e.g. on a machine short of memory); default: everything.
+const STAGES = ((process.argv.find((a) => a.startsWith('--stages=')) || '').slice(9).split(',').filter(Boolean));
+const want = (s) => !STAGES.length || STAGES.includes(s);
+const DB_PARTS = ['api', 'rollback', 'attach', 'compat'];
+const wantDb = (s) => want('db') || STAGES.includes(s);
 const SECRET = crypto.randomBytes(32).toString('hex');
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
@@ -72,7 +77,10 @@ function freshDb(name, template) {
     if (!template) { const c = psql(name, HUB_TABLES); if (c.status !== 0) throw new Error(`hub tables: ${c.stderr}`); }
 }
 
+// Attachments (v7 Phase 2) are on in every suite, stored in a throwaway folder (the SFTP adapter is tested separately).
+const FILES_DIR = path.join(os.tmpdir(), `samadhan-gate-files-${process.pid}`);
 const SAFE_ENV = {
+    SAMADHAN_STORAGE: 'local', SAMADHAN_STORAGE_DIR: FILES_DIR,
     // 'localtest' is the scheduler secret api.test.js sends (tests/README.md); test-only, never a real value.
     HUB_AUTH_JWT_SECRET: SECRET, HUB_INTERNAL_API_SECRET: 'localtest',
     PGHOST: 'localhost', PGPORT: String(PG_PORT), PGUSER: 'postgres', PGPASSWORD: 'x',
@@ -102,11 +110,19 @@ async function stopBackend() {
 }
 
 let pgError = '';
-function pgRunning() { const r = psql('postgres', 'select 1'); pgError = (r.stderr || '').trim().split('\n').pop() || ''; return r.status === 0; }
+// With a time limit: on 2026-11-07 the cluster accepted connections but could not start a backend (Windows error 487
+// after an out-of-memory crash) and a plain psql waited forever, so the gate hung instead of restarting it.
+function pgRunning() {
+    const r = spawnSync(path.join(PG_BIN, 'psql'), ['-w', '-h', 'localhost', '-p', String(PG_PORT), '-U', 'postgres', '-d', 'postgres', '-qAtc', 'select 1'],
+        { encoding: 'utf8', timeout: 20000, env: { ...process.env, PGCONNECT_TIMEOUT: '10' } });
+    if (r.error) { pgError = `no answer in 20 s (${r.error.code || r.error.message})`; return false; }
+    pgError = (r.stderr || '').trim().split('\n').pop() || '';
+    return r.status === 0;
+}
 const PG_DIR = path.join(process.env.LOCALAPPDATA || os.homedir(), 'samadhan-test-pg');
 // Started through pg_ctl with -l, so the server log is kept in PG_DIR\server.log (it used to go nowhere).
 const pgCtl = (...a) => spawnSync(path.join(PG_BIN, 'pg_ctl'), ['-D', path.join(PG_DIR, 'data'), ...a], { encoding: 'utf8', timeout: 120000 });
-async function waitPg(seconds) { for (let i = 0; i < seconds && !pgRunning(); i++) await sleep(1000); return pgRunning(); }
+async function waitPg(seconds) { const end = Date.now() + seconds * 1000; while (Date.now() < end) { if (pgRunning()) return true; await sleep(1000); } return pgRunning(); }
 async function ensurePg() {
     if (pgRunning()) return { ok: true };
     if (!fs.existsSync(path.join(PG_DIR, 'data'))) return { ok: false, why: `not running and no ${PG_DIR}` };
@@ -118,7 +134,13 @@ async function ensurePg() {
     // Still not answering: on 2026-11-06 a recovery hung for over 20 minutes and only a restart cleared it.
     // This is the throwaway test cluster (every test database is rebuilt each run), so one forced restart is safe.
     console.log(`      test Postgres not ready after 5 min (${pgError}); restarting it once`);
-    pgCtl('stop', '-m', 'immediate', '-w', '-t', '60');
+    if (pgCtl('stop', '-m', 'immediate', '-w', '-t', '60').status !== 0) {
+        // A wedged server can ignore the stop request: end the process named in this cluster's own postmaster.pid.
+        const pidFile = path.join(PG_DIR, 'data', 'postmaster.pid');
+        const pid = fs.existsSync(pidFile) ? Number(fs.readFileSync(pidFile, 'utf8').split(/\r?\n/)[0].trim()) : 0;
+        if (pid) { try { process.kill(pid); } catch { /* already gone */ } await sleep(3000); }
+        fs.rmSync(pidFile, { force: true });
+    }
     start();
     if (await waitPg(300)) return { ok: true };
     return { ok: false, why: `not ready after a restart: ${pgError}; see ${path.join(PG_DIR, 'server.log')}` };
@@ -151,7 +173,13 @@ const apiSuite = (label, api, db, appId, schema = 'samadhan') => run(`API suite:
     expect: (o) => /ALL PASSED/.test(o) && !/^FAIL/m.test(o),
     detail: (o) => `${(o.match(/^PASS/gm) || []).length} pass, ${(o.match(/^FAIL/gm) || []).length} fail`,
 });
-const migrate = (db, dir) => run(`migrate ${dir} 7.0-rename on ${db}`, process.execPath, [path.join(__dirname, '..', 'db', 'migrate.js'), dir, '7.0-rename', '--yes'], { env: { ...SAFE_ENV, PGDATABASE: db } });
+const migrate = (db, dir, id = '7.0-rename') => run(`migrate ${dir} ${id} on ${db}`, process.execPath, [path.join(__dirname, '..', 'db', 'migrate.js'), dir, id, '--yes'], { env: { ...SAFE_ENV, PGDATABASE: db } });
+// v7 Phase 2: Authorization cockpit, permission middleware and data scope (tests/authz.api.test.js).
+const authzSuite = (label, db, appId, schema = 'samadhan') => run(`Authz suite: ${label}`, process.execPath, [path.join(__dirname, 'authz.api.test.js')], {
+    env: { ...SAFE_ENV, SAMADHAN_TEST_ALLOW: '1', SAMADHAN_TEST_API: `http://localhost:${API_PORT}/api/samadhan`, SAMADHAN_TEST_PG: `postgres://postgres@localhost:${PG_PORT}/${db}`, SAMADHAN_TEST_APP_ID: appId, SAMADHAN_TEST_SCHEMA: schema },
+    expect: (o) => /ALL PASSED/.test(o) && !/^FAIL/m.test(o),
+    detail: (o) => `${(o.match(/^PASS/gm) || []).length} pass, ${(o.match(/^FAIL/gm) || []).length} fail`,
+});
 
 const BASELINE_SMOKE = {
     'GET /api/health': 200, 'GET /api/access/me': 400, 'GET /api/admin/apps': 401, 'GET /api/me/notifications': 401, 'GET /api/dev-tracker/': 404,
@@ -236,8 +264,9 @@ async function e2e() {
 
 (async () => {
     const t0 = Date.now();
-    console.log(`Samadhan gate ${QUICK ? '(quick) ' : ''}- log: ${path.relative(ROOT, logFile)}`);
+    console.log(`Samadhan gate ${QUICK ? '(quick) ' : ''}${STAGES.length ? `(stages: ${STAGES.join(', ')}) ` : ''}- log: ${path.relative(ROOT, logFile)}`);
     // 1. Static
+    if (want('static')) {
     run('frontend typecheck', npm, ['run', 'typecheck'], { cwd: FRONT });
     run('frontend lint (0 errors, warnings <= baseline 2)', npm, ['run', 'lint'], { cwd: FRONT });
     run('frontend build (production settings)', npm, ['run', 'build'], { cwd: FRONT });
@@ -246,23 +275,49 @@ async function e2e() {
     jsFiles.push(path.join(BACKEND, 'server.js'), path.join(BACKEND, 'notifications.js'), path.join(STUB, 'build.js'));
     const syntaxBad = jsFiles.filter((f) => spawnSync(process.execPath, ['--check', f]).status !== 0);
     record('backend syntax (node --check)', !syntaxBad.length, syntaxBad.join(', ') || `${jsFiles.length} files`, 'backend syntax');
+    }
     // 2. Unit
     const nodeTest = (o) => `${(o.match(/ℹ pass (\d+)/) || [])[1] || 0} pass, ${(o.match(/ℹ fail (\d+)/) || [])[1] || 0} fail`;
-    run('Samadhan unit tests', process.execPath, ['--test', path.join(__dirname, 'unit.test.js'), path.join(__dirname, 'rename.test.js')], { detail: nodeTest });
-    run('shared backend tests (npm test)', npm, ['test'], { cwd: BACKEND, detail: nodeTest });
+    if (want('unit')) run('Samadhan unit tests', process.execPath, ['--test', path.join(__dirname, 'unit.test.js'), path.join(__dirname, 'rename.test.js'), path.join(__dirname, 'permissions.test.js'), path.join(__dirname, 'attachments.unit.test.js')], { detail: nodeTest });
+    if (want('unit')) run('shared backend tests (npm test)', npm, ['test'], { cwd: BACKEND, detail: nodeTest });
     // 3. Database suites
-    const pg = await ensurePg();
+    const pg = (DB_PARTS.some(wantDb) || want('golden') || want('e2e')) ? await ensurePg() : { ok: true, none: true };
+    if (pg.none) { /* no database stage requested */ } else
     if (!pg.ok) {
         record(`test database localhost:${PG_PORT}`, false, `${pg.why}; every database step skipped`);
     } else {
+        if (wantDb('api')) {
         freshDb('samadhan_test'); await startBackend('samadhan_test');
         apiSuite('new path /api/samadhan, grants under samadhan', 'samadhan', 'samadhan_test', 'samadhan');
+        authzSuite('cockpit, permissions, data scope', 'samadhan_test', 'samadhan');
+        }
+        if (wantDb('rollback')) {
+        // 7.1-auth rollback: without the cockpit tables everyone has exactly the old role behaviour; then up again.
+        freshDb('samadhan_test'); await startBackend('samadhan_test'); await stopBackend();
+        migrate('samadhan_test', 'down', '7.1-auth'); await startBackend('samadhan_test');
+        apiSuite('after migrate down 7.1-auth (no cockpit tables: base roles only)', 'samadhan', 'samadhan_test', 'samadhan');
+        await stopBackend(); migrate('samadhan_test', 'up', '7.1-auth'); await startBackend('samadhan_test');
+        authzSuite('after migrate up 7.1-auth again', 'samadhan_test', 'samadhan');
+        }
+        if (wantDb('attach')) {
+        // Attachments: 7.1-attachments down and up again on a new database, then the attachment suite (empty file folder).
+        freshDb('samadhan_test'); await startBackend('samadhan_test'); await stopBackend();
+        migrate('samadhan_test', 'down', '7.1-attachments'); migrate('samadhan_test', 'up', '7.1-attachments');
+        fs.rmSync(FILES_DIR, { recursive: true, force: true }); await startBackend('samadhan_test');
+        run('Attachments suite (local storage)', process.execPath, [path.join(__dirname, 'attachments.api.test.js')], {
+            env: { ...SAFE_ENV, SAMADHAN_TEST_ALLOW: '1', SAMADHAN_TEST_API: `http://localhost:${API_PORT}/api/samadhan`, SAMADHAN_TEST_PG: `postgres://postgres@localhost:${PG_PORT}/samadhan_test` },
+            expect: (o) => /ALL PASSED/.test(o) && !/^FAIL/m.test(o),
+            detail: (o) => `${(o.match(/^PASS/gm) || []).length} pass, ${(o.match(/^FAIL/gm) || []).length} fail`,
+        });
+        }
+        if (wantDb('compat')) {
         freshDb('samadhan_test'); await startBackend('samadhan_test');
         apiSuite('old path /api/setu, grants under setu (compatibility)', 'setu', 'samadhan_test', 'setu');
         freshDb('samadhan_test'); await startBackend('samadhan_test');
         golden('new database', 'samadhan', 'samadhan_test', 'samadhan', 'samadhan');
+        }
         await stopBackend();
-        if (await ensureV6Template()) {
+        if (!want('golden')) { /* golden stage not requested */ } else if (await ensureV6Template()) {
             freshDb('upg_test', 'golden_v6'); await startBackend('upg_test');
             golden('v6 database, before the rename (legacy schema)', 'samadhan', 'upg_test', 'setu', 'setu');
             await stopBackend(); migrate('upg_test', 'up'); await startBackend('upg_test');
@@ -276,15 +331,18 @@ async function e2e() {
             freshDb('legacy_test'); await startBackend('legacy_test'); await stopBackend();
             migrate('legacy_test', 'down'); await startBackend('legacy_test');
             apiSuite('legacy schema setu (rename not run yet), old grants', 'samadhan', 'legacy_test', 'setu', 'setu');
+            authzSuite('legacy schema setu, old grants', 'legacy_test', 'setu', 'setu');
             await stopBackend();
         } else record('v6 template database', false, 'could not be built from the v6 code');
-        await smoke();
-        if (!QUICK) await e2e();
+        if (want('e2e')) {
+            await smoke();
+            if (!QUICK) await e2e();
+        }
     }
     pathGuard();
     await stopBackend();
     const failed = results.filter((r) => !r.ok);
-    fs.writeFileSync(path.join(ART, 'gate-last.json'), JSON.stringify({ at: new Date().toISOString(), quick: QUICK, minutes: Math.round((Date.now() - t0) / 60000), results }, null, 2));
+    fs.writeFileSync(path.join(ART, STAGES.length ? `gate-last-${STAGES.join('-')}.json` : 'gate-last.json'), JSON.stringify({ at: new Date().toISOString(), quick: QUICK, stages: STAGES.length ? STAGES : 'all', minutes: Math.round((Date.now() - t0) / 60000), results }, null, 2));
     console.log(`\n${failed.length ? `GATE RED: ${failed.length} of ${results.length} failed` : `GATE GREEN: ${results.length} of ${results.length} passed`} in ${Math.round((Date.now() - t0) / 60000)} min`);
     process.exit(failed.length ? 1 : 0);
 })().catch(async (e) => { console.error('gate crashed:', e); await stopBackend(); process.exit(2); });

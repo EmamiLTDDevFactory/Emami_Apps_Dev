@@ -61,7 +61,8 @@ function buildTree(items: ArticleRow[]): Tree {
 
 /** Knowledge base: categories and folders on the left, articles on the right, reader in a drawer. */
 export default function Solutions() {
-  const { isSupervisor } = useSamadhan();
+  const { can } = useSamadhan();
+  const isSupervisor = can('article.edit'); // v7: write / edit articles (Supervisor + Admin by default)
   const [all, setAll] = useState<ArticleRow[] | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);

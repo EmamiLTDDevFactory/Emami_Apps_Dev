@@ -1,0 +1,9 @@
+{
+  "name": "samadhan-backend-module",
+  "private": true,
+  "description": "Samadhan's own extra dependencies (v7 Phase 2). Everything else comes from the shared backend/package.json. Installed by deploy/deploy-dev-server.sh with npm ci --omit=optional; the shared backend package is not touched.",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "ssh2-sftp-client": "12.1.1"
+  }
+}

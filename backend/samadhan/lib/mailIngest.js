@@ -64,11 +64,13 @@ async function processMessage(m) {
     if (!onThread && recent.rows[0].n >= 20) { await park(m, 'sender_flood'); return 'parked'; }
 
     let outcome;
+    let ticketId;
     if (existing && onThread) {
+        ticketId = existing.id;
         await addRequesterReply(existing.id, { html, fromEmail, messageId: m.internetMessageId, receivedAt: new Date(m.receivedDateTime) });
         outcome = 'threaded';
     } else {
-        await createTicket({
+        const created = await createTicket({
             subject: m.subject || '(no subject)',
             description: m.body.content,
             requester: { email: fromEmail, name: m.from?.emailAddress?.name ?? fromEmail },
@@ -76,7 +78,12 @@ async function processMessage(m) {
             createdAt: new Date(m.receivedDateTime),
             messageId: m.internetMessageId,
         });
+        ticketId = created?.id;
         outcome = 'created';
+    }
+    // v7: the mail's files (lib/mailAttachments.js). A storage problem never loses the mail itself.
+    if (ticketId && m.hasAttachments) {
+        try { await require('./mailAttachments').ingestMailAttachments(m, ticketId); } catch (err) { console.error('[samadhan] mail attachments:', err.message); }
     }
     await graph(`/users/${encodeURIComponent(MAILBOX)}/messages/${m.id}`, { method: 'PATCH', body: JSON.stringify({ isRead: true }) }).catch(() => {});
     return outcome;

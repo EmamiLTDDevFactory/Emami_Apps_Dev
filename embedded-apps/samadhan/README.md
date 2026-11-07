@@ -92,6 +92,16 @@ src/components/admin/  Admin sections: People (agents, groups), Sla (SLA, busine
 src/lib/            api (all backend calls), types, format (IST dates, durations), context, hub session
 ```
 
+## Permissions and attachments (v7 Phase 2)
+
+- What a person sees comes from `/me` → `permissions` and `scope`: `can(key)` in the app context hides buttons and
+  menu entries, and a screen guard sends a screen the person may not use (menu, deep link or `?screen=`) to their
+  first allowed screen. Against an older backend without `permissions` the old role rules apply.
+- Admin > Authorization cockpit (Admin only): `src/components/admin/Authz.tsx`.
+- Attachments: `src/components/Attachments.tsx` (card, paperclips, file tray with paste / drop) and `src/lib/files.ts`
+  (allow-list, sizes, screenshot compression). Shown only when `/me` → `attachments.enabled` is true.
+- Details: `docs/v7/PHASE-2-NOTES.md`.
+
 ## Development
 
 ```bash

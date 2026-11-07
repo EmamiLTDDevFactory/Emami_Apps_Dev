@@ -46,7 +46,8 @@ function ActionList({ items }: { items: ActionPoint[] }) {
 // ---------- Dashboard ----------
 
 export function DashboardInsights() {
-  const { isSupervisor } = useSamadhan();
+  const { can } = useSamadhan();
+  const isSupervisor = can('insights.refresh'); // v7: refresh on demand (Supervisor + Admin by default)
   const [data, setData] = useState<DashData | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);

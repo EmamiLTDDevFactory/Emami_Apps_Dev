@@ -226,3 +226,16 @@ node backend/samadhan/db/migrate.js down 7.0-rename --yes   # back to setu
 `7.0-rename` is explicit: the backend never renames the schema by itself. Stop (or restart right after) the backend
 around it. It refuses if anything outside the tables refers to `setu.` by name. A new database is created as
 `samadhan` directly.
+
+### Phase 2: permissions, data scope, attachments (schema v9)
+
+- `lib/permissions.js` (catalogue, system profiles, effective rights), `middleware/permission.js` (one rule per route,
+  fail closed, 60 s cache, data-scope 404s), `lib/authz.js` + `routes/authz.js` (cockpit API under `/admin/authz`).
+- `lib/storage.js` (`sftp`; `local` for tests), `lib/fileCheck.js`, `lib/attachments.js`, `routes/attachments.js`,
+  `lib/mailAttachments.js`. The SFTP client `ssh2-sftp-client` is Samadhan's own dependency
+  (`backend/samadhan/package.json`, installed by the deploy script with `npm ci`); the shared `backend/package.json` is unchanged.
+- Settings: `SAMADHAN_STORAGE=sftp` and `SAMADHAN_SFTP_*` (see `backend/.env.example`); attachments stay off while
+  `SAMADHAN_STORAGE` is empty.
+- Migrations `7.1-auth` and `7.1-attachments` run at start-up; both have a down step:
+  `node backend/samadhan/db/migrate.js down 7.1-attachments --yes`.
+- Server settings, test and roll-back steps: `docs/v7/PHASE-2-NOTES.md`.
