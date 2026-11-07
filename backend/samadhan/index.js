@@ -54,6 +54,8 @@ router.use('/admin', require('./routes/workspaces'));
 router.use(require('./routes/sap'));
 // v7 Phase 5: IT details (routes/it.js).
 router.use(require('./routes/it'));
+// v7 Phase 6: transports, change planning, approvals, calendar, catalogue, registers (routes/change.js).
+router.use(require('./routes/change'));
 
 // ---------- Transport route ----------
 // The dev web server forwards only one older route name to this backend until its own /api/samadhan block is added

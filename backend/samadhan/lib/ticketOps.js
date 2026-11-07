@@ -45,6 +45,8 @@ async function assertResolvable(statusId, ticket) {
         if (!sap?.environment) missing.push('Environment (SAP details)');
     }
     if (missing.length) throw fail(400, `Fill in all required fields before resolving: ${missing.join(', ')}.`);
+    // v7 Phase 6 (§P): approvals complete; changes with their transports in PRD (or N/A) and test evidence; access approved.
+    await require('./change').assertChangeRules(ticket);
 }
 
 async function setWatching(ticketId, agentId, on) {

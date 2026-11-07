@@ -245,6 +245,9 @@ async function workspaceMeta(c, byWorkspace) {
         refMasterKinds: require('../lib/sap').KINDS,
         // v7 Phase 5: lists for IT details.
         itLists: require('../lib/itSeed').IT_LISTS,
+        // v7 Phase 6: change lists and the service catalogue (§M catalogItems).
+        changeLists: (({ TR_TYPES, TR_STATUSES, CHANGE_TYPES, CHANGE_RISKS, DECISIONS, WINDOW_KINDS }) => ({ trTypes: TR_TYPES, trStatuses: TR_STATUSES, changeTypes: CHANGE_TYPES, changeRisks: CHANGE_RISKS, decisions: DECISIONS, windowKinds: WINDOW_KINDS }))(require('../lib/changeSeed')),
+        catalogItems: await require('../lib/change').listCatalog(),
         impacts: IMPACTS,
         urgencies: URGENCIES,
         statusWorkspaces: statusWs.rows,

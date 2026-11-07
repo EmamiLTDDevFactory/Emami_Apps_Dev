@@ -157,6 +157,14 @@ router.post('/tickets', wrap(async (req, res) => {
     let applicationId = intOrNull(b.applicationId);
     if (Number.isNaN(applicationId)) throw fail(400, 'Invalid application.');
     if (!applicationId && parentId) applicationId = (await loadTicket(parentId)).applicationId ?? null;
+    // v7 Phase 6: a service-catalogue request presets the fields, adds the answers and starts the item's approval.
+    let catalogReq = null;
+    if (b.catalogItemId) {
+        catalogReq = await require('../lib/change').prepareCatalogRequest({ ...b, applicationId, requesterEmail });
+        applicationId = catalogReq.applicationId;
+        for (const [k, v] of Object.entries(catalogReq.fields)) if (fields[k] === undefined || fields[k] === null || fields[k] === '') fields[k] = v;
+    }
+    const catalogText = catalogReq ? `\n\n${catalogReq.item.name}\n${catalogReq.lines.join('\n')}` : '';
     const t = await createTicket({
         applicationId,
         // v7 Phase 4: SAP details / an external case ("Track an SAP case") with the ticket; validated before anything is saved.
@@ -165,7 +173,7 @@ router.post('/tickets', wrap(async (req, res) => {
         // v7 Phase 5: IT details with the ticket; validated before anything is saved.
         it: b.it && typeof b.it === 'object' ? (require('../lib/it').cleanIt(b.it), b.it) : undefined,
         subject,
-        description: b.description ? textToHtml(String(b.description)) : '',
+        description: b.description || catalogText ? textToHtml(`${String(b.description || '')}${catalogText}`.trim()) : '',
         requester: { email: requesterEmail || null, name: requesterName, phone: String(b.requesterPhone || '').trim() || null },
         source,
         fields,
@@ -178,6 +186,7 @@ router.post('/tickets', wrap(async (req, res) => {
         await logActivity(t.id, 'child_of', { ticket: parentId }, req.agent.id);
         await logActivity(parentId, 'child_added', { ticket: t.id }, req.agent.id);
     }
+    if (catalogReq) await require('../lib/change').finishCatalogRequest(t.id, catalogReq, b.managerEmail, req.agent);
     const final = statusId && statusId !== t.statusId ? await updateTicket(t.id, { statusId }, req.agent.id) : await loadTicket(t.id);
     res.status(201).json({ success: true, ticket: final });
 }));
@@ -226,6 +235,9 @@ router.get('/tickets/:id', wrap(async (req, res) => {
         sap: await require('../lib/sap').getSap(id), externalRefs: await require('../lib/sap').listRefs(id),
         // v7 Phase 5: IT details (null before migration 7.5).
         it: await require('../lib/it').getIt(id),
+        // v7 Phase 6: transports, change planning, approvals.
+        transports: await require('../lib/change').listTransports(id), change: await require('../lib/change').getChange(id),
+        approvals: await require('../lib/change').listApprovals(id),
     });
 }));
 

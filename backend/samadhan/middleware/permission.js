@@ -46,6 +46,17 @@ const RULES = [
     ['DELETE', '/admin/ref-masters/:mid', 'admin.masters'],
     // it.js (v7 Phase 5)
     ['GET', '/tickets/:id/it', 'ticket.view'], ['PUT', '/tickets/:id/it', 'ticket.edit'],
+    // change.js (v7 Phase 6)
+    ['GET', '/tickets/:id/transports', 'ticket.view'], ['POST', '/tickets/:id/transports', 'transport.manage'],
+    ['PATCH', '/tickets/:id/transports/:tid', 'transport.manage'], ['DELETE', '/tickets/:id/transports/:tid', 'transport.manage'],
+    ['GET', '/tickets/:id/change', 'ticket.view'], ['PUT', '/tickets/:id/change', 'ticket.edit'],
+    ['GET', '/tickets/:id/approvals', 'ticket.view'], ['POST', '/tickets/:id/approvals', 'ticket.edit'],
+    ['POST', '/tickets/:id/approvals/:aid/decide', 'ticket.view'], ['DELETE', '/tickets/:id/approvals', 'ticket.edit'],
+    ['GET', '/approvals/mine', 'screen.approvals'], ['GET', '/change-calendar', 'screen.changeCalendar'], ['GET', '/catalog', 'ticket.view'],
+    ['GET', '/registers', 'screen.reports'], ['GET', '/registers/:kind', 'screen.reports'],
+    ['GET', '/admin/approval-chains', 'admin.approvalChains'], ['POST', '/admin/approval-chains', 'admin.approvalChains'], ['DELETE', '/admin/approval-chains/:cid', 'admin.approvalChains'],
+    ['GET', '/admin/catalog', 'admin.catalog'], ['POST', '/admin/catalog', 'admin.catalog'], ['DELETE', '/admin/catalog/:iid', 'admin.catalog'],
+    ['GET', '/admin/change-windows', 'admin.approvalChains'], ['POST', '/admin/change-windows', 'admin.approvalChains'], ['DELETE', '/admin/change-windows/:wid', 'admin.approvalChains'],
     // work.js
     ['GET', '/todos', ANY], ['POST', '/todos', ANY], ['PATCH', '/todos/:id', ANY], ['DELETE', '/todos/:id', ANY],
     ['GET', '/views', ANY], ['POST', '/views', (req) => (req.body?.shared ? 'views.share' : ANY)], ['DELETE', '/views/:id', ANY],

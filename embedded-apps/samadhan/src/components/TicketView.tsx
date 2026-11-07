@@ -19,6 +19,7 @@ import { Avatar, Button, Card, Field, Notice, Pill, Skeleton, Spinner, Tabs, cx,
 import { AttachmentsCard, FileTray, Paperclips, uploadPending, usePendingFiles } from './Attachments';
 import { ExternalRefsCard, SapCard } from './Sap';
 import { ItCard } from './ItDetails';
+import { ApprovalsCard, ChangeCard, TransportsCard } from './Change';
 import { sizeOf } from '@/lib/files';
 
 /**
@@ -104,6 +105,11 @@ function TicketScreen({ data, reload }: { data: TicketDetail; reload: () => Prom
   const showRefs = (!!deskKey && deskKey !== 'SEC_SALES') || (data.externalRefs?.length ?? 0) > 0;
   // v7 Phase 5: IT details for the Digital Apps / Infra & IT desks (or whenever some exist).
   const showIt = deskKey === 'DIGITAL_APPS' || deskKey === 'INFRA_IT' || !!data.it;
+  // v7 Phase 6: transports (SAP / S/4 changes), change plan / access validity, approvals (outside Secondary Sales or when started).
+  const otherDesk = !!deskKey && deskKey !== 'SEC_SALES';
+  const showTransports = (otherDesk && (deskKey === 'SAP' || deskKey === 'S4_PROGRAM') && t.recordClass === 'CHANGE') || (data.transports?.length ?? 0) > 0;
+  const showChange = (otherDesk && (t.recordClass === 'CHANGE' || t.recordClass === 'ACCESS_REQUEST')) || !!data.change;
+  const showApprovals = otherDesk || (data.approvals?.length ?? 0) > 0;
   return (
     <div className="space-y-4">
       <TicketToolbar data={data} reload={reload} />
@@ -120,6 +126,9 @@ function TicketScreen({ data, reload }: { data: TicketDetail; reload: () => Prom
           <TicketAssist ticket={t} reload={reload} />
           <Properties ticket={t} reload={reload} />
           {showSap && <SapCard ticketId={t.id} sap={data.sap} reload={reload} />}
+          {showApprovals && <ApprovalsCard ticket={t} approvals={data.approvals ?? []} reload={reload} />}
+          {showChange && <ChangeCard ticket={t} change={data.change} reload={reload} />}
+          {showTransports && <TransportsCard ticketId={t.id} transports={data.transports ?? []} reload={reload} />}
           {showIt && <ItCard ticketId={t.id} it={data.it} deskKey={deskKey} reload={reload} />}
           {showRefs && <ExternalRefsCard ticketId={t.id} refs={data.externalRefs ?? []} reload={reload} />}
           <AttachmentsCard ticketId={t.id} files={data.attachments ?? []} reload={reload} />

@@ -80,7 +80,10 @@ router.get('/portal/config', wrap(async (req, res) => {
             const applications = await portalApplications();
             if (!applications.length) return {};
             const desks = [...new Set(applications.map((a) => a.workspaceId))];
-            return { applications, categoriesByWorkspace: Object.fromEntries(await Promise.all(desks.map(async (w) => [w, await categories(w)]))) };
+            // v7 Phase 6: portal-visible catalogue items of those desks.
+            const catalogItems = (await require('../lib/change').listCatalog({ portal: true })).filter((i) => desks.includes(i.workspaceId))
+                .map((i) => ({ id: i.id, name: i.name, description: i.description, icon: i.icon, workspaceId: i.workspaceId, formSchema: i.formSchema, needsManager: i.needsManager === true }));
+            return { applications, categoriesByWorkspace: Object.fromEntries(await Promise.all(desks.map(async (w) => [w, await categories(w)]))), catalogItems };
         })()),
         helpdeskName: await option('general.helpdeskName'), intro: await option('portal.intro'), supportEmail: await option('general.supportEmail'),
         // v7: requesters may add files after submitting (portal limits).
@@ -112,6 +115,13 @@ router.post('/portal/tickets', wrap(async (req, res) => {
         if (!app) throw fail(400, 'Pick an application from the list.');
     }
     if (category && !(await categories(app?.workspaceId ?? null)).includes(category)) throw fail(400, 'Pick a category from the list.');
+    // v7 Phase 6: a catalogue request from the portal (only items of desks open to the portal).
+    let catalogReq = null;
+    if (b.catalogItemId) {
+        const open = new Set((await portalApplications()).map((a) => a.workspaceId));
+        catalogReq = await require('../lib/change').prepareCatalogRequest({ ...b, applicationId: app?.id ?? null, requesterEmail: email, portal: true });
+        if (!open.has(catalogReq.item.workspaceId)) throw fail(400, 'Pick a request from the list.');
+    }
 
     const [perEmail, total] = await Promise.all([
         pool.query(
@@ -132,19 +142,35 @@ router.post('/portal/tickets', wrap(async (req, res) => {
     }
     const t = await createTicket({
         subject,
-        description: textToHtml(description),
+        description: textToHtml(catalogReq ? `${description}\n\n${catalogReq.item.name}\n${catalogReq.lines.join('\n')}` : description),
         requester: { email, name, phone: phone || null },
         source: 'Portal',
-        fields,
+        fields: catalogReq ? { ...catalogReq.fields, ...Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined)) } : fields,
         notifyRequester: true,
-        ...(app ? { applicationId: app.id } : {}),
+        ...(catalogReq ? { applicationId: catalogReq.applicationId } : app ? { applicationId: app.id } : {}),
     });
+    if (catalogReq) await require('../lib/change').finishCatalogRequest(t.id, catalogReq, b.managerEmail);
     // v7: when attachments are on, a 30-minute token lets the requester add files to this one ticket (routes/attachments.js).
     const { portalUploadToken } = require('./attachments');
     const { storageInfo } = require('../lib/storage');
     const { limits } = require('../lib/attachments');
     const files = storageInfo().enabled ? { uploadToken: portalUploadToken(t.id), limits: (await limits()).portal } : null;
     res.status(201).json({ success: true, ticket: { id: t.id, ref: t.ref ?? String(t.id) }, ...(files ? { files } : {}) });
+}));
+
+// ---------- v7 Phase 6: one-click approval links (single-use token, 7 days; no sign-in) ----------
+router.get('/portal/approval/:token', wrap(async (req, res) => {
+    await ready;
+    portalLimit(req, 'status');
+    res.json({ success: true, approval: await require('../lib/change').approvalByToken(req.params.token) });
+}));
+router.post('/portal/approval/:token', wrap(async (req, res) => {
+    await ready;
+    portalLimit(req, 'status');
+    const ch = require('../lib/change');
+    const a = await ch.approvalByToken(req.params.token);
+    await ch.decide(a.id, { decision: req.body?.decision, comment: req.body?.comment }, { token: req.params.token });
+    res.json({ success: true });
 }));
 
 /** Status of one ticket for the person who raised it: ticket number + their email must match. No conversation text. */

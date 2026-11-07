@@ -37,4 +37,6 @@ export const SCREEN_KEY = {
   dashboard: 'screen.dashboard', helpdesk: 'screen.helpdesk', tickets: 'screen.tickets', ticket: 'ticket.view', board: 'screen.board',
   new: 'screen.newTicket', contacts: 'screen.contacts', solutions: 'screen.solutions', analytics: 'screen.analytics',
   reports: 'screen.reports', admin: 'admin.general',
+  // v7 Phase 6
+  approvals: 'screen.approvals', calendar: 'screen.changeCalendar', registers: 'screen.reports',
 } as const;

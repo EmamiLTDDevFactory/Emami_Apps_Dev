@@ -657,6 +657,86 @@ const MIGRATIONS = [
             return 'IT desk configuration and table removed';
         },
     },
+    {
+        // v7 Phase 6 (master prompt §I, §O, §P): transports, change details, approval chains + ticket approvals, the
+        // service catalogue and change windows; seeds the six approval chains and the catalogue (§O).
+        // Seeded rows are recorded in settings 'seed.7.6'; down drops the new tables (all rows go with them).
+        id: '7.6-change',
+        describe: 'Transports, change details, approval chains and ticket approvals, service catalogue, change windows; chain and catalogue seeds',
+        async up(client) {
+            const S = ident(activeSchema());
+            const seed = require('../lib/changeSeed');
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.ticket_transports (
+                id serial PRIMARY KEY, "ticketId" int NOT NULL REFERENCES ${S}.tickets(id) ON DELETE CASCADE,
+                "trNumber" text NOT NULL, description text, "trType" text, owner text, "sourceSystem" text, status text NOT NULL DEFAULT 'Created',
+                "targetSystems" text[] NOT NULL DEFAULT '{}', "importedQasAt" timestamptz, "testedOkBy" text, "testedOkById" int, "approvedForPrdBy" text,
+                "importedPrdAt" timestamptz, "returnCode" int, notes text, "createdBy" int REFERENCES ${S}.agents(id) ON DELETE SET NULL,
+                "createdAt" timestamptz NOT NULL DEFAULT now(), "updatedAt" timestamptz NOT NULL DEFAULT now(), UNIQUE ("ticketId", "trNumber"))`);
+            await q(client, `CREATE INDEX IF NOT EXISTS ticket_transports_tr_idx ON ${S}.ticket_transports ("trNumber")`);
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.ticket_change_details (
+                "ticketId" int PRIMARY KEY REFERENCES ${S}.tickets(id) ON DELETE CASCADE,
+                "changeType" text, "changeRisk" text, "plannedStart" timestamptz, "plannedEnd" timestamptz, "transportsNa" boolean NOT NULL DEFAULT false,
+                "testEvidence" text, "implementationPlan" text, "backoutPlan" text, "accessValidTo" timestamptz, "freezeOverrideReason" text,
+                "updatedAt" timestamptz NOT NULL DEFAULT now())`);
+            await q(client, `CREATE INDEX IF NOT EXISTS ticket_change_planned_idx ON ${S}.ticket_change_details ("plannedStart")`);
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.approval_chains (
+                id serial PRIMARY KEY, name text NOT NULL, "workspaceId" int REFERENCES ${S}.workspaces(id) ON DELETE SET NULL, "applicationId" int,
+                "appliesTo" jsonb NOT NULL DEFAULT '{}', steps jsonb NOT NULL DEFAULT '[]', active boolean NOT NULL DEFAULT true, "seedKey" text,
+                "createdAt" timestamptz NOT NULL DEFAULT now())`);
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.ticket_approvals (
+                id serial PRIMARY KEY, "ticketId" int NOT NULL REFERENCES ${S}.tickets(id) ON DELETE CASCADE,
+                "chainId" int REFERENCES ${S}.approval_chains(id) ON DELETE SET NULL, round int NOT NULL DEFAULT 1, "stepNo" int NOT NULL, "stepName" text NOT NULL,
+                "approverType" text NOT NULL, "approverAgentId" int REFERENCES ${S}.agents(id) ON DELETE SET NULL, "approverEmail" text,
+                state text NOT NULL CHECK (state IN ('Waiting', 'Pending', 'Approved', 'Rejected', 'Cancelled')), decision text, comment text,
+                "decidedAt" timestamptz, "decidedBy" text, "dueAt" timestamptz, "remindedAt" timestamptz, "tokenHash" text, "tokenExpiresAt" timestamptz,
+                "createdAt" timestamptz NOT NULL DEFAULT now())`);
+            await q(client, `CREATE INDEX IF NOT EXISTS ticket_approvals_ticket_idx ON ${S}.ticket_approvals ("ticketId")`);
+            await q(client, `CREATE INDEX IF NOT EXISTS ticket_approvals_pending_idx ON ${S}.ticket_approvals (state) WHERE state = 'Pending'`);
+            await q(client, `CREATE UNIQUE INDEX IF NOT EXISTS ticket_approvals_token_idx ON ${S}.ticket_approvals ("tokenHash") WHERE "tokenHash" IS NOT NULL`);
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.service_catalog_items (
+                id serial PRIMARY KEY, name text NOT NULL, "workspaceId" int NOT NULL REFERENCES ${S}.workspaces(id) ON DELETE CASCADE, "applicationId" int,
+                description text, icon text, "recordClass" text NOT NULL DEFAULT 'SERVICE_REQUEST', "defaultType" text, category text, "function" text,
+                "formSchema" jsonb NOT NULL DEFAULT '[]', "approvalChainId" int REFERENCES ${S}.approval_chains(id) ON DELETE SET NULL,
+                "fulfilGroupId" int REFERENCES ${S}.groups(id) ON DELETE SET NULL, "slaPolicyId" int, "portalVisible" boolean NOT NULL DEFAULT false,
+                active boolean NOT NULL DEFAULT true, position int NOT NULL DEFAULT 100, "seedKey" text, "createdAt" timestamptz NOT NULL DEFAULT now())`);
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.change_windows (
+                id serial PRIMARY KEY, "workspaceId" int REFERENCES ${S}.workspaces(id) ON DELETE CASCADE, kind text NOT NULL CHECK (kind IN ('FREEZE', 'MAINTENANCE')),
+                name text NOT NULL, "startsAt" timestamptz NOT NULL, "endsAt" timestamptz NOT NULL, systems text[] NOT NULL DEFAULT '{}', note text,
+                "createdAt" timestamptz NOT NULL DEFAULT now(), CHECK ("endsAt" > "startsAt"))`);
+            await q(client, `CREATE INDEX IF NOT EXISTS change_windows_range_idx ON ${S}.change_windows ("startsAt", "endsAt")`);
+
+            const ws = Object.fromEntries((await q(client, `SELECT id, key FROM ${S}.workspaces`)).rows.map((r) => [r.key, r.id]));
+            const group = Object.fromEntries((await q(client, `SELECT id, name FROM ${S}.groups`)).rows.map((r) => [r.name, r.id]));
+            const chain = {};
+            for (const c of seed.CHAINS) {
+                const have = (await q(client, `SELECT id FROM ${S}.approval_chains WHERE "seedKey" = $1`, [`7.6:${c.key}`])).rows[0];
+                if (have) { chain[c.key] = have.id; continue; }
+                if (c.workspace && !ws[c.workspace]) continue;
+                chain[c.key] = (await q(client, `INSERT INTO ${S}.approval_chains (name, "workspaceId", "appliesTo", steps, "seedKey") VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+                    [c.name, c.workspace ? ws[c.workspace] : null, JSON.stringify(c.appliesTo), JSON.stringify(c.steps), `7.6:${c.key}`])).rows[0].id;
+            }
+            let n = 0;
+            for (const [i, [k, name, description, icon, rc, category, fn, chainKey, portal, fulfil, form]] of seed.CATALOG.entries()) {
+                if (!ws[k]) continue;
+                const key = `7.6:${k}:${name}`;
+                if ((await q(client, `SELECT 1 FROM ${S}.service_catalog_items WHERE "seedKey" = $1`, [key])).rows.length) continue;
+                await q(client, `INSERT INTO ${S}.service_catalog_items (name, "workspaceId", description, icon, "recordClass", category, "function", "formSchema", "approvalChainId",
+                    "fulfilGroupId", "portalVisible", position, "seedKey") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+                [name, ws[k], description, icon, rc, category, fn, JSON.stringify(form), chainKey ? chain[chainKey] ?? null : null, fulfil ? group[fulfil] ?? null : null, portal, i + 1, key]);
+                n++;
+            }
+            await q(client, `INSERT INTO ${S}.settings (key, value) VALUES ('seed.7.6', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, [JSON.stringify({ chains: Object.keys(chain).length, catalog: n })]);
+            return `Change & access: ${Object.keys(chain).length} approval chains, ${n} catalogue items`;
+        },
+        async down(client) {
+            const S = ident(activeSchema());
+            for (const t of ['service_catalog_items', 'ticket_approvals', 'approval_chains', 'change_windows', 'ticket_change_details', 'ticket_transports']) {
+                await q(client, `DROP TABLE IF EXISTS ${S}.${t}`);
+            }
+            await q(client, `DELETE FROM ${S}.settings WHERE key = 'seed.7.6'`);
+            return 'Change & access tables removed';
+        },
+    },
 ];
 
 async function applied(client, schema) {

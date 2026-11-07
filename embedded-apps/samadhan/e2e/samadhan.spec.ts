@@ -365,3 +365,45 @@ test('IT desks: app details on the ticket, portal application picker', async ({ 
   }
   expect(problems).toEqual([]);
 });
+
+// ---------- v7 Phase 6: change and access ----------
+test('change & access: transports, approvals, my approvals, calendar, registers, admin catalogue', async ({ page }) => {
+  const problems = watch(page);
+  await signIn(page, data.admin);
+  page.on('dialog', (d) => d.accept());
+  const ws = await api(data.admin, 'GET', '/admin/workspaces');
+  const sapWs = ws.body?.workspaces?.find((w: { key: string }) => w.key === 'SAP');
+  const sapApp = ws.body?.applications?.find((a: { code: string }) => a.code === 'SAP');
+  try {
+    await api(data.admin, 'PUT', `/admin/workspaces/${sapWs.id}`, { enabled: true });
+    await api(data.admin, 'PUT', '/admin/workspaces/flag', { enabled: true });
+    const name = test.info().project.name;
+    const chg = await api(data.admin, 'POST', '/tickets', { subject: `Pricing change ${name}`, requesterName: 'E2E Requester', requesterEmail: 'e2e.req@test.samadhan.local', applicationId: sapApp.id, recordClass: 'CHANGE', category: 'Basis' });
+    expect(chg.status).toBe(201);
+    const chains = await api(data.admin, 'GET', `/tickets/${chg.body.ticket.id}/approvals`);
+    const normal = chains.body.chains.find((c: { name: string }) => c.name === 'Normal change');
+    expect((await api(data.admin, 'POST', `/tickets/${chg.body.ticket.id}/approvals`, { chainId: normal.id })).status).toBe(201);
+    await page.goto(`/apps/samadhan/?ticket=${chg.body.ticket.id}`);
+    await expect(page.getByTestId('approvals')).toContainText('Module / domain lead');
+    const trs = page.getByTestId('transports');
+    await page.getByRole('button', { name: 'New transport' }).click();
+    await page.getByLabel(/^Transport number/).fill(name === 'desktop' ? 'ECDK900501' : 'ECDK900502');
+    await page.getByRole('button', { name: 'Add transport' }).click();
+    await expect(trs).toContainText(name === 'desktop' ? 'ECDK900501' : 'ECDK900502');
+    await page.goto('/apps/samadhan/?screen=approvals');
+    await expect(page.getByTestId('my-approvals')).toContainText(`Pricing change ${name}`);
+    await page.goto('/apps/samadhan/?screen=calendar');
+    await expect(page.getByTestId('change-calendar')).toBeVisible();
+    await page.goto('/apps/samadhan/?screen=registers');
+    await expect(page.getByTestId('registers')).toContainText('Change & Transport Register');
+    await page.goto('/apps/samadhan/?screen=admin');
+    await page.getByRole('tab', { name: 'Service catalog' }).click();
+    await expect(page.getByTestId('admin-catalog')).toContainText('Role assignment');
+    await api(data.admin, 'DELETE', `/tickets/${chg.body.ticket.id}/approvals`);
+  } finally {
+    await api(data.admin, 'PUT', '/admin/workspaces/flag', { enabled: false });
+    if (sapWs) await api(data.admin, 'PUT', `/admin/workspaces/${sapWs.id}`, { enabled: false });
+    await api(data.admin, 'PUT', '/me/preferences', { workspace: null });
+  }
+  expect(problems).toEqual([]);
+});

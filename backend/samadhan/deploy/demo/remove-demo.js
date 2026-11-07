@@ -51,6 +51,8 @@ async function main() {
     // (tag demo; the rest cascades with the demo agents).
     const v7 = (await client.query(`SELECT value FROM samadhan.settings WHERE key = 'demo.v7.manifest'`)).rows[0]?.value || {};
     await client.query('DELETE FROM samadhan.variants WHERE id = ANY($1::int[])', [v7.variantIds || []]);
+    // v7 Phase 6 demo windows (to_regclass: nothing to do before migration 7.6).
+    if ((await client.query("SELECT to_regclass('samadhan.change_windows') AS t")).rows[0].t) await client.query("DELETE FROM samadhan.change_windows WHERE note = 'demo'");
     const v7groups = await client.query(`DELETE FROM samadhan.groups g WHERE g.id = ANY($1::int[]) AND NOT EXISTS (SELECT 1 FROM samadhan.tickets t WHERE t."groupId" = g.id)`, [v7.groupIds || []]);
     const v7choices = await client.query('DELETE FROM samadhan.field_choices WHERE id = ANY($1::int[])', [v7.choiceIds || []]);
     await client.query('DELETE FROM samadhan.severity_rules WHERE id = ANY($1::int[])', [v7.severityRuleIds || []]);

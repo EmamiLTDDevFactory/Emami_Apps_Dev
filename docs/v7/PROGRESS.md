@@ -11,9 +11,10 @@ Resume here in a new session: read this file and `docs/SAMADHAN_MASTER_PROMPT_FI
 | 1 (rename + harness) | done, pushed to main, deployed to dev |
 | 2 (permissions, cockpit, data scope, attachments) | done, pushed to main, deployed to dev |
 | 3 (service desks, applications, references, mail classification) | done, pushed to main, deployed to dev |
-| 4 (SAP & Primary Sales desk) | **done 2026-11-07**, gate green in parts, pushed to main (0a577a7); **dev backend deploy pending** (server unreachable off the office network); see PHASE-4-NOTES.md |
+| 4 (SAP & Primary Sales desk) | **done 2026-11-07**, gate green in parts, pushed to main (0a577a7); deployed to dev; see PHASE-4-NOTES.md |
 | 5 (Digital Apps, Infra & IT, IT details, portal application picker) | **done 2026-11-07**, gate green in parts, pushed to main; see PHASE-5-NOTES.md |
-| 6 – 9 | next: 6 (approvals, catalog, transports, change calendar, SoD, registers) |
+| 6 (change & access: catalogue, approvals, SoD, transports, change calendar, registers) | **done 2026-11-07**, gate green in parts, pushed to main; see PHASE-6-NOTES.md |
+| 7 – 9 | next: 7 (major incident, PIR, problem / KEDB, detection, dashboards) |
 
 ### Decisions taken at the Phase-0 STOP (approval without individual answers → recommended options)
 - Q-R1 **Option A** (app id `samadhan`, `setu` kept as alias; one line in access-tracker). Q-R2 redirect stub
