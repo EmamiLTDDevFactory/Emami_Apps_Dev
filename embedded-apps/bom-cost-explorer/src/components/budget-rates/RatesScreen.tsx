@@ -1,8 +1,11 @@
 'use client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BarChart3, Upload } from 'lucide-react';
+import { BarChart3, Calculator, Upload } from 'lucide-react';
 import { Card, Empty, Spinner, Stat, cx } from '../ui';
 import PlanFrame from '../plan/PlanFrame';
+import { BUDGET_ENABLED } from '@/lib/budget/flag';
+import { BASE_PATH, useHubSession } from '@/lib/client/session';
+import { canDisplayBudget, useBudgetRole } from '@/lib/budget/roles';
 import RatesFilters from './RatesFilters';
 import RatesTable from './RatesTable';
 import RatesUpload from './RatesUpload';
@@ -14,6 +17,10 @@ type Tab = 'analysis' | 'upload';
 const readTab = (): Tab => (new URLSearchParams(window.location.search).get('tab') === 'upload' ? 'upload' : 'analysis');
 
 export default function RatesScreen() {
+  // The existing Budget costing module (run, hierarchy, checklist, approvals) keeps its own role gate (Manage Access: Admin / budget-init / budget-approve).
+  const hub = useHubSession();
+  const budgetRole = useBudgetRole(hub && hub !== 'checking' ? hub.email : '');
+  const showCosting = BUDGET_ENABLED && budgetRole !== 'checking' && canDisplayBudget(budgetRole);
   const [tab, setTabState] = useState<Tab>('analysis');
   const [last, setLast] = useState<BudgetSearchParams | null>(null);
   const [rows, setRows] = useState<(BudCompDom | BudCompIntl)[]>([]);
@@ -64,7 +71,13 @@ export default function RatesScreen() {
 
   return (
     <PlanFrame active="budget-rates">
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className={cx('grid gap-3', showCosting ? 'sm:grid-cols-3' : 'sm:grid-cols-2')}>
+        {showCosting && (
+          <a href={`${BASE_PATH}/budget-cost/`} className="flex items-center gap-3 rounded-2xl border border-line bg-panel px-4 py-3 text-left shadow-card transition hover:bg-sunken">
+            <span className="grid h-9 w-9 place-items-center rounded-lg bg-gradient-to-br from-accent to-accent-deep text-white"><Calculator size={18} /></span>
+            <span><span className="block text-sm font-bold">Budget costing</span><span className="block text-2xs text-muted">Run, hierarchy, checklist, approvals</span></span>
+          </a>
+        )}
         {tile('analysis', <BarChart3 size={18} />, 'Analysis', 'Read component rates from SAP')}
         {tile('upload', <Upload size={18} />, 'Upload', 'Write Excel rates to SAP')}
       </div>
