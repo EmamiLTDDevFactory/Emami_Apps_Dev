@@ -15,6 +15,8 @@ import {
   AgeingWidget, BacklogWidget, CategoriesWidget, LeaderboardWidget, RegionStatusWidget, RiskWidget, SlaWidget, SourcesWidget,
 } from './dashboard/OverviewWidgets';
 import { Button, Card, Empty, Notice, Skeleton, cx } from './ui';
+import ServiceHealth from './ServiceHealth';
+import { multiDesk } from '@/lib/workspaces';
 
 const PERIODS = [7, 14, 30, 60] as const;
 type Period = (typeof PERIODS)[number];
@@ -176,6 +178,8 @@ export default function Dashboard() {
           <Button size="sm" onClick={load} disabled={busy}><RefreshCw size={13} className={busy ? 'motion-safe:animate-spin' : ''} /> Refresh</Button>
         </div>
       </div>
+      {/* v7 Phase 7: service health while the service desks are on (Secondary Sales only = as before). */}
+      {multiDesk(meta) && <ServiceHealth />}
       {error && <Notice onClose={() => setError('')}>{error}</Notice>}
       {layoutError && <Notice onClose={() => setLayoutError('')}>{layoutError}</Notice>}
 

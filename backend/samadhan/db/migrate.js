@@ -737,6 +737,43 @@ const MIGRATIONS = [
             return 'Change & access tables removed';
         },
     },
+    {
+        // v7 Phase 7 (master prompt §I, §P): major incidents, post-incident reviews, problems (tickets."problemId"),
+        // known-error details (KEDB) and problem candidates. Down drops the new tables and columns.
+        id: '7.7-problem',
+        describe: 'Major-incident columns, problem link, post-incident reviews, known errors (KEDB), problem candidates',
+        async up(client) {
+            const S = ident(activeSchema());
+            await q(client, `ALTER TABLE ${S}.tickets ADD COLUMN IF NOT EXISTS "isMajorIncident" boolean NOT NULL DEFAULT false,
+                ADD COLUMN IF NOT EXISTS "majorDeclaredAt" timestamptz, ADD COLUMN IF NOT EXISTS "majorBridgeUrl" text,
+                ADD COLUMN IF NOT EXISTS "majorNextUpdateAt" timestamptz, ADD COLUMN IF NOT EXISTS "majorRemindedAt" timestamptz,
+                ADD COLUMN IF NOT EXISTS "problemId" int REFERENCES ${S}.tickets(id) ON DELETE SET NULL`);
+            await q(client, `CREATE INDEX IF NOT EXISTS tickets_major_idx ON ${S}.tickets ("isMajorIncident") WHERE "isMajorIncident"`);
+            await q(client, `CREATE INDEX IF NOT EXISTS tickets_problem_idx ON ${S}.tickets ("problemId") WHERE "problemId" IS NOT NULL`);
+            await q(client, `CREATE INDEX IF NOT EXISTS tickets_record_class_idx ON ${S}.tickets ("recordClass")`);
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.post_incident_reviews (
+                "ticketId" int PRIMARY KEY REFERENCES ${S}.tickets(id) ON DELETE CASCADE, summary text, "impactDescription" text, timeline jsonb NOT NULL DEFAULT '[]',
+                "rootCause" text, "rootCauseCategory" text, "contributingFactors" text, "correctiveActions" jsonb NOT NULL DEFAULT '[]',
+                "preventiveActions" jsonb NOT NULL DEFAULT '[]', "reviewedBy" text, "reviewedAt" timestamptz,
+                "createdAt" timestamptz NOT NULL DEFAULT now(), "updatedAt" timestamptz NOT NULL DEFAULT now())`);
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.problem_details (
+                "ticketId" int PRIMARY KEY REFERENCES ${S}.tickets(id) ON DELETE CASCADE, status text NOT NULL DEFAULT 'Under investigation',
+                "knownError" boolean NOT NULL DEFAULT false, symptom text, workaround text, "rootCause" text, "permanentFix" text,
+                "createdAt" timestamptz NOT NULL DEFAULT now(), "updatedAt" timestamptz NOT NULL DEFAULT now())`);
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.problem_candidates (
+                id serial PRIMARY KEY, key text NOT NULL UNIQUE, "applicationId" int, category text, "function" text, "ticketIds" int[] NOT NULL,
+                "problemTicketId" int REFERENCES ${S}.tickets(id) ON DELETE SET NULL, "dismissedAt" timestamptz, "dismissedBy" text,
+                "createdAt" timestamptz NOT NULL DEFAULT now(), "updatedAt" timestamptz NOT NULL DEFAULT now())`);
+            return 'Major incident, PIR, problem / KEDB and candidates ready';
+        },
+        async down(client) {
+            const S = ident(activeSchema());
+            for (const t of ['problem_candidates', 'problem_details', 'post_incident_reviews']) await q(client, `DROP TABLE IF EXISTS ${S}.${t}`);
+            await q(client, `ALTER TABLE ${S}.tickets DROP COLUMN IF EXISTS "problemId", DROP COLUMN IF EXISTS "isMajorIncident", DROP COLUMN IF EXISTS "majorDeclaredAt",
+                DROP COLUMN IF EXISTS "majorBridgeUrl", DROP COLUMN IF EXISTS "majorNextUpdateAt", DROP COLUMN IF EXISTS "majorRemindedAt"`);
+            return 'Major incident / problem tables and columns removed';
+        },
+    },
 ];
 
 async function applied(client, schema) {

@@ -115,6 +115,8 @@ async function runJobs({ force = false } = {}) {
             // v7 Phase 4: external cases (SAP, vendors) without an update for 2 business days nudge the ticket's agent.
             try { out.externalNudges = await externalRefNudges(); } catch (err) { if (err.code !== '42P01') console.error('[samadhan] external refs:', err.message); }
             try { out.approvalReminders = await require('./change').approvalReminders(); } catch (err) { console.error('[samadhan] approval reminders:', err.message); }
+            try { out.majorReminders = await require('./problem').majorReminders(); } catch (err) { console.error('[samadhan] major reminders:', err.message); }
+            try { out.problemCandidates = await require('./problem').detectCandidates(); } catch (err) { console.error('[samadhan] problem candidates:', err.message); }
             // Bell entries are kept for 30 days.
             try { out.bellPurged = (await pool.query(`DELETE FROM samadhan.notifications WHERE "createdAt" < now() - interval '30 days'`)).rowCount; } catch (err) { console.error('[samadhan] bell purge:', err.message); }
             await client.query(

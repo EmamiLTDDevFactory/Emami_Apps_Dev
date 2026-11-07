@@ -407,3 +407,37 @@ test('change & access: transports, approvals, my approvals, calendar, registers,
   }
   expect(problems).toEqual([]);
 });
+
+// ---------- v7 Phase 7: major incident, PIR, problem ----------
+test('major incident: banner, PIR card, problem card, service health on the dashboard', async ({ page }) => {
+  const problems = watch(page);
+  await signIn(page, data.admin);
+  page.on('dialog', (d) => d.accept());
+  const ws = await api(data.admin, 'GET', '/admin/workspaces');
+  const sapWs = ws.body?.workspaces?.find((w: { key: string }) => w.key === 'SAP');
+  const sapApp = ws.body?.applications?.find((a: { code: string }) => a.code === 'SAP');
+  let id = 0;
+  try {
+    await api(data.admin, 'PUT', `/admin/workspaces/${sapWs.id}`, { enabled: true });
+    await api(data.admin, 'PUT', '/admin/workspaces/flag', { enabled: true });
+    const made = await api(data.admin, 'POST', '/tickets', {
+      subject: `Order creation down ${test.info().project.name}`, requesterName: 'E2E Requester', requesterEmail: 'e2e.req@test.samadhan.local', applicationId: sapApp.id, priority: 4,
+      sap: { environment: 'Production', tcode: 'VA01' },
+    });
+    expect(made.status).toBe(201);
+    expect(made.body.ticket.isMajorIncident).toBe(true);
+    id = made.body.ticket.id;
+    await page.goto(`/apps/samadhan/?ticket=${id}`);
+    await expect(page.getByTestId('major-banner')).toContainText('MAJOR INCIDENT');
+    await expect(page.getByTestId('pir-card')).toContainText('required before resolving');
+    await expect(page.getByTestId('problem-card')).toBeVisible();
+    await page.goto('/apps/samadhan/?screen=dashboard');
+    await expect(page.getByTestId('service-health')).toContainText('Major incidents in progress');
+  } finally {
+    if (id) await api(data.admin, 'DELETE', `/tickets/${id}/major`, {});
+    await api(data.admin, 'PUT', '/admin/workspaces/flag', { enabled: false });
+    if (sapWs) await api(data.admin, 'PUT', `/admin/workspaces/${sapWs.id}`, { enabled: false });
+    await api(data.admin, 'PUT', '/me/preferences', { workspace: null });
+  }
+  expect(problems).toEqual([]);
+});

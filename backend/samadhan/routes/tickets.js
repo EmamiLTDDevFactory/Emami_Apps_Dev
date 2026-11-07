@@ -235,6 +235,10 @@ router.get('/tickets/:id', wrap(async (req, res) => {
         sap: await require('../lib/sap').getSap(id), externalRefs: await require('../lib/sap').listRefs(id),
         // v7 Phase 5: IT details (null before migration 7.5).
         it: await require('../lib/it').getIt(id),
+        // v7 Phase 7: PIR, linked problem, (on a problem) its incidents and known-error details.
+        pir: await require('../lib/problem').getPir(id), problem: await require('../lib/problem').problemOf(t),
+        incidents: t.recordClass === 'PROBLEM' ? await require('../lib/problem').linkedIncidents(id) : [],
+        knownError: t.recordClass === 'PROBLEM' ? await require('../lib/problem').getKnownError(id) : null,
         // v7 Phase 6: transports, change planning, approvals.
         transports: await require('../lib/change').listTransports(id), change: await require('../lib/change').getChange(id),
         approvals: await require('../lib/change').listApprovals(id),

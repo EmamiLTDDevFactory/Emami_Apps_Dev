@@ -210,6 +210,8 @@ async function createTicket(input) {
     if (input.externalRef && input.externalRef.ref) await require('./sap').addRef(id, input.externalRef, input.actorAgentId ?? null);
     // v7 Phase 5: IT details given with the ticket (Digital Apps / Infra & IT).
     if (input.it && typeof input.it === 'object') await require('./it').saveIt(id, input.it);
+    // v7 Phase 7: Urgent + Production outside Secondary Sales becomes a major incident.
+    await require('./problem').autoMajor(id);
     if (routed.groupId && !routed.agentId) {
         const agentId = await roundRobinAgent(routed.groupId);
         if (agentId) {
@@ -345,6 +347,9 @@ async function updateTicket(id, patch, actorAgentId, opts = {}) {
     }
     if (changed.includes('groupId') && t.groupId) await notifyAgents(t, 'agent.assigned_group', 'group');
     if (changed.includes('statusId') && t.isClosed && !before.isClosed) await require('./ticketOps').maybeSendCsat(t);
+    // v7 Phase 7: priority raised to Urgent in Production -> major incident; a resolved problem tells its incidents' agents.
+    if (changed.includes('priority')) await require('./problem').autoMajor(id);
+    if (changed.includes('statusId') && t.isResolved && !before.isResolved) await require('./problem').afterProblemResolved(t).catch((e) => console.error('[samadhan] problem resolved:', e.message));
     if (!opts.skipAutomations) await runRules('ON_UPDATE', id, changed);
     return t;
 }

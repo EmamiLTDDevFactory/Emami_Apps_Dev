@@ -56,6 +56,12 @@ const RULES = [
     ['GET', '/registers', 'screen.reports'], ['GET', '/registers/:kind', 'screen.reports'],
     ['GET', '/admin/approval-chains', 'admin.approvalChains'], ['POST', '/admin/approval-chains', 'admin.approvalChains'], ['DELETE', '/admin/approval-chains/:cid', 'admin.approvalChains'],
     ['GET', '/admin/catalog', 'admin.catalog'], ['POST', '/admin/catalog', 'admin.catalog'], ['DELETE', '/admin/catalog/:iid', 'admin.catalog'],
+    // problem.js (v7 Phase 7)
+    ['POST', '/tickets/:id/major', 'ticket.declareMajor'], ['DELETE', '/tickets/:id/major', 'ticket.declareMajor'], ['POST', '/tickets/:id/major/update', 'ticket.note'],
+    ['GET', '/tickets/:id/pir', 'ticket.view'], ['PUT', '/tickets/:id/pir', 'ticket.pir.edit'],
+    ['GET', '/tickets/:id/problem', 'ticket.view'], ['POST', '/tickets/:id/problem', 'problem.manage'], ['PUT', '/tickets/:id/known-error', 'problem.manage'],
+    ['GET', '/problem-candidates', 'problem.manage'], ['POST', '/problem-candidates/:cid/create', 'problem.manage'], ['POST', '/problem-candidates/:cid/dismiss', 'problem.manage'],
+    ['GET', '/duplicates', 'ticket.create'], ['GET', '/service-health', 'screen.dashboard'],
     ['GET', '/admin/change-windows', 'admin.approvalChains'], ['POST', '/admin/change-windows', 'admin.approvalChains'], ['DELETE', '/admin/change-windows/:wid', 'admin.approvalChains'],
     // work.js
     ['GET', '/todos', ANY], ['POST', '/todos', ANY], ['PATCH', '/todos/:id', ANY], ['DELETE', '/todos/:id', ANY],
