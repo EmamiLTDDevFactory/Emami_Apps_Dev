@@ -633,7 +633,7 @@ admin.delete('/statuses/:id', wrap(async (req, res) => {
 }));
 
 // ---------- People & roles: Samadhan access for people in the Emami Apps hub ----------
-// The grant lives in Manage Access (emami_apps.authorized_user_apps, app 'samadhan', formerly 'setu' - lib/access.js); changing it here is the same change,
+// The grant lives in Manage Access (emami_apps.authorized_user_apps, app 'samadhan' - lib/access.js); changing it here is the same change,
 // recorded in the same access history. The person must already be an authorized Emami Apps user.
 function accessHistory(entry) {
     try { require('../../accessHistory').recordAccessChange(entry); } catch { /* history is best-effort, never blocks the change */ }
@@ -690,7 +690,7 @@ admin.delete('/access/:email', wrap(async (req, res) => {
     if (before.role === 'Admin') {
         if ((await adminCount()) <= 1) throw fail(400, 'Samadhan needs at least one admin.');
     }
-    // Removing access removes the grant under either id (formerly Setu).
+    // Removing access removes the grant under either id.
     await pool.query('DELETE FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = ANY($2::text[])', [email, APP_IDS]);
     clearGrantCache();
     accessHistory({ targetEmail: email, changedBy: req.verifiedEmail, changeType: 'APP_ROLE', appId: before.app_id, oldValue: before.role, newValue: null });

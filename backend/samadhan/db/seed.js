@@ -1,7 +1,7 @@
 'use strict';
 const { pool } = require('./pool');
 
-// Base configuration agreed for Emami Secondary Support (statuses, fields, severity matrix, SLA policies,
+// Base configuration agreed for Emami Service Desk (statuses, fields, severity matrix, SLA policies,
 // business hours, groups, automations, email wording). Inserts only what is missing, so changes made in
 // Admin are never overwritten.
 
@@ -83,22 +83,22 @@ const SEED_SLA = [
     },
 ];
 
-const SIGN = '<br><br>Regards,<br>Samadhan – Emami Secondary Helpdesk';
+const SIGN = '<br><br>Regards,<br>Samadhan – Emami Service Desk';
 const SEED_TEMPLATES = [
     {
         key: 'requester.ticket_received', audience: 'requester',
         subject: 'Ticket Received - {{ticket.subject}} || {{ticket.id}}',
-        body: 'Dear {{ticket.requester.name}},<br><br>Thank you for writing in. Your request is logged as ticket {{ticket.id}}, and someone from the helpdesk team will reply to you, normally within one working day.<br><br>When you write about this issue again, please keep the ticket number in the subject line so your message reaches the same ticket.<br><br>Regards,<br>Emami Secondary Helpdesk',
+        body: 'Dear {{ticket.requester.name}},<br><br>Thank you for writing in. Your request is logged as ticket {{ticket.id}}, and someone from the helpdesk team will reply to you, normally within one working day.<br><br>When you write about this issue again, please keep the ticket number in the subject line so your message reaches the same ticket.<br><br>Regards,<br>Emami Service Desk',
     },
     {
         key: 'reply.signature', audience: 'requester', subject: '-',
-        body: '#TICKET No - {{ticket.id}}<br><br>Thanks &amp; Regards,<br>{{ticket.agent.name}}<br>Emami Secondary Helpdesk<br>Mail ID - emami.helpdesk@emamigroup.com<br>Phone No - 06289423435',
+        body: '#TICKET No - {{ticket.id}}<br><br>Thanks &amp; Regards,<br>{{ticket.agent.name}}<br>Emami Service Desk<br>Mail ID - emami.helpdesk@emamigroup.com<br>Phone No - 06289423435',
     },
-    { key: 'forward.signature', audience: 'agent', subject: '-', body: '#TICKET No - {{ticket.id}}<br><br>Thanks &amp; Regards,<br>Emami Secondary Helpdesk' },
+    { key: 'forward.signature', audience: 'agent', subject: '-', body: '#TICKET No - {{ticket.id}}<br><br>Thanks &amp; Regards,<br>Emami Service Desk' },
     {
         key: 'requester.closing_reminder', audience: 'requester',
         subject: '{{ticket.id}} {{ticket.subject}}',
-        body: 'Hi,<br><br>This is a gentle reminder that we have not received any update from your side, so the ticket is now closed. Please send a new email to open a new ticket.<br><br>Thanks &amp; Regards,<br>Emami Secondary Helpdesk',
+        body: 'Hi,<br><br>This is a gentle reminder that we have not received any update from your side, so the ticket is now closed. Please send a new email to open a new ticket.<br><br>Thanks &amp; Regards,<br>Emami Service Desk',
     },
     { key: 'agent.assigned_group', audience: 'agent', subject: 'New in {{ticket.group.name}}: {{ticket.subject}} [#{{ticket.id}}]', body: 'A ticket has been routed to {{ticket.group.name}}.<br><br><b>{{ticket.subject}}</b><br>{{ticket.description}}<br><br>Open ticket: {{ticket.url}}' + SIGN },
     { key: 'agent.assigned_agent', audience: 'agent', subject: 'Assigned to you: {{ticket.subject}} [#{{ticket.id}}]', body: 'Hi {{ticket.agent.name}},<br><br>Ticket {{ticket.id}} is now assigned to you.<br><br><b>{{ticket.subject}}</b><br>{{ticket.description}}<br><br>Open ticket: {{ticket.url}}' + SIGN },
@@ -111,7 +111,7 @@ const SEED_TEMPLATES = [
     {
         key: 'requester.csat', audience: 'requester',
         subject: 'How did we do? Ticket {{ticket.id}} - {{ticket.subject}}',
-        body: 'Dear {{ticket.requester.name}},<br><br>Your ticket {{ticket.id}} is now closed. How would you rate your overall satisfaction for the resolution provided by the agent?<br><br><a href="{{csat.url}}">Rate the support you received</a> (one click, no sign-in)<br><br>Regards,<br>Emami Secondary Helpdesk',
+        body: 'Dear {{ticket.requester.name}},<br><br>Your ticket {{ticket.id}} is now closed. How would you rate your overall satisfaction for the resolution provided by the agent?<br><br><a href="{{csat.url}}">Rate the support you received</a> (one click, no sign-in)<br><br>Regards,<br>Emami Service Desk',
     },
     { key: 'agent.escalation_l3', audience: 'agent', subject: 'Escalated to L3: {{ticket.subject}} [#{{ticket.id}}]', body: 'Ticket {{ticket.id}} has been moved to Escalation to L3 Support.<br><br><b>{{ticket.subject}}</b><br>Assigned to: {{ticket.agent.name}}<br><br>Open ticket: {{ticket.url}}' + SIGN },
 ];

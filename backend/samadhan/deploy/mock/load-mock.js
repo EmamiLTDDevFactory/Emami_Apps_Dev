@@ -1,13 +1,13 @@
 'use strict';
 /*
-   Loads samadhan-mock-data.json (or the older setu-mock-data.json) (Emami's real Samadhan configuration + 30 anonymised sample tickets) into Samadhan.
+   Loads samadhan-mock-data.json (Emami's real Samadhan configuration + 30 anonymised sample tickets) into Samadhan.
 
      node load-mock.js load <path/to/samadhan-mock-data.json>
      node load-mock.js remove            sample tickets (tag "mock") and their sample contacts only
      node load-mock.js restore-config    put back the configuration saved just before the last load
 
    Safe by design:
-   - Writes only to Samadhan's own schema (`samadhan`, or `setu` before the v7.0 rename), directly (no Samadhan business logic runs, so no notifications, emails or
+   - Writes only to Samadhan's own schema (`samadhan`), directly (no Samadhan business logic runs, so no notifications, emails or
      automations). Manage Access and every other app are untouched.
    - One transaction: either everything loads or nothing changes.
    - Before replacing configuration (statuses, field choices, severity matrix, groups, SLA, business hours, canned
@@ -16,7 +16,7 @@
 */
 const fs = require('fs');
 
-const APP = process.env.SAMADHAN_APP_DIR || process.env.SETU_APP_DIR || '/home/emamiadmin/apps/emami-apps-hub-backend-dev';
+const APP = process.env.SAMADHAN_APP_DIR || '/home/emamiadmin/apps/emami-apps-hub-backend-dev';
 require(`${APP}/node_modules/dotenv`).config({ path: `${APP}/.env`, quiet: true });
 const { pool, resolveSchema, sharedPool } = require(`${APP}/samadhan/db/pool`);
 
@@ -322,9 +322,8 @@ async function restoreConfig() {
 }
 
 const [cmd, file] = process.argv.slice(2);
-// Data file: samadhan-mock-data.json, or setu-mock-data.json copied to the server before v7 (formerly Setu).
-const defaultFile = ['samadhan-mock-data.json', 'setu-mock-data.json'].map((n) => `${__dirname}/${n}`).find((p) => require('fs').existsSync(p)) || `${__dirname}/samadhan-mock-data.json`;
-// samadhan, or the legacy setu schema before the v7.0 rename
+// Data file: samadhan-mock-data.json next to this script.
+const defaultFile = ['samadhan-mock-data.json'].map((n) => `${__dirname}/${n}`).find((p) => require('fs').existsSync(p)) || `${__dirname}/samadhan-mock-data.json`;
 const run = resolveSchema().then(() => (cmd === 'load' ? load(file || defaultFile) : cmd === 'remove' ? remove() : cmd === 'restore-config' ? restoreConfig() : Promise.reject(new Error('usage: node load-mock.js load <file> | remove | restore-config'))));
 run
   .catch((e) => { console.error('ERROR (nothing was changed):', e.message); process.exitCode = 1; })

@@ -19,7 +19,7 @@
 */
 const fs = require('fs');
 const path = require('path');
-const APP = process.env.SAMADHAN_APP_DIR || process.env.SETU_APP_DIR || '/home/emamiadmin/apps/emami-apps-hub-backend-dev';
+const APP = process.env.SAMADHAN_APP_DIR || '/home/emamiadmin/apps/emami-apps-hub-backend-dev';
 require(`${APP}/node_modules/dotenv`).config({ path: `${APP}/.env`, quiet: true });
 const { pool, resolveSchema, sharedPool } = require(`${APP}/samadhan/db/pool`);
 
@@ -35,7 +35,7 @@ const OUTCOME = { completed: 'Connected', missed: 'No answer', voicemail: 'No an
 const CSAT = { 103: 3, 100: 2, '-103': 1 };
 
 async function main() {
-  await resolveSchema(); // samadhan, or the legacy setu schema before the v7.0 rename
+  await resolveSchema();
   const { config, db } = JSON.parse(fs.readFileSync(DATA, 'utf8'));
   const client = await pool.connect();
   const added = { choices: 0 };

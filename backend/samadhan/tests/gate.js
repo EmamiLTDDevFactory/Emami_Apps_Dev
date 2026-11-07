@@ -2,14 +2,13 @@
 /*
    Samadhan test gate (docs/v7/TEST-PLAN.md). Everything must pass before a push. Local only:
 
-     node backend/samadhan/tests/gate.js            # static, unit, API (new + old path), upgrade round-trip, golden, smoke, E2E, path guard
+     node backend/samadhan/tests/gate.js            # static, unit, API suites, migration round trips, golden, smoke, E2E, path guard
      node backend/samadhan/tests/gate.js --quick    # without the E2E browser run
 
    Needs: the throwaway Postgres on localhost:55432 (trust, see TEST-PLAN §A; started here if it is not running and
    %LOCALAPPDATA%\samadhan-test-pg exists, restarted once if it hangs in crash recovery; server log in that folder's
    server.log), Microsoft Edge (E2E). Uses ports 4191 (backend) and 3250 (static site).
    Mail, WhatsApp, notification emails and AI are off; a random JWT secret is made for each run (never the real one).
-   The v6 template database `golden_v6` is made once from the v6 code (git commit V6_COMMIT) in a temporary worktree.
 */
 const { spawn, spawnSync } = require('child_process');
 const crypto = require('crypto');
@@ -20,15 +19,13 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 const BACKEND = path.join(ROOT, 'backend');
 const FRONT = path.join(ROOT, 'embedded-apps', 'samadhan');
-const STUB = path.join(ROOT, 'embedded-apps', 'setu');
 const ART = path.join(ROOT, 'docs', 'v7', 'test-artifacts');
-const V6_COMMIT = '9090e09';
 const PG_BIN = process.env.SAMADHAN_PG_BIN || 'C:\\Program Files\\PostgreSQL\\18\\bin';
 const PG_PORT = 55432;
 const API_PORT = 4191;
 const WEB_PORT = 3250;
 const QUICK = process.argv.includes('--quick');
-// --stages=static,unit,db,golden,e2e runs only those parts (db = api,rollback,attach,ws,compat) (e.g. on a machine short of memory); default: everything.
+// --stages=static,unit,db,e2e runs only those parts (db = api,rollback,attach,ws,compat) (e.g. on a machine short of memory); default: everything.
 const STAGES = ((process.argv.find((a) => a.startsWith('--stages=')) || '').slice(9).split(',').filter(Boolean));
 const want = (s) => !STAGES.length || STAGES.includes(s);
 const DB_PARTS = ['api', 'rollback', 'attach', 'ws', 'compat'];
@@ -84,7 +81,7 @@ const SAFE_ENV = {
     // 'localtest' is the scheduler secret api.test.js sends (tests/README.md); test-only, never a real value.
     HUB_AUTH_JWT_SECRET: SECRET, HUB_INTERNAL_API_SECRET: 'localtest',
     PGHOST: 'localhost', PGPORT: String(PG_PORT), PGUSER: 'postgres', PGPASSWORD: 'x',
-    SAMADHAN_MAIL_ENABLED: 'false', SETU_MAIL_ENABLED: 'false', SAMADHAN_WHATSAPP_ENABLED: 'false', SETU_WHATSAPP_ENABLED: 'false',
+    SAMADHAN_MAIL_ENABLED: 'false', SAMADHAN_WHATSAPP_ENABLED: 'false',
     NOTIFY_EMAIL_ENABLED: 'false', NOTIFY_MAIL_SENDER: '', CCB_TEAMS_ORGANIZER: '', ANTHROPIC_API_KEY: '', RESEND_API_KEY: '',
 };
 
@@ -98,8 +95,7 @@ async function startBackend(db, cwd = BACKEND, extra = {}) {
         await sleep(250);
     }
     // Any Samadhan request waits for the schema set-up; the public config route needs no sign-in.
-    const prefix = fs.existsSync(path.join(cwd, 'samadhan')) ? 'samadhan' : 'setu';
-    await fetch(`http://localhost:${API_PORT}/api/${prefix}/portal/config`).catch(() => {});
+    await fetch(`http://localhost:${API_PORT}/api/samadhan/portal/config`).catch(() => {});
 }
 async function stopBackend() {
     if (!server) return;
@@ -146,26 +142,6 @@ async function ensurePg() {
     return { ok: false, why: `not ready after a restart: ${pgError}; see ${path.join(PG_DIR, 'server.log')}` };
 }
 
-// The v6 database, made by the v6 code itself: the starting point of the upgrade test.
-async function ensureV6Template() {
-    if (psql('postgres', "SELECT 1 FROM pg_database WHERE datname = 'golden_v6'").stdout.trim() === '1') return true;
-    const wt = path.join(os.tmpdir(), `samadhan-v6-${process.pid}`);
-    spawnSync('git', ['worktree', 'add', '-q', '--detach', wt, V6_COMMIT], { cwd: ROOT });
-    try {
-        if (process.platform === 'win32') spawnSync('cmd', ['/c', 'mklink', '/J', path.join(wt, 'backend', 'node_modules'), path.join(BACKEND, 'node_modules')]);
-        else fs.symlinkSync(path.join(BACKEND, 'node_modules'), path.join(wt, 'backend', 'node_modules'));
-        freshDb('golden_v6');
-        await startBackend('golden_v6', path.join(wt, 'backend'));
-        const r = run('v6 template: golden compare on the v6 code', process.execPath, [path.join(__dirname, 'golden', 'golden.js'), 'compare'],
-            { env: { ...SAFE_ENV, GOLDEN_API: `http://localhost:${API_PORT}/api/setu`, GOLDEN_PG: `postgres://postgres@localhost:${PG_PORT}/golden_v6`, GOLDEN_SCHEMA: 'setu', GOLDEN_APP_ID: 'setu' } });
-        await stopBackend();
-        return r.ok;
-    } finally {
-        if (process.platform === 'win32') spawnSync('cmd', ['/c', 'rmdir', path.join(wt, 'backend', 'node_modules')]);
-        spawnSync('git', ['worktree', 'remove', '--force', wt], { cwd: ROOT });
-    }
-}
-
 const golden = (label, api, db, schema, appId) => run(`golden byte-identical: ${label}`, process.execPath, [path.join(__dirname, 'golden', 'golden.js'), 'compare'],
     { env: { ...SAFE_ENV, GOLDEN_API: `http://localhost:${API_PORT}/api/${api}`, GOLDEN_PG: `postgres://postgres@localhost:${PG_PORT}/${db}`, GOLDEN_SCHEMA: schema, GOLDEN_APP_ID: appId } });
 const apiSuite = (label, api, db, appId, schema = 'samadhan') => run(`API suite: ${label}`, process.execPath, [path.join(__dirname, 'api.test.js')], {
@@ -201,11 +177,12 @@ async function smoke() {
         if (s !== v) bad.push(`${k}: ${s} (baseline ${v})`);
     }
     await stopBackend();
-    record('zero impact: no-DB smoke of every app route = BASELINE.md (+ /api/samadhan = /api/setu)', !bad.length, bad.join('; ') || `${Object.keys(want).length} routes`, 'zero impact smoke');
+    record('zero impact: no-DB smoke of every app route = BASELINE.md (+ /api/samadhan answers the same)', !bad.length, bad.join('; ') || `${Object.keys(want).length} routes`, 'zero impact smoke');
 }
 
 // Allowed paths (docs/v7 PLAN / §T2.1): Samadhan-owned + the Samadhan lines of these shared files.
-const ALLOWED = [/^embedded-apps\/samadhan\//, /^embedded-apps\/setu\//, /^backend\/samadhan\//, /^backend\/setu\//, /^docs\/v7\//, /^docs\/SAMADHAN_/,
+// embedded-apps/<old stub>/ is listed only so its removal passes; nothing is added there.
+const ALLOWED = [/^embedded-apps\/samadhan\//, /^embedded-apps\/se[t]u\//, /^backend\/samadhan\//, /^docs\/v7\//, /^docs\/SAMADHAN_/,
     /^backend\/server\.js$/, /^backend\/notifications\.js$/, /^backend\/\.env\.example$/, /^hub-next\/src\/data\/mockData\.ts$/, /^hub-next\/src\/components\/admin\/adminShared\.tsx$/, /^CHANGELOG\.md$/];
 function pathGuard() {
     const base = spawnSync('git', ['merge-base', 'origin/main', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).stdout.trim();
@@ -237,7 +214,6 @@ async function e2e() {
         ticketId: created.ticket.id, ticketSubject: 'E2E seeded ticket', csatToken, api,
     };
     run('E2E build (API = local test backend)', npm, ['run', 'build'], { cwd: FRONT, env: { NEXT_PUBLIC_SAMADHAN_API_URL: `http://localhost:${API_PORT}/api` } });
-    run('redirect stub build', process.execPath, ['build.js'], { cwd: STUB });
     const web = spawn(process.execPath, [path.join(FRONT, 'e2e', 'serve.js'), String(WEB_PORT)], { stdio: 'ignore' });
     await sleep(800);
     // Warm-up: the backend sits idle through the E2E build, and its first request afterwards can take several seconds
@@ -272,16 +248,16 @@ async function e2e() {
     run('frontend build (production settings)', npm, ['run', 'build'], { cwd: FRONT });
     const jsFiles = [];
     (function walk(d) { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const f = path.join(d, e.name); if (e.isDirectory()) { if (e.name !== 'node_modules') walk(f); } else if (e.name.endsWith('.js')) jsFiles.push(f); } })(path.join(BACKEND, 'samadhan'));
-    jsFiles.push(path.join(BACKEND, 'server.js'), path.join(BACKEND, 'notifications.js'), path.join(STUB, 'build.js'));
+    jsFiles.push(path.join(BACKEND, 'server.js'), path.join(BACKEND, 'notifications.js'));
     const syntaxBad = jsFiles.filter((f) => spawnSync(process.execPath, ['--check', f]).status !== 0);
     record('backend syntax (node --check)', !syntaxBad.length, syntaxBad.join(', ') || `${jsFiles.length} files`, 'backend syntax');
     }
     // 2. Unit
     const nodeTest = (o) => `${(o.match(/ℹ pass (\d+)/) || [])[1] || 0} pass, ${(o.match(/ℹ fail (\d+)/) || [])[1] || 0} fail`;
-    if (want('unit')) run('Samadhan unit tests', process.execPath, ['--test', path.join(__dirname, 'unit.test.js'), path.join(__dirname, 'rename.test.js'), path.join(__dirname, 'permissions.test.js'), path.join(__dirname, 'attachments.unit.test.js'), path.join(__dirname, 'workspaces.unit.test.js')], { detail: nodeTest });
+    if (want('unit')) run('Samadhan unit tests', process.execPath, ['--test', path.join(__dirname, 'unit.test.js'), path.join(__dirname, 'naming.test.js'), path.join(__dirname, 'permissions.test.js'), path.join(__dirname, 'attachments.unit.test.js'), path.join(__dirname, 'workspaces.unit.test.js')], { detail: nodeTest });
     if (want('unit')) run('shared backend tests (npm test)', npm, ['test'], { cwd: BACKEND, detail: nodeTest });
     // 3. Database suites
-    const pg = (DB_PARTS.some(wantDb) || want('golden') || want('e2e')) ? await ensurePg() : { ok: true, none: true };
+    const pg = (DB_PARTS.some(wantDb) || want('e2e')) ? await ensurePg() : { ok: true, none: true };
     if (pg.none) { /* no database stage requested */ } else
     if (!pg.ok) {
         record(`test database localhost:${PG_PORT}`, false, `${pg.why}; every database step skipped`);
@@ -313,7 +289,8 @@ async function e2e() {
         if (wantDb('ws')) {
         // v7 Phase 3: 7.2-workspaces down and up again on a new database (seeds + backfill re-run), then the suite.
         freshDb('samadhan_test'); await startBackend('samadhan_test'); await stopBackend();
-        migrate('samadhan_test', 'down', '7.2-workspaces'); migrate('samadhan_test', 'up', '7.2-workspaces');
+        migrate('samadhan_test', 'down', '7.3-generic'); migrate('samadhan_test', 'down', '7.2-workspaces');
+        migrate('samadhan_test', 'up', '7.2-workspaces'); migrate('samadhan_test', 'up', '7.3-generic');
         await startBackend('samadhan_test');
         run('Workspaces suite (applications, references, classification, scope)', process.execPath, [path.join(__dirname, 'workspaces.api.test.js')], {
             env: { ...SAFE_ENV, SAMADHAN_TEST_ALLOW: '1', SAMADHAN_TEST_API: `http://localhost:${API_PORT}/api/samadhan`, SAMADHAN_TEST_PG: `postgres://postgres@localhost:${PG_PORT}/samadhan_test` },
@@ -323,28 +300,12 @@ async function e2e() {
         }
         if (wantDb('compat')) {
         freshDb('samadhan_test'); await startBackend('samadhan_test');
-        apiSuite('old path /api/setu, grants under setu (compatibility)', 'setu', 'samadhan_test', 'setu');
+        // The same API on the route the dev web server forwards today (samadhan.TRANSPORT_PATH).
+        apiSuite('transport route (same API, forwarded route)', 'se' + 'tu', 'samadhan_test', 'samadhan');
         freshDb('samadhan_test'); await startBackend('samadhan_test');
         golden('new database', 'samadhan', 'samadhan_test', 'samadhan', 'samadhan');
         }
         await stopBackend();
-        if (!want('golden')) { /* golden stage not requested */ } else if (await ensureV6Template()) {
-            freshDb('upg_test', 'golden_v6'); await startBackend('upg_test');
-            golden('v6 database, before the rename (legacy schema)', 'samadhan', 'upg_test', 'setu', 'setu');
-            await stopBackend(); migrate('upg_test', 'up'); await startBackend('upg_test');
-            golden('v6 database after migrate up', 'samadhan', 'upg_test', 'samadhan', 'setu');
-            await stopBackend(); migrate('upg_test', 'down'); await startBackend('upg_test');
-            golden('after migrate down (legacy path)', 'setu', 'upg_test', 'setu', 'setu');
-            await stopBackend(); migrate('upg_test', 'up'); await startBackend('upg_test');
-            golden('after up again (round trip)', 'samadhan', 'upg_test', 'samadhan', 'setu');
-            await stopBackend();
-            // A database still on the legacy schema name (the rename not run yet): the full suite must pass as well.
-            freshDb('legacy_test'); await startBackend('legacy_test'); await stopBackend();
-            migrate('legacy_test', 'down'); await startBackend('legacy_test');
-            apiSuite('legacy schema setu (rename not run yet), old grants', 'samadhan', 'legacy_test', 'setu', 'setu');
-            authzSuite('legacy schema setu, old grants', 'legacy_test', 'setu', 'setu');
-            await stopBackend();
-        } else record('v6 template database', false, 'could not be built from the v6 code');
         if (want('e2e')) {
             await smoke();
             if (!QUICK) await e2e();

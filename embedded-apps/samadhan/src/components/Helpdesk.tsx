@@ -22,7 +22,7 @@ const NONE = 'None';
 const rowsOf = (list: NameValue[]): BarRow[] =>
   list.map((r) => ({ key: r.name, label: r.name, value: r.value, detail: r.name === NONE ? 'Not set - no drill-down' : 'Click to open these tickets' }));
 
-/** Ticket counts by region, status, type, source ... (Freshdesk's "Emami Secondary Helpdesk Dashboard"). */
+/** Ticket counts by region, status, type, source ... (Freshdesk's "Emami Service Desk Dashboard"). */
 export default function Helpdesk() {
   const { meta, openList, openTicket, workspace } = useSamadhan();
   const ws = workspaceByKey(meta, workspace);

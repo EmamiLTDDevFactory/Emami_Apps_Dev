@@ -11,7 +11,7 @@
    - The desks themselves stay OFF (Admin > Service desks switches them on for UAT); nothing outside Samadhan changes.
    Everything is tagged / recorded (settings 'demo.v7apps.manifest') so remove-demo.js deletes exactly it.
 */
-const APP = process.env.SAMADHAN_APP_DIR || process.env.SETU_APP_DIR || '/home/emamiadmin/apps/emami-apps-hub-backend-dev';
+const APP = process.env.SAMADHAN_APP_DIR || '/home/emamiadmin/apps/emami-apps-hub-backend-dev';
 require(`${APP}/node_modules/dotenv`).config({ path: `${APP}/.env`, quiet: true });
 const { pool, resolveSchema, sharedPool } = require(`${APP}/samadhan/db/pool`);
 require(`${APP}/notifications`).notify = async () => null;

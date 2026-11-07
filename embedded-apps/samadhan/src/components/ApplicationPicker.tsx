@@ -28,7 +28,8 @@ export default function ApplicationPicker({ value, onChange, allowInherit = fals
     <button key={a.id} type="button" role="radio" aria-checked={value === a.id} onClick={() => onChange(a.id)} title={a.description ?? a.name}
       className={cx('flex min-w-0 items-center gap-2 rounded-xl border px-2.5 py-2 text-left transition', value === a.id ? 'border-accent bg-accent/10 ring-1 ring-accent' : 'border-line bg-panel hover:border-accent/50')}>
       <span className={cx('grid h-7 w-10 shrink-0 place-items-center rounded-md border text-[10px] font-extrabold', wsTone(workspaceById(meta, a.workspaceId)))}>{a.code}</span>
-      <span className="min-w-0 truncate text-xs font-semibold">{a.name}</span>
+      <span className="min-w-0 flex-1 truncate text-xs font-semibold">{a.name.replace(/ \((Arteria|Salescode\.AI)\)$/, '')}</span>
+      {a.vendor && <span className={cx('shrink-0 rounded px-1 text-[10px] font-bold', /salescode/i.test(a.vendor) ? 'bg-good/10 text-good' : 'bg-sunken text-muted')} title={/salescode/i.test(a.vendor) ? 'Going forward' : 'Today'}>{a.vendor}</span>}
     </button>
   );
   if (!apps.length) return null;

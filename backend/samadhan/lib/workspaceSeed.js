@@ -8,12 +8,15 @@
    code CDMS, Salescode B2B App -> SCB2B in Secondary Sales (B2B stays the Digital Apps code).
 */
 
+const SEC_SALES_DESC = 'Secondary sales apps: Arteria (mSFA, Supervisor) today, Salescode.AI (SFA, Supervisor, DMS, B2B, B2C) going forward.';
+const SAP_DESC = 'Primary sales and every SAP process: ECC run support now, S/4HANA after go-live.';
+
 // Only Secondary Sales is enabled; the others switch on with the workspaces.enabled flag and their own enabled toggle.
 const WORKSPACES = [
     { key: 'SEC_SALES', name: 'Secondary Sales', shortCode: 'SS', icon: 'ShoppingCart', color: 'accent', enabled: true, portalEnabled: true, position: 1,
-      priorityMode: 'SEVERITY_MATRIX', categoryLabel: 'Category', functionLabel: 'Function', description: 'Secondary sales and the sales apps (today\'s Samadhan).' },
-    { key: 'SAP', name: 'SAP Support', shortCode: 'SAP', icon: 'Boxes', color: 'info', enabled: false, portalEnabled: false, position: 2,
-      priorityMode: 'IMPACT_URGENCY', categoryLabel: 'Module', functionLabel: 'Sub-process', description: 'SAP ECC run support now; S/4HANA after go-live.' },
+      priorityMode: 'SEVERITY_MATRIX', categoryLabel: 'Category', functionLabel: 'Function', description: SEC_SALES_DESC },
+    { key: 'SAP', name: 'SAP & Primary Sales', shortCode: 'SAP', icon: 'Boxes', color: 'info', enabled: false, portalEnabled: false, position: 2,
+      priorityMode: 'IMPACT_URGENCY', categoryLabel: 'Module', functionLabel: 'Sub-process', description: SAP_DESC },
     { key: 'S4_PROGRAM', name: 'S/4HANA Programme', shortCode: 'S4P', icon: 'Rocket', color: 'warn', enabled: false, portalEnabled: false, position: 3,
       priorityMode: 'IMPACT_URGENCY', categoryLabel: 'Process area', functionLabel: 'Sub-process', description: 'Defects, data migration, cutover, RAID, hypercare.' },
     { key: 'DIGITAL_APPS', name: 'Digital Apps', shortCode: 'DIG', icon: 'AppWindow', color: 'good', enabled: false, portalEnabled: false, position: 4,
@@ -22,20 +25,23 @@ const WORKSPACES = [
       priorityMode: 'IMPACT_URGENCY', categoryLabel: 'Category', functionLabel: 'Sub-category', description: 'Servers, cloud, network, database, security, end-user IT, M365.' },
 ];
 
-// [code, name, workspace, aliases, active]
+// [code, name, workspace, aliases, active, vendor]
 const APPLICATIONS = [
     ['SS', 'Secondary Sales – General', 'SEC_SALES', ['secondary sales', 'distributor', 'scheme', 'claim', 'e invoice', 'tcs'], true],
-    ['MSFA', 'mSFA App', 'SEC_SALES', ['msfa', 'sfa app', 'msecsales', 'm-sfa'], true],
-    ['RMSFA', 'Rural mSFA App', 'SEC_SALES', ['rural msfa', 'rural sfa', 'rmsfa'], true],
-    ['MR', 'SalesCode MR App', 'SEC_SALES', ['mr app', 'medical rep', 'salescode sfa', 'mr expense'], true],
-    ['SUP', 'Supervisor App', 'SEC_SALES', ['supervisor app', 'manager app', 'salescode manager'], true],
+    ['MSFA', 'mSFA App (Arteria)', 'SEC_SALES', ['msfa', 'msecsales', 'm-sfa', 'arteria'], true, 'Arteria'],
+    ['RMSFA', 'Rural mSFA App (Arteria)', 'SEC_SALES', ['rural msfa', 'rural sfa', 'rmsfa'], true, 'Arteria'],
+    ['SUP', 'Supervisor App (Arteria)', 'SEC_SALES', ['supervisor app', 'arteria supervisor'], true, 'Arteria'],
+    ['MR', 'SFA App (Salescode.AI)', 'SEC_SALES', ['salescode sfa', 'sfa app', 'mr app', 'medical rep', 'mr expense'], true, 'Salescode.AI'],
+    ['SCSUP', 'Supervisor App (Salescode.AI)', 'SEC_SALES', ['salescode supervisor', 'salescode manager', 'manager app'], true, 'Salescode.AI'],
     ['MERCH', 'Merchandising App', 'SEC_SALES', ['merchandising', 'merchandiser', 'planogram'], true],
-    ['DMS', 'SalesCode DMS App', 'SEC_SALES', ['dms', 'distributor management', 'salescode dms', 'salescode portal'], true],
+    ['DMS', 'DMS (Salescode.AI)', 'SEC_SALES', ['dms', 'distributor management', 'salescode dms', 'salescode portal'], true, 'Salescode.AI'],
     ['CDMS', 'CDMS (legacy distributor system)', 'SEC_SALES', ['cdms'], true],
-    ['SCB2B', 'SalesCode B2B App', 'SEC_SALES', ['salescode b2b'], true],
-    ['B2B', 'B2B App', 'DIGITAL_APPS', ['b2b', 'b2b portal', 'b2b app'], true],
-    ['B2C', 'B2C App', 'DIGITAL_APPS', ['b2c', 'e-commerce', 'ecommerce', 'online store'], true],
-    ['SMD', 'Samadhan', 'DIGITAL_APPS', ['samadhan', 'helpdesk app', 'setu'], true],
+    ['SCB2B', 'B2B App (Salescode.AI)', 'SEC_SALES', ['salescode b2b', 'b2b', 'b2b app', 'b2b portal'], true, 'Salescode.AI'],
+    ['SCB2C', 'B2C App (Salescode.AI)', 'SEC_SALES', ['salescode b2c', 'b2c', 'b2c app', 'e-commerce', 'ecommerce', 'online store'], true, 'Salescode.AI'],
+    // B2B / B2C are Salescode.AI apps (user, 2026-11-07): the Digital Apps codes stay for history, inactive.
+    ['B2B', 'B2B App (in-house, not used)', 'DIGITAL_APPS', [], false],
+    ['B2C', 'B2C App (in-house, not used)', 'DIGITAL_APPS', [], false],
+    ['SMD', 'Samadhan', 'DIGITAL_APPS', ['samadhan', 'helpdesk app'], true],
     ['HUB', 'Emami Apps Hub', 'DIGITAL_APPS', ['emami apps', 'hub', 'apps hub'], true],
     ['CUST', 'Other Custom App', 'DIGITAL_APPS', ['custom app', 'web app', 'portal app'], true],
     ['SAP', 'SAP ECC (current)', 'SAP', ['sap', 't-code', 'tcode', 'idoc', 'short dump', 'st22', 'ecc'], true],
@@ -100,4 +106,4 @@ ${Object.entries(TYPE_MAP).map(([k, v]) => `    WHEN '${k}' THEN '${v}'`).join('
         ELSE 'SS' END
 END`;
 
-module.exports = { WORKSPACES, APPLICATIONS, RECORD_CLASSES, CLASSIFICATION_SOURCES, MATRIX, IMPACTS, URGENCIES, matrixPriority, backfillCode, BACKFILL_SQL, TYPE_MAP };
+module.exports = { SEC_SALES_DESC, SAP_DESC, WORKSPACES, APPLICATIONS, RECORD_CLASSES, CLASSIFICATION_SOURCES, MATRIX, IMPACTS, URGENCIES, matrixPriority, backfillCode, BACKFILL_SQL, TYPE_MAP };

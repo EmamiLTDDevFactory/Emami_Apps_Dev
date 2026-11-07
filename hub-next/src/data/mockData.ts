@@ -48,7 +48,7 @@ export const EMBEDDED_APP_URLS: Record<string, string> = {
   'shelf-life-deviation': '/apps/shelf-life-deviation', // Shelf Life Deviation (CPD approval + CADE Z-Report)
   'gate-entry': '/apps/gate-entry', // Gate Entry (truck in against PO/ASN, replaces WD ZGATE_ENTRY)
   'access-tracker': '/apps/access-tracker', // Access Tracker (who has access, change log, sign-in activity - admins only)
-  setu: '/apps/samadhan', // Samadhan (Emami helpdesk; formerly Setu at /apps/setu, which now forwards here). Hub id stays 'setu' until the Manage Access switch (docs/v7/RENAME-FOLLOWUPS.md)
+  samadhan: '/apps/samadhan', // Samadhan - Emami service desk
   'cascade-pricing': '/apps/cascade-pricing', // Cascade Pricing (ZMM_CASCADE_PRICING, export price cascade)
   'mm-mdm': '/apps/mm-mdm', // Material Master (ZMM_MDM_SRV, material master requests)
   'auditee-response': '/apps/auditee-response', // Auditee Response (replaces WDs ZAUDIT_TOOL + ZMSD_MIS_OBSERVATION; open to all, see OPEN_TO_ALL_APPS in backend/server.js)
@@ -79,7 +79,7 @@ const RAW_APPS: AppItem[] = [
   { id: 'gate-entry', name: 'Gate Entry', desc: 'Inward truck gate entry against purchase orders or ASNs on SAP, with gate pass print, truck out time and cancellation.', cat: 'Supply Chain', icon: DoorOpen, uses: 0, stage: 'UAT' },
   { id: 'access-tracker', name: 'Access Tracker', desc: 'Who has access to which app, every grant and revoke from Manage Access, and sign-in and app-usage activity, with Excel-ready exports. Admins only.', cat: 'IT', icon: UserCog, uses: 0, stage: 'Live' },
   { id: 'shelf-life-deviation', name: 'Shelf Life Deviation', desc: 'CPD Category Head approval of shelf-life deviation inspection lots, plus the CADE deviation report on SAP.', cat: 'CPD', icon: Hourglass, uses: 0, stage: 'Live' },
-  { id: 'setu', name: 'Samadhan', desc: 'Emami Secondary Support helpdesk — tickets from email, phone, WhatsApp and the self-service portal, AI insights and action points, severity matrix, SLA timers on business hours, round-robin assignment, board view and the daily report.', cat: 'IT', icon: LifeBuoy, uses: 0, stage: 'IAT' },
+  { id: 'samadhan', name: 'Samadhan', desc: 'Emami service desk for every issue: SAP and primary sales, secondary sales apps (Arteria today, Salescode.AI next), digital apps and IT infrastructure - one mailbox, self-service portal, WhatsApp, SLAs, AI insights and dashboards.', cat: 'IT', icon: LifeBuoy, uses: 0, stage: 'IAT' },
   { id: 'cascade-pricing', name: 'Cascade Pricing', desc: 'Export price cascade from RRP to CIF by market and customer — rate upload, pricing simulation, approval, SAP condition creation and pricing KPIs.', cat: 'IBD', icon: Layers, uses: 0, stage: 'WIP' },
   { id: 'mm-mdm', name: 'Material Master', desc: 'Request, review and approve material master records — key data, tabs, validation by SAP, workflow with send back and approval.', cat: 'Supply Chain', icon: PackageSearch, uses: 0, stage: 'WIP' },
   { id: 'auditee-response', name: 'Auditee Response', desc: 'Answer the internal audit and MIS observations assigned to you and submit your response to the reviewer, with attachments.', cat: 'Cross-Function', icon: MessageSquareReply, uses: 0, stage: 'WIP' },

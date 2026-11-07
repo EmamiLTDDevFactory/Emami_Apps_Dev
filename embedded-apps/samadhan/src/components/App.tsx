@@ -313,7 +313,7 @@ export default function App() {
             <button type="button" className="p-1 lg:hidden" onClick={() => setMenu(true)} aria-label="Open menu"><Menu size={22} /></button>
             <Headset size={18} className="text-accent" />
             <h1 className="text-[15px] font-extrabold">Samadhan</h1>
-            <span className="hidden text-2xs text-muted sm:inline">{multiDesk(meta) ? (meta.workspaces?.find((w) => w.key === ctx.workspace)?.name ?? 'All service desks') : 'Emami Secondary Support'}</span>
+            <span className="hidden text-2xs text-muted sm:inline">{multiDesk(meta) ? (meta.workspaces?.find((w) => w.key === ctx.workspace)?.name ?? 'All service desks') : 'Emami Service Desk'}</span>
             <div className="flex-1" />
             {!state.mailEnabled && (
               <span className="hidden rounded-full border border-warn/30 bg-warn/10 px-2.5 py-1 text-[11px] font-bold text-warn md:inline" title="SAMADHAN_MAIL_ENABLED is off on the server: replies are saved but no email is sent, and the mailbox is not read.">

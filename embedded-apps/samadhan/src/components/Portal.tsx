@@ -28,7 +28,7 @@ export default function Portal() {
   }, []);
 
   // Admin > General values when the server sends them; the built-in text otherwise.
-  const helpdeskName = config?.helpdeskName?.trim() || 'Emami Secondary Helpdesk';
+  const helpdeskName = config?.helpdeskName?.trim() || 'Emami Service Desk';
   const supportEmail = config?.supportEmail?.trim() || 'emami.helpdesk@emamigroup.com';
   const intro = config?.intro?.trim() || '';
 

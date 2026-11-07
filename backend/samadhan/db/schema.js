@@ -3,7 +3,7 @@ const { activeSchema, pool, resolveSchema } = require('./pool');
 const { AGENT_STATUSES, BELL_EVENTS, CALL_OUTCOMES, CONVERSATION_KINDS, ROLES, SEVERITIES, TRIGGERS, sqlList } = require('../constants');
 const { seed } = require('./seed');
 
-// Creates the Samadhan schema (formerly setu; the name in use comes from db/pool.js) and every table / index, then inserts any missing base configuration (seed.js).
+// Creates the Samadhan schema (the name comes from db/pool.js) and every table / index, then inserts any missing base configuration (seed.js).
 // Everything is CREATE ... IF NOT EXISTS / insert-if-missing, so it is safe to run again. To keep backend cold
 // starts fast it runs only when the stored schema version differs from SCHEMA_VERSION: bump it whenever this
 // file or seed.js changes.
@@ -14,7 +14,6 @@ const { seed } = require('./seed');
 const SCHEMA_VERSION = 10;
 
 async function initSchema() {
-    // Which schema this database uses: samadhan, or the legacy setu until the v7.0 rename has been run.
     await resolveSchema();
     try {
         const { rows } = await pool.query(`SELECT value FROM samadhan.settings WHERE key = 'schema.version'`);
@@ -468,13 +467,8 @@ async function upgradeV3() {
     await pool.query('CREATE INDEX IF NOT EXISTS notifications_unread_idx ON samadhan.notifications ("agentId") WHERE "readAt" IS NULL');
 }
 
-// v4: the app is shown as Samadhan - the default email sign-off in templates already stored follows the new name.
-async function upgradeV4() {
-    await pool.query(
-        `UPDATE samadhan.email_templates SET body = replace(body, 'Regards,<br>Setu – Emami Secondary Helpdesk', 'Regards,<br>Samadhan – Emami Secondary Helpdesk')
-          WHERE body LIKE '%Regards,<br>Setu – Emami Secondary Helpdesk%'`,
-    );
-}
+// v4: kept as a step of the version history; nothing left to do.
+async function upgradeV4() {}
 
 // v5: Freshdesk parity - watchers, linked / parent-child / merged tickets, spam and trash, to-dos, saved views,
 // scenarios, collision detection, CSAT survey links and the Solutions knowledge base.

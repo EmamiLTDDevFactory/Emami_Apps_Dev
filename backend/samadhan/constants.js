@@ -1,11 +1,10 @@
 'use strict';
 
-// Manage Access app id. Formerly Setu: grants made before v7 carry the id 'setu' and are still accepted (lib/access.js).
+// Manage Access app id (the hub tile, grants and inbox rows all use it).
 const APP_ID = 'samadhan';
-const LEGACY_APP_ID = 'setu';
-const APP_IDS = [APP_ID, LEGACY_APP_ID];
-/** Environment setting SAMADHAN_<name>, falling back to the pre-v7 SETU_<name>. */
-const env = (name, fallback = '') => process.env[`SAMADHAN_${name}`] || process.env[`SETU_${name}`] || fallback;
+const APP_IDS = [APP_ID];
+/** Environment setting SAMADHAN_<name>. */
+const env = (name, fallback = '') => process.env[`SAMADHAN_${name}`] || fallback;
 const MIN = 60_000;
 
 const ROLES = ['Agent', 'Supervisor', 'Admin'];
@@ -60,6 +59,6 @@ const sqlList = (arr) => arr.map((v) => `'${v}'`).join(', ');
 const q = (col) => `"${col}"`;
 
 module.exports = {
-    AGENT_EMAIL_TEMPLATES, ACTIVITY_KINDS, AGENT_STATUSES, APP_ID, APP_IDS, LEGACY_APP_ID, env, BELL_EVENTS, BELL_SCOPES, CALL_MODES, CALL_OUTCOMES, CONVERSATION_KINDS, CUSTOMER_SOURCES, EDITABLE_FIELDS,
+    AGENT_EMAIL_TEMPLATES, ACTIVITY_KINDS, AGENT_STATUSES, APP_ID, APP_IDS, env, BELL_EVENTS, BELL_SCOPES, CALL_MODES, CALL_OUTCOMES, CONVERSATION_KINDS, CUSTOMER_SOURCES, EDITABLE_FIELDS,
     EMAIL_RE, MAILBOX, MAIL_ENABLED, MIN, PATCHABLE, PHONE_RE, PRIORITIES, ROLES, SEVERITIES, SEVERITY_PRIORITY, SOURCES, STATUS, TRIGGERS, WHATSAPP, q, sqlList,
 };

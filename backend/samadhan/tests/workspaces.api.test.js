@@ -52,8 +52,12 @@ const ticket = (who, body) => call(who, 'POST', '/tickets', { requesterName: 'Ra
     let meta = (await call(A1, 'GET', '/meta')).body;
     const app = (code) => meta.applications.find((a) => a.code === code);
     check(meta.workspaces.length === 5 && meta.workspaces.filter((w) => w.available).map((w) => w.key).join() === 'SEC_SALES', 'meta: 5 workspaces, only SEC_SALES available', meta.workspaces.map((w) => [w.key, w.available]));
-    check(meta.applications.length === 29 && ['RMSFA', 'CDMS', 'SCB2B', 'MSFA', 'SS', 'SAP', 'NET'].every((c) => app(c)), 'meta: 29 applications incl. RMSFA, CDMS, SCB2B');
-    check(app('SCB2B').workspaceKey === 'SEC_SALES' && app('B2B').workspaceKey === 'DIGITAL_APPS' && app('S4H').active === false, 'SCB2B in Secondary Sales, B2B in Digital Apps, S4H inactive');
+    check(meta.applications.length === 31 && ['RMSFA', 'CDMS', 'SCB2B', 'SCB2C', 'SCSUP', 'MSFA', 'SS', 'SAP', 'NET'].every((c) => app(c)), 'meta: 31 applications incl. RMSFA, CDMS and the Salescode.AI apps');
+    check(app('SCB2B').workspaceKey === 'SEC_SALES' && app('SCB2C').workspaceKey === 'SEC_SALES' && app('B2B').active === false && app('B2C').active === false && app('S4H').active === false,
+        'B2B / B2C are Salescode.AI apps in Secondary Sales; in-house B2B / B2C and S4H inactive');
+    check(app('MSFA').vendor === 'Arteria' && app('SUP').vendor === 'Arteria' && app('MR').vendor === 'Salescode.AI' && app('SCSUP').name === 'Supervisor App (Salescode.AI)',
+        'vendors: Arteria today, Salescode.AI going forward', [app('MSFA').vendor, app('MR').vendor]);
+    check(meta.workspaces.find((w) => w.key === 'SAP').name === 'SAP & Primary Sales', 'SAP desk covers primary sales');
     check(meta.byWorkspace && meta.byWorkspace.SEC_SALES && meta.byWorkspace.SAP && meta.recordClasses.includes('INCIDENT') && meta.priorityMatrix.length === 64, 'meta: byWorkspace, record classes, 4 x 16 matrix cells');
     check(meta.options['workspaces.enabled'] === false && Array.isArray(meta.fields) && Array.isArray(meta.categoryTree), 'meta: flag off; top-level fields / categoryTree kept');
     check(meta.byWorkspace.SAP.fields.find((f) => f.key === 'category') !== undefined, 'byWorkspace.SAP has the field list');
@@ -85,7 +89,7 @@ const ticket = (who, body) => call(who, 'POST', '/tickets', { requesterName: 'Ra
     check(d.applicationCode === 'DMS' && d.classificationSource === 'subject_tag' && d.classificationConfidence === 1, 'subject tag [DMS]', [d.applicationCode, d.classificationSource]);
     d = await classified('CDMS: purchase entry not saving');
     check(d.applicationCode === 'CDMS' && d.classificationSource === 'subject_tag', 'subject tag "CDMS:"', [d.applicationCode, d.classificationSource]);
-    d = await classified('Re: [Rural mSFA App] order screen blank');
+    d = await classified('Re: [Rural mSFA App (Arteria)] order screen blank');
     check(d.applicationCode === 'RMSFA' && d.classificationSource === 'subject_tag', 'subject tag by exact application name, after Re:', [d.applicationCode, d.classificationSource]);
     d = await classified('The msfa app keeps logging me out');
     check(d.applicationCode === 'MSFA' && d.classificationSource === 'keyword' && d.classificationConfidence > 0.5, 'keyword (alias "msfa")', [d.applicationCode, d.classificationSource, d.classificationConfidence]);
@@ -148,7 +152,7 @@ const ticket = (who, body) => call(who, 'POST', '/tickets', { requesterName: 'Ra
     // ---- export: optional Reference / Application columns; default export unchanged ----
     r = await call(SUP, 'GET', `/tickets/export?view=all&columns=${encodeURIComponent('Ticket ID,Reference,Application,Workspace')}`);
     const row = r.body.rows?.find((x) => x[0] === t1.id);
-    check(r.status === 200 && row && row[1] === `RMSFA-${t1.id}` && row[2] === 'Rural mSFA App' && row[3] === 'Secondary Sales', 'export Reference / Application / Workspace', row);
+    check(r.status === 200 && row && row[1] === `RMSFA-${t1.id}` && row[2] === 'Rural mSFA App (Arteria)' && row[3] === 'Secondary Sales', 'export Reference / Application / Workspace', row);
     r = await call(SUP, 'GET', '/tickets/export?view=all');
     check(!r.body.columns.includes('Reference') && !r.body.columns.includes('Application'), 'default export has no new columns');
 
@@ -272,7 +276,7 @@ const ticket = (who, body) => call(who, 'POST', '/tickets', { requesterName: 'Ra
     r = await call(SUP, 'GET', `/analytics?days=7&applicationId=${app('DMS').id}`);
     check(r.body.totals.created >= 4 && r.body.byApplication.length === 1 && r.body.byApplication[0].code === 'DMS', 'analytics: application filter');
     r = await call(A1, 'GET', '/dashboard/breakdown?days=7');
-    check(r.status === 200 && r.body.application.some((x) => x.name === 'SalesCode DMS App'), 'dashboard breakdown: by application');
+    check(r.status === 200 && r.body.application.some((x) => x.name === 'DMS (Salescode.AI)'), 'dashboard breakdown: by application');
     const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Kolkata' });
     r = await call(SUP, 'GET', `/reports/daily?from=${today}&to=${today}`);
     check(r.status === 200 && r.body.columns.length === 36 && r.body.rows.every((x) => x.length === 36), 'daily report default: 36 columns, unchanged');

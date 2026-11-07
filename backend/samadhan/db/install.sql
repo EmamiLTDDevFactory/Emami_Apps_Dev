@@ -1,12 +1,12 @@
--- Samadhan helpdesk (formerly Setu): schema, tables, indexes and base configuration.
+-- Samadhan service desk: schema, tables, indexes and base configuration.
 -- Generated from backend/samadhan/db/schema.js and seed.js - the backend runs exactly this by itself on first start,
 -- so this script is only needed when the backend cannot reach the database to do it (e.g. a DBA installs it).
--- Run once, on a database where neither the samadhan schema nor the pre-v7 setu schema exists yet, as a user allowed to CREATE SCHEMA.
+-- Run once, on a database where the samadhan schema does not exist yet, as a user allowed to CREATE SCHEMA.
 -- It refuses to run if the schema already exists. Afterwards the backend keeps the schema up to date itself.
 BEGIN;
 DO $$ BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name IN ('samadhan', 'setu')) THEN
-    RAISE EXCEPTION 'The samadhan (or pre-v7 setu) schema already exists - nothing to do (the backend maintains it; to rename setu use db/migrate.js).';
+  IF EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name = 'samadhan') THEN
+    RAISE EXCEPTION 'The samadhan schema already exists - nothing to do (the backend maintains it).';
   END IF;
 END $$;
 CREATE SCHEMA IF NOT EXISTS samadhan;
@@ -603,31 +603,31 @@ CREATE TABLE IF NOT EXISTS samadhan.notifications (
 CREATE INDEX IF NOT EXISTS notifications_agent_idx ON samadhan.notifications ("agentId", "createdAt" DESC);
 CREATE INDEX IF NOT EXISTS notifications_unread_idx ON samadhan.notifications ("agentId") WHERE "readAt" IS NULL;
 
-INSERT INTO samadhan.email_templates (key, audience, subject, body) VALUES ('requester.ticket_received', 'requester', 'Ticket Received - {{ticket.subject}} || {{ticket.id}}', 'Dear {{ticket.requester.name}},<br><br>Thank you for writing in. Your request is logged as ticket {{ticket.id}}, and someone from the helpdesk team will reply to you, normally within one working day.<br><br>When you write about this issue again, please keep the ticket number in the subject line so your message reaches the same ticket.<br><br>Regards,<br>Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
+INSERT INTO samadhan.email_templates (key, audience, subject, body) VALUES ('requester.ticket_received', 'requester', 'Ticket Received - {{ticket.subject}} || {{ticket.id}}', 'Dear {{ticket.requester.name}},<br><br>Thank you for writing in. Your request is logged as ticket {{ticket.id}}, and someone from the helpdesk team will reply to you, normally within one working day.<br><br>When you write about this issue again, please keep the ticket number in the subject line so your message reaches the same ticket.<br><br>Regards,<br>Emami Service Desk') ON CONFLICT (key) DO NOTHING;
 
-INSERT INTO samadhan.email_templates (key, audience, subject, body) VALUES ('reply.signature', 'requester', '-', '#TICKET No - {{ticket.id}}<br><br>Thanks &amp; Regards,<br>{{ticket.agent.name}}<br>Emami Secondary Helpdesk<br>Mail ID - emami.helpdesk@emamigroup.com<br>Phone No - 06289423435') ON CONFLICT (key) DO NOTHING;
+INSERT INTO samadhan.email_templates (key, audience, subject, body) VALUES ('reply.signature', 'requester', '-', '#TICKET No - {{ticket.id}}<br><br>Thanks &amp; Regards,<br>{{ticket.agent.name}}<br>Emami Service Desk<br>Mail ID - emami.helpdesk@emamigroup.com<br>Phone No - 06289423435') ON CONFLICT (key) DO NOTHING;
 
-INSERT INTO samadhan.email_templates (key, audience, subject, body) VALUES ('forward.signature', 'agent', '-', '#TICKET No - {{ticket.id}}<br><br>Thanks &amp; Regards,<br>Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
+INSERT INTO samadhan.email_templates (key, audience, subject, body) VALUES ('forward.signature', 'agent', '-', '#TICKET No - {{ticket.id}}<br><br>Thanks &amp; Regards,<br>Emami Service Desk') ON CONFLICT (key) DO NOTHING;
 
-INSERT INTO samadhan.email_templates (key, audience, subject, body) VALUES ('requester.closing_reminder', 'requester', '{{ticket.id}} {{ticket.subject}}', 'Hi,<br><br>This is a gentle reminder that we have not received any update from your side, so the ticket is now closed. Please send a new email to open a new ticket.<br><br>Thanks &amp; Regards,<br>Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
+INSERT INTO samadhan.email_templates (key, audience, subject, body) VALUES ('requester.closing_reminder', 'requester', '{{ticket.id}} {{ticket.subject}}', 'Hi,<br><br>This is a gentle reminder that we have not received any update from your side, so the ticket is now closed. Please send a new email to open a new ticket.<br><br>Thanks &amp; Regards,<br>Emami Service Desk') ON CONFLICT (key) DO NOTHING;
 
-INSERT INTO samadhan.email_templates (key, audience, subject, body) VALUES ('agent.assigned_group', 'agent', 'New in {{ticket.group.name}}: {{ticket.subject}} [#{{ticket.id}}]', 'A ticket has been routed to {{ticket.group.name}}.<br><br><b>{{ticket.subject}}</b><br>{{ticket.description}}<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Samadhan – Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
+INSERT INTO samadhan.email_templates (key, audience, subject, body) VALUES ('agent.assigned_group', 'agent', 'New in {{ticket.group.name}}: {{ticket.subject}} [#{{ticket.id}}]', 'A ticket has been routed to {{ticket.group.name}}.<br><br><b>{{ticket.subject}}</b><br>{{ticket.description}}<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Samadhan – Emami Service Desk') ON CONFLICT (key) DO NOTHING;
 
-INSERT INTO samadhan.email_templates (key, audience, subject, body) VALUES ('agent.assigned_agent', 'agent', 'Assigned to you: {{ticket.subject}} [#{{ticket.id}}]', 'Hi {{ticket.agent.name}},<br><br>Ticket {{ticket.id}} is now assigned to you.<br><br><b>{{ticket.subject}}</b><br>{{ticket.description}}<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Samadhan – Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
+INSERT INTO samadhan.email_templates (key, audience, subject, body) VALUES ('agent.assigned_agent', 'agent', 'Assigned to you: {{ticket.subject}} [#{{ticket.id}}]', 'Hi {{ticket.agent.name}},<br><br>Ticket {{ticket.id}} is now assigned to you.<br><br><b>{{ticket.subject}}</b><br>{{ticket.description}}<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Samadhan – Emami Service Desk') ON CONFLICT (key) DO NOTHING;
 
-INSERT INTO samadhan.email_templates (key, audience, subject, body) VALUES ('agent.requester_replied', 'agent', 'Requester replied: {{ticket.subject}} [#{{ticket.id}}]', 'Hi {{ticket.agent.name}},<br><br>{{ticket.requester.name}} has replied on ticket {{ticket.id}}:<br><br>{{comment.body}}<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Samadhan – Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
+INSERT INTO samadhan.email_templates (key, audience, subject, body) VALUES ('agent.requester_replied', 'agent', 'Requester replied: {{ticket.subject}} [#{{ticket.id}}]', 'Hi {{ticket.agent.name}},<br><br>{{ticket.requester.name}} has replied on ticket {{ticket.id}}:<br><br>{{comment.body}}<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Samadhan – Emami Service Desk') ON CONFLICT (key) DO NOTHING;
 
-INSERT INTO samadhan.email_templates (key, audience, subject, body) VALUES ('agent.note_added', 'agent', 'Note added: {{ticket.subject}} [#{{ticket.id}}]', 'A colleague added a private note on ticket {{ticket.id}}:<br><br>{{comment.body}}<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Samadhan – Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
+INSERT INTO samadhan.email_templates (key, audience, subject, body) VALUES ('agent.note_added', 'agent', 'Note added: {{ticket.subject}} [#{{ticket.id}}]', 'A colleague added a private note on ticket {{ticket.id}}:<br><br>{{comment.body}}<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Samadhan – Emami Service Desk') ON CONFLICT (key) DO NOTHING;
 
-INSERT INTO samadhan.email_templates (key, audience, subject, body) VALUES ('agent.first_response_violated', 'agent', 'First response overdue: {{ticket.subject}} [#{{ticket.id}}]', 'Ticket {{ticket.id}} from {{ticket.requester.email}} was due a first response by {{ticket.first_response_due}} and has not had one.<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Samadhan – Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
+INSERT INTO samadhan.email_templates (key, audience, subject, body) VALUES ('agent.first_response_violated', 'agent', 'First response overdue: {{ticket.subject}} [#{{ticket.id}}]', 'Ticket {{ticket.id}} from {{ticket.requester.email}} was due a first response by {{ticket.first_response_due}} and has not had one.<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Samadhan – Emami Service Desk') ON CONFLICT (key) DO NOTHING;
 
-INSERT INTO samadhan.email_templates (key, audience, subject, body) VALUES ('agent.resolution_violated', 'agent', 'Resolution overdue: {{ticket.subject}} [#{{ticket.id}}]', 'Ticket {{ticket.id}} from {{ticket.requester.email}} was due to be resolved by {{ticket.resolution_due}}.<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Samadhan – Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
+INSERT INTO samadhan.email_templates (key, audience, subject, body) VALUES ('agent.resolution_violated', 'agent', 'Resolution overdue: {{ticket.subject}} [#{{ticket.id}}]', 'Ticket {{ticket.id}} from {{ticket.requester.email}} was due to be resolved by {{ticket.resolution_due}}.<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Samadhan – Emami Service Desk') ON CONFLICT (key) DO NOTHING;
 
-INSERT INTO samadhan.email_templates (key, audience, subject, body) VALUES ('agent.first_response_reminder', 'agent', 'First response due soon: {{ticket.subject}} [#{{ticket.id}}]', 'Ticket {{ticket.id}} needs a first response by {{ticket.first_response_due}}.<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Samadhan – Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
+INSERT INTO samadhan.email_templates (key, audience, subject, body) VALUES ('agent.first_response_reminder', 'agent', 'First response due soon: {{ticket.subject}} [#{{ticket.id}}]', 'Ticket {{ticket.id}} needs a first response by {{ticket.first_response_due}}.<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Samadhan – Emami Service Desk') ON CONFLICT (key) DO NOTHING;
 
-INSERT INTO samadhan.email_templates (key, audience, subject, body) VALUES ('agent.resolution_reminder', 'agent', 'Resolution due soon: {{ticket.subject}} [#{{ticket.id}}]', 'Ticket {{ticket.id}} is due to be resolved by {{ticket.resolution_due}}.<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Samadhan – Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
+INSERT INTO samadhan.email_templates (key, audience, subject, body) VALUES ('agent.resolution_reminder', 'agent', 'Resolution due soon: {{ticket.subject}} [#{{ticket.id}}]', 'Ticket {{ticket.id}} is due to be resolved by {{ticket.resolution_due}}.<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Samadhan – Emami Service Desk') ON CONFLICT (key) DO NOTHING;
 
-INSERT INTO samadhan.email_templates (key, audience, subject, body) VALUES ('agent.escalation_l3', 'agent', 'Escalated to L3: {{ticket.subject}} [#{{ticket.id}}]', 'Ticket {{ticket.id}} has been moved to Escalation to L3 Support.<br><br><b>{{ticket.subject}}</b><br>Assigned to: {{ticket.agent.name}}<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Samadhan – Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
+INSERT INTO samadhan.email_templates (key, audience, subject, body) VALUES ('agent.escalation_l3', 'agent', 'Escalated to L3: {{ticket.subject}} [#{{ticket.id}}]', 'Ticket {{ticket.id}} has been moved to Escalation to L3 Support.<br><br><b>{{ticket.subject}}</b><br>Assigned to: {{ticket.agent.name}}<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Samadhan – Emami Service Desk') ON CONFLICT (key) DO NOTHING;
 
 INSERT INTO samadhan.settings (key, value) VALUES ('escalation.groupId', '0') ON CONFLICT (key) DO NOTHING;
 
@@ -645,9 +645,6 @@ INSERT INTO samadhan.settings (key, value) VALUES ('call.mode', '"tel"') ON CONF
 
 INSERT INTO samadhan.settings (key, value) VALUES ('whatsapp.threadDays', '7') ON CONFLICT (key) DO NOTHING;
 
--- v4: the app is shown as Samadhan - default email sign-off in templates already stored
-UPDATE samadhan.email_templates SET body = replace(body, 'Regards,<br>Setu – Emami Secondary Helpdesk', 'Regards,<br>Samadhan – Emami Secondary Helpdesk')
-  WHERE body LIKE '%Regards,<br>Setu – Emami Secondary Helpdesk%';
 
 -- v5: Freshdesk parity - watchers, linked / parent-child / merged tickets, spam and trash, to-dos, saved views,
 -- scenarios, collision detection, CSAT survey links and the Solutions knowledge base
@@ -736,7 +733,7 @@ CREATE TABLE IF NOT EXISTS samadhan.articles (
 );
 ALTER TABLE samadhan.companies ADD COLUMN IF NOT EXISTS "createdAt" timestamptz NOT NULL DEFAULT now();
 
-INSERT INTO samadhan.email_templates (key, audience, subject, body) VALUES ('requester.csat', 'requester', 'How did we do? Ticket {{ticket.id}} - {{ticket.subject}}', 'Dear {{ticket.requester.name}},<br><br>Your ticket {{ticket.id}} is now closed. How would you rate your overall satisfaction for the resolution provided by the agent?<br><br><a href="{{csat.url}}">Rate the support you received</a> (one click, no sign-in)<br><br>Regards,<br>Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
+INSERT INTO samadhan.email_templates (key, audience, subject, body) VALUES ('requester.csat', 'requester', 'How did we do? Ticket {{ticket.id}} - {{ticket.subject}}', 'Dear {{ticket.requester.name}},<br><br>Your ticket {{ticket.id}} is now closed. How would you rate your overall satisfaction for the resolution provided by the agent?<br><br><a href="{{csat.url}}">Rate the support you received</a> (one click, no sign-in)<br><br>Regards,<br>Emami Service Desk') ON CONFLICT (key) DO NOTHING;
 
 INSERT INTO samadhan.scenarios (name, description, actions, position) VALUES
     ('Assign to QA', 'Customer reported bugs are assigned to L2 in a single click',

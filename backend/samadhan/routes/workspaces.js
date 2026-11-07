@@ -131,15 +131,15 @@ async function saveApplication(req, res, id) {
         b.aliases === undefined ? before?.aliases ?? [] : list(b.aliases), pick('criticality', (v) => text(v, 20) || null), pick('businessOwner', (v) => text(v, 120) || null),
         pick('itOwnerAgentId', intRef), pick('supportGroupId', intRef), pick('defaultSlaPolicyId', intRef),
         b.portalVisible === undefined ? before?.portalVisible ?? true : bool(b.portalVisible), b.active === undefined ? before?.active ?? true : bool(b.active),
-        Number.isInteger(b.position) ? b.position : before?.position ?? 100];
+        Number.isInteger(b.position) ? b.position : before?.position ?? 100, pick('vendor', (v) => text(v, 60) || null)];
     let row;
     try {
         row = before
             ? (await pool.query(`UPDATE samadhan.applications SET code = $2, name = $3, "workspaceId" = $4, description = $5, icon = $6, aliases = $7, criticality = $8,
                   "businessOwner" = $9, "itOwnerAgentId" = $10, "supportGroupId" = $11, "defaultSlaPolicyId" = $12, "portalVisible" = $13, active = $14, position = $15,
-                  "updatedAt" = now() WHERE id = $1 RETURNING *`, [id, ...values])).rows[0]
+                  vendor = $16, "updatedAt" = now() WHERE id = $1 RETURNING *`, [id, ...values])).rows[0]
             : (await pool.query(`INSERT INTO samadhan.applications (code, name, "workspaceId", description, icon, aliases, criticality, "businessOwner", "itOwnerAgentId",
-                  "supportGroupId", "defaultSlaPolicyId", "portalVisible", active, position) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`, values)).rows[0];
+                  "supportGroupId", "defaultSlaPolicyId", "portalVisible", active, position, vendor) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *`, values)).rows[0];
     } catch (e) {
         if (e.code === '23505') throw fail(400, `The code ${code} is already taken.`);
         if (e.code === '23503') throw fail(400, 'The owner, group or SLA policy does not exist.');

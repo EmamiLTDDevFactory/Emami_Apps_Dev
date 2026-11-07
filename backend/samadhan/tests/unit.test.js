@@ -1,9 +1,9 @@
 'use strict';
 /*
-   Samadhan (formerly Setu) unit tests - pure logic, no database or network. Run: node --test backend/samadhan/tests/unit.test.js
+   Samadhan unit tests - pure logic, no database or network. Run: node --test backend/samadhan/tests/unit.test.js
 */
 // WhatsApp signature tests sign with this secret (read when constants.js loads, so set before any require).
-process.env.SETU_WHATSAPP_APP_SECRET = 'unit-test-secret';
+process.env.SAMADHAN_WHATSAPP_APP_SECRET = 'unit-test-secret';
 const crypto = require('node:crypto');
 const test = require('node:test');
 const assert = require('node:assert/strict');

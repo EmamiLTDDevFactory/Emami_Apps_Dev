@@ -104,6 +104,8 @@ export interface Application {
   aliases: string[];
   criticality: string | null;
   businessOwner: string | null;
+  /** Arteria (today) / Salescode.AI (going forward) / ... - shown on the tiles. */
+  vendor?: string | null;
   itOwnerAgentId: number | null;
   supportGroupId: number | null;
   defaultSlaPolicyId: number | null;

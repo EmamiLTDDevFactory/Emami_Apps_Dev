@@ -6,12 +6,12 @@ const { SEVERITY_PRIORITY, SOURCES } = require('../constants');
 // Every option falls back to the built-in default when it was never set, so nothing changes until an Admin chooses to.
 
 const DEFAULTS = {
-    'general.helpdeskName': 'Emami Secondary Helpdesk',
+    'general.helpdeskName': 'Emami Service Desk',
     'general.supportEmail': 'emami.helpdesk@emamigroup.com',
     'general.supportPhone': '06289423435',
     'csat.question': 'How would you rate your overall satisfaction for the resolution provided by the agent?',
     'csat.labels': { 3: 'Extremely satisfied', 2: 'Neither satisfied nor dissatisfied', 1: 'Extremely dissatisfied' },
-    'portal.intro': 'Raise a support ticket with the Emami Secondary Helpdesk, or check the status of one you raised.',
+    'portal.intro': 'Raise a support ticket with the Emami Service Desk, or check the status of one you raised.',
     'export.maxRows': 5000,
     'list.defaultView': 'open',
     'list.pageSize': 50,

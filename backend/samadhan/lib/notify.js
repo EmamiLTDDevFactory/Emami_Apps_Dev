@@ -60,7 +60,7 @@ function placeholders(t, extra = {}) {
         'ticket.resolution_due': fmtIst(t.resolutionDueAt),
         'ticket.distributor.code': t.distributorCode ?? '',
         'ticket.distributor.name': t.distributorName ?? '',
-        helpdesk_name: extra.helpdesk_name ?? 'Emami Secondary Helpdesk',
+        helpdesk_name: extra.helpdesk_name ?? 'Emami Service Desk',
         ...extra,
     };
 }
@@ -119,11 +119,10 @@ async function notifyAgents(t, template, to, extra = {}) {
     const msg = await renderTemplate(template, t, extra);
     if (!msg) return;
     const body = stripTags(msg.html.replace(/<br\s*\/?>/gi, '\n')).slice(0, 1500);
-    // Hub inbox rows carry the app id in use (formerly 'setu'); the de-duplication key keeps its pre-v7 'setu:' prefix
-    // so a notification already sent before the rename is never sent twice.
+    // Hub inbox rows carry the app id and a de-duplication key per ticket and template.
     const appId = await grantAppId();
     await Promise.all([...new Set(recipients)].map((email) =>
-        notify({ email, appId, kind: template.replace(/^agent\./, ''), title: msg.subject, body, link: ticketLink(t.id), refKey: `setu:${t.id}:${template}` })));
+        notify({ email, appId, kind: template.replace(/^agent\./, ''), title: msg.subject, body, link: ticketLink(t.id), refKey: `samadhan:${t.id}:${template}` })));
 }
 
 module.exports = { emailRequester, fillPlaceholders, loadTicket, notifyAgents, renderTemplate, withRef };

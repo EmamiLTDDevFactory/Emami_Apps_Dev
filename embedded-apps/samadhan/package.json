@@ -2,7 +2,7 @@
   "name": "samadhan",
   "version": "1.0.0",
   "private": true,
-  "description": "Samadhan (formerly Setu): Emami Secondary Support helpdesk (tickets, SLA, severity matrix, automations) on the shared Emami Apps backend",
+  "description": "Samadhan: Emami service desk (tickets, SLA, severity matrix, automations) on the shared Emami Apps backend",
   "scripts": {
     "dev": "next dev -p 3250",
     "build": "next build && node scripts/rename-export.js",
