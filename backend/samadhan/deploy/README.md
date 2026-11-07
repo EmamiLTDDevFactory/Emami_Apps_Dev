@@ -56,6 +56,7 @@ On first start on a new database Samadhan creates its `samadhan` schema and tabl
 
 Demo and sample data: `deploy/demo` -> `~/samadhan-demo` (`bash ~/samadhan-demo/run.sh load|load-pulsedesk|load-v7|remove`;
 `load-v7` adds the last 14 days of tickets for the dashboards / reports / insights, 4 groups with their categories, and
-Authorization cockpit examples for demo agents only),
+Authorization cockpit examples for demo agents only; `load-v7-apps` (after `load-v7`, Phase 3) puts those tickets in their
+service desk's application and adds mail-classification examples, sender rules and keyword suggestions),
 `deploy/mock` -> `~/samadhan-mock`. Both work before and after the schema rename; `remove` also removes demo data
 loaded before v7 (`@demo.setu.local`).
