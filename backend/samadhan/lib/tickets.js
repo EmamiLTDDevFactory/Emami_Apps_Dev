@@ -111,7 +111,8 @@ async function classificationFor(input) {
     if (input.applicationId !== undefined && input.applicationId !== null && input.applicationId !== '') {
         const app = c.byId.get(Number(input.applicationId));
         if (!app || !app.active) throw fail(400, 'Unknown or inactive application.');
-        if (!(await availableWorkspaceIds()).has(app.workspaceId)) throw fail(400, `${app.name} belongs to a workspace that is switched off.`);
+        // allowAnyDesk: records made from existing tickets (a problem from its incidents) stay in those tickets' desk.
+        if (!input.allowAnyDesk && !(await availableWorkspaceIds()).has(app.workspaceId)) throw fail(400, `${app.name} belongs to a workspace that is switched off.`);
         return { applicationId: app.id, workspaceId: app.workspaceId, source: input.classificationSource ?? 'manual', confidence: null };
     }
     return classify({ subject: input.subject, body: input.description, fromEmail: input.requester?.email });

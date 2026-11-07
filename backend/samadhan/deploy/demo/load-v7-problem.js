@@ -18,17 +18,18 @@ async function main() {
     await resolveSchema();
     const c = await pool.query(`SELECT to_regclass('samadhan.problem_details') AS t`);
     if (!c.rows[0].t) throw new Error('Migration 7.7-problem has not run on this database yet - deploy the Phase 7 backend first.');
-    if ((await pool.query(`SELECT 1 FROM samadhan.tickets WHERE 'demo-v7-problem' = ANY(tags)`)).rows.length) { console.log('The Phase 7 demo is already loaded. Run "remove" first to reload.'); return; }
+    if ((await pool.query(`SELECT 1 FROM samadhan.tickets WHERE 'demo-v7-problem' = ANY(tags) AND "recordClass" = 'PROBLEM'`)).rows.length) { console.log('The Phase 7 demo is already loaded. Run "remove" first to reload.'); return; }
+    const majorDone = (await pool.query(`SELECT 1 FROM samadhan.tickets WHERE 'demo-v7-problem' = ANY(tags)`)).rows.length > 0;
     const pick = async (desk, resolved, n) => (await pool.query(
         `SELECT t.id FROM samadhan.tickets t JOIN samadhan.workspaces w ON w.id = t."workspaceId" JOIN samadhan.ticket_statuses s ON s.id = t."statusId"
          WHERE 'demo' = ANY(t.tags) AND w.key = $1 AND s."isResolved" = $2 AND NOT t."isMajorIncident" AND t."problemId" IS NULL AND COALESCE(t."recordClass", 'INCIDENT') = 'INCIDENT'
          ORDER BY t.id DESC LIMIT $3`, [desk, resolved, n])).rows.map((r) => r.id);
-    const [open] = await pick('SAP', false, 1);
+    const [open] = majorDone ? [] : await pick('SAP', false, 1);
     if (open) {
         await pr.declareMajor(open, { bridgeUrl: 'https://teams.microsoft.com/l/meetup-join/demo', note: 'Order creation failing for all plants (demo).' });
         await pool.query(`UPDATE samadhan.tickets SET tags = array_append(tags, 'demo-v7-problem') WHERE id = $1`, [open]);
     }
-    const [done] = await pick('SAP', true, 1);
+    const [done] = majorDone ? [] : await pick('SAP', true, 1);
     if (done) {
         await pool.query(`UPDATE samadhan.tickets SET "isMajorIncident" = false, "majorDeclaredAt" = "createdAt" + interval '10 minutes' WHERE id = $1`, [done]);
         await pr.savePir(done, { summary: 'Invoices could not be posted for 45 minutes (demo).', rootCause: 'A pricing condition was deleted by a customizing transport.', rootCauseCategory: 'Configuration',
