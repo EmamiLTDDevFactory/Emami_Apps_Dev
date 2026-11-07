@@ -774,6 +774,96 @@ const MIGRATIONS = [
             return 'Major incident / problem tables and columns removed';
         },
     },
+    {
+        // v7 Phase 8 (master prompt §I, §O): S/4HANA Programme details per ticket; the programme desk's types (with record
+        // class), Process area -> Sub-process tree, groups, triage default, routing, the defect SLA and canned responses.
+        // Seeded rows are recorded in settings 'seed.7.8'; down removes exactly those plus the new table.
+        id: '7.8-program',
+        describe: 'Programme details table; S/4 Programme types, process-area tree, groups, routing, defect SLA, canned responses',
+        async up(client) {
+            const S = ident(activeSchema());
+            const seed = require('../lib/programSeed');
+            const m = { choiceIds: [], groupIds: [], ruleIds: [], policyIds: [], cannedIds: [], defaultGroup: false, defaultSla: false };
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.ticket_program_details (
+                "ticketId" int PRIMARY KEY REFERENCES ${S}.tickets(id) ON DELETE CASCADE,
+                "activatePhase" text, "releaseWave" text, "testCycle" text, "testCaseId" text, "testScenario" text, "processArea" text, "defectSeverity" text,
+                "migrationObject" text, "mockCycle" text, "cutoverStepId" text, "plannedStart" timestamptz, "plannedEnd" timestamptz, "simplificationItem" text,
+                "atcFinding" text, "ricefwId" text, "fitGapId" text, "retestStatus" text, "retestBy" text, "retestAt" timestamptz,
+                "updatedAt" timestamptz NOT NULL DEFAULT now())`);
+            await q(client, `CREATE INDEX IF NOT EXISTS ticket_program_cycle_idx ON ${S}.ticket_program_details ("testCycle")`);
+            const ws = Object.fromEntries((await q(client, `SELECT id, key FROM ${S}.workspaces`)).rows.map((r) => [r.key, r.id]));
+            const W = ws.S4_PROGRAM;
+            if (W) {
+                const field = Object.fromEntries((await q(client, `SELECT id, key FROM ${S}.field_definitions`)).rows.map((r) => [r.key, r.id]));
+                const own = async (fid) => Number((await q(client, `SELECT count(*) AS n FROM ${S}.field_choices WHERE "fieldId" = $1 AND "workspaceId" = $2`, [fid, W])).rows[0].n) > 0;
+                const add = async (fid, value, pos, parentId = null, meta = {}) => {
+                    const r = await q(client, `INSERT INTO ${S}.field_choices ("fieldId", "parentId", value, position, "workspaceId", meta) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+                        [fid, parentId, value, pos, W, JSON.stringify(meta)]);
+                    m.choiceIds.push(r.rows[0].id);
+                    return r.rows[0].id;
+                };
+                if (field.type && !(await own(field.type))) for (const [i, [v, rc]] of seed.S4_TYPES.entries()) await add(field.type, v, i + 1, null, { recordClass: rc });
+                if (field.category && !(await own(field.category))) {
+                    let i = 0;
+                    for (const [area, subs] of Object.entries(seed.PROCESS_TREE)) {
+                        const pid = await add(field.category, area, ++i);
+                        for (const [j, sub] of subs.entries()) await add(field.category, sub, j + 1, pid);
+                    }
+                }
+                for (const name of seed.GROUPS) {
+                    const r = await q(client, `INSERT INTO ${S}.groups (name, description, assignment, "workspaceId") VALUES ($1, $2, 'ROUND_ROBIN', $3) ON CONFLICT (name) DO NOTHING RETURNING id`,
+                        [name, name === seed.DEFAULT_GROUP ? 'Programme triage - new defects without a matching work stream land here' : null, W]);
+                    m.groupIds.push(...r.rows.map((x) => x.id));
+                }
+                const group = Object.fromEntries((await q(client, `SELECT id, name FROM ${S}.groups`)).rows.map((r) => [r.name, r.id]));
+                m.defaultGroup = (await q(client, `UPDATE ${S}.workspaces SET "defaultGroupId" = $2 WHERE id = $1 AND "defaultGroupId" IS NULL RETURNING id`, [W, group[seed.DEFAULT_GROUP]])).rows.length > 0;
+                let p = 0;
+                for (const [area, g] of Object.entries(seed.AREA_GROUP)) {
+                    if (!group[g]) continue;
+                    const r = await q(client, `INSERT INTO ${S}.automation_rules (name, trigger, active, position, conditions, actions, "workspaceId") VALUES ($1, 'ON_CREATE', true, $2, $3, $4, $5)
+                                              ON CONFLICT (name) DO NOTHING RETURNING id`,
+                    [`S/4: ${area} to ${g}`, 200 + p++, JSON.stringify({ all: [{ field: 'groupId', op: 'is_empty' }, { field: 'category', op: 'eq', value: area }] }), JSON.stringify([{ type: 'setGroup', value: group[g] }]), W]);
+                    m.ruleIds.push(...r.rows.map((x) => x.id));
+                }
+                const pol = await q(client, `INSERT INTO ${S}.sla_policies (name, "isDefault", position, "workspaceId") VALUES ($1, false, 60, $2) ON CONFLICT (name) DO NOTHING RETURNING id`, [seed.SLA_NAME, W]);
+                if (pol.rows.length) {
+                    m.policyIds.push(pol.rows[0].id);
+                    for (const [prio, fr, res, bh] of seed.SLA_TARGETS) {
+                        await q(client, `INSERT INTO ${S}.sla_targets ("policyId", priority, "firstResponseMins", "resolutionMins", "businessHours", escalate) VALUES ($1, $2, $3, $4, $5, true)`, [pol.rows[0].id, prio, fr, res, bh]);
+                    }
+                    m.defaultSla = (await q(client, `UPDATE ${S}.workspaces SET "defaultSlaPolicyId" = $2 WHERE id = $1 AND "defaultSlaPolicyId" IS NULL RETURNING id`, [W, pol.rows[0].id])).rows.length > 0;
+                }
+                for (const [, folder, title, code, body] of seed.CANNED) {
+                    const r = await q(client, `INSERT INTO ${S}.canned_responses (folder, title, "shortCode", body, "workspaceId")
+                                              SELECT $1, $2, $3, $4, $5 WHERE NOT EXISTS (SELECT 1 FROM ${S}.canned_responses WHERE lower("shortCode") = lower($3)) RETURNING id`,
+                    [folder, title, code, body.replace(/\n/g, '<br>'), W]);
+                    m.cannedIds.push(...r.rows.map((x) => x.id));
+                }
+                m.workspaceId = W;
+            }
+            await q(client, `INSERT INTO ${S}.settings (key, value) VALUES ('seed.7.8', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, [JSON.stringify(m)]);
+            return `S/4 Programme desk configured: ${m.choiceIds.length} choices, ${m.groupIds.length} groups, ${m.ruleIds.length} routing rules`;
+        },
+        async down(client) {
+            const S = ident(activeSchema());
+            const m = (await q(client, `SELECT value FROM ${S}.settings WHERE key = 'seed.7.8'`)).rows[0]?.value || {};
+            const ids = (k) => m[k] || [];
+            await q(client, `DELETE FROM ${S}.canned_responses WHERE id = ANY($1::int[])`, [ids('cannedIds')]);
+            if (m.defaultSla) await q(client, `UPDATE ${S}.workspaces SET "defaultSlaPolicyId" = NULL WHERE id = $1`, [m.workspaceId]);
+            await q(client, `UPDATE ${S}.workspaces SET "defaultSlaPolicyId" = NULL WHERE "defaultSlaPolicyId" = ANY($1::int[])`, [ids('policyIds')]);
+            await q(client, `DELETE FROM ${S}.sla_policies WHERE id = ANY($1::int[])`, [ids('policyIds')]);
+            await q(client, `DELETE FROM ${S}.automation_rules WHERE id = ANY($1::int[])`, [ids('ruleIds')]);
+            if (m.defaultGroup) await q(client, `UPDATE ${S}.workspaces SET "defaultGroupId" = NULL WHERE id = $1`, [m.workspaceId]);
+            await q(client, `UPDATE ${S}.workspaces SET "defaultGroupId" = NULL WHERE "defaultGroupId" = ANY($1::int[])`, [ids('groupIds')]);
+            await q(client, `UPDATE ${S}.tickets SET "groupId" = NULL WHERE "groupId" = ANY($1::int[])`, [ids('groupIds')]);
+            await q(client, `DELETE FROM ${S}.groups WHERE id = ANY($1::int[])`, [ids('groupIds')]);
+            await q(client, `DELETE FROM ${S}.field_choices WHERE id = ANY($1::int[]) AND "parentId" IS NOT NULL`, [ids('choiceIds')]);
+            await q(client, `DELETE FROM ${S}.field_choices WHERE id = ANY($1::int[])`, [ids('choiceIds')]);
+            await q(client, `DROP TABLE IF EXISTS ${S}.ticket_program_details`);
+            await q(client, `DELETE FROM ${S}.settings WHERE key = 'seed.7.8'`);
+            return 'S/4 Programme desk configuration and table removed';
+        },
+    },
 ];
 
 async function applied(client, schema) {

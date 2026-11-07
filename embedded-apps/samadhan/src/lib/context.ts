@@ -4,7 +4,7 @@ import type { TicketQuery } from './api';
 import type { Scope } from './permissions';
 import type { AgentPrefs, AttachmentsInfo, Me, Meta } from './types';
 
-export type Screen = 'dashboard' | 'tickets' | 'board' | 'new' | 'reports' | 'admin' | 'ticket' | 'helpdesk' | 'analytics' | 'contacts' | 'solutions' | 'approvals' | 'calendar' | 'registers';
+export type Screen = 'dashboard' | 'tickets' | 'board' | 'new' | 'reports' | 'admin' | 'ticket' | 'helpdesk' | 'analytics' | 'contacts' | 'solutions' | 'approvals' | 'calendar' | 'registers' | 'programme';
 
 export interface Samadhan {
   me: Me;

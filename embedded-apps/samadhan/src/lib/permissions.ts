@@ -39,4 +39,6 @@ export const SCREEN_KEY = {
   reports: 'screen.reports', admin: 'admin.general',
   // v7 Phase 6
   approvals: 'screen.approvals', calendar: 'screen.changeCalendar', registers: 'screen.reports',
+  // v7 Phase 8
+  programme: 'screen.dashboard',
 } as const;

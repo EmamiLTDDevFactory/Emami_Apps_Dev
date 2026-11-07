@@ -61,6 +61,8 @@ const RULES = [
     ['GET', '/tickets/:id/pir', 'ticket.view'], ['PUT', '/tickets/:id/pir', 'ticket.pir.edit'],
     ['GET', '/tickets/:id/problem', 'ticket.view'], ['POST', '/tickets/:id/problem', 'problem.manage'], ['PUT', '/tickets/:id/known-error', 'problem.manage'],
     ['GET', '/problem-candidates', 'problem.manage'], ['POST', '/problem-candidates/:cid/create', 'problem.manage'], ['POST', '/problem-candidates/:cid/dismiss', 'problem.manage'],
+    // program.js (v7 Phase 8)
+    ['GET', '/tickets/:id/program', 'ticket.view'], ['PUT', '/tickets/:id/program', 'ticket.edit'], ['GET', '/program/overview', 'screen.dashboard'],
     ['GET', '/duplicates', 'ticket.create'], ['GET', '/service-health', 'screen.dashboard'],
     ['GET', '/admin/change-windows', 'admin.approvalChains'], ['POST', '/admin/change-windows', 'admin.approvalChains'], ['DELETE', '/admin/change-windows/:wid', 'admin.approvalChains'],
     // work.js

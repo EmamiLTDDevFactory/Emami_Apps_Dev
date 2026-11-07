@@ -1,6 +1,6 @@
 'use client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, BarChart3, BookOpen, Calendar, CalendarRange, ClipboardCheck, Columns3, Table2, FileSpreadsheet, Headset, Inbox, Keyboard, LayoutDashboard, Menu, PieChart, PlusCircle, RefreshCw, Settings, ShieldX, SlidersHorizontal, Users, X, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, BarChart3, BookOpen, Calendar, CalendarRange, ClipboardCheck, Columns3, Rocket, Table2, FileSpreadsheet, Headset, Inbox, Keyboard, LayoutDashboard, Menu, PieChart, PlusCircle, RefreshCw, Settings, ShieldX, SlidersHorizontal, Users, X, type LucideIcon } from 'lucide-react';
 import { ApiError, getMe, getMeta, savePrefs, setAvailability, setUnauthorizedHandler, type TicketQuery } from '@/lib/api';
 import { availableWorkspaces, multiDesk, wsTone } from '@/lib/workspaces';
 import { BASE_PATH } from '@/lib/config';
@@ -34,8 +34,9 @@ const Solutions = dynamic(() => import('./Solutions'), { loading });
 const Approvals = dynamic(() => import('./Approvals'), { loading });
 const ChangeCalendar = dynamic(() => import('./ChangeCalendar'), { loading });
 const Registers = dynamic(() => import('./Registers'), { loading });
+const Programme = dynamic(() => import('./Program'), { loading });
 
-type NavItem = { id: Screen; label: string; hint: string; icon: LucideIcon; desks?: boolean };
+type NavItem = { id: Screen; label: string; hint: string; icon: LucideIcon; desks?: boolean; desk?: string };
 const NAV: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', hint: "Today's queue and trends", icon: LayoutDashboard },
   { id: 'helpdesk', label: 'Helpdesk dashboard', hint: 'Region, status, type, source', icon: PieChart },
@@ -50,6 +51,8 @@ const NAV: NavItem[] = [
   { id: 'approvals', label: 'My approvals', hint: 'Access, changes, transports', icon: ClipboardCheck, desks: true },
   { id: 'calendar', label: 'Change calendar', hint: 'Planned changes, freezes', icon: CalendarRange, desks: true },
   { id: 'registers', label: 'Registers', hint: 'Change, access, SAP, IT registers', icon: Table2, desks: true },
+  // v7 Phase 8: only while the S/4HANA Programme desk is on.
+  { id: 'programme', label: 'S/4 Programme', hint: 'Defects, burn-down, hypercare', icon: Rocket, desks: true, desk: 'S4_PROGRAM' },
   { id: 'admin', label: 'Admin', hint: 'Agents, SLA, fields, templates', icon: Settings },
 ];
 
@@ -245,7 +248,7 @@ export default function App() {
   }
 
   const { me, meta } = state;
-  const visibleNav = NAV.filter((n) => ctx.can(SCREEN_KEY[n.id]) && (!n.desks || multiDesk(meta)));
+  const visibleNav = NAV.filter((n) => ctx.can(SCREEN_KEY[n.id]) && (!n.desks || multiDesk(meta)) && (!n.desk || (meta.workspaces ?? []).some((w) => w.key === n.desk && w.available)));
   const allowed = (s: Screen) => ctx.can(SCREEN_KEY[s]);
   const activeNav = screen === 'ticket' ? 'tickets' : screen;
 
@@ -351,6 +354,7 @@ export default function App() {
               {screen === 'approvals' && allowed('approvals') && <Approvals />}
               {screen === 'calendar' && allowed('calendar') && <ChangeCalendar />}
               {screen === 'registers' && allowed('registers') && <Registers />}
+              {screen === 'programme' && allowed('programme') && <Programme />}
             </div>
             <Shortcuts />
             <MyPreferences

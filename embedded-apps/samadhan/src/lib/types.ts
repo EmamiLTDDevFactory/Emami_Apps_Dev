@@ -161,6 +161,8 @@ export interface Meta {
   itLists?: ItLists;
   /** v7 Phase 7 */
   problemStatuses?: string[];
+  /** v7 Phase 8 */
+  programLists?: ProgramLists;
   /** v7 Phase 6 */
   changeLists?: ChangeLists;
   catalogItems?: CatalogItem[];
@@ -359,11 +361,27 @@ export interface TicketDetail {
   transports?: Transport[];
   change?: ChangeDetails | null;
   approvals?: Approval[];
+  /** v7 Phase 8 */
+  program?: ProgramDetails | null;
   /** v7 Phase 7 */
   pir?: Pir | null;
   problem?: ProblemRef | null;
   incidents?: LinkedIncident[];
   knownError?: KnownError | null;
+}
+
+// ---------- v7 Phase 8: S/4HANA Programme ----------
+export interface ProgramDetails {
+  activatePhase?: string | null; releaseWave?: string | null; testCycle?: string | null; testCaseId?: string | null; testScenario?: string | null; processArea?: string | null;
+  defectSeverity?: string | null; migrationObject?: string | null; mockCycle?: string | null; cutoverStepId?: string | null; plannedStart?: string | null; plannedEnd?: string | null;
+  simplificationItem?: string | null; atcFinding?: string | null; ricefwId?: string | null; fitGapId?: string | null; retestStatus?: string | null; retestBy?: string | null;
+  retestAt?: string | null; updatedAt?: string;
+}
+export interface ProgramLists { activatePhase: string[]; testCycle: string[]; defectSeverity: string[]; retestStatus: string[]; mockCycle: string[] }
+export interface ProgramOverview {
+  burndown: { day: string; open: number; openS1S2: number; found: number; fixed: number }[];
+  kpis: { total: number; open: number; overdue: number; leakagePct: number | null; retestPassPct: number | null; bySeverity: { k: string; n: number }[]; byArea: { k: string; n: number; open: number }[]; byCycle: { k: string; n: number }[] };
+  hypercare: { id: number; ref: string; subject: string; priority: number; createdAt: string; statusName: string; isResolved: boolean; processArea: string | null; agentName: string | null }[];
 }
 
 // ---------- v7 Phase 7: major incident, PIR, problems / KEDB ----------

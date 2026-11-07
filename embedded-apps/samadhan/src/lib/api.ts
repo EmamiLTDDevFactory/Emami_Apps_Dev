@@ -14,7 +14,7 @@ import type {
   ContactDetail, ContactMatch, ContactRow, Counts, Dashboard, DashboardInsights, DayWindow, Distributor, EmailTemplate, Me, Meta, ParkedMail, PresenceAgent,
   Attachment, AttachmentLimits, AttachmentsInfo, SavedView, Scenario, ScenarioAction, SearchResults, SeverityRule, SlaPolicy, Ticket, TicketDetail, TicketInsights, TicketRow, Todo,
   AccessUser, Overview, ReportVariantConfig, Role, Variant, Workspace, Application, MatrixCell, PriorityMode, SapDetails, ExternalRef, RefMaster, ItDetails, PortalApplication, Transport, ChangeDetails, Approval, ApprovalChain, CatalogItem, ChangeWindow, CalendarChange,
-  MyApproval, RegisterData, PublicApproval, PortalCatalogItem, Pir, KnownError, ProblemCandidate, DuplicateHint, ServiceHealth,
+  MyApproval, RegisterData, PublicApproval, PortalCatalogItem, Pir, KnownError, ProblemCandidate, DuplicateHint, ServiceHealth, ProgramDetails, ProgramOverview,
 } from './types';
 
 const API_HOST = 'https://audit-capa-api.emamiapps.in';
@@ -154,6 +154,11 @@ export interface TicketQuery {
   environment?: string;
   externalSystem?: string;
   confidential?: string;
+  /** v7 Phase 8 */
+  testCycle?: string;
+  phase?: string;
+  defectSeverity?: string;
+  retestStatus?: string;
   /** v7 Phase 7 */
   majorIncident?: string;
   problemId?: string;
@@ -447,6 +452,10 @@ export const dismissCandidate = (id: number) => request('POST', `/problem-candid
 export const duplicateHints = (q: { applicationId: number; subject?: string; tcode?: string; errorText?: string; serverName?: string }) =>
   get<{ items: DuplicateHint[] }>(`/duplicates${qs(Object.fromEntries(Object.entries(q).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => [k, String(v)])))}`).then((r) => r.items);
 export const serviceHealth = () => get<ServiceHealth & { success: boolean }>('/service-health');
+
+// ---------- v7 Phase 8: S/4HANA Programme ----------
+export const saveProgram = (ticketId: number, b: Partial<ProgramDetails>) => request<{ program: ProgramDetails }>('PUT', `/tickets/${ticketId}/program`, b).then((r) => r.program);
+export const programOverview = (days = 30, testCycle?: string) => get<ProgramOverview & { success: boolean }>(`/program/overview${qs({ days: String(days), ...(testCycle ? { testCycle } : {}) })}`);
 
 export const publicApproval = (token: string) => get<{ approval: PublicApproval }>(`/portal/approval/${encodeURIComponent(token)}`).then((r) => r.approval);
 export const publicDecide = (token: string, decision: string, comment: string) => request('POST', `/portal/approval/${encodeURIComponent(token)}`, { decision, comment });

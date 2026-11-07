@@ -211,6 +211,8 @@ async function createTicket(input) {
     if (input.externalRef && input.externalRef.ref) await require('./sap').addRef(id, input.externalRef, input.actorAgentId ?? null);
     // v7 Phase 5: IT details given with the ticket (Digital Apps / Infra & IT).
     if (input.it && typeof input.it === 'object') await require('./it').saveIt(id, input.it);
+    // v7 Phase 8: programme details given with the ticket (defect severity sets the priority).
+    if (input.program && typeof input.program === 'object') await require('./program').saveProgram(id, input.program, input.actorAgentId ? { id: input.actorAgentId } : null);
     // v7 Phase 7: Urgent + Production outside Secondary Sales becomes a major incident.
     await require('./problem').autoMajor(id);
     if (routed.groupId && !routed.agentId) {

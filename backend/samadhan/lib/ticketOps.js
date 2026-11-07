@@ -49,6 +49,8 @@ async function assertResolvable(statusId, ticket) {
     await require('./change').assertChangeRules(ticket);
     // v7 Phase 7 (§P): a major incident needs its post-incident review before it is resolved.
     await require('./problem').assertPir(ticket);
+    // v7 Phase 8 (§P): a programme defect needs its test cycle and a Passed retest.
+    await require('./program').assertDefect(ticket);
 }
 
 async function setWatching(ticketId, agentId, on) {

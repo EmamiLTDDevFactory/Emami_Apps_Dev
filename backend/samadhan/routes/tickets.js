@@ -172,6 +172,8 @@ router.post('/tickets', wrap(async (req, res) => {
         externalRef: b.externalRef && typeof b.externalRef === 'object' && b.externalRef.ref ? b.externalRef : undefined,
         // v7 Phase 5: IT details with the ticket; validated before anything is saved.
         it: b.it && typeof b.it === 'object' ? (require('../lib/it').cleanIt(b.it), b.it) : undefined,
+        // v7 Phase 8: programme details (test cycle, severity ...); validated before anything is saved.
+        program: b.program && typeof b.program === 'object' ? (require('../lib/program').cleanProgram(b.program), b.program) : undefined,
         subject,
         description: b.description || catalogText ? textToHtml(`${String(b.description || '')}${catalogText}`.trim()) : '',
         requester: { email: requesterEmail || null, name: requesterName, phone: String(b.requesterPhone || '').trim() || null },
@@ -236,6 +238,7 @@ router.get('/tickets/:id', wrap(async (req, res) => {
         // v7 Phase 5: IT details (null before migration 7.5).
         it: await require('../lib/it').getIt(id),
         // v7 Phase 7: PIR, linked problem, (on a problem) its incidents and known-error details.
+        program: await require('../lib/program').getProgram(id),
         pir: await require('../lib/problem').getPir(id), problem: await require('../lib/problem').problemOf(t),
         incidents: t.recordClass === 'PROBLEM' ? await require('../lib/problem').linkedIncidents(id) : [],
         knownError: t.recordClass === 'PROBLEM' ? await require('../lib/problem').getKnownError(id) : null,

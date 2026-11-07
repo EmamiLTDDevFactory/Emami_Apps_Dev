@@ -250,6 +250,8 @@ async function workspaceMeta(c, byWorkspace) {
         catalogItems: await require('../lib/change').listCatalog(),
         // v7 Phase 7
         problemStatuses: require('../lib/problem').PROBLEM_STATUSES,
+        // v7 Phase 8
+        programLists: require('../lib/programSeed').LISTS,
         impacts: IMPACTS,
         urgencies: URGENCIES,
         statusWorkspaces: statusWs.rows,

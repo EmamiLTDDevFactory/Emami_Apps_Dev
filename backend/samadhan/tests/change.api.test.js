@@ -211,7 +211,7 @@ const crypto = require('crypto');
     r = await call(A1, 'GET', '/registers/change');
     check(r.status === 403, 'registers need the Reports screen');
     r = await call(SUP, 'GET', '/registers');
-    check(r.body.registers?.length === 8, 'eight registers listed (incl. Problem / KEDB and Major Incident)');
+    check(r.body.registers?.length === 10, 'ten registers listed (incl. Problem / KEDB, Major Incident, S/4 Defect Tracker, Hypercare Daily)');
     r = await call(SUP, 'GET', '/registers/change');
     check(r.status === 200 && r.body.rows.some((x) => x.id === chg.id && /ECDK900123 \(Imported to PRD\)/.test(x.transports)), 'Change & Transport Register', r.body.rows?.[0]);
     r = await call(SUP, 'GET', '/registers/access');
