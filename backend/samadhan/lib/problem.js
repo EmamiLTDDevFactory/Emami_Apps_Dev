@@ -205,6 +205,7 @@ async function createProblem(incidentIds, { subject, description } = {}, agent) 
     const { textToHtml } = require('./util');
     const t = await createTicket({
         applicationId: first.applicationId ?? undefined,
+        allowAnyDesk: true,
         subject: String(subject || `Problem: ${first.subject}`).slice(0, 300),
         description: textToHtml(String(description || `Recurring issue across ${ids.length} incident(s): ${ids.map((i) => `#${i}`).join(', ')}.`)),
         requester: { email: agent?.email || first.requesterEmail, name: agent?.name || first.requesterName },
