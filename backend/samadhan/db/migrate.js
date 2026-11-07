@@ -864,6 +864,48 @@ const MIGRATIONS = [
             return 'S/4 Programme desk configuration and table removed';
         },
     },
+    {
+        // v7 Phase 9 (master prompt §Q): integrations - settings (hashed keys), monitoring sources (hashed tokens), the
+        // call log and the de-duplication table; the new sources (SAP Cloud ALM, Monitoring alert, Teams, Walk-in,
+        // SolMan import) are appended to sources.extra. Everything stays off until an Admin switches it on.
+        id: '7.9-integrations',
+        describe: 'Integrations (Cloud ALM, monitoring, Teams, SolMan import): settings, sources, call log, de-duplication; new ticket sources',
+        async up(client) {
+            const S = ident(activeSchema());
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.integrations (
+                key text PRIMARY KEY, enabled boolean NOT NULL DEFAULT false, config jsonb NOT NULL DEFAULT '{}', "secretHash" text, "secretHint" text,
+                "rotatedAt" timestamptz, "updatedAt" timestamptz NOT NULL DEFAULT now())`);
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.integration_sources (
+                id serial PRIMARY KEY, name text NOT NULL, "applicationId" int REFERENCES ${S}.applications(id) ON DELETE SET NULL, "defaultPriority" int NOT NULL DEFAULT 2,
+                enabled boolean NOT NULL DEFAULT true, "requesterEmail" text, "tokenHash" text NOT NULL, "tokenHint" text, "createdAt" timestamptz NOT NULL DEFAULT now())`);
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.integration_calls (
+                id bigserial PRIMARY KEY, integration text NOT NULL, source text, ok boolean NOT NULL, status int, summary text, "externalId" text,
+                "ticketId" int REFERENCES ${S}.tickets(id) ON DELETE SET NULL, "createdAt" timestamptz NOT NULL DEFAULT now())`);
+            await q(client, `CREATE INDEX IF NOT EXISTS integration_calls_idx ON ${S}.integration_calls (integration, id DESC)`);
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.integration_events (
+                integration text NOT NULL, "externalId" text NOT NULL, "ticketId" int REFERENCES ${S}.tickets(id) ON DELETE CASCADE,
+                "createdAt" timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (integration, "externalId"))`);
+            for (const k of ['calm', 'monitoring', 'teams', 'solman']) {
+                await q(client, `INSERT INTO ${S}.integrations (key, enabled, config) VALUES ($1, false, $2) ON CONFLICT (key) DO NOTHING`, [k, JSON.stringify(k === 'calm' ? { applicationCode: 'SAP' } : {})]);
+            }
+            const NEW = ['SAP Cloud ALM', 'Monitoring alert', 'Teams', 'Walk-in', 'SolMan import'];
+            const cur = (await q(client, `SELECT value FROM ${S}.settings WHERE key = 'sources.extra'`)).rows[0]?.value;
+            const list = Array.isArray(cur) ? cur : [];
+            const added = NEW.filter((x) => !list.includes(x));
+            await q(client, `INSERT INTO ${S}.settings (key, value) VALUES ('sources.extra', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, [JSON.stringify([...list, ...added])]);
+            await q(client, `INSERT INTO ${S}.settings (key, value) VALUES ('seed.7.9', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, [JSON.stringify({ sourcesAdded: added })]);
+            return `Integrations ready (all off); ${added.length} ticket sources added`;
+        },
+        async down(client) {
+            const S = ident(activeSchema());
+            const m = (await q(client, `SELECT value FROM ${S}.settings WHERE key = 'seed.7.9'`)).rows[0]?.value || {};
+            const cur = (await q(client, `SELECT value FROM ${S}.settings WHERE key = 'sources.extra'`)).rows[0]?.value;
+            if (Array.isArray(cur)) await q(client, `UPDATE ${S}.settings SET value = $1 WHERE key = 'sources.extra'`, [JSON.stringify(cur.filter((x) => !(m.sourcesAdded || []).includes(x)))]);
+            for (const t of ['integration_events', 'integration_calls', 'integration_sources', 'integrations']) await q(client, `DROP TABLE IF EXISTS ${S}.${t}`);
+            await q(client, `DELETE FROM ${S}.settings WHERE key = 'seed.7.9'`);
+            return 'Integrations removed';
+        },
+    },
 ];
 
 async function applied(client, schema) {

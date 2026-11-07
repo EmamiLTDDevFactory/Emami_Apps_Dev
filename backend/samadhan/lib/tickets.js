@@ -215,6 +215,11 @@ async function createTicket(input) {
     if (input.program && typeof input.program === 'object') await require('./program').saveProgram(id, input.program, input.actorAgentId ? { id: input.actorAgentId } : null);
     // v7 Phase 7: Urgent + Production outside Secondary Sales becomes a major incident.
     await require('./problem').autoMajor(id);
+    // v7 Phase 9: a new Urgent ticket outside Secondary Sales -> Teams card (when the Teams integration is on).
+    if (data.priority === 4 && cls && (await catalog()).wsById.get(cls.workspaceId)?.key !== 'SEC_SALES') {
+        const { loadTicket } = require('./notify');
+        loadTicket(id).then((tt) => require('./integrations').teamsNotify('urgent', tt, tt.subject)).catch(() => {});
+    }
     if (routed.groupId && !routed.agentId) {
         const agentId = await roundRobinAgent(routed.groupId);
         if (agentId) {

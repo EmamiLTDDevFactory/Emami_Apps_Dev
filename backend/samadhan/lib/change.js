@@ -198,6 +198,7 @@ async function notifyStep(step, ticket, reminder = false) {
     if (step.approverAgentId) agentIds = [step.approverAgentId];
     else if (step.approverType === 'approver') agentIds = (await agentsWith('approval.decide')).filter((a) => !ticket.requesterEmail || a.email.toLowerCase() !== String(ticket.requesterEmail).toLowerCase()).map((a) => a.id);
     await bellTo(agentIds, ticket, title, ticket.subject);
+    if (!reminder) require('./integrations').teamsNotify('approval', ticket, `${step.stepName} - ${ticket.subject}`).catch(() => {});
     if (step.approverEmail) {
         const token = crypto.randomBytes(24).toString('base64url');
         await pool.query(`UPDATE samadhan.ticket_approvals SET "tokenHash" = $2, "tokenExpiresAt" = now() + interval '7 days' WHERE id = $1`, [step.id, hash(token)]);

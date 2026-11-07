@@ -20,7 +20,7 @@ const { RULES, ruleFor } = require('../middleware/permission');
 const { SEED_PROFILES } = require('../lib/authSeed');
 
 // Routers mounted after requireAccess in index.js, with their mount prefix.
-const MOUNTS = [['', 'me'], ['', 'tickets'], ['', 'work'], ['', 'reports'], ['', 'insights'], ['', 'attachments'], ['/admin', 'admin'], ['/admin/authz', 'authz'], ['/admin', 'workspaces'], ['', 'sap'], ['', 'it'], ['', 'change'], ['', 'problem'], ['', 'program']];
+const MOUNTS = [['', 'me'], ['', 'tickets'], ['', 'work'], ['', 'reports'], ['', 'insights'], ['', 'attachments'], ['/admin', 'admin'], ['/admin/authz', 'authz'], ['/admin', 'workspaces'], ['', 'sap'], ['', 'it'], ['', 'change'], ['', 'problem'], ['', 'program'], ['', 'integrations'], ['', 'analyticsDesks']];
 function registered() {
     const out = [];
     for (const [prefix, file] of MOUNTS) {
@@ -43,6 +43,8 @@ const OLD_MIN = {
     'GET /registers': 'Supervisor', 'GET /registers/:kind': 'Supervisor',
     // v7 Phase 7: declaring / standing down a major incident and editing the PIR (Supervisor and up by default).
     'POST /tickets/:id/major': 'Supervisor', 'DELETE /tickets/:id/major': 'Supervisor', 'PUT /tickets/:id/pir': 'Supervisor',
+    // v7 Phase 9: desk analytics sit with Analytics (Supervisor and up).
+    'GET /analytics/desks': 'Supervisor',
 };
 const oldMin = (method, p) => (p.startsWith('/admin') ? 'Admin' : OLD_MIN[`${method} ${p}`] || 'Agent');
 const allowedNew = (role, rule, req = { body: {}, query: {} }) => {

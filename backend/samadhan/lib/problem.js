@@ -49,6 +49,8 @@ async function declareMajor(ticketId, { bridgeUrl, note } = {}, agent = null, au
     const { agentsWith } = require('./change');
     const leads = (await agentsWith('ticket.declareMajor')).map((a) => a.id);
     await bell([...leads, ...(await teamOf(t))], ticketId, 'escalated', `MAJOR INCIDENT ${t.displayRef ?? `#${t.id}`}: ${t.subject}`, auto ? 'Flagged automatically: Urgent in Production.' : String(note || ''));
+    // v7 Phase 9: Teams card (when the Teams integration is on).
+    require('./integrations').teamsNotify('major', t, `${auto ? 'Flagged automatically: Urgent in Production.' : String(note || '')}${url ? ` Bridge: ${url}` : ''}`).catch(() => {});
     return loadTicket(ticketId);
 }
 

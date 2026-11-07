@@ -14,7 +14,7 @@ import type {
   ContactDetail, ContactMatch, ContactRow, Counts, Dashboard, DashboardInsights, DayWindow, Distributor, EmailTemplate, Me, Meta, ParkedMail, PresenceAgent,
   Attachment, AttachmentLimits, AttachmentsInfo, SavedView, Scenario, ScenarioAction, SearchResults, SeverityRule, SlaPolicy, Ticket, TicketDetail, TicketInsights, TicketRow, Todo,
   AccessUser, Overview, ReportVariantConfig, Role, Variant, Workspace, Application, MatrixCell, PriorityMode, SapDetails, ExternalRef, RefMaster, ItDetails, PortalApplication, Transport, ChangeDetails, Approval, ApprovalChain, CatalogItem, ChangeWindow, CalendarChange,
-  MyApproval, RegisterData, PublicApproval, PortalCatalogItem, Pir, KnownError, ProblemCandidate, DuplicateHint, ServiceHealth, ProgramDetails, ProgramOverview,
+  MyApproval, RegisterData, PublicApproval, PortalCatalogItem, Pir, KnownError, ProblemCandidate, DuplicateHint, ServiceHealth, ProgramDetails, ProgramOverview, IntegrationsOverview, SolmanResult, DeskAnalytics,
 } from './types';
 
 const API_HOST = 'https://audit-capa-api.emamiapps.in';
@@ -456,6 +456,17 @@ export const serviceHealth = () => get<ServiceHealth & { success: boolean }>('/s
 // ---------- v7 Phase 8: S/4HANA Programme ----------
 export const saveProgram = (ticketId: number, b: Partial<ProgramDetails>) => request<{ program: ProgramDetails }>('PUT', `/tickets/${ticketId}/program`, b).then((r) => r.program);
 export const programOverview = (days = 30, testCycle?: string) => get<ProgramOverview & { success: boolean }>(`/program/overview${qs({ days: String(days), ...(testCycle ? { testCycle } : {}) })}`);
+
+// ---------- v7 Phase 9: integrations, desk analytics ----------
+export const integrationsAdmin = {
+  overview: () => get<IntegrationsOverview & { success: boolean }>('/admin/integrations'),
+  save: (key: string, b: Record<string, unknown>) => request('PUT', `/admin/integrations/${key}`, b),
+  rotate: (key: string) => request<{ secret: string }>('POST', `/admin/integrations/${key}/rotate`).then((r) => r.secret),
+  saveSource: (b: Record<string, unknown>) => request<{ id: number; token: string | null }>('POST', '/admin/integrations/monitoring/sources', b),
+  rotateSource: (id: number) => request<{ token: string }>('POST', `/admin/integrations/monitoring/sources/${id}/rotate`).then((r) => r.token),
+  solman: (rows: string[][], mapping: Record<string, string>, dryRun: boolean) => request<SolmanResult>('POST', '/admin/integrations/solman/import', { rows, mapping, dryRun }),
+};
+export const deskAnalytics = (days: number) => get<DeskAnalytics & { success: boolean }>(`/analytics/desks${qs({ days: String(days) })}`);
 
 export const publicApproval = (token: string) => get<{ approval: PublicApproval }>(`/portal/approval/${encodeURIComponent(token)}`).then((r) => r.approval);
 export const publicDecide = (token: string, decision: string, comment: string) => request('POST', `/portal/approval/${encodeURIComponent(token)}`, { decision, comment });

@@ -18,8 +18,9 @@ import { AuthzTab } from './Authz';
 import { ApplicationsTab, MailClassificationTab, WorkspacesTab } from './Workspaces';
 import { RefMastersTab } from './RefMasters';
 import { ApprovalChainsTab, CatalogTab, ChangeWindowsTab } from './ChangeAdmin';
+import { IntegrationsTab } from './Integrations';
 
-type TabId = 'general' | 'authz' | 'workspaces' | 'applications' | 'mailclass' | 'refmasters' | 'catalog' | 'chains' | 'windows' | 'access' | 'statuses' | 'agents' | 'groups' | 'sla' | 'hours' | 'severity' | 'fields' | 'templates' | 'canned' | 'scenarios' | 'distributors' | 'settings' | 'channels' | 'automations' | 'contacts' | 'audit' | 'parked';
+type TabId = 'general' | 'authz' | 'workspaces' | 'applications' | 'mailclass' | 'refmasters' | 'catalog' | 'chains' | 'windows' | 'integrations' | 'access' | 'statuses' | 'agents' | 'groups' | 'sla' | 'hours' | 'severity' | 'fields' | 'templates' | 'canned' | 'scenarios' | 'distributors' | 'settings' | 'channels' | 'automations' | 'contacts' | 'audit' | 'parked';
 const TABS: { id: TabId; label: string }[] = [
   { id: 'general', label: 'General' },
   { id: 'agents', label: 'Agents' },
@@ -33,6 +34,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'catalog', label: 'Service catalog' },
   { id: 'chains', label: 'Approval chains' },
   { id: 'windows', label: 'Change windows' },
+  { id: 'integrations', label: 'Integrations' },
   { id: 'groups', label: 'Groups' },
   { id: 'sla', label: 'SLA' },
   { id: 'hours', label: 'Business hours' },
@@ -96,6 +98,7 @@ export default function Admin() {
         {tab === 'catalog' && <CatalogTab />}
         {tab === 'chains' && <ApprovalChainsTab />}
         {tab === 'windows' && <ChangeWindowsTab />}
+        {tab === 'integrations' && <IntegrationsTab />}
         {tab === 'statuses' && <StatusesTab />}
         {tab === 'groups' && <GroupsTab />}
         {tab === 'sla' && <SlaTab />}

@@ -2,17 +2,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlarmClock, ArrowDown, ArrowUp, BarChart3, CheckCircle2, Download, Hourglass, Inbox, Lock, MessageSquare, Phone, PhoneIncoming,
-  PhoneOutgoing, PhoneCall, RefreshCw, Repeat, Smile, Timer, Users, XCircle, Clock,
+  PhoneOutgoing, PhoneCall, RefreshCw, Repeat, Smile, Timer, Users, XCircle, Clock, Link2, Siren,
 } from 'lucide-react';
-import { getAnalytics, type TicketQuery } from '@/lib/api';
+import { deskAnalytics, getAnalytics, type TicketQuery } from '@/lib/api';
 import { useSamadhan } from '@/lib/context';
 import { fmtDateTime, fmtMins, fmtNum, istToday } from '@/lib/format';
 import type { AgentPerformance, Analytics as Data, ApplicationKpi, NameValue } from '@/lib/types';
-import { workspaceByKey } from '@/lib/workspaces';
+import { multiDesk, workspaceByKey } from '@/lib/workspaces';
+import type { DeskAnalytics } from '@/lib/types';
 import { BarList, type BarRow } from './charts';
 import { Button, Card, cx, Empty, Kpi, Notice, Pill, Select, Skeleton, Tabs } from './ui';
 
-type Tab = 'overview' | 'volume' | 'agents' | 'territory' | 'apps' | 'csat' | 'calls';
+type Tab = 'overview' | 'volume' | 'agents' | 'territory' | 'apps' | 'desks' | 'csat' | 'calls';
 const TABS: { id: Tab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'volume', label: 'Volume' },
@@ -100,7 +101,7 @@ function AnalyticsScreen() {
         </div>
       </div>
 
-      <Tabs tabs={TABS} value={tab} onChange={setTab} label="Analytics sections" />
+      <Tabs tabs={multiDesk(meta) ? [...TABS.slice(0, 5), { id: 'desks' as Tab, label: 'SAP, change & infra' }, ...TABS.slice(5)] : TABS} value={tab} onChange={setTab} label="Analytics sections" />
 
       {error && data && <Notice onClose={() => setError('')}>{error}</Notice>}
       {!data ? (
@@ -119,10 +120,53 @@ function AnalyticsScreen() {
             </div>
           )}
           {tab === 'apps' && <ByApplication list={data.byApplication ?? []} workspaces={data.byWorkspace ?? []} onPick={(id) => drill({ applicationId: String(id) })} />}
+          {tab === 'desks' && <DeskInsights days={Number(days)} onModule={(m) => drill({ category: m })} />}
           {tab === 'csat' && <Satisfaction csat={data.csat} openTicket={openTicket} />}
           {tab === 'calls' && <Calls calls={data.calls} />}
         </>
       )}
+    </div>
+  );
+}
+
+/** v7 Phase 9 (§N 9): SAP module heat-map, top T-codes / errors, external-case ageing; change success / emergency %; Infra P1 and MTTR by domain. */
+function DeskInsights({ days, onModule }: { days: number; onModule: (module: string) => void }) {
+  const [d, setD] = useState<DeskAnalytics | null>(null);
+  const [error, setError] = useState('');
+  useEffect(() => { setD(null); deskAnalytics(days).then(setD).catch((e) => setError(e instanceof Error ? e.message : 'Could not load.')); }, [days]);
+  if (error) return <Notice>{error}</Notice>;
+  if (!d) return <Card><Skeleton /></Card>;
+  const maxMod = Math.max(1, ...d.sap.modules.map((m) => m.total));
+  return (
+    <div className="space-y-4" data-testid="desk-analytics">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <Kpi icon={CheckCircle2} tone="good" label="Change success" value={d.change.successPct === null ? "—" : `${d.change.successPct}%`} sub={`${d.change.resolved} changes resolved`} />
+        <Kpi icon={AlarmClock} tone="warn" label="Emergency changes" value={d.change.emergencyPct === null ? "—" : `${d.change.emergencyPct}%`} sub={`of ${d.change.total} changes`} />
+        <Kpi icon={Siren} tone="bad" label="Infra P1 open" value={fmtNum(d.infra.p1Open)} sub="Urgent, not resolved" />
+        <Kpi icon={Link2} label="SAP cases waiting" value={fmtNum(d.sap.externalAgeing.reduce((a, b) => a + b.n, 0))} sub="open external references" />
+      </div>
+      <Card title="SAP module heat-map" sub="Tickets per module in the period - darker = more; red figure = resolution SLA breached">
+        {d.sap.modules.length === 0 ? <Empty title="No SAP tickets in this period" /> : (
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+            {d.sap.modules.map((m) => (
+              <button key={m.k} type="button" onClick={() => onModule(m.k)} className="rounded-xl border border-line p-2.5 text-left transition hover:ring-2 hover:ring-accent/30"
+                style={{ background: `rgb(var(--accent) / ${0.08 + (0.55 * m.total) / maxMod})` }}>
+                <div className="truncate text-xs font-bold">{m.k}</div>
+                <div className="num text-lg font-extrabold">{m.total}</div>
+                <div className="text-2xs">{m.open} open{m.breached ? <span className="font-bold text-bad"> · {m.breached} breached</span> : null}</div>
+              </button>
+            ))}
+          </div>
+        )}
+      </Card>
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card title="Top T-codes"><BarList unit="tickets" rows={d.sap.tcodes.map((r) => ({ key: r.k, label: r.k, value: r.n }))} /></Card>
+        <Card title="Top error messages"><BarList unit="tickets" rows={d.sap.errors.map((r, i) => ({ key: String(i), label: r.k, value: r.n }))} /></Card>
+        <Card title="External cases - no update for"><BarList unit="cases" rows={d.sap.externalAgeing.map((r) => ({ key: r.k, label: r.k, value: r.n }))} /></Card>
+      </div>
+      <Card title="Infra - mean time to resolve by domain" sub="Resolved tickets in the period">
+        {d.infra.mttrByDomain.length === 0 ? <Empty title="No resolved Infra tickets in this period" /> : <BarList unit="hours" rows={d.infra.mttrByDomain.map((r) => ({ key: r.k, label: r.k, value: r.hours, detail: `${r.n} tickets` }))} />}
+      </Card>
     </div>
   );
 }
