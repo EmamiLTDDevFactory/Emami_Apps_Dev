@@ -28,6 +28,11 @@ const PG_PORT = 55432;
 const API_PORT = 4191;
 const WEB_PORT = 3250;
 const QUICK = process.argv.includes('--quick');
+// --stages=static,unit,db,golden,e2e runs only those parts (db = api,rollback,attach,compat) (e.g. on a machine short of memory); default: everything.
+const STAGES = ((process.argv.find((a) => a.startsWith('--stages=')) || '').slice(9).split(',').filter(Boolean));
+const want = (s) => !STAGES.length || STAGES.includes(s);
+const DB_PARTS = ['api', 'rollback', 'attach', 'compat'];
+const wantDb = (s) => want('db') || STAGES.includes(s);
 const SECRET = crypto.randomBytes(32).toString('hex');
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
@@ -245,8 +250,9 @@ async function e2e() {
 
 (async () => {
     const t0 = Date.now();
-    console.log(`Samadhan gate ${QUICK ? '(quick) ' : ''}- log: ${path.relative(ROOT, logFile)}`);
+    console.log(`Samadhan gate ${QUICK ? '(quick) ' : ''}${STAGES.length ? `(stages: ${STAGES.join(', ')}) ` : ''}- log: ${path.relative(ROOT, logFile)}`);
     // 1. Static
+    if (want('static')) {
     run('frontend typecheck', npm, ['run', 'typecheck'], { cwd: FRONT });
     run('frontend lint (0 errors, warnings <= baseline 2)', npm, ['run', 'lint'], { cwd: FRONT });
     run('frontend build (production settings)', npm, ['run', 'build'], { cwd: FRONT });
@@ -255,24 +261,31 @@ async function e2e() {
     jsFiles.push(path.join(BACKEND, 'server.js'), path.join(BACKEND, 'notifications.js'), path.join(STUB, 'build.js'));
     const syntaxBad = jsFiles.filter((f) => spawnSync(process.execPath, ['--check', f]).status !== 0);
     record('backend syntax (node --check)', !syntaxBad.length, syntaxBad.join(', ') || `${jsFiles.length} files`, 'backend syntax');
+    }
     // 2. Unit
     const nodeTest = (o) => `${(o.match(/ℹ pass (\d+)/) || [])[1] || 0} pass, ${(o.match(/ℹ fail (\d+)/) || [])[1] || 0} fail`;
-    run('Samadhan unit tests', process.execPath, ['--test', path.join(__dirname, 'unit.test.js'), path.join(__dirname, 'rename.test.js'), path.join(__dirname, 'permissions.test.js'), path.join(__dirname, 'attachments.unit.test.js')], { detail: nodeTest });
-    run('shared backend tests (npm test)', npm, ['test'], { cwd: BACKEND, detail: nodeTest });
+    if (want('unit')) run('Samadhan unit tests', process.execPath, ['--test', path.join(__dirname, 'unit.test.js'), path.join(__dirname, 'rename.test.js'), path.join(__dirname, 'permissions.test.js'), path.join(__dirname, 'attachments.unit.test.js')], { detail: nodeTest });
+    if (want('unit')) run('shared backend tests (npm test)', npm, ['test'], { cwd: BACKEND, detail: nodeTest });
     // 3. Database suites
-    const pg = await ensurePg();
+    const pg = (DB_PARTS.some(wantDb) || want('golden') || want('e2e')) ? await ensurePg() : { ok: true, none: true };
+    if (pg.none) { /* no database stage requested */ } else
     if (!pg.ok) {
         record(`test database localhost:${PG_PORT}`, false, `${pg.why}; every database step skipped`);
     } else {
+        if (wantDb('api')) {
         freshDb('samadhan_test'); await startBackend('samadhan_test');
         apiSuite('new path /api/samadhan, grants under samadhan', 'samadhan', 'samadhan_test', 'samadhan');
         authzSuite('cockpit, permissions, data scope', 'samadhan_test', 'samadhan');
+        }
+        if (wantDb('rollback')) {
         // 7.1-auth rollback: without the cockpit tables everyone has exactly the old role behaviour; then up again.
         freshDb('samadhan_test'); await startBackend('samadhan_test'); await stopBackend();
         migrate('samadhan_test', 'down', '7.1-auth'); await startBackend('samadhan_test');
         apiSuite('after migrate down 7.1-auth (no cockpit tables: base roles only)', 'samadhan', 'samadhan_test', 'samadhan');
         await stopBackend(); migrate('samadhan_test', 'up', '7.1-auth'); await startBackend('samadhan_test');
         authzSuite('after migrate up 7.1-auth again', 'samadhan_test', 'samadhan');
+        }
+        if (wantDb('attach')) {
         // Attachments: 7.1-attachments down and up again on a new database, then the attachment suite (empty file folder).
         freshDb('samadhan_test'); await startBackend('samadhan_test'); await stopBackend();
         migrate('samadhan_test', 'down', '7.1-attachments'); migrate('samadhan_test', 'up', '7.1-attachments');
@@ -282,12 +295,15 @@ async function e2e() {
             expect: (o) => /ALL PASSED/.test(o) && !/^FAIL/m.test(o),
             detail: (o) => `${(o.match(/^PASS/gm) || []).length} pass, ${(o.match(/^FAIL/gm) || []).length} fail`,
         });
+        }
+        if (wantDb('compat')) {
         freshDb('samadhan_test'); await startBackend('samadhan_test');
         apiSuite('old path /api/setu, grants under setu (compatibility)', 'setu', 'samadhan_test', 'setu');
         freshDb('samadhan_test'); await startBackend('samadhan_test');
         golden('new database', 'samadhan', 'samadhan_test', 'samadhan', 'samadhan');
+        }
         await stopBackend();
-        if (await ensureV6Template()) {
+        if (!want('golden')) { /* golden stage not requested */ } else if (await ensureV6Template()) {
             freshDb('upg_test', 'golden_v6'); await startBackend('upg_test');
             golden('v6 database, before the rename (legacy schema)', 'samadhan', 'upg_test', 'setu', 'setu');
             await stopBackend(); migrate('upg_test', 'up'); await startBackend('upg_test');
@@ -304,13 +320,15 @@ async function e2e() {
             authzSuite('legacy schema setu, old grants', 'legacy_test', 'setu', 'setu');
             await stopBackend();
         } else record('v6 template database', false, 'could not be built from the v6 code');
-        await smoke();
-        if (!QUICK) await e2e();
+        if (want('e2e')) {
+            await smoke();
+            if (!QUICK) await e2e();
+        }
     }
     pathGuard();
     await stopBackend();
     const failed = results.filter((r) => !r.ok);
-    fs.writeFileSync(path.join(ART, 'gate-last.json'), JSON.stringify({ at: new Date().toISOString(), quick: QUICK, minutes: Math.round((Date.now() - t0) / 60000), results }, null, 2));
+    fs.writeFileSync(path.join(ART, STAGES.length ? `gate-last-${STAGES.join('-')}.json` : 'gate-last.json'), JSON.stringify({ at: new Date().toISOString(), quick: QUICK, stages: STAGES.length ? STAGES : 'all', minutes: Math.round((Date.now() - t0) / 60000), results }, null, 2));
     console.log(`\n${failed.length ? `GATE RED: ${failed.length} of ${results.length} failed` : `GATE GREEN: ${results.length} of ${results.length} passed`} in ${Math.round((Date.now() - t0) / 60000)} min`);
     process.exit(failed.length ? 1 : 0);
 })().catch(async (e) => { console.error('gate crashed:', e); await stopBackend(); process.exit(2); });
