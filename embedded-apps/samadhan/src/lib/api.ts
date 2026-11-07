@@ -50,7 +50,7 @@ async function notSamadhan(res: Response): Promise<boolean> {
   const body = await res.clone().json().catch(() => null);
   return !body || typeof body.success !== 'boolean';
 }
-function useFallbackRoute() {
+function switchToFallbackRoute() {
   prefix = FALLBACK_ROUTE;
   try { sessionStorage.setItem(ROUTE_KEY, FALLBACK_ROUTE); } catch { /* private mode: this page only */ }
 }
@@ -66,7 +66,7 @@ async function request<T = Json>(method: string, path: string, body?: unknown): 
   try {
     res = await send();
     if (await notSamadhan(res)) {
-      useFallbackRoute();
+      switchToFallbackRoute();
       res = await send();
     }
   } catch {
@@ -284,7 +284,7 @@ async function sendFile<T>(path: string, file: Blob, name: string, signedIn = tr
   });
   try {
     res = await send();
-    if (await notSamadhan(res)) { useFallbackRoute(); res = await send(); }
+    if (await notSamadhan(res)) { switchToFallbackRoute(); res = await send(); }
   } catch {
     throw new ApiError('Could not reach the Emami Apps server. Check the network and try again.', 0);
   }
