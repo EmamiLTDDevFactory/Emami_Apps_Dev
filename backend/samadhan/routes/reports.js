@@ -193,13 +193,15 @@ router.get('/dashboard/breakdown', wrap(async (req, res) => {
     const params = [days];
     let extra = '';
     if (req.query.groupId) { params.push(Number(req.query.groupId) || 0); extra = ` AND t."groupId" = $${params.length}`; }
+    extra += appFilters(req.query, params);
     const base = `FROM samadhan.tickets t JOIN samadhan.ticket_statuses s ON s.id = t."statusId" WHERE ${liveFor(req)} AND t."createdAt" >= now() - make_interval(days => $1)${extra}`;
     const by = (expr, onlyOpen = false, limit = 15) => pool.query(
         `SELECT coalesce(nullif(${expr}::text, ''), 'None') AS name, count(*)::int AS value ${base}${onlyOpen ? ' AND NOT s."isResolved"' : ''}
          GROUP BY 1 ORDER BY value DESC LIMIT ${limit}`,
         params,
     );
-    const [totals, region, status, type, source, category, depot, state, critical] = await Promise.all([
+    const appName = '(SELECT ba.name FROM samadhan.applications ba WHERE ba.id = t."applicationId")';
+    const [totals, region, status, type, source, category, depot, state, critical, application] = await Promise.all([
         pool.query(`SELECT count(*)::int AS total, count(*) FILTER (WHERE NOT s."isResolved")::int AS unresolved ${base}`, params),
         by('t.region'), by('s.name'), by('t.type'), by('t.source'),
         by('t.category', true, 12), by('t.depot', true, 12), by('t.state', false, 15),
@@ -208,14 +210,27 @@ router.get('/dashboard/breakdown', wrap(async (req, res) => {
              ORDER BY t.severity, t."createdAt" LIMIT 25`,
             params,
         ),
+        by(appName, false, 15).catch((e) => { if (e.code === '42P01' || e.code === '42703') return { rows: [] }; throw e; }),
     ]);
     const statusIds = (await pool.query('SELECT id, name FROM samadhan.ticket_statuses')).rows;
     res.json({
         success: true, days, totals: totals.rows[0],
         region: region.rows, status: status.rows.map((r) => ({ ...r, id: statusIds.find((s) => s.name === r.name)?.id ?? null })),
         type: type.rows, source: source.rows, category: category.rows, depot: depot.rows, state: state.rows, critical: critical.rows,
+        application: application.rows,
     });
 }));
+
+
+// v7 Phase 3: optional application / workspace filters (comma-separated ids) for the dashboard and analytics.
+function appFilters(q, params) {
+    let sql = '';
+    for (const [k, col] of [['applicationId', 't."applicationId"'], ['workspaceId', 't."workspaceId"']]) {
+        const ids = String(q[k] || '').split(',').filter(Boolean).map(Number).filter((n) => Number.isInteger(n) && n > 0);
+        if (ids.length) { params.push(ids); sql += ` AND ${col} = ANY($${params.length}::int[])`; }
+    }
+    return sql;
+}
 
 /**
  * Analytics (supervisors and admins): volume, response and resolution times in business minutes, SLA compliance,
@@ -227,9 +242,11 @@ router.get('/analytics', wrap(async (req, res) => {
     const params = [days];
     let extra = '';
     if (req.query.groupId) { params.push(Number(req.query.groupId) || 0); extra = ` AND t."groupId" = $${params.length}`; }
+    extra += appFilters(req.query, params);
     const { rows: T } = await pool.query(
         `SELECT t.id, t."createdAt", t."firstRespondedAt", t."resolvedAt", t."firstResponseDueAt", t."resolutionDueAt", t."frViolated", t."resViolated",
-                t."agentId", t.priority, t.severity, t.source, t.type, t.category, t.region, t.state, t.depot, s.name AS "statusName", s."isResolved"
+                t."agentId", t.priority, t.severity, t.source, t.type, t.category, t.region, t.state, t.depot, s.name AS "statusName", s."isResolved",
+                t."applicationId", t."workspaceId"
          FROM samadhan.tickets t JOIN samadhan.ticket_statuses s ON s.id = t."statusId"
          WHERE ${liveFor(req)} AND t."createdAt" >= now() - make_interval(days => $1)${extra}`,
         params,
@@ -295,6 +312,27 @@ router.get('/analytics', wrap(async (req, res) => {
         };
     }).filter((a) => a.assigned > 0 || a.minutesLogged > 0).sort((a, b) => b.assigned - a.assigned);
 
+    // v7 Phase 3 (§N 9): by-application KPIs - volume, resolution SLA %, mean time to resolve, reopen %, CSAT.
+    const cat = await require('../lib/workspaces').catalog();
+    const reopenedIds = new Set((await pool.query(
+        `SELECT DISTINCT ac."ticketId" FROM samadhan.activities ac JOIN samadhan.tickets t ON t.id = ac."ticketId"
+         WHERE ac."ticketId" = ANY($1::int[]) AND ac.action = 'requester_replied' AND t."resolvedAt" IS NOT NULL AND ac."createdAt" > t."resolvedAt"`, [ids])).rows.map((r) => r.ticketId));
+    const byApp = new Map();
+    for (const t of T) { if (!byApp.has(t.applicationId)) byApp.set(t.applicationId, []); byApp.get(t.applicationId).push(t); }
+    const byApplication = [...byApp.entries()].map(([appId, list]) => {
+        const a = cat.byId.get(appId);
+        const done = list.filter((t) => t.resolvedAt);
+        const listIds = new Set(list.map((t) => t.id));
+        const cs = csat.rows.filter((r) => listIds.has(r.ticketId));
+        return {
+            id: appId ?? null, code: a?.code ?? '', name: a?.name ?? 'None', workspace: a?.workspaceKey ?? '', value: list.length, resolved: done.length,
+            open: list.filter((t) => !t.isResolved).length, resolutionSlaPct: pct(done.filter(resMet).length, done.length),
+            avgResolutionMins: avg(done.map((t) => bm(t.createdAt, t.resolvedAt))), reopenedPct: pct(list.filter((t) => reopenedIds.has(t.id)).length, done.length),
+            csatPositivePct: pct(cs.filter((r) => r.rating === 3).length, cs.length),
+        };
+    }).sort((x, y) => y.value - x.value);
+    const byWorkspace = cat.workspaces.map((w) => ({ key: w.key, name: w.name, value: T.filter((t) => t.workspaceId === w.id).length })).filter((w) => w.value);
+
     res.json({
         success: true, days,
         totals: {
@@ -307,7 +345,7 @@ router.get('/analytics', wrap(async (req, res) => {
             wrongTicketPct: pct(T.filter((t) => String(t.type).toLowerCase() === 'wrong ticket').length, T.length),
             perAgentPerDay: agentRows.length ? Math.round((T.length / agentRows.length / days) * 10) / 10 : null,
         },
-        trend: Object.values(trend), heat, agents: agentRows,
+        trend: Object.values(trend), heat, agents: agentRows, byApplication, byWorkspace,
         byCategory: count('category', T, 12), byRegion: count('region'), byState: count('state'), byDepot: count('depot'),
         byType: count('type'), bySource: count('source'), byStatus: count('statusName'), bySeverity: count('severity'),
         byPriority: Object.entries(PRIORITIES).map(([p, name]) => ({ name, value: T.filter((t) => t.priority === Number(p)).length })).reverse(),
@@ -351,6 +389,10 @@ router.get('/reports/daily', wrap(async (req, res) => {
          WHERE t."createdAt" BETWEEN $1::timestamptz AND $2::timestamptz AND ${liveFor(req)} ORDER BY t.id`,
         [`${from}T00:00:00+05:30`, `${to}T23:59:59.999+05:30`],
     );
+    // v7 Phase 3: optional columns appended last (?extra=Reference,Application,Workspace); the default 36 are unchanged.
+    const EXTRA = { Reference: (t, a) => (a ? `${a.code}-${t.id}` : String(t.id)), Application: (t, a) => a?.name ?? '', Workspace: (t, a) => a?.workspaceKey ?? '' };
+    const extra = String(req.query.extra || '').split(',').map((c) => c.trim()).filter((c) => EXTRA[c]);
+    const cat = extra.length ? await require('../lib/workspaces').catalog() : null;
     const now = new Date();
     const out = rows.map((t) => {
         const resolution = t.resolutionDueAt ? (t.resViolated || (t.resolvedAt ?? now) > t.resolutionDueAt ? 'SLA Violated' : 'Within SLA') : '';
@@ -367,7 +409,8 @@ router.get('/reports/daily', wrap(async (req, res) => {
         ].map(safeCell);
     });
     await audit(req.verifiedEmail, 'report_downloaded', { from, to, rows: out.length });
-    res.json({ success: true, columns: REPORT_COLUMNS, rows: out });
+    if (extra.length) out.forEach((cells, i) => { const a = cat.byId.get(rows[i].applicationId); cells.push(...extra.map((c) => EXTRA[c](rows[i], a))); });
+    res.json({ success: true, columns: [...REPORT_COLUMNS, ...extra], rows: out });
 }));
 
 module.exports = router;

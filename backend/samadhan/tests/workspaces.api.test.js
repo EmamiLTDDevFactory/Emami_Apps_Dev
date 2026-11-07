@@ -265,6 +265,21 @@ const ticket = (who, body) => call(who, 'POST', '/tickets', { requesterName: 'Ra
     r = await call(ADMIN, 'PUT', `/admin/authz/users/${a2.id}`, { scope: { workspaces: 'all', applications: 'all' }, reason: 'back to all' });
     r = await call(A2, 'GET', `/tickets/${dflt.id}`); check(r.status === 200, 'scope back to all');
 
+    // ---- analytics / dashboard / daily report by application ----
+    r = await call(SUP, 'GET', '/analytics?days=7');
+    check(r.status === 200 && r.body.byApplication.some((x) => x.code === 'DMS' && x.value >= 4 && 'resolutionSlaPct' in x && 'csatPositivePct' in x), 'analytics: byApplication with KPIs', r.body.byApplication?.map((x) => [x.code, x.value]));
+    check(r.body.byWorkspace.some((w) => w.key === 'SAP' && w.value >= 1), 'analytics: byWorkspace');
+    r = await call(SUP, 'GET', `/analytics?days=7&applicationId=${app('DMS').id}`);
+    check(r.body.totals.created >= 4 && r.body.byApplication.length === 1 && r.body.byApplication[0].code === 'DMS', 'analytics: application filter');
+    r = await call(A1, 'GET', '/dashboard/breakdown?days=7');
+    check(r.status === 200 && r.body.application.some((x) => x.name === 'SalesCode DMS App'), 'dashboard breakdown: by application');
+    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Kolkata' });
+    r = await call(SUP, 'GET', `/reports/daily?from=${today}&to=${today}`);
+    check(r.status === 200 && r.body.columns.length === 36 && r.body.rows.every((x) => x.length === 36), 'daily report default: 36 columns, unchanged');
+    r = await call(SUP, 'GET', `/reports/daily?from=${today}&to=${today}&extra=Reference,Application,Bogus`);
+    const rep = r.body.rows.find((x) => x[0] === t1.id);
+    check(r.body.columns.length === 38 && r.body.columns[36] === 'Reference' && rep && rep[36] === `SAP-${t1.id}` && rep[37] === 'SAP ECC (current)', 'daily report: optional Reference / Application appended last', rep?.slice(36));
+
     await db.end();
     console.log(fails ? `\n${fails} FAILED` : '\nALL PASSED');
     process.exit(fails ? 1 : 0);
