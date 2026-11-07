@@ -28,13 +28,13 @@ function useAdminData() {
     try { setData(await workspacesAdmin.get()); setError(''); } catch (e) { setError(e instanceof Error ? e.message : 'Could not load.'); }
   }, []);
   useEffect(() => { load(); }, [load]);
-  return { data, error, setError, load };
+  return { data, setData, error, setError, load };
 }
 
 // ---------- Workspaces ----------
 export function WorkspacesTab() {
   const { reloadMeta } = useSamadhan();
-  const { data, error, setError, load } = useAdminData();
+  const { data, setData, error, setError, load } = useAdminData();
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<Workspace | null>(null);
   const [matrixFor, setMatrixFor] = useState<Workspace | null>(null);
@@ -42,12 +42,15 @@ export function WorkspacesTab() {
   const after = async () => { await load(); await reloadMeta(); };
   const toggleFlag = async () => {
     if (!data.enabled && !window.confirm('Switch on the service desks? Agents then see a desk switcher, and the SAP / Digital / Infra / Programme desks that are enabled below can receive tickets.')) return;
+    // Shown at once; put back if the save fails.
+    setData({ ...data, enabled: !data.enabled });
     setBusy(true);
-    try { await workspacesAdmin.setFlag(!data.enabled); await after(); } catch (e) { setError(e instanceof Error ? e.message : 'Could not save.'); } finally { setBusy(false); }
+    try { await workspacesAdmin.setFlag(!data.enabled); await after(); } catch (e) { setError(e instanceof Error ? e.message : 'Could not save.'); await load(); } finally { setBusy(false); }
   };
   const toggleWs = async (w: Workspace) => {
+    setData({ ...data, workspaces: data.workspaces.map((x) => (x.id === w.id ? { ...x, enabled: !w.enabled } : x)) });
     setBusy(true);
-    try { await workspacesAdmin.saveWorkspace(w.id, { enabled: !w.enabled }); await after(); } catch (e) { setError(e instanceof Error ? e.message : 'Could not save.'); } finally { setBusy(false); }
+    try { await workspacesAdmin.saveWorkspace(w.id, { enabled: !w.enabled }); await after(); } catch (e) { setError(e instanceof Error ? e.message : 'Could not save.'); await load(); } finally { setBusy(false); }
   };
   return (
     <div className="space-y-4" data-testid="admin-workspaces">

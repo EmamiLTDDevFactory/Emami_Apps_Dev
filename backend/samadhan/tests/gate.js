@@ -28,10 +28,10 @@ const PG_PORT = 55432;
 const API_PORT = 4191;
 const WEB_PORT = 3250;
 const QUICK = process.argv.includes('--quick');
-// --stages=static,unit,db,golden,e2e runs only those parts (db = api,rollback,attach,compat) (e.g. on a machine short of memory); default: everything.
+// --stages=static,unit,db,golden,e2e runs only those parts (db = api,rollback,attach,ws,compat) (e.g. on a machine short of memory); default: everything.
 const STAGES = ((process.argv.find((a) => a.startsWith('--stages=')) || '').slice(9).split(',').filter(Boolean));
 const want = (s) => !STAGES.length || STAGES.includes(s);
-const DB_PARTS = ['api', 'rollback', 'attach', 'compat'];
+const DB_PARTS = ['api', 'rollback', 'attach', 'ws', 'compat'];
 const wantDb = (s) => want('db') || STAGES.includes(s);
 const SECRET = crypto.randomBytes(32).toString('hex');
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
@@ -278,7 +278,7 @@ async function e2e() {
     }
     // 2. Unit
     const nodeTest = (o) => `${(o.match(/ℹ pass (\d+)/) || [])[1] || 0} pass, ${(o.match(/ℹ fail (\d+)/) || [])[1] || 0} fail`;
-    if (want('unit')) run('Samadhan unit tests', process.execPath, ['--test', path.join(__dirname, 'unit.test.js'), path.join(__dirname, 'rename.test.js'), path.join(__dirname, 'permissions.test.js'), path.join(__dirname, 'attachments.unit.test.js')], { detail: nodeTest });
+    if (want('unit')) run('Samadhan unit tests', process.execPath, ['--test', path.join(__dirname, 'unit.test.js'), path.join(__dirname, 'rename.test.js'), path.join(__dirname, 'permissions.test.js'), path.join(__dirname, 'attachments.unit.test.js'), path.join(__dirname, 'workspaces.unit.test.js')], { detail: nodeTest });
     if (want('unit')) run('shared backend tests (npm test)', npm, ['test'], { cwd: BACKEND, detail: nodeTest });
     // 3. Database suites
     const pg = (DB_PARTS.some(wantDb) || want('golden') || want('e2e')) ? await ensurePg() : { ok: true, none: true };
@@ -305,6 +305,17 @@ async function e2e() {
         migrate('samadhan_test', 'down', '7.1-attachments'); migrate('samadhan_test', 'up', '7.1-attachments');
         fs.rmSync(FILES_DIR, { recursive: true, force: true }); await startBackend('samadhan_test');
         run('Attachments suite (local storage)', process.execPath, [path.join(__dirname, 'attachments.api.test.js')], {
+            env: { ...SAFE_ENV, SAMADHAN_TEST_ALLOW: '1', SAMADHAN_TEST_API: `http://localhost:${API_PORT}/api/samadhan`, SAMADHAN_TEST_PG: `postgres://postgres@localhost:${PG_PORT}/samadhan_test` },
+            expect: (o) => /ALL PASSED/.test(o) && !/^FAIL/m.test(o),
+            detail: (o) => `${(o.match(/^PASS/gm) || []).length} pass, ${(o.match(/^FAIL/gm) || []).length} fail`,
+        });
+        }
+        if (wantDb('ws')) {
+        // v7 Phase 3: 7.2-workspaces down and up again on a new database (seeds + backfill re-run), then the suite.
+        freshDb('samadhan_test'); await startBackend('samadhan_test'); await stopBackend();
+        migrate('samadhan_test', 'down', '7.2-workspaces'); migrate('samadhan_test', 'up', '7.2-workspaces');
+        await startBackend('samadhan_test');
+        run('Workspaces suite (applications, references, classification, scope)', process.execPath, [path.join(__dirname, 'workspaces.api.test.js')], {
             env: { ...SAFE_ENV, SAMADHAN_TEST_ALLOW: '1', SAMADHAN_TEST_API: `http://localhost:${API_PORT}/api/samadhan`, SAMADHAN_TEST_PG: `postgres://postgres@localhost:${PG_PORT}/samadhan_test` },
             expect: (o) => /ALL PASSED/.test(o) && !/^FAIL/m.test(o),
             detail: (o) => `${(o.match(/^PASS/gm) || []).length} pass, ${(o.match(/^FAIL/gm) || []).length} fail`,

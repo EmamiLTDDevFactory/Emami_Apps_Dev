@@ -373,7 +373,7 @@ function WorkspaceSwitcher() {
         {[{ key: '', name: 'All', shortCode: 'All', color: 'accent' }, ...list].map((w) => {
           const on = workspace === w.key;
           return (
-            <button key={w.key || 'all'} type="button" role="radio" aria-checked={on} title={w.name} onClick={() => setWorkspace(w.key)}
+            <button key={w.key || 'all'} type="button" role="radio" aria-checked={on} title={w.name} aria-label={w.key ? w.name : 'All service desks'} onClick={() => setWorkspace(w.key)}
               className={cx('rounded-lg border px-2 py-1 text-[11px] font-bold transition', on ? wsTone(w as never) : 'border-line text-muted hover:text-ink')}>
               {w.key ? w.shortCode : 'All'}
             </button>
