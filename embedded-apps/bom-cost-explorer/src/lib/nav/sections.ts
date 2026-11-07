@@ -9,11 +9,12 @@ import { WATCH_ENABLED } from '../watch/api';
 import { COGM_ENABLED } from '../margin/flag';
 import { canDisplay } from '../margin/roles';
 import { BUDGET_ENABLED } from '../budget/flag';
+import { BUDGET_RATES_ENABLED } from '../budgetRatesFlag';
 import { budgetNavItems } from '../budget/roles';
 import { MODE_LABEL, type Mode } from '../query/schema';
 
 /** Which screen of a route-based page is active (also the `active` prop of PlanFrame). */
-export type PlanNav = 'plans' | 'upload' | 'watch' | 'freight' | 'freight-analysis' | 'wac' | 'ck' | 'so' | 'psum' | 'psum-report' | 'margin' | 'margin-whatif' | 'margin-alerts' | 'margin-portfolio' | 'margin-history' | 'margin-data' | 'budget' | 'section';
+export type PlanNav = 'plans' | 'upload' | 'watch' | 'freight' | 'freight-analysis' | 'wac' | 'ck' | 'so' | 'psum' | 'psum-report' | 'margin' | 'margin-whatif' | 'margin-alerts' | 'margin-portfolio' | 'margin-history' | 'margin-data' | 'budget' | 'budget-rates' | 'section';
 export type SectionId = 'costing' | 'analysis' | 'margin' | 'budget' | 'plan' | 'monitoring';
 
 export interface NavItem {
@@ -60,6 +61,7 @@ export function navSections(f: NavFlags): NavSection[] {
     { id: 'margin-data', label: 'Data', hint: 'Prices, rules, volumes, budgets, targets', icon: Tags, path: '/margin/data/', plan: 'margin-data' },
   ] : [];
   const budget: NavItem[] = budgetNavItems(BUDGET_ENABLED, f.budgetRole).map((n) => ({ id: 'budget', label: n.label, hint: 'Run, brand / product / SKU, BOM checklist, approvals', icon: Calculator, path: n.path, plan: 'budget' as PlanNav }));
+  if (BUDGET_RATES_ENABLED) budget.push({ id: 'budget-rates', label: 'Component rates', hint: 'Domestic / international rates from SAP, Excel upload, recalculate', icon: Tags, path: '/budget-rates/', plan: 'budget-rates' });
   const plan: NavItem[] = PLAN_MODULE_ENABLED ? [
     { id: 'plans', label: 'Plans', hint: 'Plans in SAP, breakup and cost', icon: ClipboardList, path: '/plan/', plan: 'plans' },
     { id: 'upload', label: 'Upload plan', hint: 'Excel template, check, save', icon: Upload, path: '/plan/upload/', plan: 'upload' },
