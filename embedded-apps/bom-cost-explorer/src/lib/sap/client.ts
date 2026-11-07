@@ -234,7 +234,7 @@ export async function sapGetMetadata(opts: SapGetOptions = {}): Promise<string> 
  * retry: a write must never run twice. The gateway answers its own 404 HTML ("Cannot DELETE /api/...") for a
  * method it does not forward - that is reported as such, not as a SAP error.
  */
-export async function sapWrite(method: 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown, opts: SapGetOptions = {}): Promise<SapRawResponse> {
+export async function sapWrite(method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, body?: unknown, opts: SapGetOptions = {}): Promise<SapRawResponse> {
   const c = sapConfig();
   const doFetch = await transport(c);
   const url = buildUrl(path, {}, c);
@@ -269,7 +269,7 @@ export async function sapWrite(method: 'POST' | 'PUT' | 'DELETE', path: string, 
   }
   logLine(c, `${method} ${path.replace(/\(.*$/, '(...)')}`, {}, ms, res.status);
   if (!res.ok) {
-    if (res.status === 404 && /Cannot (POST|PUT|DELETE) \//.test(text)) {
+    if (res.status === 404 && /Cannot (POST|PUT|PATCH|DELETE) \//.test(text)) {
       throw new SapError(`The SAP gateway does not pass ${method} requests on to SAP yet (gateway route missing).`, 'http', 501, messages, 404);
     }
     if (res.status === 403 && /csrf/i.test(`${text} ${res.headers.get('x-csrf-token') ?? ''}`)) {
