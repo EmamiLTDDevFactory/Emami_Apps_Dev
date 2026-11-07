@@ -8,10 +8,11 @@ Resume here in a new session: read this file and `docs/SAMADHAN_MASTER_PROMPT_FI
 |---|---|
 | C (working agreement) | done |
 | 0 (discovery, baseline, plan) | done — **approved 2026-11-05** ("approved", no individual answers) |
-| 1 (rename + harness) | **code done, full gate GREEN (run 5, 23/23)**; not pushed (push plan awaiting the user's OK) |
-| 2 (permissions, cockpit, data scope, attachments) | **code done, gate GREEN 31/31 (2026-11-07)**; not pushed (asking the user) |
-| 3 (service desks, applications, references, mail classification) | **code done, gate GREEN (2026-11-07)**; not pushed (asking the user) |
-| 4 – 9 | not started |
+| 1 (rename + harness) | done, pushed to main, deployed to dev |
+| 2 (permissions, cockpit, data scope, attachments) | done, pushed to main, deployed to dev |
+| 3 (service desks, applications, references, mail classification) | done, pushed to main, deployed to dev |
+| 4 (SAP & Primary Sales desk) | **done 2026-11-07**, gate green in parts, pushed to main, deployed to dev; see PHASE-4-NOTES.md |
+| 5 – 9 | next: 5 (Infra & IT, Digital, IT details) |
 
 ### Decisions taken at the Phase-0 STOP (approval without individual answers → recommended options)
 - Q-R1 **Option A** (app id `samadhan`, `setu` kept as alias; one line in access-tracker). Q-R2 redirect stub

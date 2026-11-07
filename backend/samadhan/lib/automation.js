@@ -39,9 +39,12 @@ function ruleMatches(set, ctx) {
     return all.every((c) => testCondition(c, ctx)) && (any.length === 0 || any.some((c) => testCondition(c, ctx)));
 }
 
+/** v7: a rule written for one desk (or application) only acts on that desk's tickets; NULL = every desk. */
+const ruleApplies = (r, t) => (!r.workspaceId || r.workspaceId === t.workspaceId) && (!r.applicationId || r.applicationId === t.applicationId);
+
 async function rulesFor(trigger) {
     const { rows } = await pool.query('SELECT * FROM samadhan.automation_rules WHERE trigger = $1 AND active ORDER BY position, id', [trigger]);
     return rows;
 }
 
-module.exports = { ruleMatches, rulesFor };
+module.exports = { ruleApplies, ruleMatches, rulesFor };

@@ -17,6 +17,7 @@ import { InsertArticleButton } from './Solutions';
 import { CsatCard, PresenceBar, RelatedTickets, TicketBanners, TicketTodos, TicketToolbar, fillCanned } from './TicketExtras';
 import { Avatar, Button, Card, Field, Notice, Pill, Skeleton, Spinner, Tabs, cx, inputBase, inputCls, textareaCls } from './ui';
 import { AttachmentsCard, FileTray, Paperclips, uploadPending, usePendingFiles } from './Attachments';
+import { ExternalRefsCard, SapCard } from './Sap';
 import { sizeOf } from '@/lib/files';
 
 /**
@@ -96,6 +97,10 @@ function TicketScreen({ data, reload }: { data: TicketDetail; reload: () => Prom
   const { ticket: t } = data;
   const { meta } = useSamadhan();
   const [replying, setReplying] = useState(false);
+  // v7 Phase 4: SAP details for the SAP / S/4 desks (or whenever some exist); external references outside Secondary Sales.
+  const deskKey = workspaceById(meta, t.workspaceId)?.key;
+  const showSap = deskKey === 'SAP' || deskKey === 'S4_PROGRAM' || !!data.sap;
+  const showRefs = (!!deskKey && deskKey !== 'SEC_SALES') || (data.externalRefs?.length ?? 0) > 0;
   return (
     <div className="space-y-4">
       <TicketToolbar data={data} reload={reload} />
@@ -111,6 +116,8 @@ function TicketScreen({ data, reload }: { data: TicketDetail; reload: () => Prom
         <div className="space-y-4">
           <TicketAssist ticket={t} reload={reload} />
           <Properties ticket={t} reload={reload} />
+          {showSap && <SapCard ticketId={t.id} sap={data.sap} reload={reload} />}
+          {showRefs && <ExternalRefsCard ticketId={t.id} refs={data.externalRefs ?? []} reload={reload} />}
           <AttachmentsCard ticketId={t.id} files={data.attachments ?? []} reload={reload} />
           <RelatedTickets data={data} reload={reload} />
           <Requester data={data} reload={reload} />
@@ -161,7 +168,11 @@ function ClassificationHint({ ticket: t, reload }: Props & { reload: () => Promi
 }
 
 function TicketHeader({ ticket: t, reload }: Props & { reload: () => Promise<void> }) {
-  const { meta } = useSamadhan();
+  const { meta, can } = useSamadhan();
+  const toggleConfidential = async () => {
+    if (!window.confirm(t.confidential ? 'Make this ticket visible to everyone in the desk again?' : 'Mark this ticket confidential? Only people allowed to see confidential tickets will find it.')) return;
+    try { await updateTicket(t.id, { confidential: !t.confidential, expectedUpdatedAt: t.updatedAt }); await reload(); } catch (e) { setError(e instanceof Error ? e.message : 'Could not save.'); }
+  };
   const [editing, setEditing] = useState(false);
   const [subject, setSubject] = useState(t.subject);
   const [error, setError] = useState('');
@@ -184,6 +195,10 @@ function TicketHeader({ ticket: t, reload }: Props & { reload: () => Promise<voi
             <span>· {t.source}</span>
             <span title={fmtDateTime(t.createdAt)}>· created {relative(t.createdAt)}</span>
             {t.escalatedAt && <Pill tone="bad">Escalated</Pill>}
+            {t.confidential && <span data-testid="confidential-pill"><Pill tone="bad" title="Only people allowed to see confidential tickets can open this one"><Lock size={11} className="mr-0.5 inline" />Confidential</Pill></span>}
+            {can('ticket.setConfidential') && (
+              <button type="button" className="text-2xs font-bold text-faint hover:text-accent" onClick={toggleConfidential} data-testid="toggle-confidential">{t.confidential ? 'Remove confidential' : 'Mark confidential'}</button>
+            )}
           </div>
           <ActivityLine t={t} className="mt-1" />
           {editing ? (
@@ -322,15 +337,17 @@ function Composer({ ticket: t, reload, onTyping }: Props & { reload: () => Promi
   // Collision detection: the others see "replying" while there is text in the box.
   const typing = text.trim().length > 0;
   useEffect(() => { onTyping(typing); }, [typing, onTyping]);
+  // v7: only the responses for this ticket's desk (and the ones for every desk).
+  const deskCanned = useMemo(() => meta.cannedResponses.filter((c) => c.workspaceId == null || c.workspaceId === t.workspaceId), [meta.cannedResponses, t.workspaceId]);
   // "My responses" (private to me) first, then the shared folders.
   const folders = useMemo(() => {
-    const m = new Map<string, typeof meta.cannedResponses>();
-    for (const c of meta.cannedResponses) {
+    const m = new Map<string, typeof deskCanned>();
+    for (const c of deskCanned) {
       const folder = c.ownerAgentId ? `My responses · ${c.folder}` : c.folder;
       m.set(folder, [...(m.get(folder) ?? []), c]);
     }
     return [...m.entries()];
-  }, [meta.cannedResponses]);
+  }, [deskCanned]);
 
   const insert = (body: string, replaceFrom?: number) => {
     const el = area.current;
@@ -368,8 +385,8 @@ function Composer({ ticket: t, reload, onTyping }: Props & { reload: () => Promi
     if (!m) return;
     // My own short code wins over a shared one with the same code.
     const code = m[1].toLowerCase();
-    const canned = meta.cannedResponses.find((c) => c.ownerAgentId && c.shortCode?.toLowerCase() === code)
-      ?? meta.cannedResponses.find((c) => c.shortCode?.toLowerCase() === code);
+    const canned = deskCanned.find((c) => c.ownerAgentId && c.shortCode?.toLowerCase() === code)
+      ?? deskCanned.find((c) => c.shortCode?.toLowerCase() === code);
     if (!canned) return;
     e.preventDefault();
     insert(canned.body, el.selectionStart - m[1].length - 1);
@@ -423,11 +440,11 @@ function Composer({ ticket: t, reload, onTyping }: Props & { reload: () => Promi
         <div className="flex items-center gap-1.5">
         <MyCannedButton />
         <InsertArticleButton onInsert={(body) => insert(body)} />
-        {meta.cannedResponses.length > 0 && (
+        {deskCanned.length > 0 && (
           <select
             aria-label="Insert canned response"
             value=""
-            onChange={(e) => { const c = meta.cannedResponses.find((x) => String(x.id) === e.target.value); if (c) insert(c.body); }}
+            onChange={(e) => { const c = deskCanned.find((x) => String(x.id) === e.target.value); if (c) insert(c.body); }}
             className={cx('h-8 max-w-[220px] text-xs', inputBase)}
           >
             <option value="">Canned responses…</option>

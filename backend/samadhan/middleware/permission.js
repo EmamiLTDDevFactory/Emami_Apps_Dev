@@ -24,7 +24,7 @@ const RULES = [
     ['PATCH', '/tickets/:id', (req) => {
         const b = req.body ?? {};
         return ['ticket.edit', ...(b.agentId !== undefined || b.groupId !== undefined ? ['ticket.assign'] : []),
-            ...(b.applicationId !== undefined ? ['ticket.changeApplication'] : [])];
+            ...(b.applicationId !== undefined ? ['ticket.changeApplication'] : []), ...(b.confidential !== undefined ? ['ticket.setConfidential'] : [])];
     }],
     ['POST', '/tickets/bulk', (req) => {
         const a = String(req.body?.action || '');
@@ -37,6 +37,13 @@ const RULES = [
     ['POST', '/tickets/:id/messages', (req) => ({ REPLY: 'ticket.reply', NOTE: 'ticket.note', FORWARD: 'ticket.forward' })[String(req.body?.kind || '')] || 'ticket.reply'],
     ['POST', '/tickets/:id/time-logs', 'ticket.edit'], ['POST', '/tickets/:id/calls', 'ticket.edit'],
     ['POST', '/tickets/:id/classify', (req) => ['ticket.classify', ...(req.body?.applicationId !== undefined ? ['ticket.changeApplication'] : [])]],
+    // sap.js (v7 Phase 4)
+    ['GET', '/tickets/:id/sap', 'ticket.view'], ['PUT', '/tickets/:id/sap', 'ticket.edit'],
+    ['GET', '/tickets/:id/external-refs', 'ticket.view'], ['POST', '/tickets/:id/external-refs', 'externalRef.manage'],
+    ['PATCH', '/tickets/:id/external-refs/:rid', 'externalRef.manage'], ['DELETE', '/tickets/:id/external-refs/:rid', 'externalRef.manage'],
+    ['GET', '/ref-masters', 'ticket.view'],
+    ['GET', '/admin/ref-masters', 'admin.masters'], ['POST', '/admin/ref-masters', 'admin.masters'], ['POST', '/admin/ref-masters/import', 'admin.masters'],
+    ['DELETE', '/admin/ref-masters/:mid', 'admin.masters'],
     // work.js
     ['GET', '/todos', ANY], ['POST', '/todos', ANY], ['PATCH', '/todos/:id', ANY], ['DELETE', '/todos/:id', ANY],
     ['GET', '/views', ANY], ['POST', '/views', (req) => (req.body?.shared ? 'views.share' : ANY)], ['DELETE', '/views/:id', ANY],
@@ -146,7 +153,7 @@ async function permissionGate(req, res, next) {
     try {
         const access = await loadAccess(req.agent);
         req.permissions = access.permissions;
-        req.scope = access.scope;
+        req.scope = { ...access.scope, confidential: access.permissions.has('ticket.viewConfidential') };
         req.can = (key) => access.permissions.has(key);
         const rule = ruleFor(req.method, req.path);
         if (!rule) return res.status(403).json({ success: false, error: 'This action is not available.' });
@@ -172,7 +179,8 @@ async function permissionGate(req, res, next) {
  */
 async function withinScope(req) {
     const { isNarrowed, ticketVisible } = require('../lib/ticketQuery');
-    if (!isNarrowed(req.scope)) return true;
+    // Scope "all" skips the check - unless confidential tickets are hidden from this person.
+    if (!isNarrowed(req.scope) && req.scope?.confidential !== false) return true;
     const ids = [];
     const m = /^\/tickets\/(\d+)(?:\/|$)/.exec(req.path);
     if (m) ids.push(Number(m[1]));

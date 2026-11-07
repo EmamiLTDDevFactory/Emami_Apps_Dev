@@ -293,3 +293,38 @@ test('Admin: service desks on shows the desk switcher; the new Admin tabs load',
   }
   expect(problems).toEqual([]);
 });
+
+// ---------- v7 Phase 4: SAP & Primary Sales desk ----------
+test('SAP desk: SAP details, external case, confidential and the masters tab', async ({ page }) => {
+  const problems = watch(page);
+  await signIn(page, data.admin);
+  page.on('dialog', (d) => d.accept());
+  const ws = await api(data.admin, 'GET', '/admin/workspaces');
+  const sapWs = ws.body?.workspaces?.find((w: { key: string }) => w.key === 'SAP');
+  const sapApp = ws.body?.applications?.find((a: { code: string }) => a.code === 'SAP');
+  try {
+    await api(data.admin, 'PUT', `/admin/workspaces/${sapWs.id}`, { enabled: true });
+    await api(data.admin, 'PUT', '/admin/workspaces/flag', { enabled: true });
+    const made = await api(data.admin, 'POST', '/tickets', {
+      subject: `VA01 order save fails ${test.info().project.name}`, requesterName: 'E2E Requester', requesterEmail: 'e2e.req@test.samadhan.local', applicationId: sapApp.id,
+      sap: { environment: 'Production', sapSystem: 'ECP', sapClient: '500', tcode: 'VA01', errorMessageClass: 'V1', errorMessageNo: '801', errorText: 'Error while saving sales order' },
+      externalRef: { system: 'SAP for Me Case', ref: '000777/2026', priority: 'High' },
+    });
+    expect(made.status).toBe(201);
+    await page.goto(`/apps/samadhan/?ticket=${made.body.ticket.id}`);
+    await expect(page.getByTestId('sap-card')).toContainText('VA01');
+    await expect(page.getByTestId('sap-card')).toContainText('ECP / 500');
+    await expect(page.getByTestId('external-refs')).toContainText('000777/2026');
+    await page.getByTestId('toggle-confidential').click();
+    await expect(page.getByTestId('confidential-pill')).toBeVisible();
+    await page.goto('/apps/samadhan/?screen=admin');
+    await page.getByRole('tab', { name: 'SAP & Infra masters' }).click();
+    await page.getByRole('button', { name: /^T-codes/ }).click();
+    await expect(page.getByTestId('ref-masters')).toContainText('VA01');
+  } finally {
+    await api(data.admin, 'PUT', '/admin/workspaces/flag', { enabled: false });
+    if (sapWs) await api(data.admin, 'PUT', `/admin/workspaces/${sapWs.id}`, { enabled: false });
+    await api(data.admin, 'PUT', '/me/preferences', { workspace: null });
+  }
+  expect(problems).toEqual([]);
+});

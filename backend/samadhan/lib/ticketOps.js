@@ -27,8 +27,23 @@ async function assertResolvable(statusId, ticket) {
         );
         if (open.rows.length) throw fail(400, `Resolve the child tickets first: ${open.rows.map((r) => `#${r.id}`).join(', ')}.`);
     }
-    const required = (await pool.query('SELECT key, label FROM samadhan.field_definitions WHERE required')).rows;
+    // v7: a desk with its own field rules (field_workspaces) uses its "required before resolve" list and labels.
+    let required;
+    try {
+        required = (await pool.query(
+            `SELECT d.key, COALESCE(fw."labelOverride", d.label) AS label FROM samadhan.field_definitions d
+             LEFT JOIN samadhan.field_workspaces fw ON fw."fieldId" = d.id AND fw."workspaceId" = $1
+             WHERE CASE WHEN fw.id IS NULL THEN d.required ELSE fw."requiredBeforeResolve" END`, [ticket.workspaceId ?? null])).rows;
+    } catch (e) {
+        if (e.code !== '42P01' && e.code !== '42703') throw e;
+        required = (await pool.query('SELECT key, label FROM samadhan.field_definitions WHERE required')).rows;
+    }
     const missing = required.filter((f) => (f.key === 'category' ? !ticket.category || !ticket.function : !ticket[f.key])).map((f) => f.label);
+    // SAP incidents also need the environment (SAP details, §P).
+    if (ticket.id && ticket.workspaceKey === 'SAP' && (ticket.recordClass ?? 'INCIDENT') === 'INCIDENT') {
+        const sap = await require('./sap').getSap(ticket.id);
+        if (!sap?.environment) missing.push('Environment (SAP details)');
+    }
     if (missing.length) throw fail(400, `Fill in all required fields before resolving: ${missing.join(', ')}.`);
 }
 

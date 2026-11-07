@@ -50,6 +50,8 @@ router.use('/admin', require('./routes/admin'));
 router.use('/admin/authz', require('./routes/authz'));
 // v7 Phase 3: workspaces, applications, priority matrix, mail classification (Admin; routes/workspaces.js).
 router.use('/admin', require('./routes/workspaces'));
+// v7 Phase 4: SAP details, external references, reference masters (routes/sap.js).
+router.use(require('./routes/sap'));
 
 // ---------- Transport route ----------
 // The dev web server forwards only one older route name to this backend until its own /api/samadhan block is added

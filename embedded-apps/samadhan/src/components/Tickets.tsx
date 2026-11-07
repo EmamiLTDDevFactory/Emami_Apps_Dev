@@ -31,9 +31,10 @@ export function appOptions(meta: Meta, all = false) {
 const VIEW_LABEL: Record<string, string> = Object.fromEntries([...QUICK, ...MORE].map((v) => [v.id, v.label]));
 
 const FILTER_KEYS: (keyof TicketQuery)[] = ['statusId', 'priority', 'severity', 'groupId', 'agentId', 'source', 'type', 'category', 'region', 'state', 'depot', 'salesOrg',
-  'l2Agent', 'asmName', 'activity', 'due', 'resDue', 'frDue', 'tag', 'created', 'from', 'to', 'requesterId', 'companyId', 'hasAttachments', 'applicationId', 'recordClass'];
+  'l2Agent', 'asmName', 'activity', 'due', 'resDue', 'frDue', 'tag', 'created', 'from', 'to', 'requesterId', 'companyId', 'hasAttachments', 'applicationId', 'recordClass',
+  'sapSystem', 'tcode', 'environment', 'externalSystem', 'confidential'];
 type ListKey = 'statusId' | 'priority' | 'severity' | 'groupId' | 'agentId' | 'source' | 'type' | 'category' | 'region' | 'state' | 'depot' | 'salesOrg' | 'l2Agent' | 'asmName' | 'activity' | 'resDue' | 'frDue'
-  | 'applicationId' | 'recordClass';
+  | 'applicationId' | 'recordClass' | 'environment' | 'externalSystem';
 const CREATED = [
   { value: '', label: 'Any time' }, { value: '30m', label: 'Last 30 minutes' }, { value: '1h', label: 'Last hour' }, { value: '4h', label: 'Last 4 hours' },
   { value: '12h', label: 'Last 12 hours' }, { value: '24h', label: 'Last 24 hours' }, { value: 'today', label: 'Today' }, { value: 'yesterday', label: 'Yesterday' },
@@ -52,6 +53,9 @@ export default function Tickets({ preset }: { preset: TicketQuery }) {
   // v7 Phase 3: the workspace switcher narrows the list (the counts stay queue-wide, as the views are).
   const ws = workspaceByKey(meta, workspace);
   const hasApps = (meta.applications?.length ?? 0) > 0;
+  // v7 Phase 4: SAP filters when the SAP / S/4 desks are on and the switcher shows them.
+  const sapFilters = hasApps && !!meta.sapLists && (meta.workspaces ?? []).some((w) => (w.key === 'SAP' || w.key === 'S4_PROGRAM') && w.enabled !== false)
+    && (!ws || ws.key === 'SAP' || ws.key === 'S4_PROGRAM');
   // v7 permission keys (same people as the old Supervisor / Admin checks by default).
   const isAdmin = can('admin.general');
   const canExport = can('ticket.export');
@@ -229,6 +233,15 @@ export default function Tickets({ preset }: { preset: TicketQuery }) {
             <MultiSelect label="Type" values={many('type')} onChange={setMany('type')} options={opts(choices('type'))} />
             <MultiSelect label={ws?.categoryLabel ?? 'Category'} values={many('category')} onChange={setMany('category')} options={opts(categories)} />
             {hasApps && <MultiSelect label="Record class" values={many('recordClass')} onChange={setMany('recordClass')} options={(meta.recordClasses ?? []).map((c) => ({ value: c, label: RECORD_CLASS_LABEL[c] ?? c }))} />}
+            {sapFilters && (
+              <>
+                <input aria-label="SAP system" placeholder="SAP system (e.g. ECP)" value={query.sapSystem ?? ''} onChange={(e) => set({ sapSystem: e.target.value.toUpperCase() || undefined })} className={inputCls} />
+                <input aria-label="T-code" placeholder="T-code (e.g. VA01)" value={query.tcode ?? ''} onChange={(e) => set({ tcode: e.target.value.toUpperCase() || undefined })} className={inputCls} />
+                <MultiSelect label="Environment" values={many('environment')} onChange={setMany('environment')} options={opts(meta.sapLists?.environment ?? [])} />
+                <MultiSelect label="External case" values={many('externalSystem')} onChange={setMany('externalSystem')} options={opts(meta.sapLists?.externalSystem ?? [])} />
+              </>
+            )}
+            {can('ticket.viewConfidential') && <Select label="Confidential" value={query.confidential ?? ''} onChange={(v) => set({ confidential: v || undefined })} options={[{ value: '', label: 'All tickets' }, { value: '1', label: 'Confidential only' }]} />}
             <MultiSelect label="Region" values={many('region')} onChange={setMany('region')} options={opts(choices('region'))} />
             <MultiSelect label="State" values={many('state')} onChange={setMany('state')} options={opts(choices('state'))} />
             <MultiSelect label="Depot" values={many('depot')} onChange={setMany('depot')} options={opts(choices('depot'))} />

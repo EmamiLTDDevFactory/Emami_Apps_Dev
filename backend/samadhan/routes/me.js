@@ -191,14 +191,14 @@ router.get('/meta', wrap(async (req, res) => {
         pool.query('SELECT id, name, email, role, active, availability FROM samadhan.agents ORDER BY name'),
         // Shared responses plus the caller's own personal ones - never another agent's.
         pool.query(
-            `SELECT id, folder, title, "shortCode", body, "ownerAgentId" FROM samadhan.canned_responses
+            `SELECT id, folder, title, "shortCode", body, "ownerAgentId", "workspaceId" FROM samadhan.canned_responses
              WHERE "ownerAgentId" IS NULL OR "ownerAgentId" = $1 ORDER BY ("ownerAgentId" IS NULL), folder, title`,
             [req.agent.id],
         ),
         loadFields(),
         setting('call.mode'),
         setting('portal.enabled'),
-        pool.query('SELECT id, name, description FROM samadhan.scenarios ORDER BY position, name'),
+        pool.query('SELECT id, name, description, "workspaceId" FROM samadhan.scenarios ORDER BY position, name'),
         sources(),
         uiOptions(),
     ]);
@@ -240,6 +240,9 @@ async function workspaceMeta(c, byWorkspace) {
         applications: c.applications.map(({ seedKey, ...a }) => ({ ...a, available: a.active && available.has(a.workspaceId) })),
         priorityMatrix: c.matrix,
         recordClasses: RECORD_CLASSES,
+        // v7 Phase 4: lists for SAP details, external references and reference masters.
+        sapLists: require('../lib/sapSeed').LISTS,
+        refMasterKinds: require('../lib/sap').KINDS,
         impacts: IMPACTS,
         urgencies: URGENCIES,
         statusWorkspaces: statusWs.rows,
