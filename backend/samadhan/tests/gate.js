@@ -72,7 +72,10 @@ function freshDb(name, template) {
     if (!template) { const c = psql(name, HUB_TABLES); if (c.status !== 0) throw new Error(`hub tables: ${c.stderr}`); }
 }
 
+// Attachments (v7 Phase 2) are on in every suite, stored in a throwaway folder (the SFTP adapter is tested separately).
+const FILES_DIR = path.join(os.tmpdir(), `samadhan-gate-files-${process.pid}`);
 const SAFE_ENV = {
+    SAMADHAN_STORAGE: 'local', SAMADHAN_STORAGE_DIR: FILES_DIR,
     // 'localtest' is the scheduler secret api.test.js sends (tests/README.md); test-only, never a real value.
     HUB_AUTH_JWT_SECRET: SECRET, HUB_INTERNAL_API_SECRET: 'localtest',
     PGHOST: 'localhost', PGPORT: String(PG_PORT), PGUSER: 'postgres', PGPASSWORD: 'x',
@@ -254,7 +257,7 @@ async function e2e() {
     record('backend syntax (node --check)', !syntaxBad.length, syntaxBad.join(', ') || `${jsFiles.length} files`, 'backend syntax');
     // 2. Unit
     const nodeTest = (o) => `${(o.match(/ℹ pass (\d+)/) || [])[1] || 0} pass, ${(o.match(/ℹ fail (\d+)/) || [])[1] || 0} fail`;
-    run('Samadhan unit tests', process.execPath, ['--test', path.join(__dirname, 'unit.test.js'), path.join(__dirname, 'rename.test.js'), path.join(__dirname, 'permissions.test.js')], { detail: nodeTest });
+    run('Samadhan unit tests', process.execPath, ['--test', path.join(__dirname, 'unit.test.js'), path.join(__dirname, 'rename.test.js'), path.join(__dirname, 'permissions.test.js'), path.join(__dirname, 'attachments.unit.test.js')], { detail: nodeTest });
     run('shared backend tests (npm test)', npm, ['test'], { cwd: BACKEND, detail: nodeTest });
     // 3. Database suites
     const pg = await ensurePg();
@@ -270,6 +273,15 @@ async function e2e() {
         apiSuite('after migrate down 7.1-auth (no cockpit tables: base roles only)', 'samadhan', 'samadhan_test', 'samadhan');
         await stopBackend(); migrate('samadhan_test', 'up', '7.1-auth'); await startBackend('samadhan_test');
         authzSuite('after migrate up 7.1-auth again', 'samadhan_test', 'samadhan');
+        // Attachments: 7.1-attachments down and up again on a new database, then the attachment suite (empty file folder).
+        freshDb('samadhan_test'); await startBackend('samadhan_test'); await stopBackend();
+        migrate('samadhan_test', 'down', '7.1-attachments'); migrate('samadhan_test', 'up', '7.1-attachments');
+        fs.rmSync(FILES_DIR, { recursive: true, force: true }); await startBackend('samadhan_test');
+        run('Attachments suite (local storage)', process.execPath, [path.join(__dirname, 'attachments.api.test.js')], {
+            env: { ...SAFE_ENV, SAMADHAN_TEST_ALLOW: '1', SAMADHAN_TEST_API: `http://localhost:${API_PORT}/api/samadhan`, SAMADHAN_TEST_PG: `postgres://postgres@localhost:${PG_PORT}/samadhan_test` },
+            expect: (o) => /ALL PASSED/.test(o) && !/^FAIL/m.test(o),
+            detail: (o) => `${(o.match(/^PASS/gm) || []).length} pass, ${(o.match(/^FAIL/gm) || []).length} fail`,
+        });
         freshDb('samadhan_test'); await startBackend('samadhan_test');
         apiSuite('old path /api/setu, grants under setu (compatibility)', 'setu', 'samadhan_test', 'setu');
         freshDb('samadhan_test'); await startBackend('samadhan_test');

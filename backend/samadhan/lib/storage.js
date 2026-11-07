@@ -5,32 +5,41 @@ const path = require('path');
 const { env } = require('../constants');
 
 /*
-   Attachment storage for Samadhan (v7 Phase 2, master prompt §L; decision Q-S1 = SAP application server).
+   Attachment storage for Samadhan (v7 Phase 2, master prompt §L; decision Q-S1 = an SFTP server, host-to-host).
 
    One small interface, two adapters:
-     sap    - the production adapter: SAP OData service ZSAMADHAN_ATT_SRV (contract: docs/v7/SAP-ATTACHMENT-SERVICE.md)
-              through the Azure SAP gateway, the same way backend/auditeeResponseSap.js talks to SAP: JSON with the file
-              as base64, CSRF token fetched and cached, delete as a POST with Action 'D' (the gateway does not pass
-              DELETE or /$value). SAP writes the bytes to an application-server directory (AL11) and returns a FileId.
+     sftp   - production: files on an SFTP server reached host-to-host from the backend server. The client library
+              (ssh2-sftp-client) is Samadhan's own dependency (backend/samadhan/package.json), not the shared backend's.
+              The server's host key is pinned (SAMADHAN_SFTP_HOST_FINGERPRINT) so files only ever go to that server.
      local  - tests and local development only: files in a folder on this machine (SAMADHAN_STORAGE_DIR).
-   SAMADHAN_STORAGE = sap | local. Not set = attachments are switched off (the UI hides them and the API says so).
+   SAMADHAN_STORAGE = sftp | local. Not set = attachments are switched off (the UI hides them and the API says so).
    Nothing is ever stored in Postgres except the metadata row (ticket_attachments).
 
-     put(key, buffer, { fileName, contentType, ticketId }) -> { ref }    ref = what get / del need later
+     put(key, buffer, meta) -> { ref }    ref = the path below the base folder (what get / del need later)
      get(ref) -> Buffer
      del(ref) -> void
+
+   SFTP settings (server .env / PM2 env; credentials never in the repository):
+     SAMADHAN_SFTP_HOST, SAMADHAN_SFTP_PORT (22), SAMADHAN_SFTP_USER,
+     SAMADHAN_SFTP_PASSWORD  or  SAMADHAN_SFTP_PRIVATE_KEY_PATH (+ SAMADHAN_SFTP_PASSPHRASE),
+     SAMADHAN_SFTP_BASE_DIR (folder for Samadhan's files, e.g. /samadhan),
+     SAMADHAN_SFTP_HOST_FINGERPRINT (SHA256:... of the server's host key - required),
+     SAMADHAN_SFTP_TIMEOUT_MS (20000).
 */
 
 const MODE = String(env('STORAGE') || '').trim().toLowerCase();
 
+/** A storage reference is a relative path of safe segments (no "..", no absolute paths). */
+function safeRef(ref) {
+    const r = String(ref || '');
+    if (!/^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/.test(r) || r.split('/').some((s) => s === '.' || s === '..')) throw new Error('bad storage reference');
+    return r;
+}
+
 // ---------- local (tests / development) ----------
 function localAdapter() {
     const root = path.resolve(env('STORAGE_DIR') || path.join(require('os').tmpdir(), 'samadhan-files'));
-    const full = (ref) => {
-        const p = path.resolve(root, ref);
-        if (!p.startsWith(root + path.sep)) throw new Error('bad storage reference');
-        return p;
-    };
+    const full = (ref) => path.join(root, ...safeRef(ref).split('/'));
     return {
         name: 'local',
         async put(key, buffer) {
@@ -44,76 +53,115 @@ function localAdapter() {
     };
 }
 
-// ---------- sap (production) ----------
-function sapAdapter() {
-    const base = String(env('SAP_ODATA_BASE') || '').replace(/\/+$/, '');
-    const client = env('SAP_CLIENT');
-    const auth = String(env('SAP_AUTH') || 'gateway').toLowerCase();
-    const user = env('SAP_USER');
-    const password = env('SAP_PASSWORD');
-    const userHeader = env('SAP_USER_HEADER') || 'X-Emami-User';
-    const timeoutMs = Number(env('SAP_TIMEOUT_MS') || 60000);
-    if (!base) throw new Error('SAMADHAN_SAP_ODATA_BASE is not set');
-    const service = `${base}/ZSAMADHAN_ATT_SRV`;
-    const withClient = (u) => (client ? `${u}${u.includes('?') ? '&' : '?'}sap-client=${encodeURIComponent(client)}` : u);
-    const authHeaders = () => (auth === 'basic' && user ? { Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}` } : {});
-    let csrf = null; // { token, cookie, at }
+// ---------- sftp (production) ----------
+/** "SHA256:abc..." (as printed by ssh-keygen -lf) or plain base64 / hex of the SHA-256 of the host key. */
+/** Several fingerprints may be given, comma separated (the server may offer an ED25519, ECDSA or RSA key). */
+function fingerprintMatcher(want) {
+    const list = String(want || '').split(/[,\s]+/).map((w) => w.trim().replace(/^SHA256:/i, '').replace(/=+$/, '')).filter(Boolean);
+    if (!list.length) return null;
+    return (key) => {
+        const h = crypto.createHash('sha256').update(key).digest();
+        const b64 = h.toString('base64').replace(/=+$/, '');
+        const hex = h.toString('hex');
+        return list.some((w) => w === b64 || w.toLowerCase().replace(/:/g, '') === hex);
+    };
+}
 
-    async function fetchCsrf() {
-        const r = await fetch(withClient(`${service}/`), { headers: { ...authHeaders(), 'x-csrf-token': 'Fetch', Accept: 'application/json' }, signal: AbortSignal.timeout(timeoutMs) });
-        const token = r.headers.get('x-csrf-token');
-        if (!token) throw new Error(`SAP did not return a CSRF token (HTTP ${r.status})`);
-        const cookie = (r.headers.getSetCookie?.() ?? []).map((c) => c.split(';')[0]).join('; ');
-        csrf = { token, cookie, at: Date.now() };
-        return csrf;
+function sftpAdapter() {
+    let SftpClient;
+    try {
+        SftpClient = require('ssh2-sftp-client');
+    } catch {
+        throw new Error('the SFTP library is not installed - run "npm ci --omit=optional" in backend/samadhan');
     }
-    async function call(method, url, body, actor, retry = true) {
-        if (method !== 'GET' && (!csrf || Date.now() - csrf.at > 15 * 60_000)) await fetchCsrf();
-        const r = await fetch(withClient(url), {
-            method,
-            headers: {
-                ...authHeaders(), Accept: 'application/json', 'Content-Type': 'application/json',
-                ...(actor ? { [userHeader]: actor } : {}),
-                ...(method !== 'GET' && csrf ? { 'x-csrf-token': csrf.token, ...(csrf.cookie ? { Cookie: csrf.cookie } : {}) } : {}),
-            },
-            body: body ? JSON.stringify(body) : undefined,
-            signal: AbortSignal.timeout(timeoutMs),
-        });
-        if (r.status === 403 && retry && /required/i.test(r.headers.get('x-csrf-token') || '')) { csrf = null; return call(method, url, body, actor, false); }
-        const text = await r.text();
-        let data = null;
-        try { data = text ? JSON.parse(text) : null; } catch { /* not JSON */ }
-        if (!r.ok) {
-            const msg = data?.error?.message?.value || data?.error?.message || `HTTP ${r.status}`;
-            const err = new Error(`SAP attachment service: ${msg}`);
-            err.status = r.status >= 500 ? 502 : r.status;
+    const host = env('SFTP_HOST');
+    const user = env('SFTP_USER');
+    const base = String(env('SFTP_BASE_DIR') || '').replace(/\/+$/, '');
+    const keyPath = env('SFTP_PRIVATE_KEY_PATH');
+    const password = env('SFTP_PASSWORD');
+    const verify = fingerprintMatcher(env('SFTP_HOST_FINGERPRINT'));
+    const missing = [!host && 'SAMADHAN_SFTP_HOST', !user && 'SAMADHAN_SFTP_USER', !base && 'SAMADHAN_SFTP_BASE_DIR',
+        !keyPath && !password && 'SAMADHAN_SFTP_PASSWORD or SAMADHAN_SFTP_PRIVATE_KEY_PATH', !verify && 'SAMADHAN_SFTP_HOST_FINGERPRINT'].filter(Boolean);
+    if (missing.length) throw new Error(`SFTP is not configured: set ${missing.join(', ')}`);
+    if (!base.startsWith('/')) throw new Error('SAMADHAN_SFTP_BASE_DIR must be an absolute folder, e.g. /samadhan');
+    const config = {
+        host,
+        port: Number(env('SFTP_PORT') || 22),
+        username: user,
+        ...(keyPath ? { privateKey: fs.readFileSync(keyPath), ...(env('SFTP_PASSPHRASE') ? { passphrase: env('SFTP_PASSPHRASE') } : {}) } : { password }),
+        readyTimeout: Number(env('SFTP_TIMEOUT_MS') || 20000),
+        hostVerifier: verify,
+        retries: 1,
+    };
+    const remote = (ref) => `${base}/${safeRef(ref)}`;
+
+    // One connection, opened on first use, re-opened after an error, closed after 5 idle minutes.
+    let client = null;
+    let connecting = null;
+    let idle = null;
+    async function conn() {
+        clearTimeout(idle);
+        idle = setTimeout(() => { const c = client; client = null; c?.end().catch(() => {}); }, 5 * 60_000);
+        idle.unref?.();
+        if (client) return client;
+        if (!connecting) {
+            connecting = (async () => {
+                const c = new SftpClient('samadhan');
+                c.on('error', () => { client = null; });
+                c.on('end', () => { client = null; });
+                await c.connect(config);
+                client = c;
+                return c;
+            })().finally(() => { connecting = null; });
+        }
+        return connecting;
+    }
+    async function op(fn) {
+        try {
+            return await fn(await conn());
+        } catch (err) {
+            // A dropped connection gets one fresh retry; anything else is reported.
+            if (/not connected|no response|ECONNRESET|socket|closed/i.test(err.message)) {
+                client = null;
+                return fn(await conn());
+            }
             throw err;
         }
-        return data?.d ?? data;
     }
-    const key = (ref) => `${service}/AttachmentSet('${encodeURIComponent(String(ref).replace(/'/g, "''"))}')`;
+    const fail = (what, err) => Object.assign(new Error(`File storage (SFTP) could not ${what}: ${err.message}`), { status: err.code === 2 || /no such file/i.test(err.message) ? 404 : 502 });
+
     return {
-        name: 'sap',
-        async put(storageKey, buffer, meta = {}) {
-            const d = await call('POST', `${service}/AttachmentSet`, {
-                StorageKey: storageKey.slice(0, 255),
-                TicketId: String(meta.ticketId ?? ''),
-                FileName: String(meta.fileName || 'file').slice(0, 255),
-                MimeType: String(meta.contentType || 'application/octet-stream').slice(0, 128),
-                FileSize: String(buffer.length),
-                Sha256: crypto.createHash('sha256').update(buffer).digest('hex'),
-                Value: buffer.toString('base64'),
-            }, meta.actor);
-            if (!d?.FileId) throw new Error('SAP attachment service did not return a FileId');
-            return { ref: d.FileId };
+        name: 'sftp',
+        async put(key, buffer) {
+            const target = remote(key);
+            const tmp = `${target}.part-${crypto.randomUUID()}`;
+            try {
+                await op(async (c) => {
+                    await c.mkdir(target.slice(0, target.lastIndexOf('/')), true);
+                    await c.put(buffer, tmp);
+                    await c.rename(tmp, target); // a half-written file is never visible under its real name
+                });
+            } catch (err) {
+                await op((c) => c.delete(tmp, true)).catch(() => {});
+                throw fail('save the file', err);
+            }
+            return { ref: key };
         },
         async get(ref) {
-            const d = await call('GET', `${key(ref)}?$format=json`);
-            if (!d?.Value) throw Object.assign(new Error('The file is not on the SAP server any more.'), { status: 404 });
-            return Buffer.from(d.Value, 'base64');
+            try { return await op((c) => c.get(remote(ref))); } catch (err) { throw fail('read the file', err); }
         },
-        async del(ref, actor) {
-            await call('POST', `${service}/AttachmentSet`, { FileId: String(ref), Action: 'D' }, actor);
+        async del(ref) {
+            try { await op((c) => c.delete(remote(ref), true)); } catch (err) { throw fail('delete the file', err); }
+        },
+        /** Connection check for Admin > General ("Test file storage"). */
+        async check() {
+            return op(async (c) => {
+                await c.mkdir(base, true);
+                const probe = `${base}/.samadhan-check-${crypto.randomUUID()}`;
+                await c.put(Buffer.from('ok'), probe);
+                await c.delete(probe);
+                return { ok: true, host, base };
+            });
         },
     };
 }
@@ -121,7 +169,7 @@ function sapAdapter() {
 let adapter = null;
 let reason = '';
 try {
-    if (MODE === 'sap') adapter = sapAdapter();
+    if (MODE === 'sftp') adapter = sftpAdapter();
     else if (MODE === 'local') adapter = localAdapter();
     else reason = 'Attachments are not switched on for this server (SAMADHAN_STORAGE is not set).';
 } catch (err) {
@@ -135,4 +183,4 @@ const storageInfo = () => ({ enabled: Boolean(adapter), adapter: adapter?.name ?
 const objectKey = (ticketId, now = new Date()) =>
     `samadhan/attachments/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}/${Number(ticketId)}/${crypto.randomUUID()}`;
 
-module.exports = { objectKey, storage, storageInfo };
+module.exports = { fingerprintMatcher, objectKey, safeRef, storage, storageInfo };

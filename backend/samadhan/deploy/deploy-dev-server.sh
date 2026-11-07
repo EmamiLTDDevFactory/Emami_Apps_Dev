@@ -33,6 +33,12 @@ if [ -d setu ]; then mv setu "setu.bak-preSamadhan-$TS"; fi
 echo "== 2. add samadhan/"
 cp -r "$UPLOAD" samadhan
 rm -rf "$UPLOAD"   # so the next upload starts clean (scp -r into an existing folder nests it)
+# v7: Samadhan's own dependencies (samadhan/package.json - the SFTP client for attachments). Installed inside samadhan/
+# only; the shared backend package.json is not touched. A node_modules copied from a PC is replaced.
+if [ -f samadhan/package.json ]; then
+  rm -rf samadhan/node_modules
+  (cd samadhan && npm ci --omit=optional --no-audit --no-fund 2>&1 | tail -2)
+fi
 
 echo "== 3. server.js: Samadhan mount (/samadhan + /setu alias) and roles"
 node - <<'JS'

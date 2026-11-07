@@ -324,7 +324,10 @@ router.post('/tickets/:id/messages', wrap(async (req, res) => {
     const statusAfter = intOrNull(b.statusAfter);
     if (Number.isNaN(statusAfter)) throw fail(400, 'Invalid status.');
     if (statusAfter) await assertResolvable(statusAfter, await loadTicket(id));
-    const { delivery } = await addAgentMessage(id, { kind, html: textToHtml(text.slice(0, 50000)), to, cc }, req.agent);
+    // v7: files uploaded in the composer (ids on this ticket) go with the message.
+    const attachmentIds = Array.isArray(b.attachmentIds) ? b.attachmentIds : [];
+    if (attachmentIds.length && kind !== 'NOTE' && !req.can('attachment.download')) throw fail(403, 'You cannot send files.');
+    const { delivery } = await addAgentMessage(id, { kind, html: textToHtml(text.slice(0, 50000)), to, cc, attachmentIds }, req.agent);
     if (statusAfter) await updateTicket(id, { statusId: statusAfter }, req.agent.id);
     res.status(201).json({ success: true, delivery });
 }));

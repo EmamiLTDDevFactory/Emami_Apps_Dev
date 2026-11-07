@@ -7,8 +7,8 @@ const { objectKey, storage, storageInfo } = require('./storage');
 const { fail, logActivity } = require('./util');
 
 /*
-   Ticket attachments (v7 Phase 2, master prompt §L). Files live in the storage adapter (lib/storage.js - the SAP
-   application server in production); Postgres keeps only the metadata row in ticket_attachments and the ticket's
+   Ticket attachments (v7 Phase 2, master prompt §L). Files live in the storage adapter (lib/storage.js - an SFTP
+   server, host-to-host, in production); Postgres keeps only the metadata row in ticket_attachments and the ticket's
    "attachmentCount". The unused v1 table samadhan.attachments is left untouched.
 
    Limits are Admin-editable (Admin > General, setting attachments.limits) inside hard ceilings that no setting can

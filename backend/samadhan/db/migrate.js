@@ -154,7 +154,7 @@ const MIGRATIONS = [
     {
         // Phase 2: attachments (master prompt §L). A new table plus one new counter column on tickets (default 0, so
         // existing rows and every existing query are unaffected). The unused v1 table "attachments" is left untouched.
-        // Down drops the metadata only - the files on the SAP application server stay where they are (list them first
+        // Down drops the metadata only - the files on the SFTP server stay where they are (list them first
         // with: SELECT "storageRef" FROM <schema>.ticket_attachments if they should be removed too).
         id: '7.1-attachments',
         describe: 'ticket_attachments table + tickets."attachmentCount"',
