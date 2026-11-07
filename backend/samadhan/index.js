@@ -38,6 +38,8 @@ router.use(require('./routes/jobs'));
 router.use(require('./routes/public'));
 // Signed 5-minute file links and the portal upload (routes/attachments.js) - checked by their own tokens.
 router.use(require('./routes/attachments').publicRouter);
+// v7 Phase 9: inbound integrations (Cloud ALM, monitoring) - their own API key / token (routes/integrations.js).
+router.use(require('./routes/integrations').publicRouter);
 // Every signed-in route also passes the permission gate (middleware/permission.js: one rule per route, v7 Phase 2).
 router.use(requireAccess, rateLimit, permissionGate);
 router.use(require('./routes/me'));
@@ -60,6 +62,9 @@ router.use(require('./routes/change'));
 router.use(require('./routes/problem'));
 // v7 Phase 8: S/4HANA Programme details, burn-down, KPIs, hypercare (routes/program.js).
 router.use(require('./routes/program'));
+// v7 Phase 9: Admin > Integrations; analytics extras per desk (routes/integrations.js, routes/analyticsDesks.js).
+router.use(require('./routes/integrations').router);
+router.use(require('./routes/analyticsDesks'));
 
 // ---------- Transport route ----------
 // The dev web server forwards only one older route name to this backend until its own /api/samadhan block is added

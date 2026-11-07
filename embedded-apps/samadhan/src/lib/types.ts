@@ -370,6 +370,19 @@ export interface TicketDetail {
   knownError?: KnownError | null;
 }
 
+// ---------- v7 Phase 9: integrations, desk analytics ----------
+export interface IntegrationRow { key: 'calm' | 'monitoring' | 'teams' | 'solman'; enabled: boolean; config: { applicationCode?: string; requesterEmail?: string; urlHint?: string; events?: string[] }; hasSecret: boolean; secretHint?: string | null; rotatedAt?: string | null }
+export interface MonitoringSource { id: number; name: string; tokenHint: string | null; applicationId: number | null; applicationCode: string | null; defaultPriority: number; enabled: boolean; requesterEmail: string | null; createdAt: string }
+export interface IntegrationCall { id: number; integration: string; source: string | null; ok: boolean; status: number | null; summary: string | null; externalId: string | null; ticketId: number | null; createdAt: string }
+export interface IntegrationsOverview { integrations: IntegrationRow[]; sources: MonitoringSource[]; calls: IntegrationCall[]; endpoints: { calm: string; monitoring: string }; solmanTargets: string[] }
+export interface SolmanResult { total: number; ok: number; skipped: number; errors: { line: number; error: string }[]; created: number; dryRun: boolean }
+export interface DeskAnalytics {
+  days: number;
+  sap: { modules: { k: string; total: number; open: number; breached: number }[]; tcodes: { k: string; n: number }[]; errors: { k: string; n: number }[]; externalAgeing: { k: string; n: number }[] };
+  change: { total: number; emergencyPct: number | null; successPct: number | null; resolved: number };
+  infra: { p1Open: number; mttrByDomain: { k: string; n: number; hours: number }[] };
+}
+
 // ---------- v7 Phase 8: S/4HANA Programme ----------
 export interface ProgramDetails {
   activatePhase?: string | null; releaseWave?: string | null; testCycle?: string | null; testCaseId?: string | null; testScenario?: string | null; processArea?: string | null;

@@ -470,3 +470,29 @@ test('S/4 programme: defect with programme details and retest, programme screen'
   }
   expect(problems).toEqual([]);
 });
+
+// ---------- v7 Phase 9: integrations, desk analytics ----------
+test('Admin > Integrations (all off) and the SAP / change / infra analytics', async ({ page }) => {
+  const problems = watch(page);
+  await signIn(page, data.admin);
+  const ws = await api(data.admin, 'GET', '/admin/workspaces');
+  const sapWs = ws.body?.workspaces?.find((w: { key: string }) => w.key === 'SAP');
+  try {
+    await page.goto('/apps/samadhan/?screen=admin');
+    await page.getByRole('tab', { name: 'Integrations' }).click();
+    const box = page.getByTestId('admin-integrations');
+    await expect(box).toContainText('SAP Cloud ALM');
+    await expect(box).toContainText('SolMan ITSM backlog import');
+    await expect(box.getByText('Off').first()).toBeVisible();
+    await api(data.admin, 'PUT', `/admin/workspaces/${sapWs.id}`, { enabled: true });
+    await api(data.admin, 'PUT', '/admin/workspaces/flag', { enabled: true });
+    await page.goto('/apps/samadhan/?screen=analytics');
+    await page.getByRole('tab', { name: 'SAP, change & infra' }).click();
+    await expect(page.getByTestId('desk-analytics')).toContainText('SAP module heat-map');
+  } finally {
+    await api(data.admin, 'PUT', '/admin/workspaces/flag', { enabled: false });
+    if (sapWs) await api(data.admin, 'PUT', `/admin/workspaces/${sapWs.id}`, { enabled: false });
+    await api(data.admin, 'PUT', '/me/preferences', { workspace: null });
+  }
+  expect(problems).toEqual([]);
+});

@@ -61,6 +61,10 @@ const RULES = [
     ['GET', '/tickets/:id/pir', 'ticket.view'], ['PUT', '/tickets/:id/pir', 'ticket.pir.edit'],
     ['GET', '/tickets/:id/problem', 'ticket.view'], ['POST', '/tickets/:id/problem', 'problem.manage'], ['PUT', '/tickets/:id/known-error', 'problem.manage'],
     ['GET', '/problem-candidates', 'problem.manage'], ['POST', '/problem-candidates/:cid/create', 'problem.manage'], ['POST', '/problem-candidates/:cid/dismiss', 'problem.manage'],
+    // integrations.js, analyticsDesks.js (v7 Phase 9)
+    ['GET', '/admin/integrations', 'admin.integrations'], ['PUT', '/admin/integrations/:key', 'admin.integrations'], ['POST', '/admin/integrations/:key/rotate', 'admin.integrations'],
+    ['POST', '/admin/integrations/monitoring/sources', 'admin.integrations'], ['POST', '/admin/integrations/monitoring/sources/:sid/rotate', 'admin.integrations'],
+    ['POST', '/admin/integrations/solman/import', 'admin.integrations'], ['GET', '/analytics/desks', 'screen.analytics'],
     // program.js (v7 Phase 8)
     ['GET', '/tickets/:id/program', 'ticket.view'], ['PUT', '/tickets/:id/program', 'ticket.edit'], ['GET', '/program/overview', 'screen.dashboard'],
     ['GET', '/duplicates', 'ticket.create'], ['GET', '/service-health', 'screen.dashboard'],
