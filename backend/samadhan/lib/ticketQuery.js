@@ -10,6 +10,8 @@ const OVERDUE = '(t."resolutionDueAt" < now() OR (t."firstRespondedAt" IS NULL A
 const IST_TODAY = `date_trunc('day', now() AT TIME ZONE 'Asia/Kolkata') AT TIME ZONE 'Asia/Kolkata'`;
 
 /** View id -> SQL condition (me = the signed-in agent's parameter). */
+// §J: default or AI classification, or keywords below the confidence threshold («0.8»). Backfilled tickets are not included.
+const NEEDS_CLASSIFICATION = `(t."classificationSource" IN ('default', 'ai') OR (t."classificationSource" = 'keyword' AND COALESCE(t."classificationConfidence", 0) < 0.8))`;
 const VIEWS = {
     '': () => LIVE,
     all: () => LIVE,
@@ -26,6 +28,8 @@ const VIEWS = {
     my_groups: (me) => `${LIVE} AND NOT s."isResolved" AND t."groupId" IN (SELECT "groupId" FROM samadhan.group_members WHERE "agentId" = ${me})`,
     watching: (me) => `${LIVE} AND EXISTS (SELECT 1 FROM samadhan.ticket_watchers w WHERE w."ticketId" = t.id AND w."agentId" = ${me})`,
     today: () => `${LIVE} AND t."createdAt" >= ${IST_TODAY}`,
+    // v7 Phase 3 (§J): open tickets whose application was not set by a person, a subject tag or a sender rule.
+    needs_classification: () => `${LIVE} AND NOT s."isResolved" AND ${NEEDS_CLASSIFICATION}`,
     spam: () => 't.spam AND t."deletedAt" IS NULL',
     trash: () => 't."deletedAt" IS NOT NULL',
 };
@@ -63,7 +67,8 @@ const SORTS = {
 };
 
 // Text filters on ticket columns (multi-value, comma separated).
-const TEXT_FILTERS = { source: 'source', type: 'type', category: 'category', region: 'region', state: 'state', depot: 'depot', salesOrg: '"salesOrg"', l2Agent: '"l2Agent"', asmName: '"asmName"' };
+const TEXT_FILTERS = { source: 'source', type: 'type', category: 'category', region: 'region', state: 'state', depot: 'depot', salesOrg: '"salesOrg"', l2Agent: '"l2Agent"', asmName: '"asmName"',
+    recordClass: '"recordClass"' };
 // "Created" relative windows, in minutes.
 const CREATED_WITHIN = { '5m': 5, '15m': 15, '30m': 30, '1h': 60, '4h': 240, '12h': 720, '24h': 1440, week: 10080, month: 43200, '2months': 86400, '6months': 259200 };
 const DUE_OPTIONS = ['overdue', 'today', 'tomorrow', 'next8h'];
@@ -139,8 +144,15 @@ function ticketFilter(qy, agentId, scope = null) {
     if (qy.resDue) dueBy('t."resolutionDueAt"', qy.resDue);
     if (qy.frDue) { where.push('t."firstRespondedAt" IS NULL'); dueBy('t."firstResponseDueAt"', qy.frDue); }
 
+    // v7 Phase 3: application / workspace (comma-separated ids) and "needs classification".
+    for (const [k, col] of [['applicationId', 't."applicationId"'], ['workspaceId', 't."workspaceId"']]) {
+        if (qy[k]) { const ids = ints(qy[k]); if (ids.length) where.push(`${col} = ANY(${p(ids)}::int[])`); }
+    }
+    if (qy.needsClassification === '1') where.push(NEEDS_CLASSIFICATION);
+
     if (qy.q) {
-        const term = String(qy.q).trim().replace(/^#/, '').slice(0, 200);
+        // "#100123", "100123" and the readable reference "MSFA-100123" all find the ticket.
+        const term = String(qy.q).trim().replace(/^#/, '').replace(/^[A-Za-z0-9]{2,8}-(?=\d+$)/, '').slice(0, 200);
         if (/^\d+$/.test(term)) where.push(`(t.id = ${p(Number(term) <= 2147483647 ? Number(term) : 0)} OR t."distributorCode" = ${p(term)} OR t."mrUid" = ${p(term)})`);
         else if (term) {
             const like = p(`%${term}%`);
@@ -150,4 +162,4 @@ function ticketFilter(qy, agentId, scope = null) {
     return { where: `WHERE ${where.join(' AND ')}`, params, order: SORTS[qy.sort] || SORTS.created };
 }
 
-module.exports = { CREATED_WITHIN, DUE_OPTIONS, IST_TODAY, LIVE, OVERDUE, SORTS, VIEW_IDS, VIEWS, liveFor, scopeSql, ticketFilter, ticketVisible };
+module.exports = { NEEDS_CLASSIFICATION, CREATED_WITHIN, DUE_OPTIONS, IST_TODAY, LIVE, OVERDUE, SORTS, VIEW_IDS, VIEWS, liveFor, scopeSql, ticketFilter, ticketVisible };

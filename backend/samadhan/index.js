@@ -48,6 +48,8 @@ router.use(require('./routes/insights'));
 router.use(require('./routes/attachments').router);
 router.use('/admin', require('./routes/admin'));
 router.use('/admin/authz', require('./routes/authz'));
+// v7 Phase 3: workspaces, applications, priority matrix, mail classification (Admin; routes/workspaces.js).
+router.use('/admin', require('./routes/workspaces'));
 
 // ---------- /api/setu: the pre-v7 path, kept as an alias ----------
 // Formerly Setu. Old browser tabs, the Meta WhatsApp webhook and any integration still calling /api/setu get the same

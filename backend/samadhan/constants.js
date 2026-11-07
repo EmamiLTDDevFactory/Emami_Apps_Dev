@@ -43,7 +43,8 @@ const EDITABLE_FIELDS = [
     'asmName', 'depotCoordinator', 'mrUid', 'mobileNo', 'alternateMobileNo', 'callerName',
     'callerContactNumber', 'category', 'function', 'l2Agent', 'helpdeskAnalysis', 'rcaSolution', 'type',
 ];
-const PATCHABLE = ['subject', 'statusId', 'priority', 'groupId', 'agentId', 'tags', ...EDITABLE_FIELDS];
+// v7 Phase 3: applicationId (workspace follows), recordClass, impact, urgency.
+const PATCHABLE = ['subject', 'statusId', 'priority', 'groupId', 'agentId', 'tags', ...EDITABLE_FIELDS, 'applicationId', 'recordClass', 'impact', 'urgency'];
 const MAIL_ENABLED = String(env('MAIL_ENABLED', 'false') || 'false').toLowerCase() === 'true';
 const WHATSAPP = {
     enabled: String(env('WHATSAPP_ENABLED', 'false') || 'false').toLowerCase() === 'true',

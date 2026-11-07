@@ -23,17 +23,20 @@ const RULES = [
     ['GET', '/tickets/export/columns', 'ticket.view'], ['POST', '/tickets', 'ticket.create'], ['GET', '/tickets/:id', 'ticket.view'],
     ['PATCH', '/tickets/:id', (req) => {
         const b = req.body ?? {};
-        return ['ticket.edit', ...(b.agentId !== undefined || b.groupId !== undefined ? ['ticket.assign'] : [])];
+        return ['ticket.edit', ...(b.agentId !== undefined || b.groupId !== undefined ? ['ticket.assign'] : []),
+            ...(b.applicationId !== undefined ? ['ticket.changeApplication'] : [])];
     }],
     ['POST', '/tickets/bulk', (req) => {
         const a = String(req.body?.action || '');
         const extra = { spam: 'ticket.spam', unspam: 'ticket.spam', trash: 'ticket.trash', restore: 'ticket.trash', purge: 'ticket.purge', merge: 'ticket.merge' }[a];
-        return ['ticket.bulk', ...(extra ? [extra] : []), ...(a === 'update' || a === 'close' ? ['ticket.edit'] : [])];
+        return ['ticket.bulk', ...(extra ? [extra] : []), ...(a === 'update' || a === 'close' ? ['ticket.edit'] : []),
+            ...(req.body?.patch?.applicationId !== undefined ? ['ticket.changeApplication'] : [])];
     }],
     ['POST', '/tickets/:id/merge', 'ticket.merge'], ['POST', '/tickets/:id/links', 'ticket.link'], ['POST', '/tickets/:id/watch', 'ticket.view'],
     ['POST', '/tickets/:id/scenarios/:sid', 'scenario.run'], ['POST', '/tickets/:id/presence', 'ticket.view'],
     ['POST', '/tickets/:id/messages', (req) => ({ REPLY: 'ticket.reply', NOTE: 'ticket.note', FORWARD: 'ticket.forward' })[String(req.body?.kind || '')] || 'ticket.reply'],
     ['POST', '/tickets/:id/time-logs', 'ticket.edit'], ['POST', '/tickets/:id/calls', 'ticket.edit'],
+    ['POST', '/tickets/:id/classify', (req) => ['ticket.classify', ...(req.body?.applicationId !== undefined ? ['ticket.changeApplication'] : [])]],
     // work.js
     ['GET', '/todos', ANY], ['POST', '/todos', ANY], ['PATCH', '/todos/:id', ANY], ['DELETE', '/todos/:id', ANY],
     ['GET', '/views', ANY], ['POST', '/views', (req) => (req.body?.shared ? 'views.share' : ANY)], ['DELETE', '/views/:id', ANY],
@@ -75,6 +78,13 @@ const RULES = [
     ['GET', '/admin/authz/users/:id', 'admin.authorization'], ['PUT', '/admin/authz/users/:id', 'admin.authorization'],
     ['GET', '/admin/authz/review', 'admin.authorization'], ['POST', '/admin/authz/review/revoke-expired', 'admin.authorization'],
     ['GET', '/admin/authz/log', 'admin.authorization'],
+    // Workspaces, applications, priority matrix, mail classification (routes/workspaces.js, v7 Phase 3)
+    ['GET', '/admin/workspaces', 'admin.workspaces'], ['PUT', '/admin/workspaces/flag', 'admin.workspaces'], ['PUT', '/admin/workspaces/:id', 'admin.workspaces'],
+    ['PUT', '/admin/workspaces/:id/matrix', 'admin.workspaces'],
+    ['POST', '/admin/applications', 'admin.applications'], ['PUT', '/admin/applications/:id', 'admin.applications'],
+    ['POST', '/admin/applications/:id/aliases', 'admin.applications'],
+    ['GET', '/admin/mail-classification', 'admin.channels'], ['PUT', '/admin/mail-classification', 'admin.channels'],
+    ['POST', '/admin/mail-rules', 'admin.channels'], ['DELETE', '/admin/mail-rules/:id', 'admin.channels'],
 ];
 
 const compiled = RULES.map(([method, path, key]) => ({

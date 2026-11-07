@@ -1,4 +1,31 @@
-# Samadhan v7 — Application mapping for existing tickets (proposal, needs approval)
+# Samadhan v7 — Application mapping for existing tickets (**APPROVED 2026-11-07**)
+
+## 0. Approved mapping (user answers to Q-M1 … Q-M6, 2026-11-07) — this section wins over the proposal below
+
+| Question | Decision |
+|---|---|
+| Q-M1 | `mSecSales …` categories → `MSFA` |
+| Q-M2 | `Rural mSFA` gets its **own** application **`RMSFA`** (Rural mSFA App, SEC_SALES) |
+| Q-M3 | `CDMS` gets its **own** application **`CDMS`** (CDMS – legacy distributor system, SEC_SALES) |
+| Q-M4 | `SalesCode SFA` → `MR`, `SalesCode Manager App` → `SUP`, `SalesCode Portal` → `DMS` |
+| Q-M5 | `Salescode B2B App` stays in Secondary Sales as **`SCB2B`** (SalesCode B2B App, SEC_SALES); `B2B` stays a Digital Apps code |
+| Q-M6 | backfilled rows get `classificationSource = 'backfill'` (not shown in "Needs classification") |
+
+Rule actually applied (first match wins):
+
+1. By `type` (case-insensitive, trimmed): `mSFA` → MSFA · `Rural mSFA` → RMSFA · `SalesCode DMS` → DMS · `CDMS` → CDMS ·
+   `SalesCode SFA` → MR · `SalesCode Supervisor App` → SUP · `SalesCode Manager App` → SUP · `Salescode B2B App` → SCB2B ·
+   `SalesCode Portal` → DMS · `Wrong ticket` → SS.
+2. By category, when `type` is empty or unknown: starts with `mSecSales` or equals `mSFA Reports` → MSFA · starts with
+   `Rural mSFA` → RMSFA · starts with `CDMS` → CDMS · `MR Expense` → MR · starts with `SalesCode` → DMS.
+3. Fallback `SS`. Every mapped code is in SEC_SALES, so no existing ticket changes desk.
+
+Expected on dev (from the counts in §2): MSFA 448, RMSFA 156, CDMS 400, DMS 26, MR 11, SS 292 (+ demo tickets loaded since).
+
+---
+
+_Original proposal (kept for reference):_
+
 
 §7.4: only the **approved** version of this file is applied. Every unmapped ticket gets `SS`. Category / function / type
 values are **never** changed — the backfill only sets the new `application_id`, the derived `workspace_id`, and
