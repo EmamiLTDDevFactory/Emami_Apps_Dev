@@ -54,6 +54,8 @@ On first start on a new database Samadhan creates its `samadhan` schema and tabl
 `[samadhan] schema init failed`, the database user may not create schemas: ask the DBA to run
 `backend/samadhan/db/install.sql` once, then `pm2 restart emami-hub-backend-dev`.
 
-Demo and sample data: `deploy/demo` -> `~/samadhan-demo` (`bash ~/samadhan-demo/run.sh load|load-pulsedesk|remove`),
+Demo and sample data: `deploy/demo` -> `~/samadhan-demo` (`bash ~/samadhan-demo/run.sh load|load-pulsedesk|load-v7|remove`;
+`load-v7` adds the last 14 days of tickets for the dashboards / reports / insights, 4 groups with their categories, and
+Authorization cockpit examples for demo agents only),
 `deploy/mock` -> `~/samadhan-mock`. Both work before and after the schema rename; `remove` also removes demo data
 loaded before v7 (`@demo.setu.local`).
