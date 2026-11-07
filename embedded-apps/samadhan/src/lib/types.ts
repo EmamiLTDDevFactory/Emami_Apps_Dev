@@ -51,6 +51,8 @@ export interface CannedResponse {
   body: string;
   /** null = shared (Admin); otherwise the agent it belongs to - only that agent ever receives it. */
   ownerAgentId: number | null;
+  /** v7: the service desk it belongs to (null = every desk). */
+  workspaceId?: number | null;
 }
 
 export interface FieldDef {
@@ -153,12 +155,17 @@ export interface Meta {
   statusWorkspaces?: { statusId: number; workspaceId: number }[];
   groupWorkspaces?: Record<string, number>;
   byWorkspace?: Record<string, WorkspaceFields> | null;
+  /** v7 Phase 4 */
+  sapLists?: SapLists;
+  refMasterKinds?: string[];
 }
 
 export interface ScenarioRef {
   id: number;
   name: string;
   description: string | null;
+  /** v7: the service desk it belongs to (null = every desk). */
+  workspaceId?: number | null;
 }
 
 /** Ticket columns an agent can edit from the properties panel (backend EDITABLE_FIELDS). */
@@ -166,6 +173,8 @@ export const EDITABLE_FIELDS = [
   'callSubject', 'region', 'distributorCode', 'distributorName', 'salesOrg', 'state', 'depot',
   'asmName', 'depotCoordinator', 'mrUid', 'mobileNo', 'alternateMobileNo', 'callerName',
   'callerContactNumber', 'category', 'function', 'l2Agent', 'helpdeskAnalysis', 'rcaSolution', 'type',
+  // v7 Phase 4
+  'rootCauseCategory', 'resolutionCode',
 ] as const;
 export type EditableField = (typeof EDITABLE_FIELDS)[number];
 
@@ -239,6 +248,8 @@ export interface Ticket extends TicketRow, Record<EditableField, string | null> 
   workspaceKey?: string | null;
   impact?: number | null;
   urgency?: number | null;
+  /** v7 Phase 4 */
+  confidential?: boolean;
 }
 
 export interface Conversation {
@@ -326,6 +337,29 @@ export interface TicketDetail {
   parent: RelatedTicket | null;
   csat: { rating: 1 | 2 | 3; comment: string | null; createdAt: string } | null;
   todos: Todo[];
+  /** v7 Phase 4 (null / [] before migration 7.4) */
+  sap?: SapDetails | null;
+  externalRefs?: ExternalRef[];
+}
+
+// ---------- v7 Phase 4: SAP details, external references, reference masters ----------
+export interface SapDetails {
+  landscape?: string | null; sapSystem?: string | null; sapClient?: string | null; environment?: string | null; tcode?: string | null;
+  fioriAppId?: string | null; programName?: string | null; errorMessageClass?: string | null; errorMessageNo?: string | null; errorText?: string | null;
+  shortDumpId?: string | null; idocNumber?: string | null; idocMessageType?: string | null; batchJob?: string | null; companyCode?: string | null;
+  plant?: string | null; salesOrg?: string | null; purchOrg?: string | null; documentNumbers?: string[]; usersAffected?: number | null;
+  businessProcess?: string | null; workaroundAvailable?: boolean | null; workaroundText?: string | null; reproducible?: boolean | null;
+  stepsToReproduce?: string | null; expectedResult?: string | null; actualResult?: string | null; sapNotes?: string[]; sapComponent?: string | null;
+  riseOwner?: string | null; updatedAt?: string;
+}
+export interface ExternalRef {
+  id: number; ticketId: number; system: string; ref: string; status: string | null; priority: string | null; url: string | null; owner: string | null;
+  justification: string | null; notes: string | null; openedAt: string; lastUpdateAt: string; ageDays: number; createdByName: string | null;
+}
+export interface RefMaster { id?: number; kind?: string; code: string; description: string | null; parentCode: string | null; active?: boolean }
+export interface SapLists {
+  landscape: string[]; environment: string[]; riseOwner: string[]; externalSystem: string[]; sapCasePriority: string[]; externalStatus: string[];
+  rootCause: string[]; resolutionCode: string[];
 }
 
 export interface Todo {

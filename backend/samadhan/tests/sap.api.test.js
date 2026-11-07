@@ -146,13 +146,14 @@ const ticket = (who, body) => call(who, 'POST', '/tickets', { requesterName: 'Pl
     // ---- reference masters ----
     r = await call(A1, 'POST', '/admin/ref-masters/import', { kind: 'TCODE', rows: [{ code: 'VA01' }] }); check(r.status === 403, 'agent cannot import masters');
     r = await call(ADMIN, 'POST', '/admin/ref-masters/import', { kind: 'NOPE', rows: [{ code: 'x' }] }); check(r.status === 400, 'unknown master kind');
-    r = await call(ADMIN, 'POST', '/admin/ref-masters/import', { kind: 'TCODE', rows: [{ code: 'VA01', description: 'Create Sales Order' }, { code: 'VA02', description: 'Change Sales Order' }, { code: 'ME21N', description: 'Create Purchase Order' }] });
+    r = await call(ADMIN, 'POST', '/admin/ref-masters/import', { kind: 'TCODE', rows: [{ code: 'ZQ01', description: 'Create Quokka Order' }, { code: 'ZQ02', description: 'Change Quokka Order' }, { code: 'ZW01', description: 'Create Widget' }] });
     check(r.status === 200 && r.body.saved === 3, 'import 3 T-codes');
-    r = await call(ADMIN, 'POST', '/admin/ref-masters/import', { kind: 'SAP_CLIENT', rows: [{ code: '300', description: 'Production client', parentCode: 'ECP' }, { code: '100', description: 'QAS client', parentCode: 'EQP' }] });
-    r = await call(A1, 'GET', '/ref-masters?kind=TCODE&q=sales');
-    check(r.status === 200 && r.body.items.length === 2 && r.body.items.every((x) => x.code.startsWith('VA')), 'typeahead by description', r.body.items);
-    r = await call(A1, 'GET', '/ref-masters?kind=SAP_CLIENT&parent=ECP'); check(r.body.items.length === 1 && r.body.items[0].code === '300', 'client list follows the system (SID -> client)');
-    r = await call(ADMIN, 'GET', '/admin/ref-masters?kind=TCODE'); check(r.body.items.length === 3 && r.body.counts.TCODE === 3, 'admin list with counts');
+    r = await call(ADMIN, 'POST', '/admin/ref-masters/import', { kind: 'SAP_CLIENT', rows: [{ code: '901', description: 'Production client', parentCode: 'ZZ1' }, { code: '902', description: 'QAS client', parentCode: 'ZZ2' }] });
+    r = await call(A1, 'GET', '/ref-masters?kind=TCODE&q=quokka');
+    check(r.status === 200 && r.body.items.length === 2 && r.body.items.every((x) => x.code.startsWith('ZQ')), 'typeahead by description', r.body.items);
+    r = await call(A1, 'GET', '/ref-masters?kind=SAP_CLIENT&parent=ZZ1'); check(r.body.items.length === 1 && r.body.items[0].code === '901', 'client list follows the system (SID -> client)');
+    r = await call(ADMIN, 'GET', '/admin/ref-masters?kind=TCODE&q=Z'); check(r.body.items.some((x) => x.code === 'ZQ01') && r.body.counts.TCODE >= 50, 'admin list with counts (starter T-codes seeded)', r.body.counts);
+    r = await call(A1, 'GET', '/ref-masters?kind=TCODE&q=VA0'); check(r.body.items.some((x) => x.code === 'VA01' && /sales order/i.test(x.description)), 'starter T-codes ready on day one');
 
     await db.end();
     console.log(fails ? `\n${fails} FAILED` : '\nALL PASSED');

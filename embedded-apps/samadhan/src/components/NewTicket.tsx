@@ -1,6 +1,8 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { PlusCircle, UserSearch } from 'lucide-react';
+import { HelpCircle, KeyRound, Link2, PlusCircle, Settings2, ShoppingBag, UserSearch, Wrench } from 'lucide-react';
+import { PasteParser, SapFields, type SapForm } from './Sap';
+import type { ExternalRefInput } from '@/lib/api';
 import { createTicket, searchContacts } from '@/lib/api';
 import type { ContactMatch } from '@/lib/types';
 import { useSamadhan, type NewTicketPreset } from '@/lib/context';
@@ -15,6 +17,16 @@ const EMPTY_TOP = { requesterName: '', requesterEmail: '', requesterPhone: '', s
 
 // Top-of-form keys a preset can fill; everything else in a preset is a ticket field (TicketFields values).
 const TOP_KEYS = Object.keys(EMPTY_TOP);
+
+// v7 Phase 4 (§N 3): "What do you need?" - plain-language tiles that set the record class outside Secondary Sales.
+const NEEDS = [
+  { key: 'INCIDENT', label: 'Something is broken', hint: 'An error, a dump, a job or interface failing', icon: Wrench },
+  { key: 'SERVICE_REQUEST', label: 'I need something', hint: 'A report, master data, a new device or setup', icon: ShoppingBag },
+  { key: 'ACCESS_REQUEST', label: 'Access', hint: 'A role, a login, a password or unlock', icon: KeyRound },
+  { key: 'CHANGE', label: 'A change', hint: 'Configuration, an enhancement, a transport', icon: Settings2 },
+  { key: 'QUERY', label: 'A question', hint: 'How do I ... ?', icon: HelpCircle },
+  { key: 'SAP_CASE', label: 'Track an SAP case', hint: 'An SAP for Me case or a vendor ticket', icon: Link2 },
+] as const;
 
 export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
   const { meta, openTicket, attachments, can, prefs, rememberApp } = useSamadhan();
@@ -49,6 +61,13 @@ export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
   const matrix = usesImpactUrgency(meta, wsId);
   const fromMatrix = matrixPriority(meta, wsId, Number(impact) || null, Number(urgency) || null);
   const emailOk = EMAIL_RE.test(top.requesterEmail.trim());
+  // v7 Phase 4: record class tiles, SAP details and an external case for the non-sales desks.
+  const [need, setNeed] = useState('');
+  const [sap, setSap] = useState<SapForm>({});
+  const [extRef, setExtRef] = useState<ExternalRefInput>({});
+  const isSales = !ws || ws.key === 'SEC_SALES';
+  const sapDesk = ws?.key === 'SAP' || ws?.key === 'S4_PROGRAM';
+  const sapFilled = Object.values(sap).some((v) => (Array.isArray(v) ? v.length : v !== null && v !== undefined && v !== ''));
 
   // Find the requester by name, email or phone (people who wrote in before), as the agent types.
   useEffect(() => {
@@ -86,6 +105,9 @@ export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
       if (applicationId) body.applicationId = applicationId;
       if (matrix && impact) body.impact = Number(impact);
       if (matrix && urgency) body.urgency = Number(urgency);
+      if (!isSales && need) body.recordClass = need === 'SAP_CASE' ? 'INCIDENT' : need;
+      if (sapDesk && sapFilled) body.sap = sap;
+      if (!isSales && need === 'SAP_CASE' && extRef.ref?.trim()) body.externalRef = { system: extRef.system || meta.sapLists?.externalSystem[0], ...extRef };
       const t = await createTicket(body);
       if (applicationId) rememberApp(applicationId);
       // v7: files go up once the ticket exists; a failed file never loses the ticket.
@@ -100,6 +122,8 @@ export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
       if (another) {
         // Keep the requester and distributor details for the next call from the same person.
         setTop((x) => ({ ...EMPTY_TOP, requesterName: x.requesterName, requesterEmail: x.requesterEmail, requesterPhone: x.requesterPhone, source: x.source }));
+        setSap({});
+        setExtRef({});
         setMsg({ tone: 'good', text: `Ticket ${refOf(meta, t)} created. Log the next one below.` });
       } else {
         openTicket(t.id);
@@ -123,6 +147,27 @@ export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
           {apps.length > 0 && (
             <Card title="Which app or area?" sub={ws && apps.some((a) => a.workspaceId !== apps[0].workspaceId) ? `Service desk: ${ws.name}` : 'Picks the application for reports, routing and the reference (e.g. MSFA-100123)'}>
               <ApplicationPicker value={applicationId} onChange={setApplicationId} allowInherit={Boolean(parentId)} />
+            </Card>
+          )}
+          {!isSales && (
+            <Card title="What do you need?" sub="Pick the closest - it sets the record class and the SLA">
+              <div className="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="What do you need">
+                {NEEDS.filter((n) => n.key !== 'SAP_CASE' || sapDesk).map((n) => (
+                  <button key={n.key} type="button" role="radio" aria-checked={need === n.key} data-testid={`need-${n.key}`} onClick={() => setNeed(need === n.key ? '' : n.key)}
+                    className={cx('flex items-start gap-2 rounded-xl border p-2.5 text-left transition', need === n.key ? 'border-accent bg-accent/10 ring-2 ring-accent/20' : 'border-line hover:border-accent/50 hover:bg-sunken')}>
+                    <n.icon size={16} className="mt-0.5 shrink-0 text-accent" />
+                    <span><span className="block text-[13px] font-bold">{n.label}</span><span className="block text-2xs text-muted">{n.hint}</span></span>
+                  </button>
+                ))}
+              </div>
+              {need === 'SAP_CASE' && (
+                <div className="mt-3 grid gap-3 sm:grid-cols-3" data-testid="new-external-ref">
+                  <Field label="System"><select className={cx('h-9 w-full', inputBase)} value={extRef.system ?? ''} onChange={(e) => setExtRef({ ...extRef, system: e.target.value })}>{meta.sapLists?.externalSystem.map((x) => <option key={x}>{x}</option>)}</select></Field>
+                  <Field label="Case / ticket number"><input className={inputCls} value={extRef.ref ?? ''} onChange={(e) => setExtRef({ ...extRef, ref: e.target.value })} placeholder="e.g. 000123/2026" /></Field>
+                  <Field label="Priority"><select className={cx('h-9 w-full', inputBase)} value={extRef.priority ?? ''} onChange={(e) => setExtRef({ ...extRef, priority: e.target.value })}><option value="">—</option>{meta.sapLists?.sapCasePriority.map((x) => <option key={x}>{x}</option>)}</select></Field>
+                  {extRef.priority === 'Very High' && <Field label="Justification" className="sm:col-span-3" hint="Very High outside Production needs a reason"><input className={inputCls} value={extRef.justification ?? ''} onChange={(e) => setExtRef({ ...extRef, justification: e.target.value })} /></Field>}
+                </div>
+              )}
             </Card>
           )}
           <Card title="Requester and issue">
@@ -155,7 +200,12 @@ export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
               {withFiles && <FileTray files={tray} maxFiles={attachments?.limits.agent.filesPerAction ?? 10} />}
             </div>
           </Card>
-          <Card title="Ticket details" sub="Category → Function sets severity and priority. Required fields (*) can be completed before resolving.">
+          {sapDesk && (
+            <Card title="SAP details" sub="System, client and T-code help the right team pick it up first time" actions={<PasteParser onApply={(f) => { setSap((x) => ({ ...x, ...f })); if (!top.description.trim() && f.errorText) set({ description: f.errorText }); }} />}>
+              <SapFields value={sap} onChange={setSap} />
+            </Card>
+          )}
+          <Card title="Ticket details" sub={isSales ? 'Category → Function sets severity and priority. Required fields (*) can be completed before resolving.' : 'Type and module route the ticket. Required fields (*) can be completed before resolving.'}>
             <TicketFields values={fields} onChange={(p) => setFields((f) => ({ ...f, ...p }))} workspaceKey={ws?.key} />
           </Card>
         </div>

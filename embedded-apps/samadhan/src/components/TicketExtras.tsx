@@ -23,6 +23,9 @@ export function fillCanned(text: string, t: Ticket, agentName: string): string {
 /** Watch, previous / next in the list the agent came from, scenarios and the More menu (merge, link, child, print, spam, trash). */
 export function TicketToolbar({ data, reload }: { data: TicketDetail; reload: Reload }) {
   const { ticket: t } = data;
+  const { meta: m0 } = useSamadhan();
+  // v7: scenarios for this ticket's desk (and the ones for every desk).
+  const scenarios = m0.scenarios.filter((s) => s.workspaceId == null || s.workspaceId === t.workspaceId);
   const { meta, openTicket, listIds, newTicket, go } = useSamadhan();
   const [menu, setMenu] = useState<'scenarios' | 'more' | null>(null);
   const [dialog, setDialog] = useState<'merge' | 'link' | null>(null);
@@ -70,10 +73,10 @@ export function TicketToolbar({ data, reload }: { data: TicketDetail; reload: Re
         </Button>
         {data.watchers.length > 0 && <span className="text-2xs text-muted" title={data.watchers.map((w) => w.name).join(', ')}><Users size={12} className="mr-0.5 inline" />{data.watchers.length} watching</span>}
         <div className="relative">
-          <Button size="sm" disabled={busy || !meta.scenarios.length} onClick={() => setMenu(menu === 'scenarios' ? null : 'scenarios')} title={meta.scenarios.length ? 'Run a set of actions in one click' : 'No scenarios yet (Admin > Scenarios)'}><Wand2 size={13} /> Scenarios</Button>
+          <Button size="sm" disabled={busy || !scenarios.length} onClick={() => setMenu(menu === 'scenarios' ? null : 'scenarios')} title={scenarios.length ? 'Run a set of actions in one click' : 'No scenarios yet (Admin > Scenarios)'}><Wand2 size={13} /> Scenarios</Button>
           {menu === 'scenarios' && (
             <Menu onClose={() => setMenu(null)}>
-              {meta.scenarios.map((s) => (
+              {scenarios.map((s) => (
                 <button key={s.id} type="button" className={cx(item, 'flex-col items-start gap-0')} onClick={() => act(() => runScenario(t.id, s.id), `Scenario "${s.name}" done.`)}>
                   <span>{s.name}</span>{s.description && <span className="text-2xs font-normal text-muted">{s.description}</span>}
                 </button>

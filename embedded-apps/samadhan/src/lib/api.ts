@@ -13,7 +13,7 @@ import type {
   ActivityItem, AdminAgent, AdminField, AdminGroup, AgentPrefs, Analytics, Article, ArticleRow, AuditEvent, AutomationRule, BellEvent, BellItem, Breakdown, Company,
   ContactDetail, ContactMatch, ContactRow, Counts, Dashboard, DashboardInsights, DayWindow, Distributor, EmailTemplate, Me, Meta, ParkedMail, PresenceAgent,
   Attachment, AttachmentLimits, AttachmentsInfo, SavedView, Scenario, ScenarioAction, SearchResults, SeverityRule, SlaPolicy, Ticket, TicketDetail, TicketInsights, TicketRow, Todo,
-  AccessUser, Overview, ReportVariantConfig, Role, Variant, Workspace, Application, MatrixCell, PriorityMode,
+  AccessUser, Overview, ReportVariantConfig, Role, Variant, Workspace, Application, MatrixCell, PriorityMode, SapDetails, ExternalRef, RefMaster,
 } from './types';
 
 const API_HOST = 'https://audit-capa-api.emamiapps.in';
@@ -147,6 +147,12 @@ export interface TicketQuery {
   workspaceId?: string;
   recordClass?: string;
   needsClassification?: string;
+  /** v7 Phase 4 */
+  sapSystem?: string;
+  tcode?: string;
+  environment?: string;
+  externalSystem?: string;
+  confidential?: string;
   statusId?: string;
   priority?: string;
   severity?: string;
@@ -369,6 +375,21 @@ export const workspacesAdmin = {
   saveMail: (b: { ai: boolean; threshold: number; defaultCode: string; prefixInSubject: boolean }) => request('PUT', '/admin/mail-classification', b),
   addRule: (b: { kind: 'domain' | 'email'; pattern: string; applicationId: number; note?: string }) => request<{ rule: SenderRule }>('POST', '/admin/mail-rules', b),
   deleteRule: (id: number) => request('DELETE', `/admin/mail-rules/${id}`),
+};
+
+// ---------- v7 Phase 4: SAP details, external references, reference masters ----------
+export const saveSap = (ticketId: number, b: Partial<SapDetails> & { sapNotes?: string[] | string; documentNumbers?: string[] | string }) =>
+  request<{ sap: SapDetails }>('PUT', `/tickets/${ticketId}/sap`, b).then((r) => r.sap);
+export type ExternalRefInput = Partial<Pick<ExternalRef, 'system' | 'ref' | 'status' | 'priority' | 'url' | 'owner' | 'justification' | 'notes'>>;
+export const addExternalRef = (ticketId: number, b: ExternalRefInput) => request<{ ref: ExternalRef }>('POST', `/tickets/${ticketId}/external-refs`, b).then((r) => r.ref);
+export const updateExternalRef = (ticketId: number, id: number, b: ExternalRefInput) => request<{ ref: ExternalRef }>('PATCH', `/tickets/${ticketId}/external-refs/${id}`, b).then((r) => r.ref);
+export const deleteExternalRef = (ticketId: number, id: number) => request('DELETE', `/tickets/${ticketId}/external-refs/${id}`);
+export const searchRefMasters = (kind: string, q = '', parent?: string) => get<{ items: RefMaster[] }>(`/ref-masters${qs({ kind, q, ...(parent ? { parent } : {}) })}`).then((r) => r.items);
+export const refMastersAdmin = {
+  list: (kind: string, q = '') => get<{ kinds: string[]; counts: Record<string, number>; items: RefMaster[] }>(`/admin/ref-masters${qs({ kind, q })}`),
+  save: (b: RefMaster & { kind: string }) => request('POST', '/admin/ref-masters', b),
+  import: (kind: string, rows: RefMaster[]) => request<{ saved: number }>('POST', '/admin/ref-masters/import', { kind, rows }).then((r) => r.saved),
+  remove: (id: number) => request('DELETE', `/admin/ref-masters/${id}`),
 };
 
 export type { ActivityItem };

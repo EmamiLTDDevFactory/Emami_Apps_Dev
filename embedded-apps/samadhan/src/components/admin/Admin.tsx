@@ -16,8 +16,9 @@ import { AccessTab } from './Access';
 import { StatusesTab } from './Statuses';
 import { AuthzTab } from './Authz';
 import { ApplicationsTab, MailClassificationTab, WorkspacesTab } from './Workspaces';
+import { RefMastersTab } from './RefMasters';
 
-type TabId = 'general' | 'authz' | 'workspaces' | 'applications' | 'mailclass' | 'access' | 'statuses' | 'agents' | 'groups' | 'sla' | 'hours' | 'severity' | 'fields' | 'templates' | 'canned' | 'scenarios' | 'distributors' | 'settings' | 'channels' | 'automations' | 'contacts' | 'audit' | 'parked';
+type TabId = 'general' | 'authz' | 'workspaces' | 'applications' | 'mailclass' | 'refmasters' | 'access' | 'statuses' | 'agents' | 'groups' | 'sla' | 'hours' | 'severity' | 'fields' | 'templates' | 'canned' | 'scenarios' | 'distributors' | 'settings' | 'channels' | 'automations' | 'contacts' | 'audit' | 'parked';
 const TABS: { id: TabId; label: string }[] = [
   { id: 'general', label: 'General' },
   { id: 'agents', label: 'Agents' },
@@ -27,6 +28,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'workspaces', label: 'Service desks' },
   { id: 'applications', label: 'Applications' },
   { id: 'mailclass', label: 'Mail classification' },
+  { id: 'refmasters', label: 'SAP & Infra masters' },
   { id: 'groups', label: 'Groups' },
   { id: 'sla', label: 'SLA' },
   { id: 'hours', label: 'Business hours' },
@@ -86,6 +88,7 @@ export default function Admin() {
         {tab === 'workspaces' && <WorkspacesTab />}
         {tab === 'applications' && <ApplicationsTab />}
         {tab === 'mailclass' && <MailClassificationTab />}
+        {tab === 'refmasters' && <RefMastersTab />}
         {tab === 'statuses' && <StatusesTab />}
         {tab === 'groups' && <GroupsTab />}
         {tab === 'sla' && <SlaTab />}

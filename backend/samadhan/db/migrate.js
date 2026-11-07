@@ -520,6 +520,12 @@ const MIGRATIONS = [
                     [name, description, JSON.stringify(resolved), k ? ws[k] ?? null : null]);
                 m.scenarioIds.push(...r.rows.map((x) => x.id));
             }
+            // Starter reference masters (the table goes with down, so nothing to record).
+            for (const [kind, rows] of Object.entries(seed.STARTER_MASTERS)) {
+                for (const [code, description, parentCode] of rows) {
+                    await q(client, `INSERT INTO ${S}.ref_masters (kind, code, description, "parentCode") VALUES ($1, $2, $3, $4) ON CONFLICT (kind, code) DO NOTHING`, [kind, code, description, parentCode ?? null]);
+                }
+            }
             await q(client, `INSERT INTO ${S}.settings (key, value) VALUES ('seed.7.4', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, [JSON.stringify(m)]);
             return `SAP desk configured: ${m.choiceIds.length} choices, ${m.groupIds.length} groups, ${m.ruleIds.length} routing rules, ${m.policyIds.length} SLA policies, ${m.statusIds.length} statuses`;
         },
