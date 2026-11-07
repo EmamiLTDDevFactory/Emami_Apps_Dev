@@ -375,6 +375,180 @@ const MIGRATIONS = [
             return 'vendor column and unused new applications removed (names and hub rows unchanged)';
         },
     },
+    {
+        // Phase 4: the SAP & Primary Sales desk (master prompt §H, §I, §O, §P). New tables (SAP details, reference masters,
+        // external references), three ticket columns (confidential, root cause, resolution code), the SAP configuration
+        // and the per-desk field rules. Secondary Sales is unchanged: its fields, statuses and rules stay as they are
+        // (existing automation rules are marked as Secondary Sales rules so they no longer touch other desks).
+        // Every row inserted is recorded in settings 'seed.7.4'; down removes exactly those plus the new tables / columns.
+        id: '7.4-sap',
+        describe: 'SAP details, reference masters, external references; confidential / root cause / resolution code; SAP types, Module -> Sub-process tree, groups, routing, statuses, SLA, canned, scenarios; per-desk field rules',
+        async up(client) {
+            const S = ident(activeSchema());
+            const seed = require('../lib/sapSeed');
+            const m = { choiceIds: [], fieldIds: [], groupIds: [], ruleIds: [], salesRuleIds: [], policyIds: [], cannedIds: [], scenarioIds: [], statusIds: [], fieldWsIds: [] };
+            await q(client, `ALTER TABLE ${S}.tickets ADD COLUMN IF NOT EXISTS confidential boolean NOT NULL DEFAULT false,
+                ADD COLUMN IF NOT EXISTS "rootCauseCategory" text, ADD COLUMN IF NOT EXISTS "resolutionCode" text`);
+            await q(client, `CREATE INDEX IF NOT EXISTS tickets_confidential_idx ON ${S}.tickets (confidential) WHERE confidential`);
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.ref_masters (
+                id serial PRIMARY KEY, kind text NOT NULL CHECK (kind ~ '^[A-Z_]{2,30}$'), code text NOT NULL, description text,
+                "parentCode" text, attrs jsonb NOT NULL DEFAULT '{}', active boolean NOT NULL DEFAULT true,
+                "updatedAt" timestamptz NOT NULL DEFAULT now(), UNIQUE (kind, code))`);
+            await q(client, `CREATE INDEX IF NOT EXISTS ref_masters_kind_idx ON ${S}.ref_masters (kind, code)`);
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.ticket_sap_details (
+                "ticketId" int PRIMARY KEY REFERENCES ${S}.tickets(id) ON DELETE CASCADE,
+                landscape text, "sapSystem" text, "sapClient" text, environment text, tcode text, "fioriAppId" text, "programName" text,
+                "errorMessageClass" text, "errorMessageNo" text, "errorText" text, "shortDumpId" text, "idocNumber" text, "idocMessageType" text,
+                "batchJob" text, "companyCode" text, plant text, "salesOrg" text, "purchOrg" text, "documentNumbers" jsonb NOT NULL DEFAULT '[]',
+                "usersAffected" int, "businessProcess" text, "workaroundAvailable" boolean, "workaroundText" text, reproducible boolean,
+                "stepsToReproduce" text, "expectedResult" text, "actualResult" text, "sapNotes" text[] NOT NULL DEFAULT '{}', "sapComponent" text,
+                "riseOwner" text, "updatedAt" timestamptz NOT NULL DEFAULT now())`);
+            await q(client, `CREATE INDEX IF NOT EXISTS ticket_sap_details_sys_idx ON ${S}.ticket_sap_details ("sapSystem", tcode)`);
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.ticket_external_refs (
+                id serial PRIMARY KEY, "ticketId" int NOT NULL REFERENCES ${S}.tickets(id) ON DELETE CASCADE,
+                system text NOT NULL, ref text NOT NULL, status text, priority text, url text, owner text, justification text,
+                "openedAt" timestamptz NOT NULL DEFAULT now(), "lastUpdateAt" timestamptz NOT NULL DEFAULT now(), "nudgedAt" timestamptz,
+                notes text, "createdBy" int REFERENCES ${S}.agents(id) ON DELETE SET NULL, "createdAt" timestamptz NOT NULL DEFAULT now())`);
+            await q(client, `CREATE INDEX IF NOT EXISTS ticket_external_refs_idx ON ${S}.ticket_external_refs (system, ref)`);
+            await q(client, `CREATE INDEX IF NOT EXISTS ticket_external_refs_ticket_idx ON ${S}.ticket_external_refs ("ticketId")`);
+
+            const ws = Object.fromEntries((await q(client, `SELECT id, key FROM ${S}.workspaces`)).rows.map((r) => [r.key, r.id]));
+            const OTHER_DESKS = ['SAP', 'S4_PROGRAM', 'DIGITAL_APPS', 'INFRA_IT'].filter((k) => ws[k]);
+
+            // Statuses (id >= 100) for the non-sales desks.
+            const pos = Number((await q(client, `SELECT COALESCE(max(position), 0) AS p FROM ${S}.ticket_statuses`)).rows[0].p);
+            for (const [i, [id, name, pauses]] of seed.NEW_STATUSES.entries()) {
+                const r = await q(client, `INSERT INTO ${S}.ticket_statuses (id, name, "pausesSla", "isResolved", "isClosed", position) VALUES ($1, $2, $3, false, false, $4)
+                                          ON CONFLICT DO NOTHING RETURNING id`, [id, name, pauses, pos + i + 1]);
+                if (r.rows.length) m.statusIds.push(id);
+                for (const k of OTHER_DESKS) await q(client, `INSERT INTO ${S}.status_workspaces ("statusId", "workspaceId") VALUES ($1, $2) ON CONFLICT DO NOTHING`, [id, ws[k]]);
+            }
+            const statusId = Object.fromEntries((await q(client, `SELECT id, name FROM ${S}.ticket_statuses`)).rows.map((r) => [r.name, r.id]));
+
+            // Fields: root cause + resolution code (shared lists), and the per-desk rules.
+            const maxPos = Number((await q(client, `SELECT COALESCE(max(position), 0) AS p FROM ${S}.field_definitions`)).rows[0].p);
+            for (const [i, f] of seed.NEW_FIELDS.entries()) {
+                const r = await q(client, `INSERT INTO ${S}.field_definitions (key, label, type, required, position) VALUES ($1, $2, $3, false, $4) ON CONFLICT (key) DO NOTHING RETURNING id`,
+                    [f.key, f.label, f.type, maxPos + i + 1]);
+                if (!r.rows.length) continue;
+                m.fieldIds.push(r.rows[0].id);
+                for (const [j, v] of seed.LISTS[f.list].entries()) {
+                    m.choiceIds.push((await q(client, `INSERT INTO ${S}.field_choices ("fieldId", value, position) VALUES ($1, $2, $3) RETURNING id`, [r.rows[0].id, v, j + 1])).rows[0].id);
+                }
+            }
+            const fields = (await q(client, `SELECT id, key FROM ${S}.field_definitions`)).rows;
+            const newKeys = seed.NEW_FIELDS.map((f) => f.key);
+            const REQUIRED = { SAP: ['category', 'rootCauseCategory', 'resolutionCode'], INFRA_IT: ['category', 'resolutionCode'], DIGITAL_APPS: ['category', 'resolutionCode'], S4_PROGRAM: [] };
+            const LABEL = { helpdeskAnalysis: 'Analysis', rcaSolution: 'Root cause / solution' };
+            for (const f of fields) {
+                if (ws.SEC_SALES && newKeys.includes(f.key)) {
+                    const r = await q(client, `INSERT INTO ${S}.field_workspaces ("fieldId", "workspaceId", visible, "requiredOnCreate", "requiredBeforeResolve") VALUES ($1, $2, false, false, false)
+                                              ON CONFLICT ("fieldId", "workspaceId") DO NOTHING RETURNING id`, [f.id, ws.SEC_SALES]);
+                    m.fieldWsIds.push(...r.rows.map((x) => x.id));
+                }
+                for (const k of OTHER_DESKS) {
+                    const r = await q(client, `INSERT INTO ${S}.field_workspaces ("fieldId", "workspaceId", "labelOverride", visible, "requiredOnCreate", "requiredBeforeResolve")
+                                              VALUES ($1, $2, $3, $4, false, $5) ON CONFLICT ("fieldId", "workspaceId") DO NOTHING RETURNING id`,
+                    [f.id, ws[k], LABEL[f.key] ?? null, !seed.SALES_ONLY_FIELDS.includes(f.key), (REQUIRED[k] || []).includes(f.key)]);
+                    m.fieldWsIds.push(...r.rows.map((x) => x.id));
+                }
+            }
+
+            if (ws.SAP) {
+                const field = Object.fromEntries(fields.map((f) => [f.key, f.id]));
+                // SAP types with their record class
+                for (const [i, [value, rc]] of seed.SAP_TYPES.entries()) {
+                    m.choiceIds.push((await q(client, `INSERT INTO ${S}.field_choices ("fieldId", value, position, "workspaceId", meta) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+                        [field.type, value, i + 1, ws.SAP, JSON.stringify({ recordClass: rc })])).rows[0].id);
+                }
+                // Module -> Sub-process
+                let i = 0;
+                for (const [module, subs] of [...Object.entries(seed.SAP_TREE), ...seed.SAP_INACTIVE.map((x) => [x, []])]) {
+                    const active = !seed.SAP_INACTIVE.includes(module);
+                    const pid = (await q(client, `INSERT INTO ${S}.field_choices ("fieldId", value, position, "workspaceId", active) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+                        [field.category, module, ++i, ws.SAP, active])).rows[0].id;
+                    m.choiceIds.push(pid);
+                    for (const [j, sub] of subs.entries()) {
+                        m.choiceIds.push((await q(client, `INSERT INTO ${S}.field_choices ("fieldId", "parentId", value, position, "workspaceId") VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+                            [field.category, pid, sub, j + 1, ws.SAP])).rows[0].id);
+                    }
+                }
+                // Groups, the desk's default group, routing by module
+                for (const name of seed.SAP_GROUPS) {
+                    const r = await q(client, `INSERT INTO ${S}.groups (name, description, assignment, "workspaceId") VALUES ($1, $2, 'ROUND_ROBIN', $3) ON CONFLICT (name) DO NOTHING RETURNING id`,
+                        [name, name === 'SAP Service Desk' ? 'SAP L1 triage - new SAP tickets without a module land here' : null, ws.SAP]);
+                    m.groupIds.push(...r.rows.map((x) => x.id));
+                }
+                const group = Object.fromEntries((await q(client, `SELECT id, name FROM ${S}.groups`)).rows.map((r) => [r.name, r.id]));
+                await q(client, `UPDATE ${S}.workspaces SET "defaultGroupId" = $2 WHERE id = $1 AND "defaultGroupId" IS NULL`, [ws.SAP, group['SAP Service Desk']]);
+                // Existing rules belong to Secondary Sales from now on (they were written for it).
+                m.salesRuleIds = (await q(client, `UPDATE ${S}.automation_rules SET "workspaceId" = $1 WHERE "workspaceId" IS NULL RETURNING id`, [ws.SEC_SALES])).rows.map((r) => r.id);
+                let p = 0;
+                for (const [module, g] of Object.entries(seed.MODULE_GROUP)) {
+                    if (!group[g]) continue;
+                    const r = await q(client, `INSERT INTO ${S}.automation_rules (name, trigger, active, position, conditions, actions, "workspaceId") VALUES ($1, 'ON_CREATE', true, $2, $3, $4, $5)
+                                              ON CONFLICT (name) DO NOTHING RETURNING id`,
+                    [`SAP: ${module} to ${g}`, p++, JSON.stringify({ all: [{ field: 'groupId', op: 'is_empty' }, { field: 'category', op: 'eq', value: module }] }),
+                        JSON.stringify([{ type: 'setGroup', value: group[g] }]), ws.SAP]);
+                    m.ruleIds.push(...r.rows.map((x) => x.id));
+                }
+            }
+            // SLA policies for SAP / Infra / Digital incidents (§O)
+            for (const [k, name] of seed.SLA_WORKSPACES) {
+                if (!ws[k]) continue;
+                const r = await q(client, `INSERT INTO ${S}.sla_policies (name, "isDefault", position, "workspaceId") VALUES ($1, false, 50, $2) ON CONFLICT (name) DO NOTHING RETURNING id`, [name, ws[k]]);
+                if (!r.rows.length) continue;
+                m.policyIds.push(r.rows[0].id);
+                for (const [prio, fr, res, bh] of seed.SLA_TARGETS) {
+                    await q(client, `INSERT INTO ${S}.sla_targets ("policyId", priority, "firstResponseMins", "resolutionMins", "businessHours", escalate) VALUES ($1, $2, $3, $4, $5, true)`,
+                        [r.rows[0].id, prio, fr, res, bh]);
+                }
+                await q(client, `UPDATE ${S}.workspaces SET "defaultSlaPolicyId" = $2 WHERE id = $1 AND "defaultSlaPolicyId" IS NULL`, [ws[k], r.rows[0].id]);
+            }
+            // Canned responses and scenarios
+            for (const [k, folder, title, code, body] of seed.CANNED) {
+                if (!ws[k]) continue;
+                const r = await q(client, `INSERT INTO ${S}.canned_responses (folder, title, "shortCode", body, "workspaceId")
+                                          SELECT $1, $2, $3, $4, $5 WHERE NOT EXISTS (SELECT 1 FROM ${S}.canned_responses WHERE lower("shortCode") = lower($3))
+                                          RETURNING id`, [folder, title, code, body.replace(/\n/g, '<br>'), ws[k]]);
+                m.cannedIds.push(...r.rows.map((x) => x.id));
+            }
+            for (const [k, name, description, actions] of seed.SCENARIOS) {
+                const resolved = actions.map((a) => (a.type === 'setStatus' ? { type: 'setStatus', value: statusId[a.status] } : a));
+                if (resolved.some((a) => a.type === 'setStatus' && !a.value)) continue;
+                const r = await q(client, `INSERT INTO ${S}.scenarios (name, description, actions, position, "workspaceId") VALUES ($1, $2, $3, 50, $4) ON CONFLICT (name) DO NOTHING RETURNING id`,
+                    [name, description, JSON.stringify(resolved), k ? ws[k] ?? null : null]);
+                m.scenarioIds.push(...r.rows.map((x) => x.id));
+            }
+            await q(client, `INSERT INTO ${S}.settings (key, value) VALUES ('seed.7.4', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, [JSON.stringify(m)]);
+            return `SAP desk configured: ${m.choiceIds.length} choices, ${m.groupIds.length} groups, ${m.ruleIds.length} routing rules, ${m.policyIds.length} SLA policies, ${m.statusIds.length} statuses`;
+        },
+        async down(client) {
+            const S = ident(activeSchema());
+            const m = (await q(client, `SELECT value FROM ${S}.settings WHERE key = 'seed.7.4'`)).rows[0]?.value || {};
+            const ids = (k) => m[k] || [];
+            await q(client, `DELETE FROM ${S}.scenarios WHERE id = ANY($1::int[])`, [ids('scenarioIds')]);
+            await q(client, `DELETE FROM ${S}.canned_responses WHERE id = ANY($1::int[])`, [ids('cannedIds')]);
+            await q(client, `UPDATE ${S}.workspaces SET "defaultSlaPolicyId" = NULL WHERE "defaultSlaPolicyId" = ANY($1::int[])`, [ids('policyIds')]);
+            await q(client, `DELETE FROM ${S}.sla_policies WHERE id = ANY($1::int[])`, [ids('policyIds')]);
+            await q(client, `DELETE FROM ${S}.automation_rules WHERE id = ANY($1::int[])`, [ids('ruleIds')]);
+            await q(client, `UPDATE ${S}.automation_rules SET "workspaceId" = NULL WHERE id = ANY($1::int[])`, [ids('salesRuleIds')]);
+            await q(client, `UPDATE ${S}.workspaces SET "defaultGroupId" = NULL WHERE "defaultGroupId" = ANY($1::int[])`, [ids('groupIds')]);
+            await q(client, `UPDATE ${S}.tickets SET "groupId" = NULL WHERE "groupId" = ANY($1::int[])`, [ids('groupIds')]);
+            await q(client, `DELETE FROM ${S}.groups WHERE id = ANY($1::int[])`, [ids('groupIds')]);
+            await q(client, `DELETE FROM ${S}.field_workspaces WHERE id = ANY($1::int[])`, [ids('fieldWsIds')]);
+            await q(client, `DELETE FROM ${S}.field_choices WHERE id = ANY($1::int[])`, [ids('choiceIds')]);
+            await q(client, `DELETE FROM ${S}.field_definitions WHERE id = ANY($1::int[])`, [ids('fieldIds')]);
+            await q(client, `DELETE FROM ${S}.status_workspaces WHERE "statusId" = ANY($1::int[])`, [ids('statusIds')]);
+            await q(client, `DELETE FROM ${S}.ticket_statuses s WHERE s.id = ANY($1::int[]) AND NOT EXISTS (SELECT 1 FROM ${S}.tickets t WHERE t."statusId" = s.id)`, [ids('statusIds')]);
+            await q(client, `DROP TABLE IF EXISTS ${S}.ticket_external_refs`);
+            await q(client, `DROP TABLE IF EXISTS ${S}.ticket_sap_details`);
+            await q(client, `DROP TABLE IF EXISTS ${S}.ref_masters`);
+            await q(client, `ALTER TABLE ${S}.tickets DROP COLUMN IF EXISTS confidential, DROP COLUMN IF EXISTS "rootCauseCategory", DROP COLUMN IF EXISTS "resolutionCode"`);
+            await q(client, `DELETE FROM ${S}.settings WHERE key = 'seed.7.4'`);
+            return 'SAP desk configuration and tables removed';
+        },
+    },
 ];
 
 async function applied(client, schema) {

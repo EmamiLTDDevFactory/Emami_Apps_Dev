@@ -2,7 +2,7 @@
 const { ready } = require('../db/ready');
 const { pool } = require('../db/pool');
 const { MIN } = require('../constants');
-const { ruleMatches, rulesFor } = require('./automation');
+const { ruleApplies, ruleMatches, rulesFor } = require('./automation');
 const { ring } = require('./bell');
 const { ingestMail } = require('./mailIngest');
 const { loadTicket, notifyAgents } = require('./notify');
@@ -50,6 +50,28 @@ async function runSlaChecks(now = new Date()) {
     }
 }
 
+/** External references with no update for 2 business days (§P): one bell nudge per day to the ticket's agent. */
+async function externalRefNudges() {
+    const { loadCalendar, minutesBetween } = require('./businessHours');
+    const { BH_DAY } = require('./sapSeed');
+    const cal = await loadCalendar();
+    const { rows } = await pool.query(
+        `SELECT r.id, r.system, r.ref, r."lastUpdateAt", t.id AS "ticketId" FROM samadhan.ticket_external_refs r
+         JOIN samadhan.tickets t ON t.id = r."ticketId" JOIN samadhan.ticket_statuses s ON s.id = t."statusId"
+         WHERE NOT s."isResolved" AND t."deletedAt" IS NULL AND COALESCE(r.status, '') NOT IN ('Closed', 'Confirmed')
+           AND (r."nudgedAt" IS NULL OR r."nudgedAt" < now() - interval '1 day')`);
+    const { loadTicket } = require('./notify');
+    let n = 0;
+    for (const r of rows) {
+        if (minutesBetween(new Date(r.lastUpdateAt), new Date(), true, cal) < 2 * BH_DAY) continue;
+        const t = await loadTicket(r.ticketId);
+        await ring(t, 'external_ref', { title: `No update from ${r.system} ${r.ref} for 2+ business days: #${t.id}`, body: t.subject });
+        await pool.query('UPDATE samadhan.ticket_external_refs SET "nudgedAt" = now() WHERE id = $1', [r.id]);
+        n++;
+    }
+    return n;
+}
+
 async function runTimeTriggers(now = new Date()) {
     const rules = await rulesFor('TIME');
     if (!rules.length) return 0;
@@ -59,7 +81,7 @@ async function runTimeTriggers(now = new Date()) {
     let fired = 0;
     for (const r of rules) {
         for (const ticket of rows) {
-            if (ruleMatches(r.conditions, { ticket, now })) {
+            if (ruleApplies(r, ticket) && ruleMatches(r.conditions, { ticket, now })) {
                 await runActions(ticket.id, r.actions, r.name);
                 fired++;
             }
@@ -90,6 +112,8 @@ async function runJobs({ force = false } = {}) {
             try { out.timeRules = await runTimeTriggers(); } catch (err) { out.timeRules = { error: err.message }; console.error('[samadhan] time rules:', err.message); }
             // v7 Authorization cockpit: temporary access ends by itself; Admins get a quarterly access-review reminder.
             try { const authz = require('./authz'); out.accessExpired = await authz.revokeExpired(); out.recertReminder = await authz.recertificationReminder(); } catch (err) { if (err.code !== '42P01') console.error('[samadhan] authz jobs:', err.message); }
+            // v7 Phase 4: external cases (SAP, vendors) without an update for 2 business days nudge the ticket's agent.
+            try { out.externalNudges = await externalRefNudges(); } catch (err) { if (err.code !== '42P01') console.error('[samadhan] external refs:', err.message); }
             // Bell entries are kept for 30 days.
             try { out.bellPurged = (await pool.query(`DELETE FROM samadhan.notifications WHERE "createdAt" < now() - interval '30 days'`)).rowCount; } catch (err) { console.error('[samadhan] bell purge:', err.message); }
             await client.query(

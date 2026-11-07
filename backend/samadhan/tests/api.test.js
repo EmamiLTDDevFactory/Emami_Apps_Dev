@@ -52,7 +52,10 @@ async function rawCall(token, method, url, body) {
   const a1 = (await call('agent1@emamigroup.com', 'GET', '/me')).body.me;
   const a2 = (await call('agent2@emamigroup.com', 'GET', '/me')).body.me;
   await call('sup@emamigroup.com', 'GET', '/me');
-  r = await call('admin@emamigroup.com', 'GET', '/meta'); check(r.status === 200 && r.body.statuses.length === 11 && r.body.fields.length === 19, 'meta: 11 statuses, 19 fields', { groups: r.body.groups.length, tree: r.body.categoryTree.length });
+  r = await call('admin@emamigroup.com', 'GET', '/meta'); // v7: Secondary Sales keeps exactly its 11 statuses and 19 visible fields; the other desks' statuses / fields are added on top.
+  const salesWs = (r.body.workspaces || []).find((w) => w.key === 'SEC_SALES');
+  const salesStatuses = r.body.statuses.filter((s) => { const m = (r.body.statusWorkspaces || []).filter((x) => x.statusId === s.id); return !m.length || m.some((x) => x.workspaceId === salesWs?.id); });
+  check(r.status === 200 && salesStatuses.length === 11 && r.body.fields.filter((x) => x.visible !== false).length === 19, 'meta: 11 statuses, 19 fields (Secondary Sales)', { statuses: salesStatuses.length, fields: r.body.fields.filter((x) => x.visible !== false).length });
   const cs = r.body.groups.find((g) => g.name === 'Customer Support');
   r = await call('admin@emamigroup.com', 'POST', '/admin/groups', { id: cs.id, name: cs.name, assignment: 'ROUND_ROBIN', agentIds: [a1.id, a2.id] }); check(r.status === 200, 'admin saves group members');
   r = await call('agent1@emamigroup.com', 'POST', '/admin/groups', { name: 'x' }); check(r.status === 403, 'agent blocked from admin');
@@ -131,8 +134,8 @@ async function rawCall(token, method, url, body) {
   r = await call('admin@emamigroup.com', 'POST', '/admin/canned', { title: 'Dup', shortCode: 'pwd', body: 'x' }); check(r.status === 409, 'duplicate short code -> 409');
   r = await call('admin@emamigroup.com', 'PUT', '/admin/settings', { 'escalation.groupId': cs.id, 'escalation.notifyEmails': 'l3@emamigroup.com', 'sla.reminderMinutes': 45 }); check(r.status === 200, 'settings');
   r = await call('admin@emamigroup.com', 'POST', '/admin/holidays', { date: '2026-10-20', name: 'Durga Puja' }); check(r.status === 200, 'holiday');
-  const autos = (await call('admin@emamigroup.com', 'GET', '/admin/automations')).body.rules; check(autos.length === 6, 'automations seeded');
-  r = await call('admin@emamigroup.com', 'GET', '/admin/sla'); check(r.body.policies.length === 2 && r.body.policies[0].targets.length === 4, 'sla policies');
+  const autos = (await call('admin@emamigroup.com', 'GET', '/admin/automations')).body.rules; check(autos.filter((a) => !a.name.startsWith('SAP: ')).length === 6, 'automations seeded (Secondary Sales; SAP routing rules on top)', autos.length);
+  r = await call('admin@emamigroup.com', 'GET', '/admin/sla'); check(r.body.policies.filter((p) => !/incidents$/.test(p.name)).length === 2 && r.body.policies[0].targets.length === 4, 'sla policies (plus the SAP / Infra / Digital incident policies)', r.body.policies.map((p) => p.name));
   r = await call('admin@emamigroup.com', 'GET', '/admin/agents'); check(r.body.agents.length === 4, 'agents list');
   r = await fetch(API + '/jobs/run', { method: 'POST', headers: { 'x-internal-secret': 'localtest' } }); const jb = await r.json(); check(r.status === 200, 'jobs/run via internal secret', jb.result);
   r = await call('admin@emamigroup.com', 'GET', '/admin/audit'); check(r.body.events.length >= 5, 'audit trail', r.body.events.length);

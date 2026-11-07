@@ -63,6 +63,8 @@ function scopeSql(scope, agentId) {
     if (ws.length) parts.push(`t."workspaceId" IN (SELECT sw2.id FROM samadhan.workspaces sw2 WHERE sw2.key IN (${ws.map((k) => `'${k}'`).join(', ')}))`);
     const apps = scopeList(scope?.applications, CODE_RE);
     if (apps.length) parts.push(`t."applicationId" IN (SELECT sa.id FROM samadhan.applications sa WHERE sa.code IN (${apps.map((k) => `'${k}'`).join(', ')}))`);
+    // v7 Phase 4: confidential tickets only for people with ticket.viewConfidential (permissionGate sets the flag).
+    if (scope && scope.confidential === false) parts.push('NOT t.confidential');
     return parts.length ? (parts.length === 1 ? parts[0] : `(${parts.join(' AND ')})`) : '';
 }
 /** LIVE plus the caller's scope: drop-in for ${LIVE} in user-facing queries (identical text when the scope is 'all'). */
@@ -164,14 +166,28 @@ function ticketFilter(qy, agentId, scope = null) {
         if (qy[k]) { const ids = ints(qy[k]); if (ids.length) where.push(`${col} = ANY(${p(ids)}::int[])`); }
     }
     if (qy.needsClassification === '1') where.push(NEEDS_CLASSIFICATION);
+    // v7 Phase 4: SAP details and external references.
+    for (const [k, col] of [['sapSystem', '"sapSystem"'], ['tcode', 'tcode'], ['environment', 'environment']]) {
+        if (qy[k]) where.push(`EXISTS (SELECT 1 FROM samadhan.ticket_sap_details sd WHERE sd."ticketId" = t.id AND sd.${col} = ANY(${p(texts(qy[k]))}::text[]))`);
+    }
+    if (qy.externalSystem) where.push(`EXISTS (SELECT 1 FROM samadhan.ticket_external_refs xr WHERE xr."ticketId" = t.id AND xr.system = ANY(${p(texts(qy.externalSystem))}::text[]))`);
+    if (qy.confidential === '1') where.push('t.confidential');
 
     if (qy.q) {
         // "#100123", "100123" and the readable reference "MSFA-100123" all find the ticket.
         const term = String(qy.q).trim().replace(/^#/, '').replace(/^[A-Za-z0-9]{2,8}-(?=\d+$)/, '').slice(0, 200);
-        if (/^\d+$/.test(term)) where.push(`(t.id = ${p(Number(term) <= 2147483647 ? Number(term) : 0)} OR t."distributorCode" = ${p(term)} OR t."mrUid" = ${p(term)})`);
+        if (/^\d+$/.test(term)) {
+            // A number: the ticket, a distributor / MR code, or the start of an external case or IDoc number.
+            const lead = p(`${term}%`);
+            where.push(`(t.id = ${p(Number(term) <= 2147483647 ? Number(term) : 0)} OR t."distributorCode" = ${p(term)} OR t."mrUid" = ${p(term)}`
+                + ` OR EXISTS (SELECT 1 FROM samadhan.ticket_external_refs qx WHERE qx."ticketId" = t.id AND qx.ref LIKE ${lead})`
+                + ` OR EXISTS (SELECT 1 FROM samadhan.ticket_sap_details qd WHERE qd."ticketId" = t.id AND qd."idocNumber" LIKE ${lead}))`);
+        }
         else if (term) {
             const like = p(`%${term}%`);
-            where.push(`(t.subject ILIKE ${like} OR c.name ILIKE ${like} OR c.email ILIKE ${like} OR t."distributorName" ILIKE ${like} OR t."distributorCode" ILIKE ${like} OR t."mrUid" ILIKE ${like})`);
+            where.push(`(t.subject ILIKE ${like} OR c.name ILIKE ${like} OR c.email ILIKE ${like} OR t."distributorName" ILIKE ${like} OR t."distributorCode" ILIKE ${like} OR t."mrUid" ILIKE ${like}`
+                + ` OR EXISTS (SELECT 1 FROM samadhan.ticket_sap_details qd WHERE qd."ticketId" = t.id AND (qd.tcode ILIKE ${like} OR qd."errorText" ILIKE ${like} OR qd."idocNumber" ILIKE ${like} OR qd."shortDumpId" ILIKE ${like}))`
+                + ` OR EXISTS (SELECT 1 FROM samadhan.ticket_external_refs qx WHERE qx."ticketId" = t.id AND qx.ref ILIKE ${like}))`);
         }
     }
     return { where: `WHERE ${where.join(' AND ')}`, params, order: SORTS[qy.sort] || SORTS.created };

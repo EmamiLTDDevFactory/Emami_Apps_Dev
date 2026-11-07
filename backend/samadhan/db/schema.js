@@ -13,7 +13,8 @@ const { seed } = require('./seed');
 // 10: v7.2 workspaces and applications (migration 7.2-workspaces, applied by migrate.startup()).
 // 11: v7.3 one app id and a generic catalogue (migration 7.3-generic). Since 11 the migrations also run when the
 //     version is unchanged (a forgotten bump can no longer skip one).
-const SCHEMA_VERSION = 11;
+// 12: v7.4 SAP desk (migration 7.4-sap).
+const SCHEMA_VERSION = 12;
 
 async function initSchema() {
     await resolveSchema();
@@ -403,8 +404,9 @@ async function initSchema() {
     await upgradeV4();
     await upgradeV5();
     await upgradeV6();
-    await require('./migrate').startup();
+    // Base configuration first: the v7 steps build on it (e.g. 7.4 adds SAP types to the Type field).
     await seed();
+    await require('./migrate').startup();
     await pool.query(
         `INSERT INTO samadhan.settings (key, value) VALUES ('schema.version', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
         [JSON.stringify(SCHEMA_VERSION)],

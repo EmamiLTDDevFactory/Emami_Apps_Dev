@@ -4,7 +4,7 @@ const { CUSTOMER_SOURCES, EDITABLE_FIELDS, PATCHABLE, STATUS, q } = require('../
 const { mentionedAgents, ring, watchersOf } = require('./bell');
 const { severityPriority } = require('./config');
 const { roundRobinAgent } = require('./assignment');
-const { ruleMatches, rulesFor } = require('./automation');
+const { ruleApplies, ruleMatches, rulesFor } = require('./automation');
 const { sendMail } = require('./mail');
 const { emailRequester, loadTicket, notifyAgents, renderTemplate } = require('./notify');
 const { severityFor, severityRuleFor } = require('./severity');
@@ -62,7 +62,7 @@ async function runActions(ticketId, actions, ruleName) {
 async function runRules(trigger, ticketId, changed = []) {
     for (const r of await rulesFor(trigger)) {
         const { rows } = await pool.query('SELECT * FROM samadhan.tickets WHERE id = $1', [ticketId]);
-        if (rows.length && ruleMatches(r.conditions, { ticket: rows[0], changed })) await runActions(ticketId, r.actions, r.name);
+        if (rows.length && ruleApplies(r, rows[0]) && ruleMatches(r.conditions, { ticket: rows[0], changed })) await runActions(ticketId, r.actions, r.name);
     }
 }
 
@@ -117,6 +117,16 @@ async function classificationFor(input) {
     return classify({ subject: input.subject, body: input.description, fromEmail: input.requester?.email });
 }
 
+/** §O: SAP payroll / income tax / personnel administration (and Infra cyber security) are confidential by default. */
+async function confidentialByDefault(workspaceId, category, fn) {
+    if (!workspaceId || !category) return false;
+    const ws = (await catalog()).wsById.get(workspaceId);
+    const { CONFIDENTIAL_BY_DEFAULT } = require('./sapSeed');
+    if (ws?.key === 'SAP') return CONFIDENTIAL_BY_DEFAULT.some(([c, f]) => c === category && f === fn);
+    if (ws?.key === 'INFRA_IT') return category === 'Cyber Security';
+    return false;
+}
+
 /** Priority from Impact x Urgency when the workspace uses it (BOTH: only when no severity rule matches). */
 async function matrixPriorityFor(workspaceId, impact, urgency, category, fn) {
     if (!workspaceId || !impact || !urgency) return null;
@@ -146,6 +156,7 @@ async function createTicket(input) {
     const v7 = cls ? {
         applicationId: cls.applicationId, workspaceId: cls.workspaceId, classificationSource: cls.source, classificationConfidence: cls.confidence,
         recordClass: f.recordClass ?? await recordClassForType(f.type),
+        ...((await confidentialByDefault(cls.workspaceId, f.category, f.function)) ? { confidential: true } : {}),
     } : {};
     const createdAt = input.createdAt ?? new Date();
     const data = {
@@ -180,8 +191,18 @@ async function createTicket(input) {
     await logActivity(id, 'created', { source: data.source, severity }, input.actorAgentId ?? null);
     await runRules('ON_CREATE', id);
 
-    // Round-robin after routing, then SLA (routing may set the group)
+    // Round-robin after routing, then SLA (routing may set the group). v7: no rule matched -> the desk's default group.
     let routed = (await pool.query('SELECT * FROM samadhan.tickets WHERE id = $1', [id])).rows[0];
+    if (!routed.groupId && routed.workspaceId) {
+        const desk = (await catalog()).wsById.get(routed.workspaceId);
+        if (desk?.defaultGroupId) {
+            await pool.query('UPDATE samadhan.tickets SET "groupId" = $2 WHERE id = $1', [id, desk.defaultGroupId]);
+            routed = { ...routed, groupId: desk.defaultGroupId };
+        }
+    }
+    // v7 Phase 4: SAP details and an external case given with the ticket (New ticket / portal / API).
+    if (input.sap && typeof input.sap === 'object') await require('./sap').saveSap(id, input.sap);
+    if (input.externalRef && input.externalRef.ref) await require('./sap').addRef(id, input.externalRef, input.actorAgentId ?? null);
     if (routed.groupId && !routed.agentId) {
         const agentId = await roundRobinAgent(routed.groupId);
         if (agentId) {
@@ -235,6 +256,11 @@ async function updateTicket(id, patch, actorAgentId, opts = {}) {
     const categoryAfter = patch.category !== undefined ? patch.category : before.category;
     const functionAfter = patch.function !== undefined ? patch.function : before.function;
 
+    // A category that is confidential by default makes the ticket confidential (only an explicit change turns it off).
+    if ((changed.includes('category') || changed.includes('function')) && !changed.includes('confidential') && before.confidential === false
+        && (await confidentialByDefault(workspaceAfter, categoryAfter, functionAfter))) {
+        data.confidential = true; changed.push('confidential');
+    }
     // Severity follows Category -> Function, and sets priority.
     if (changed.includes('category') || changed.includes('function')) {
         const sev = await severityFor(categoryAfter, functionAfter, workspaceAfter);

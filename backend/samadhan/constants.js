@@ -26,7 +26,7 @@ const TRIGGERS = ['ON_CREATE', 'ON_UPDATE', 'TIME'];
 // What the ticket list shows as "last activity" (tickets."lastActivityKind").
 const ACTIVITY_KINDS = ['created', 'status', 'assigned', 'agent_reply', 'requester_reply', 'note', 'forward', 'call'];
 // Events that can reach the in-app bell; Admin > Channels & bell picks which ones are on (default: requester replies only).
-const BELL_EVENTS = ['requester_reply', 'new_ticket', 'assigned', 'note', 'mention', 'status_changed', 'escalated', 'sla_warning', 'sla_breach', 'csat', 'watching'];
+const BELL_EVENTS = ['requester_reply', 'new_ticket', 'assigned', 'note', 'mention', 'status_changed', 'escalated', 'sla_warning', 'sla_breach', 'csat', 'watching', 'external_ref'];
 // Agent notifications by email / hub inbox that each agent can switch off for themselves (agents.prefs.emailMuted).
 const AGENT_EMAIL_TEMPLATES = ['agent.assigned_agent', 'agent.assigned_group', 'agent.requester_replied', 'agent.note_added', 'agent.first_response_reminder',
     'agent.resolution_reminder', 'agent.first_response_violated', 'agent.resolution_violated', 'agent.escalation_l3'];
@@ -41,9 +41,11 @@ const EDITABLE_FIELDS = [
     'callSubject', 'region', 'distributorCode', 'distributorName', 'salesOrg', 'state', 'depot',
     'asmName', 'depotCoordinator', 'mrUid', 'mobileNo', 'alternateMobileNo', 'callerName',
     'callerContactNumber', 'category', 'function', 'l2Agent', 'helpdeskAnalysis', 'rcaSolution', 'type',
+    // v7 Phase 4
+    'rootCauseCategory', 'resolutionCode',
 ];
 // v7 Phase 3: applicationId (workspace follows), recordClass, impact, urgency.
-const PATCHABLE = ['subject', 'statusId', 'priority', 'groupId', 'agentId', 'tags', ...EDITABLE_FIELDS, 'applicationId', 'recordClass', 'impact', 'urgency'];
+const PATCHABLE = ['subject', 'statusId', 'priority', 'groupId', 'agentId', 'tags', ...EDITABLE_FIELDS, 'applicationId', 'recordClass', 'impact', 'urgency', 'confidential'];
 const MAIL_ENABLED = String(env('MAIL_ENABLED', 'false') || 'false').toLowerCase() === 'true';
 const WHATSAPP = {
     enabled: String(env('WHATSAPP_ENABLED', 'false') || 'false').toLowerCase() === 'true',

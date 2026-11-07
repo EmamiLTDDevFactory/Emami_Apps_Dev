@@ -159,6 +159,9 @@ router.post('/tickets', wrap(async (req, res) => {
     if (!applicationId && parentId) applicationId = (await loadTicket(parentId)).applicationId ?? null;
     const t = await createTicket({
         applicationId,
+        // v7 Phase 4: SAP details / an external case ("Track an SAP case") with the ticket; validated before anything is saved.
+        sap: b.sap && typeof b.sap === 'object' ? (require('../lib/sap').cleanSap(b.sap), b.sap) : undefined,
+        externalRef: b.externalRef && typeof b.externalRef === 'object' && b.externalRef.ref ? b.externalRef : undefined,
         subject,
         description: b.description ? textToHtml(String(b.description)) : '',
         requester: { email: requesterEmail || null, name: requesterName, phone: String(b.requesterPhone || '').trim() || null },
@@ -217,6 +220,8 @@ router.get('/tickets/:id', wrap(async (req, res) => {
         csat: csat.rows[0] ?? null, todos: todos.rows,
         // v7: files on the ticket (empty when attachments are not set up on this database).
         attachments: await require('../lib/attachments').listAttachments(id).catch((err) => { if (err.code === '42P01') return []; throw err; }),
+        // v7 Phase 4: SAP details and external references (null / [] before migration 7.4).
+        sap: await require('../lib/sap').getSap(id), externalRefs: await require('../lib/sap').listRefs(id),
     });
 }));
 
@@ -232,6 +237,8 @@ router.patch('/tickets/:id', wrap(async (req, res) => {
             patch[k] = n;
         } else if (k === 'tags') {
             patch.tags = Array.isArray(b.tags) ? b.tags.map((x) => String(x).trim()).filter(Boolean).slice(0, 20) : [];
+        } else if (k === 'confidential') {
+            patch.confidential = b.confidential === true;
         } else {
             const v = String(b[k] ?? '').trim();
             if (k === 'subject' && !v) throw fail(400, 'Subject cannot be empty.');
