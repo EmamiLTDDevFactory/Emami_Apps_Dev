@@ -157,6 +157,8 @@ export interface Meta {
   byWorkspace?: Record<string, WorkspaceFields> | null;
   /** v7 Phase 4 */
   sapLists?: SapLists;
+  /** v7 Phase 5 */
+  itLists?: ItLists;
   refMasterKinds?: string[];
 }
 
@@ -340,7 +342,20 @@ export interface TicketDetail {
   /** v7 Phase 4 (null / [] before migration 7.4) */
   sap?: SapDetails | null;
   externalRefs?: ExternalRef[];
+  /** v7 Phase 5 (null before migration 7.5) */
+  it?: ItDetails | null;
 }
+
+// ---------- v7 Phase 5: IT details (Digital Apps, Infra & IT) ----------
+export interface ItDetails {
+  layer?: string | null; environment?: string | null; platform?: string | null; deviceModel?: string | null; os?: string | null; browser?: string | null;
+  appVersion?: string | null; url?: string | null; apiEndpoint?: string | null; odataService?: string | null; httpStatus?: string | null; correlationId?: string | null;
+  database?: string | null; hosting?: string | null; serverName?: string | null; ipOrHost?: string | null; assetTag?: string | null; siteLocation?: string | null;
+  usersAffected?: number | null; updatedAt?: string;
+}
+export interface ItLists { layer: string[]; platform: string[]; browser: string[]; environment: string[]; database: string[]; hosting: string[]; os: string[] }
+/** Portal application picker (only while service desks are on and open to the portal). */
+export interface PortalApplication { id: number; code: string; name: string; vendor: string | null; workspaceId: number; workspaceKey: string; workspaceName: string }
 
 // ---------- v7 Phase 4: SAP details, external references, reference masters ----------
 export interface SapDetails {

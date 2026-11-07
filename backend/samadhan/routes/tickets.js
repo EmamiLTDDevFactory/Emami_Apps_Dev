@@ -162,6 +162,8 @@ router.post('/tickets', wrap(async (req, res) => {
         // v7 Phase 4: SAP details / an external case ("Track an SAP case") with the ticket; validated before anything is saved.
         sap: b.sap && typeof b.sap === 'object' ? (require('../lib/sap').cleanSap(b.sap), b.sap) : undefined,
         externalRef: b.externalRef && typeof b.externalRef === 'object' && b.externalRef.ref ? b.externalRef : undefined,
+        // v7 Phase 5: IT details with the ticket; validated before anything is saved.
+        it: b.it && typeof b.it === 'object' ? (require('../lib/it').cleanIt(b.it), b.it) : undefined,
         subject,
         description: b.description ? textToHtml(String(b.description)) : '',
         requester: { email: requesterEmail || null, name: requesterName, phone: String(b.requesterPhone || '').trim() || null },
@@ -222,6 +224,8 @@ router.get('/tickets/:id', wrap(async (req, res) => {
         attachments: await require('../lib/attachments').listAttachments(id).catch((err) => { if (err.code === '42P01') return []; throw err; }),
         // v7 Phase 4: SAP details and external references (null / [] before migration 7.4).
         sap: await require('../lib/sap').getSap(id), externalRefs: await require('../lib/sap').listRefs(id),
+        // v7 Phase 5: IT details (null before migration 7.5).
+        it: await require('../lib/it').getIt(id),
     });
 }));
 

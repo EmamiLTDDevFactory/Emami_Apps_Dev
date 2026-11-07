@@ -555,6 +555,108 @@ const MIGRATIONS = [
             return 'SAP desk configuration and tables removed';
         },
     },
+    {
+        // v7 Phase 5 (master prompt §I, §O): IT details; Digital Apps and Infra & IT types, Category -> Sub-category trees,
+        // groups, default groups and routing; two generic Sales-app sub-categories; desk canned responses; the Digital Apps
+        // agent profile's scope preset fixed (it named a desk code that does not exist).
+        // Every row inserted is recorded in settings 'seed.7.5'; down removes exactly those plus the new table.
+        id: '7.5-it',
+        describe: 'IT details table; Digital Apps / Infra & IT types, category trees, groups, routing; Sales-app sub-categories; canned responses',
+        async up(client) {
+            const S = ident(activeSchema());
+            const seed = require('../lib/itSeed');
+            const m = { choiceIds: [], groupIds: [], ruleIds: [], cannedIds: [], defaultGroups: [], profileFixed: false };
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.ticket_it_details (
+                "ticketId" int PRIMARY KEY REFERENCES ${S}.tickets(id) ON DELETE CASCADE,
+                layer text, environment text, platform text, "deviceModel" text, os text, browser text, "appVersion" text, url text,
+                "apiEndpoint" text, "odataService" text, "httpStatus" text, "correlationId" text, database text, hosting text,
+                "serverName" text, "ipOrHost" text, "assetTag" text, "siteLocation" text, "usersAffected" int,
+                "updatedAt" timestamptz NOT NULL DEFAULT now())`);
+            await q(client, `CREATE INDEX IF NOT EXISTS ticket_it_details_layer_idx ON ${S}.ticket_it_details (layer)`);
+
+            const ws = Object.fromEntries((await q(client, `SELECT id, key FROM ${S}.workspaces`)).rows.map((r) => [r.key, r.id]));
+            const field = Object.fromEntries((await q(client, `SELECT id, key FROM ${S}.field_definitions`)).rows.map((r) => [r.key, r.id]));
+            const hasOwn = async (fieldId, wsId) => Number((await q(client, `SELECT count(*) AS n FROM ${S}.field_choices WHERE "fieldId" = $1 AND "workspaceId" = $2`, [fieldId, wsId])).rows[0].n) > 0;
+            const addChoice = async (fieldId, value, pos, wsId, parentId = null, meta = null) => {
+                const r = await q(client, `INSERT INTO ${S}.field_choices ("fieldId", "parentId", value, position, "workspaceId", meta) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+                    [fieldId, parentId, value, pos, wsId, JSON.stringify(meta ?? {})]);
+                m.choiceIds.push(r.rows[0].id);
+                return r.rows[0].id;
+            };
+            for (const [key, types, tree] of [['DIGITAL_APPS', seed.DIGITAL_TYPES, seed.DIGITAL_TREE], ['INFRA_IT', seed.IT_TYPES, seed.INFRA_TREE]]) {
+                if (!ws[key]) continue;
+                // Only when an Admin has not already built this desk's lists.
+                if (field.type && !(await hasOwn(field.type, ws[key]))) {
+                    for (const [i, [value, rc]] of types.entries()) await addChoice(field.type, value, i + 1, ws[key], null, { recordClass: rc });
+                }
+                if (field.category && !(await hasOwn(field.category, ws[key]))) {
+                    let i = 0;
+                    for (const [cat, subs] of Object.entries(tree)) {
+                        const pid = await addChoice(field.category, cat, ++i, ws[key]);
+                        for (const [j, sub] of subs.entries()) await addChoice(field.category, sub, j + 1, ws[key], pid);
+                    }
+                }
+                // Groups, the desk's triage group, routing by category.
+                for (const name of key === 'DIGITAL_APPS' ? seed.DIGITAL_GROUPS : seed.INFRA_GROUPS) {
+                    const r = await q(client, `INSERT INTO ${S}.groups (name, description, assignment, "workspaceId") VALUES ($1, $2, 'ROUND_ROBIN', $3) ON CONFLICT (name) DO NOTHING RETURNING id`,
+                        [name, name === seed.DEFAULT_GROUP[key] ? 'Triage - new tickets of this desk without a matching category land here' : null, ws[key]]);
+                    m.groupIds.push(...r.rows.map((x) => x.id));
+                }
+                const group = Object.fromEntries((await q(client, `SELECT id, name FROM ${S}.groups`)).rows.map((r) => [r.name, r.id]));
+                const d = await q(client, `UPDATE ${S}.workspaces SET "defaultGroupId" = $2 WHERE id = $1 AND "defaultGroupId" IS NULL RETURNING id`, [ws[key], group[seed.DEFAULT_GROUP[key]]]);
+                if (d.rows.length) m.defaultGroups.push(ws[key]);
+                let p = 0;
+                for (const [cat, g] of Object.entries(seed.CATEGORY_GROUP[key])) {
+                    if (!group[g]) continue;
+                    const prefix = key === 'DIGITAL_APPS' ? 'Digital' : 'Infra';
+                    const r = await q(client, `INSERT INTO ${S}.automation_rules (name, trigger, active, position, conditions, actions, "workspaceId") VALUES ($1, 'ON_CREATE', true, $2, $3, $4, $5)
+                                              ON CONFLICT (name) DO NOTHING RETURNING id`,
+                    [`${prefix}: ${cat} to ${g}`, 100 + p++, JSON.stringify({ all: [{ field: 'groupId', op: 'is_empty' }, { field: 'category', op: 'eq', value: cat }] }),
+                        JSON.stringify([{ type: 'setGroup', value: group[g] }]), ws[key]]);
+                    m.ruleIds.push(...r.rows.map((x) => x.id));
+                }
+            }
+            // Secondary Sales: one new category with the two sub-categories that had no equivalent (DISCOVERY §9.1).
+            if (ws.SEC_SALES && field.category) {
+                const exists = await q(client, `SELECT 1 FROM ${S}.field_choices WHERE "fieldId" = $1 AND "parentId" IS NULL AND value = $2`, [field.category, seed.SALES_APP_CATEGORY]);
+                if (!exists.rows.length) {
+                    const pos = Number((await q(client, `SELECT COALESCE(max(position), 0) AS p FROM ${S}.field_choices WHERE "fieldId" = $1 AND "parentId" IS NULL`, [field.category])).rows[0].p);
+                    const pid = await addChoice(field.category, seed.SALES_APP_CATEGORY, pos + 1, ws.SEC_SALES);
+                    for (const [j, sub] of seed.SALES_APP_SUBS.entries()) await addChoice(field.category, sub, j + 1, ws.SEC_SALES, pid);
+                }
+            }
+            for (const [k, folder, title, code, body] of seed.CANNED) {
+                if (!ws[k]) continue;
+                const r = await q(client, `INSERT INTO ${S}.canned_responses (folder, title, "shortCode", body, "workspaceId")
+                                          SELECT $1, $2, $3, $4, $5 WHERE NOT EXISTS (SELECT 1 FROM ${S}.canned_responses WHERE lower("shortCode") = lower($3))
+                                          RETURNING id`, [folder, title, code, body.replace(/\n/g, '<br>'), ws[k]]);
+                m.cannedIds.push(...r.rows.map((x) => x.id));
+            }
+            // The Digital Apps agent profile pointed at 'DIGITAL' (no such desk) - fix only an untouched preset.
+            const fix = await q(client, `UPDATE ${S}.auth_profiles SET "scopePreset" = '{"workspaces":["DIGITAL_APPS"]}'::jsonb
+                                         WHERE code = 'DIGITAL_APPS_AGENT' AND "scopePreset" = '{"workspaces":["DIGITAL"]}'::jsonb RETURNING id`).catch(() => ({ rows: [] }));
+            m.profileFixed = fix.rows.length > 0;
+            await q(client, `INSERT INTO ${S}.settings (key, value) VALUES ('seed.7.5', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, [JSON.stringify(m)]);
+            return `IT desks configured: ${m.choiceIds.length} choices, ${m.groupIds.length} groups, ${m.ruleIds.length} routing rules, ${m.cannedIds.length} canned responses`;
+        },
+        async down(client) {
+            const S = ident(activeSchema());
+            const m = (await q(client, `SELECT value FROM ${S}.settings WHERE key = 'seed.7.5'`)).rows[0]?.value || {};
+            const ids = (k) => m[k] || [];
+            await q(client, `DELETE FROM ${S}.canned_responses WHERE id = ANY($1::int[])`, [ids('cannedIds')]);
+            await q(client, `DELETE FROM ${S}.automation_rules WHERE id = ANY($1::int[])`, [ids('ruleIds')]);
+            await q(client, `UPDATE ${S}.workspaces SET "defaultGroupId" = NULL WHERE id = ANY($1::int[])`, [ids('defaultGroups')]);
+            await q(client, `UPDATE ${S}.workspaces SET "defaultGroupId" = NULL WHERE "defaultGroupId" = ANY($1::int[])`, [ids('groupIds')]);
+            await q(client, `UPDATE ${S}.tickets SET "groupId" = NULL WHERE "groupId" = ANY($1::int[])`, [ids('groupIds')]);
+            await q(client, `DELETE FROM ${S}.groups WHERE id = ANY($1::int[])`, [ids('groupIds')]);
+            await q(client, `DELETE FROM ${S}.field_choices WHERE id = ANY($1::int[]) AND "parentId" IS NOT NULL`, [ids('choiceIds')]);
+            await q(client, `DELETE FROM ${S}.field_choices WHERE id = ANY($1::int[])`, [ids('choiceIds')]);
+            if (m.profileFixed) await q(client, `UPDATE ${S}.auth_profiles SET "scopePreset" = '{"workspaces":["DIGITAL"]}'::jsonb WHERE code = 'DIGITAL_APPS_AGENT'`);
+            await q(client, `DROP TABLE IF EXISTS ${S}.ticket_it_details`);
+            await q(client, `DELETE FROM ${S}.settings WHERE key = 'seed.7.5'`);
+            return 'IT desk configuration and table removed';
+        },
+    },
 ];
 
 async function applied(client, schema) {

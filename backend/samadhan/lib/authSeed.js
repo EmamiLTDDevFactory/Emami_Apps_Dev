@@ -24,7 +24,7 @@ const SEED_PROFILES = [
         description: 'SAP Basis and security team. Agent rights, scoped to the SAP workspace (transports, user / role requests).' },
     { code: 'INFRA_AGENT', name: 'Infra Agent', mode: 'add', keys: [], scopePreset: { workspaces: ['INFRA_IT'] },
         description: 'Infrastructure & IT support. Agent rights, scoped to the Infra & IT workspace.' },
-    { code: 'DIGITAL_APPS_AGENT', name: 'Digital Apps Agent', mode: 'add', keys: [], scopePreset: { workspaces: ['DIGITAL'] },
+    { code: 'DIGITAL_APPS_AGENT', name: 'Digital Apps Agent', mode: 'add', keys: [], scopePreset: { workspaces: ['DIGITAL_APPS'] },
         description: 'Digital applications support. Agent rights, scoped to the Digital Apps workspace.' },
     { code: 'WORKSPACE_LEAD', name: 'Workspace Lead', mode: 'add', keys: SUPERVISOR_EXTRA, scopePreset: {},
         description: 'Supervisor-like rights (reports, analytics, export, knowledge publishing) inside the person\'s scope.' },

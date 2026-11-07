@@ -2,6 +2,8 @@
 import { useEffect, useState } from 'react';
 import { HelpCircle, KeyRound, Link2, PlusCircle, Settings2, ShoppingBag, UserSearch, Wrench } from 'lucide-react';
 import { PasteParser, SapFields, type SapForm } from './Sap';
+import { ItFields } from './ItDetails';
+import type { ItDetails } from '@/lib/types';
 import type { ExternalRefInput } from '@/lib/api';
 import { createTicket, searchContacts } from '@/lib/api';
 import type { ContactMatch } from '@/lib/types';
@@ -65,6 +67,9 @@ export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
   const [need, setNeed] = useState('');
   const [sap, setSap] = useState<SapForm>({});
   const [extRef, setExtRef] = useState<ExternalRefInput>({});
+  const [it, setIt] = useState<Partial<ItDetails>>({});
+  const itDesk = ws?.key === 'DIGITAL_APPS' || ws?.key === 'INFRA_IT';
+  const itFilled = Object.values(it).some((v) => v !== null && v !== undefined && v !== '');
   const isSales = !ws || ws.key === 'SEC_SALES';
   const sapDesk = ws?.key === 'SAP' || ws?.key === 'S4_PROGRAM';
   const sapFilled = Object.values(sap).some((v) => (Array.isArray(v) ? v.length : v !== null && v !== undefined && v !== ''));
@@ -107,6 +112,7 @@ export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
       if (matrix && urgency) body.urgency = Number(urgency);
       if (!isSales && need) body.recordClass = need === 'SAP_CASE' ? 'INCIDENT' : need;
       if (sapDesk && sapFilled) body.sap = sap;
+      if (itDesk && itFilled) body.it = it;
       if (!isSales && need === 'SAP_CASE' && extRef.ref?.trim()) body.externalRef = { system: extRef.system || meta.sapLists?.externalSystem[0], ...extRef };
       const t = await createTicket(body);
       if (applicationId) rememberApp(applicationId);
@@ -124,6 +130,7 @@ export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
         setTop((x) => ({ ...EMPTY_TOP, requesterName: x.requesterName, requesterEmail: x.requesterEmail, requesterPhone: x.requesterPhone, source: x.source }));
         setSap({});
         setExtRef({});
+        setIt({});
         setMsg({ tone: 'good', text: `Ticket ${refOf(meta, t)} created. Log the next one below.` });
       } else {
         openTicket(t.id);
@@ -203,6 +210,11 @@ export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
           {sapDesk && (
             <Card title="SAP details" sub="System, client and T-code help the right team pick it up first time" actions={<PasteParser onApply={(f) => { setSap((x) => ({ ...x, ...f })); if (!top.description.trim() && f.errorText) set({ description: f.errorText }); }} />}>
               <SapFields value={sap} onChange={setSap} />
+            </Card>
+          )}
+          {itDesk && (
+            <Card title={ws?.key === 'INFRA_IT' ? 'IT details' : 'App details'} sub={ws?.key === 'INFRA_IT' ? 'Server, asset tag and site get the engineer there faster' : 'Layer, URL, HTTP status and a correlation id help the developers find it in the logs'}>
+              <ItFields value={it} onChange={setIt} deskKey={ws?.key} />
             </Card>
           )}
           <Card title="Ticket details" sub={isSales ? 'Category → Function sets severity and priority. Required fields (*) can be completed before resolving.' : 'Type and module route the ticket. Required fields (*) can be completed before resolving.'}>

@@ -18,6 +18,7 @@ import { CsatCard, PresenceBar, RelatedTickets, TicketBanners, TicketTodos, Tick
 import { Avatar, Button, Card, Field, Notice, Pill, Skeleton, Spinner, Tabs, cx, inputBase, inputCls, textareaCls } from './ui';
 import { AttachmentsCard, FileTray, Paperclips, uploadPending, usePendingFiles } from './Attachments';
 import { ExternalRefsCard, SapCard } from './Sap';
+import { ItCard } from './ItDetails';
 import { sizeOf } from '@/lib/files';
 
 /**
@@ -101,6 +102,8 @@ function TicketScreen({ data, reload }: { data: TicketDetail; reload: () => Prom
   const deskKey = workspaceById(meta, t.workspaceId)?.key;
   const showSap = deskKey === 'SAP' || deskKey === 'S4_PROGRAM' || !!data.sap;
   const showRefs = (!!deskKey && deskKey !== 'SEC_SALES') || (data.externalRefs?.length ?? 0) > 0;
+  // v7 Phase 5: IT details for the Digital Apps / Infra & IT desks (or whenever some exist).
+  const showIt = deskKey === 'DIGITAL_APPS' || deskKey === 'INFRA_IT' || !!data.it;
   return (
     <div className="space-y-4">
       <TicketToolbar data={data} reload={reload} />
@@ -117,6 +120,7 @@ function TicketScreen({ data, reload }: { data: TicketDetail; reload: () => Prom
           <TicketAssist ticket={t} reload={reload} />
           <Properties ticket={t} reload={reload} />
           {showSap && <SapCard ticketId={t.id} sap={data.sap} reload={reload} />}
+          {showIt && <ItCard ticketId={t.id} it={data.it} deskKey={deskKey} reload={reload} />}
           {showRefs && <ExternalRefsCard ticketId={t.id} refs={data.externalRefs ?? []} reload={reload} />}
           <AttachmentsCard ticketId={t.id} files={data.attachments ?? []} reload={reload} />
           <RelatedTickets data={data} reload={reload} />

@@ -44,6 +44,8 @@ const RULES = [
     ['GET', '/ref-masters', 'ticket.view'],
     ['GET', '/admin/ref-masters', 'admin.masters'], ['POST', '/admin/ref-masters', 'admin.masters'], ['POST', '/admin/ref-masters/import', 'admin.masters'],
     ['DELETE', '/admin/ref-masters/:mid', 'admin.masters'],
+    // it.js (v7 Phase 5)
+    ['GET', '/tickets/:id/it', 'ticket.view'], ['PUT', '/tickets/:id/it', 'ticket.edit'],
     // work.js
     ['GET', '/todos', ANY], ['POST', '/todos', ANY], ['PATCH', '/todos/:id', ANY], ['DELETE', '/todos/:id', ANY],
     ['GET', '/views', ANY], ['POST', '/views', (req) => (req.body?.shared ? 'views.share' : ANY)], ['DELETE', '/views/:id', ANY],

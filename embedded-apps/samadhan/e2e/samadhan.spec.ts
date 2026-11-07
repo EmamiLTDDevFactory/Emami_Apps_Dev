@@ -328,3 +328,40 @@ test('SAP desk: SAP details, external case, confidential and the masters tab', a
   }
   expect(problems).toEqual([]);
 });
+
+// ---------- v7 Phase 5: Digital Apps / Infra & IT, portal application picker ----------
+test('IT desks: app details on the ticket, portal application picker', async ({ page }) => {
+  const problems = watch(page);
+  await signIn(page, data.admin);
+  page.on('dialog', (d) => d.accept());
+  const ws = await api(data.admin, 'GET', '/admin/workspaces');
+  const dig = ws.body?.workspaces?.find((w: { key: string }) => w.key === 'DIGITAL_APPS');
+  const infra = ws.body?.workspaces?.find((w: { key: string }) => w.key === 'INFRA_IT');
+  const hub = ws.body?.applications?.find((a: { code: string }) => a.code === 'HUB');
+  try {
+    await api(data.admin, 'PUT', `/admin/workspaces/${dig.id}`, { enabled: true });
+    await api(data.admin, 'PUT', `/admin/workspaces/${infra.id}`, { enabled: true, portalEnabled: true });
+    await api(data.admin, 'PUT', '/admin/workspaces/flag', { enabled: true });
+    const made = await api(data.admin, 'POST', '/tickets', {
+      subject: `Orders API 503 ${test.info().project.name}`, requesterName: 'E2E Requester', requesterEmail: 'e2e.req@test.samadhan.local', applicationId: hub.id,
+      category: 'API / Backend', it: { layer: 'API', httpStatus: '503', correlationId: 'e2e-corr-42' },
+    });
+    expect(made.status).toBe(201);
+    await page.goto(`/apps/samadhan/?ticket=${made.body.ticket.id}`);
+    await expect(page.getByTestId('it-card')).toContainText('503');
+    await expect(page.getByTestId('it-card')).toContainText('e2e-corr-42');
+    await page.goto('/apps/samadhan/portal/');
+    const picker = page.getByTestId('portal-app-picker');
+    await expect(picker).toBeVisible();
+    await picker.getByLabel('Search applications').fill('network');
+    await picker.getByRole('button', { name: /Network/ }).first().click();
+    await expect(page.getByLabel('What is it about?')).toContainText('Cyber Security');
+    await expect(page.getByLabel('Distributor (DB) code')).toHaveCount(0);
+  } finally {
+    await api(data.admin, 'PUT', '/admin/workspaces/flag', { enabled: false });
+    if (dig) await api(data.admin, 'PUT', `/admin/workspaces/${dig.id}`, { enabled: false });
+    if (infra) await api(data.admin, 'PUT', `/admin/workspaces/${infra.id}`, { enabled: false, portalEnabled: false });
+    await api(data.admin, 'PUT', '/me/preferences', { workspace: null });
+  }
+  expect(problems).toEqual([]);
+});
