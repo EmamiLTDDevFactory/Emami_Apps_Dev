@@ -12,7 +12,7 @@ import type { Scope, Visibility } from './permissions';
 import type {
   ActivityItem, AdminAgent, AdminField, AdminGroup, AgentPrefs, Analytics, Article, ArticleRow, AuditEvent, AutomationRule, BellEvent, BellItem, Breakdown, Company,
   ContactDetail, ContactMatch, ContactRow, Counts, Dashboard, DashboardInsights, DayWindow, Distributor, EmailTemplate, Me, Meta, ParkedMail, PresenceAgent,
-  SavedView, Scenario, ScenarioAction, SearchResults, SeverityRule, SlaPolicy, Ticket, TicketDetail, TicketInsights, TicketRow, Todo,
+  Attachment, AttachmentLimits, AttachmentsInfo, SavedView, Scenario, ScenarioAction, SearchResults, SeverityRule, SlaPolicy, Ticket, TicketDetail, TicketInsights, TicketRow, Todo,
   AccessUser, Overview, ReportVariantConfig, Role, Variant,
 } from './types';
 
@@ -82,9 +82,9 @@ const qs = (o: Record<string, string | number | undefined | null>) => {
 
 // ---------- Requester portal (no hub sign-in; the backend ignores the empty token on these routes) ----------
 export interface PortalTicketStatus { id: number; subject: string; status: string; isResolved: boolean; isClosed: boolean; createdAt: string; lastActivityAt: string | null; resolvedAt: string | null }
-export const portalConfig = () => get<{ enabled: boolean; categories?: string[]; helpdeskName?: string; intro?: string; supportEmail?: string }>('/portal/config');
+export const portalConfig = () => get<{ enabled: boolean; categories?: string[]; helpdeskName?: string; intro?: string; supportEmail?: string; files?: { limits: AttachmentLimits['portal'] } | null }>('/portal/config');
 export const portalCreate = (body: { name: string; email: string; phone: string; distributorCode: string; category: string; subject: string; description: string; website: string }) =>
-  request<{ ticket: { id: number } }>('POST', '/portal/tickets', body).then((r) => r.ticket);
+  request<{ ticket: { id: number }; files?: { uploadToken: string; limits: AttachmentLimits['portal'] } }>('POST', '/portal/tickets', body).then((r) => ({ ...r.ticket, files: r.files ?? null }));
 export const portalStatus = (id: number, email: string) => request<{ ticket: PortalTicketStatus }>('POST', '/portal/status', { id, email }).then((r) => r.ticket);
 export interface PortalArticle { id: number; category: string; folder: string; title: string; body: string; tags: string[] }
 export const portalArticles = (q = '') => get<{ items: PortalArticle[] }>(`/portal/articles${qs({ q })}`).then((r) => r.items);
@@ -94,7 +94,7 @@ export const portalCsatAnswer = (token: string, rating: 1 | 2 | 3, comment: stri
 
 // ---------- Me & reference data ----------
 export const getMe = () =>
-  get<{ me: Me; agentStatuses: Meta['agentStatuses']; mailEnabled: boolean; whatsappEnabled: boolean; prefs: AgentPrefs; bellEvents: BellEvent[]; permissions?: string[]; scope?: Scope }>('/me');
+  get<{ me: Me; agentStatuses: Meta['agentStatuses']; mailEnabled: boolean; whatsappEnabled: boolean; prefs: AgentPrefs; bellEvents: BellEvent[]; permissions?: string[]; scope?: Scope; attachments?: AttachmentsInfo }>('/me');
 /** Only the keys sent change (bellMuted, emailMuted, listView, pageSize, dashboardWidgets, defaultVariants). */
 export const savePrefs = (prefs: Partial<AgentPrefs>) => request<{ prefs: AgentPrefs }>('PUT', '/me/preferences', prefs).then((r) => r.prefs);
 export const searchContacts = (q: string) => get<{ items: ContactMatch[] }>(`/contacts/search${qs({ q })}`).then((r) => r.items);
@@ -126,6 +126,8 @@ export interface TicketQuery {
   frDue?: string;
   requesterId?: string;
   companyId?: string;
+  /** v7: '1' = only tickets with files. */
+  hasAttachments?: string;
   statusId?: string;
   priority?: string;
   severity?: string;
@@ -149,7 +151,7 @@ export const getCounts = () => get<{ counts: Counts }>('/tickets/counts').then((
 export const getTicket = (id: number) => get<TicketDetail>(`/tickets/${id}`);
 export const createTicket = (body: Json) => request<{ ticket: Ticket }>('POST', '/tickets', body).then((r) => r.ticket);
 export const updateTicket = (id: number, patch: Json) => request<{ ticket: Ticket }>('PATCH', `/tickets/${id}`, patch).then((r) => r.ticket);
-export const addMessage = (id: number, body: { kind: 'REPLY' | 'NOTE' | 'FORWARD'; text: string; to?: string; cc?: string; statusAfter?: number }) =>
+export const addMessage = (id: number, body: { kind: 'REPLY' | 'NOTE' | 'FORWARD'; text: string; to?: string; cc?: string; statusAfter?: number; attachmentIds?: number[] }) =>
   request<{ delivery: { sent: boolean; reason?: string } | null }>('POST', `/tickets/${id}/messages`, body).then((r) => r.delivery);
 export const logCall = (id: number, body: { phone: string; direction: 'OUTBOUND' | 'INBOUND'; outcome: string; durationMins: number; notes: string }) =>
   request('POST', `/tickets/${id}/calls`, body);
@@ -249,6 +251,41 @@ export const admin = {
   saveScenario: (b: { id?: number; name: string; description: string; actions: ScenarioAction[] }) => request('POST', '/admin/scenarios', b),
   deleteScenario: (id: number) => request('DELETE', `/admin/scenarios/${id}`),
 };
+
+// ---------- v7 attachments (backend routes/attachments.js) ----------
+/** Sends one file as the raw request body (its name in X-File-Name). Same sign-in and /setu fallback as request(). */
+async function sendFile<T>(path: string, file: Blob, name: string, signedIn = true): Promise<T> {
+  let res: Response;
+  const send = () => fetch(`${apiBase()}/${prefix}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(name), ...(signedIn ? { Authorization: `Bearer ${getHubToken()}` } : {}) },
+    body: file,
+  });
+  try {
+    res = await send();
+    if (res.status === 404 && prefix === 'samadhan' && !(res.headers.get('content-type') || '').includes('json')) { prefix = 'setu'; res = await send(); }
+  } catch {
+    throw new ApiError('Could not reach the Emami Apps server. Check the network and try again.', 0);
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.success) {
+    const err = new ApiError(data?.error || (res.status === 413 ? 'The file is too large.' : 'Could not upload the file.'), res.status, data);
+    if (res.status === 401) onUnauthorized?.(err.message);
+    throw err;
+  }
+  return data as T;
+}
+export const listAttachments = (ticketId: number) => get<{ items: Attachment[] }>(`/tickets/${ticketId}/attachments`).then((r) => r.items);
+export const uploadAttachment = (ticketId: number, file: Blob, name: string, conversationId?: number) =>
+  sendFile<{ attachment: Attachment }>(`/tickets/${ticketId}/attachments${conversationId ? `?conversationId=${conversationId}` : ''}`, file, name).then((r) => r.attachment);
+export const deleteAttachment = (ticketId: number, id: number) => request('DELETE', `/tickets/${ticketId}/attachments/${id}`);
+/** A 5-minute signed address for the file; inline = shown in the browser (images, PDF) instead of downloaded. */
+export const attachmentUrl = async (ticketId: number, id: number, inline = false) => {
+  const r = await request<{ url: string }>('POST', `/tickets/${ticketId}/attachments/${id}/link`);
+  return `${apiBase()}/${prefix}/${r.url}${inline ? '?inline=1' : ''}`;
+};
+export const portalUpload = (ticketId: number, token: string, file: Blob, name: string) =>
+  sendFile<{ attachment: { id: number; fileName: string; size: number } }>(`/portal/tickets/${ticketId}/attachments?token=${encodeURIComponent(token)}`, file, name, false).then((r) => r.attachment);
 
 // ---------- v7 Authorization cockpit (Admin only; backend routes/authz.js) ----------
 export interface AuthzProfile { id: number | null; code: string; name: string; description?: string | null; mode: 'add' | 'restrict' | 'base'; keys: string[]; active: boolean; system: boolean; users?: number; scopePreset?: Record<string, unknown> }

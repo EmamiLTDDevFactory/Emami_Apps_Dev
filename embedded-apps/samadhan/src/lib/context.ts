@@ -2,7 +2,7 @@
 import { createContext, useContext } from 'react';
 import type { TicketQuery } from './api';
 import type { Scope } from './permissions';
-import type { AgentPrefs, Me, Meta } from './types';
+import type { AgentPrefs, AttachmentsInfo, Me, Meta } from './types';
 
 export type Screen = 'dashboard' | 'tickets' | 'board' | 'new' | 'reports' | 'admin' | 'ticket' | 'helpdesk' | 'analytics' | 'contacts' | 'solutions';
 
@@ -29,6 +29,8 @@ export interface Samadhan {
   can: (key: string) => boolean;
   /** v7 data scope: which tickets the person sees (all / groups / own). */
   scope: Scope;
+  /** v7 attachments: on / off on this server and the limits (null on an older backend = off). */
+  attachments: AttachmentsInfo | null;
   /** The agent's own settings (My preferences). */
   prefs: AgentPrefs;
 }

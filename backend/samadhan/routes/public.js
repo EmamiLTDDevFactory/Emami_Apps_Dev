@@ -46,6 +46,8 @@ router.get('/portal/config', wrap(async (req, res) => {
     res.json({
         success: true, enabled: true, categories: await categories(),
         helpdeskName: await option('general.helpdeskName'), intro: await option('portal.intro'), supportEmail: await option('general.supportEmail'),
+        // v7: requesters may add files after submitting (portal limits).
+        files: require('../lib/storage').storageInfo().enabled ? { limits: (await require('../lib/attachments').limits()).portal } : null,
     });
 }));
 

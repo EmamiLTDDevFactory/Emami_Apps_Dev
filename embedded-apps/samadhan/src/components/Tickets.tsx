@@ -1,6 +1,6 @@
 'use client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Bookmark, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, Download, Eye, Filter, Inbox, Merge, RefreshCw, RotateCcw, Search, ShieldAlert, Square, Trash2, X } from 'lucide-react';
+import { Bookmark, Paperclip, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, Download, Eye, Filter, Inbox, Merge, RefreshCw, RotateCcw, Search, ShieldAlert, Square, Trash2, X } from 'lucide-react';
 import { bulkTickets, deleteView, exportColumns, exportTickets, getCounts, getViews, listTickets, saveView, type BulkAction, type TicketQuery } from '@/lib/api';
 import { useSamadhan } from '@/lib/context';
 import { ACTIVITY_LABEL, fmtDateTime, fmtNum, relative, SEVERITY_EDGE } from '@/lib/format';
@@ -21,7 +21,7 @@ const MORE: { id: string; label: string }[] = [
 const VIEW_LABEL: Record<string, string> = Object.fromEntries([...QUICK, ...MORE].map((v) => [v.id, v.label]));
 
 const FILTER_KEYS: (keyof TicketQuery)[] = ['statusId', 'priority', 'severity', 'groupId', 'agentId', 'source', 'type', 'category', 'region', 'state', 'depot', 'salesOrg',
-  'l2Agent', 'asmName', 'activity', 'due', 'resDue', 'frDue', 'tag', 'created', 'from', 'to', 'requesterId', 'companyId'];
+  'l2Agent', 'asmName', 'activity', 'due', 'resDue', 'frDue', 'tag', 'created', 'from', 'to', 'requesterId', 'companyId', 'hasAttachments'];
 type ListKey = 'statusId' | 'priority' | 'severity' | 'groupId' | 'agentId' | 'source' | 'type' | 'category' | 'region' | 'state' | 'depot' | 'salesOrg' | 'l2Agent' | 'asmName' | 'activity' | 'resDue' | 'frDue';
 const CREATED = [
   { value: '', label: 'Any time' }, { value: '30m', label: 'Last 30 minutes' }, { value: '1h', label: 'Last hour' }, { value: '4h', label: 'Last 4 hours' },
@@ -37,7 +37,7 @@ const SORTS = [
 const EXPORT_PREF = 'samadhan.exportColumns';
 
 export default function Tickets({ preset }: { preset: TicketQuery }) {
-  const { me, meta, openTicket, can, setListIds, prefs } = useSamadhan();
+  const { me, meta, openTicket, can, setListIds, prefs, attachments } = useSamadhan();
   // v7 permission keys (same people as the old Supervisor / Admin checks by default).
   const isAdmin = can('admin.general');
   const canExport = can('ticket.export');
@@ -221,6 +221,7 @@ export default function Tickets({ preset }: { preset: TicketQuery }) {
             <MultiSelect label="First response due" values={many('frDue')} onChange={setMany('frDue')} options={DUE} />
             <MultiSelect label="Last activity" values={many('activity')} onChange={setMany('activity')} options={Object.entries(ACTIVITY_LABEL).map(([k, l]) => ({ value: k, label: l }))} align="right" />
             <Select label="Created" value={query.created ?? ''} onChange={(v) => set({ created: v || undefined })} options={CREATED} />
+            {attachments?.enabled && <Select label="Attachments" value={query.hasAttachments ?? ''} onChange={(v) => set({ hasAttachments: v || undefined })} options={[{ value: '', label: 'Any attachments' }, { value: '1', label: 'Has attachments' }]} />}
             <input aria-label="Tag" placeholder="Tag" value={query.tag ?? ''} onChange={(e) => set({ tag: e.target.value })} className={inputCls} />
             <label className="flex items-center gap-1.5 text-2xs font-semibold text-muted">From<input type="date" value={query.from ?? ''} onChange={(e) => set({ from: e.target.value })} className={inputCls} /></label>
             <label className="flex items-center gap-1.5 text-2xs font-semibold text-muted">To<input type="date" value={query.to ?? ''} onChange={(e) => set({ to: e.target.value })} className={inputCls} /></label>
@@ -263,6 +264,7 @@ export default function Tickets({ preset }: { preset: TicketQuery }) {
                       <div className="flex items-center gap-2">
                         <span className="num text-2xs font-bold text-muted">#{t.id}</span>
                         <span className="truncate text-sm font-semibold">{t.subject}</span>
+                        {(t.attachmentCount ?? 0) > 0 && <span className="flex shrink-0 items-center gap-0.5 text-2xs text-muted" title={`${t.attachmentCount} file(s)`} aria-label={`${t.attachmentCount} attachments`}><Paperclip size={12} />{t.attachmentCount}</span>}
                       </div>
                       <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-2xs text-muted">
                         <span className="font-medium text-ink/80">{t.requesterName}</span>

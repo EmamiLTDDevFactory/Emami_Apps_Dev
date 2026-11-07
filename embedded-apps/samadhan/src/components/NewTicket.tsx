@@ -6,6 +6,7 @@ import type { ContactMatch } from '@/lib/types';
 import { useSamadhan, type NewTicketPreset } from '@/lib/context';
 import TicketFields, { type Values } from './TicketFields';
 import { Button, Card, Field, Notice, Spinner, cx, inputBase, inputCls, textareaCls } from './ui';
+import { FileTray, uploadPending, usePendingFiles } from './Attachments';
 
 const EMAIL_RE = /^[^\s@']+@[^\s@']+\.[^\s@']+$/;
 const EMPTY_TOP = { requesterName: '', requesterEmail: '', requesterPhone: '', subject: '', description: '', source: 'Phone', statusId: '2', groupId: '', agentId: '', priority: '', tags: '' };
@@ -14,7 +15,9 @@ const EMPTY_TOP = { requesterName: '', requesterEmail: '', requesterPhone: '', s
 const TOP_KEYS = Object.keys(EMPTY_TOP);
 
 export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
-  const { meta, openTicket } = useSamadhan();
+  const { meta, openTicket, attachments, can } = useSamadhan();
+  const withFiles = Boolean(attachments?.enabled) && can('attachment.upload');
+  const tray = usePendingFiles(attachments?.limits.agent.perFileMb ?? 10, attachments?.limits.agent.filesPerAction ?? 10);
   const parentId = preset?.parentId;
   const [top, setTop] = useState({ ...EMPTY_TOP, ...Object.fromEntries(Object.entries(preset ?? {}).filter(([k, v]) => TOP_KEYS.includes(k) && typeof v === 'string')) });
   const [fields, setFields] = useState<Values>(Object.fromEntries(Object.entries(preset ?? {}).filter(([k, v]) => !TOP_KEYS.includes(k) && k !== 'parentId' && typeof v === 'string' && v)) as Values);
@@ -61,6 +64,15 @@ export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
       if (top.agentId) body.agentId = Number(top.agentId);
       if (top.priority) body.priority = Number(top.priority);
       const t = await createTicket(body);
+      // v7: files go up once the ticket exists; a failed file never loses the ticket.
+      let fileErrors: string[] = [];
+      if (withFiles && tray.ready.length) fileErrors = (await uploadPending(t.id, tray.ready)).errors;
+      tray.clear();
+      if (fileErrors.length) {
+        setMsg({ tone: 'bad', text: `Ticket #${t.id} created, but some files were not added: ${fileErrors.join(' · ')}` });
+        if (!another) setTimeout(() => openTicket(t.id), 2500);
+        return;
+      }
       if (another) {
         // Keep the requester and distributor details for the next call from the same person.
         setTop((x) => ({ ...EMPTY_TOP, requesterName: x.requesterName, requesterEmail: x.requesterEmail, requesterPhone: x.requesterPhone, source: x.source }));
@@ -110,7 +122,8 @@ export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
             </div>
             <div className="mt-3 space-y-3">
               <Field label="Subject" required><input className={inputCls} value={top.subject} onChange={(e) => set({ subject: e.target.value })} /></Field>
-              <Field label="Description"><textarea rows={5} className={textareaCls} value={top.description} onChange={(e) => set({ description: e.target.value })} /></Field>
+              <Field label="Description"><textarea rows={5} className={textareaCls} value={top.description} onChange={(e) => set({ description: e.target.value })} onPaste={withFiles ? tray.onPaste : undefined} /></Field>
+              {withFiles && <FileTray files={tray} maxFiles={attachments?.limits.agent.filesPerAction ?? 10} />}
             </div>
           </Card>
           <Card title="Ticket details" sub="Category → Function sets severity and priority. Required fields (*) can be completed before resolving.">

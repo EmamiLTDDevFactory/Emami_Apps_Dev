@@ -1,10 +1,10 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowDown, ArrowUp, Building2, LayoutDashboard, ListChecks, Radio, Smile, Users, Zap } from 'lucide-react';
+import { ArrowDown, ArrowUp, Building2, LayoutDashboard, ListChecks, Paperclip, Radio, Smile, Users, Zap } from 'lucide-react';
 import { admin } from '@/lib/api';
 import { useSamadhan } from '@/lib/context';
 import { SEVERITY_LABEL } from '@/lib/format';
-import { DASHBOARD_WIDGETS, type DashboardWidget, type Severity, type UiOptions } from '@/lib/types';
+import { DASHBOARD_WIDGETS, type AttachmentLimits, type DashboardWidget, type Severity, type UiOptions } from '@/lib/types';
 import { Button, Card, Field, Notice, Skeleton, cx, inputBase, inputCls, textareaCls } from '../ui';
 import { checkboxCls, useAction, useLoad } from './shared';
 
@@ -41,6 +41,43 @@ interface Draft {
   'sources.extra': string;
   'presence.enabled': boolean;
   'dashboard.widgets': DashboardWidget[];
+}
+
+// ---------- v7 attachments: limits per channel (hard ceilings enforced by the server) ----------
+const CEILING = { agent: 25, portal: 10, email: 25 } as const;
+const CHANNEL_LABEL = { agent: 'Agents (new ticket, reply, note)', portal: 'Portal (no sign-in)', email: 'Inbound email' } as const;
+
+function AttachmentLimitsCard() {
+  const { attachments } = useSamadhan();
+  const [d, setD] = useState<AttachmentLimits | null>(attachments ? JSON.parse(JSON.stringify(attachments.limits)) : null);
+  const act = useAction();
+  if (!attachments || !d) return null;
+  const n = (ch: 'agent' | 'portal' | 'email', k: string, v: string) => setD({ ...d, [ch]: { ...d[ch], [k]: Number(v) } });
+  const bad = (['agent', 'portal', 'email'] as const).some((ch) => !(d[ch].perFileMb >= 1 && d[ch].perFileMb <= CEILING[ch]));
+  return (
+    <Card
+      title={<span className="flex items-center gap-2"><Paperclip size={15} className="text-accent" /> Attachments</span>}
+      sub={attachments.enabled ? `Files are stored on the ${attachments.adapter === 'sftp' ? 'SFTP file server' : 'test file store'}. Changes apply within a minute.` : (attachments.reason ?? 'Attachments are off on this server.')}
+    >
+      <div className="space-y-3">
+        {act.msg && <Notice tone={act.msg.tone} onClose={() => act.setMsg(null)}>{act.msg.text}</Notice>}
+        {(['agent', 'portal', 'email'] as const).map((ch) => (
+          <div key={ch} className="grid items-end gap-2 sm:grid-cols-[1fr_130px_130px_130px]">
+            <div className="text-sm font-semibold">{CHANNEL_LABEL[ch]}</div>
+            <Field label={`Per file (MB, max ${CEILING[ch]})`}><input type="number" min={1} max={CEILING[ch]} className={cx(inputCls, !(d[ch].perFileMb >= 1 && d[ch].perFileMb <= CEILING[ch]) && 'border-bad')} value={d[ch].perFileMb} onChange={(e) => n(ch, 'perFileMb', e.target.value)} /></Field>
+            {'filesPerAction' in d[ch]
+              ? <Field label="Files at a time"><input type="number" min={1} max={20} className={inputCls} value={(d[ch] as { filesPerAction: number }).filesPerAction} onChange={(e) => n(ch, 'filesPerAction', e.target.value)} /></Field>
+              : <div className="text-2xs text-muted">all files of the mail</div>}
+            <Field label="Per ticket (MB)"><input type="number" min={1} max={500} className={inputCls} value={d[ch].perTicketMb} onChange={(e) => n(ch, 'perTicketMb', e.target.value)} /></Field>
+          </div>
+        ))}
+        <Field label="Outbound email: files attached up to (MB, max 25)" hint="Larger sets are sent as links that need a Samadhan sign-in.">
+          <input type="number" min={1} max={25} className={cx(inputCls, 'w-32')} value={d.outboundMb} onChange={(e) => setD({ ...d, outboundMb: Number(e.target.value) })} />
+        </Field>
+        <div className="flex justify-end"><Button variant="primary" disabled={act.busy || bad} onClick={() => act.run(() => admin.saveSettings({ 'attachments.limits': d }), 'Attachment limits saved.')}>Save attachment limits</Button></div>
+      </div>
+    </Card>
+  );
 }
 
 const str = (v: unknown, fallback: string) => (typeof v === 'string' ? v : fallback);
@@ -195,6 +232,7 @@ export function GeneralTab() {
         </Card>
       </div>
 
+      <AttachmentLimitsCard />
       <Card title={title(LayoutDashboard, 'Default dashboard')} sub="Widgets, in order, for agents who have not arranged their own dashboard.">
         <div className="grid gap-4 md:grid-cols-2">
           <div>

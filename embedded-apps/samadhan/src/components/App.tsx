@@ -6,7 +6,7 @@ import { BASE_PATH } from '@/lib/config';
 import { SamadhanContext, type NewTicketPreset, type Screen, type Samadhan } from '@/lib/context';
 import { makeCan, SCREEN_KEY, type Scope } from '@/lib/permissions';
 import { hasHubSession } from '@/lib/hub';
-import type { AgentPrefs, Availability, BellEvent, Me, Meta } from '@/lib/types';
+import type { AgentPrefs, AttachmentsInfo, Availability, BellEvent, Me, Meta } from '@/lib/types';
 import MyPreferences from './MyPreferences';
 import { useScreenHistory } from '@/lib/useScreenHistory';
 import { Avatar, Button, Notice, cx } from './ui';
@@ -54,7 +54,7 @@ type State =
   | { kind: 'expired'; message: string }
   | { kind: 'denied'; message: string }
   | { kind: 'error'; message: string }
-  | { kind: 'ready'; me: Me; meta: Meta; mailEnabled: boolean; whatsappEnabled: boolean; bellEvents: BellEvent[]; prefs: AgentPrefs; permissions?: string[]; scope: Scope };
+  | { kind: 'ready'; me: Me; meta: Meta; mailEnabled: boolean; whatsappEnabled: boolean; bellEvents: BellEvent[]; prefs: AgentPrefs; permissions?: string[]; scope: Scope; attachments: AttachmentsInfo | null };
 
 const SCREENS = Object.keys(SCREEN_KEY) as Screen[];
 /** ?screen=<id> deep link (e.g. the hub inbox points Admins at ?screen=admin). The screen guard still applies. */
@@ -117,7 +117,7 @@ export default function App() {
       setState({
         kind: 'ready', me: me.me, meta, mailEnabled: me.mailEnabled, whatsappEnabled: me.whatsappEnabled,
         bellEvents: me.bellEvents ?? ['requester_reply'], prefs: me.prefs ?? {},
-        permissions: me.permissions, scope: me.scope ?? { visibility: 'all' },
+        permissions: me.permissions, scope: me.scope ?? { visibility: 'all' }, attachments: me.attachments ?? null,
       });
       const deep = ticketFromUrl();
       const wanted = screenFromUrl();
@@ -167,6 +167,7 @@ export default function App() {
       isAdmin: state.me.role === 'Admin',
       can,
       scope: state.scope,
+      attachments: state.attachments,
       prefs: state.prefs,
     };
   }, [state, reloadMeta, listIds]);

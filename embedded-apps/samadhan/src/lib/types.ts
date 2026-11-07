@@ -132,6 +132,8 @@ export interface TicketRow {
   lastActivityKind: ActivityKind | null;
   lastActivityBy: string | null;
   lastActivityDetail: string | null;
+  /** v7: number of files on the ticket (absent on an older backend). */
+  attachmentCount?: number;
   requesterName: string;
   requesterEmail: string | null;
   agentName: string | null;
@@ -205,8 +207,33 @@ export interface CallLog {
 
 export interface RelatedTicket { id: number; subject: string; statusName: string; isResolved: boolean; createdAt: string }
 
+/** v7: a file on a ticket (backend lib/attachments.js). */
+export interface Attachment {
+  id: number;
+  ticketId: number;
+  conversationId: number | null;
+  fileName: string;
+  contentType: string;
+  size: number;
+  channel: 'agent' | 'portal' | 'email';
+  uploadedByAgentId: number | null;
+  uploadedByName?: string | null;
+  scanStatus?: string;
+  preview: boolean;
+  createdAt: string;
+}
+export interface AttachmentLimits {
+  agent: { perFileMb: number; filesPerAction: number; perTicketMb: number };
+  portal: { perFileMb: number; filesPerAction: number; perTicketMb: number };
+  email: { perFileMb: number; perTicketMb: number };
+  outboundMb: number;
+}
+export interface AttachmentsInfo { enabled: boolean; adapter: string | null; reason: string | null; limits: AttachmentLimits }
+
 export interface TicketDetail {
   ticket: Ticket;
+  /** v7: files on the ticket (empty when attachments are off). */
+  attachments?: Attachment[];
   conversations: Conversation[];
   activities: ActivityItem[];
   timeLogs: TimeLog[];
