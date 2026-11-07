@@ -38,10 +38,22 @@ export const setUnauthorizedHandler = (fn: (message: string) => void) => { onUna
 
 type Json = Record<string, unknown>;
 
-// Route prefix on the backend. A backend from before the rename has no /samadhan routes and answers 404 with a plain
-// (non-JSON) page; the app then uses the old /setu prefix for the rest of the visit, so the frontend and the backend can
-// be deployed in either order.
-let prefix: 'samadhan' | 'setu' = 'samadhan';
+// Route prefix on the server. Until the web server forwards /api/samadhan (dev: one nginx block, server admin), a request
+// there is answered by another service (a 404 that is not a Samadhan answer - every Samadhan answer has `success`). The
+// app then uses the transport route that is forwarded today, for the rest of the visit (remembered for the tab).
+const ROUTE_KEY = 'samadhan.route';
+const FALLBACK_ROUTE = 'setu';
+let prefix: string = (() => { try { return sessionStorage.getItem(ROUTE_KEY) || 'samadhan'; } catch { return 'samadhan'; } })();
+/** True when a 404 did not come from Samadhan (so the route itself is missing on the web server). */
+async function notSamadhan(res: Response): Promise<boolean> {
+  if (res.status !== 404 || prefix !== 'samadhan') return false;
+  const body = await res.clone().json().catch(() => null);
+  return !body || typeof body.success !== 'boolean';
+}
+function useFallbackRoute() {
+  prefix = FALLBACK_ROUTE;
+  try { sessionStorage.setItem(ROUTE_KEY, FALLBACK_ROUTE); } catch { /* private mode: this page only */ }
+}
 
 async function request<T = Json>(method: string, path: string, body?: unknown): Promise<T> {
   let res: Response;
@@ -53,8 +65,8 @@ async function request<T = Json>(method: string, path: string, body?: unknown): 
   });
   try {
     res = await send();
-    if (res.status === 404 && prefix === 'samadhan' && !(res.headers.get('content-type') || '').includes('json')) {
-      prefix = 'setu';
+    if (await notSamadhan(res)) {
+      useFallbackRoute();
       res = await send();
     }
   } catch {
@@ -272,7 +284,7 @@ async function sendFile<T>(path: string, file: Blob, name: string, signedIn = tr
   });
   try {
     res = await send();
-    if (res.status === 404 && prefix === 'samadhan' && !(res.headers.get('content-type') || '').includes('json')) { prefix = 'setu'; res = await send(); }
+    if (await notSamadhan(res)) { useFallbackRoute(); res = await send(); }
   } catch {
     throw new ApiError('Could not reach the Emami Apps server. Check the network and try again.', 0);
   }
