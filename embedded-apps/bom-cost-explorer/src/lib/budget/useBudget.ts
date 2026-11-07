@@ -24,6 +24,7 @@ export const startRun = (q: BudgetQuery, ctx: string, appUser: string, force = f
   ensure<BudgetSummaryRow>(runKey(q, appUser) as string, ctx, 'BudgetSumSet', (signal) => fetchBudgetSummary(q, { signal, appUser, onPlant }), force);
 export const startSplit = (q: BudgetQuery, matnr: string, werks: string, ctx: string, appUser: string, force = false) =>
   ensure<BudgetSplitRow>(splitKey(q, matnr, werks, appUser), ctx, 'BudgetSplitSet', (signal) => fetchBudgetSplit(q, matnr, werks, { signal, appUser }), force);
+export const peekSplit = (q: BudgetQuery, matnr: string, werks: string, appUser = '') => peek<BudgetSplitRow>(splitKey(q, matnr, werks, appUser));
 export const startCheck = (q: BudgetQuery, ctx: string, appUser: string, force = false) =>
   ensure<BudgetCheckRow>(checkKey(q, appUser), ctx, 'BudgetChkSet', (signal) => fetchBudgetCheck(q, { signal, appUser }), force);
 export const startPending = (appUser: string, ctx: string, force = false) =>

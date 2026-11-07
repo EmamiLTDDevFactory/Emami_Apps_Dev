@@ -16,6 +16,30 @@ function Block({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
+/** Common finished / semi-finished types as one-click chips; any other SAP type (up to 4 characters) can be typed and added. */
+const MTART_SUGGEST = ['FERT', 'HALB', 'HAWA'];
+function MtartPicker({ id, values, onChange, invalid }: { id: string; values: string[]; onChange: (v: string[]) => void; invalid: boolean }) {
+  const [text, setText] = useState('');
+  const has = (t: string) => values.some((v) => v.toUpperCase() === t);
+  const toggle = (t: string) => onChange(has(t) ? values.filter((v) => v.toUpperCase() !== t) : [...values, t]);
+  const add = () => {
+    const extra = text.split(/[,;\s]+/).map((x) => x.trim().toUpperCase()).filter((x) => /^[A-Z0-9]{1,4}$/.test(x) && !has(x));
+    if (extra.length) onChange([...values, ...extra]);
+    setText('');
+  };
+  const chip = (t: string, on: boolean) => (
+    <button key={t} type="button" aria-pressed={on} onClick={() => toggle(t)} className={cx('rounded-full border px-3 py-1 text-xs font-bold transition', on ? 'border-accent bg-accent text-white' : 'border-line bg-panel text-muted hover:border-accent/50 hover:text-ink')}>{t}{on && ' ×'}</button>
+  );
+  const others = values.map((v) => v.toUpperCase()).filter((v) => !MTART_SUGGEST.includes(v));
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {MTART_SUGGEST.map((t) => chip(t, has(t)))}
+      {others.map((t) => chip(t, true))}
+      <input id={id} aria-label="Add another material type" aria-invalid={invalid || undefined} placeholder="Other type, Enter" maxLength={20} className={cx(inputCls, 'w-36 !py-1')} value={text} onChange={(e) => setText(e.target.value.toUpperCase())} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); add(); } }} onBlur={add} />
+    </div>
+  );
+}
+
 export default function BudgetForm({ q, onChange, errors, plants, canInitiate }: { q: BudgetQuery; onChange: (p: Partial<BudgetQuery>) => void; errors: Record<string, string>; plants: PlantsState; canInitiate: boolean }) {
   const [ovOpen, setOvOpen] = useState(q.overrides.length > 0);
   const setOv = (i: number, p: Partial<BudgetQuery['overrides'][number]>) => onChange({ overrides: q.overrides.map((o, j) => (j === i ? { ...o, ...p } : o)) });
@@ -27,7 +51,7 @@ export default function BudgetForm({ q, onChange, errors, plants, canInitiate }:
           <Field label="to" error={errors.budatTo}>{(id) => <input id={id} type="date" className={inputCls} value={q.budatTo} onChange={(e) => onChange({ budatTo: e.target.value })} />}</Field>
           <Field label="Budgeted year *" error={errors.budgetYr}>{(id) => <input id={id} inputMode="numeric" maxLength={4} className={inputCls} value={q.budgetYr} onChange={(e) => onChange({ budgetYr: e.target.value.replace(/\D/g, '') })} />}</Field>
           <Field label="Activity rate year *" error={errors.rateYr}>{(id) => <input id={id} inputMode="numeric" maxLength={4} className={inputCls} value={q.rateYr} onChange={(e) => onChange({ rateYr: e.target.value.replace(/\D/g, '') })} />}</Field>
-          <Field label="Material type *" error={errors.mtart} hint="e.g. FERT">{(id) => <input id={id} className={inputCls} value={q.mtart.join(', ')} onChange={(e) => onChange({ mtart: splitList(e.target.value) })} />}</Field>
+          <div className="col-span-2"><Field label="Material types *" error={errors.mtart} hint="Pick one or more; the run covers all of them">{(id) => <MtartPicker id={id} values={q.mtart} onChange={(v) => onChange({ mtart: v })} invalid={!!errors.mtart} />}</Field></div>
           <Field label="Plan UoM" hint="Unit of the production plan">{(id) => <input id={id} className={inputCls} value={q.uom} onChange={(e) => onChange({ uom: e.target.value.toUpperCase() })} />}</Field>
           <Field label="Plan name(s)" hint="Production plans to read quantities from">{(id) => <input id={id} className={inputCls} value={q.plans.join(', ')} onChange={(e) => onChange({ plans: e.target.value.split(/[,;]+/).map((x) => x.trim()).filter(Boolean) })} />}</Field>
           <Field label="Scheme(s)" hint="Component scheme filter">{(id) => <input id={id} className={inputCls} value={q.schemes.join(', ')} onChange={(e) => onChange({ schemes: splitList(e.target.value) })} />}</Field>

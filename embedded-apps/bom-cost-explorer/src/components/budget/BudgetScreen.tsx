@@ -5,14 +5,16 @@
  * version for approval. Nothing loads before Run (never from the URL), a request has no client time limit (Stop ends it), results stay for the same
  * selection until Refresh, and leaving the page aborts what is running.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { CheckCircle2, FileSpreadsheet, Pencil, Play, RefreshCw, Send, Square } from 'lucide-react';
 import type { PlantsState } from '../FilterPanel';
-import { Button, Card, Empty, Modal, Pill, Skeleton, Spinner, Stat, cx, inputCls } from '../ui';
+import { Button, Card, Empty, Modal, Pill, Skeleton, Spinner, Stat, Tabs, cx, inputCls } from '../ui';
 import WacMessages from '../wac/WacMessages';
 import BudgetForm from './BudgetForm';
 import BudgetTable from './BudgetTable';
 import SplitDrawer from './SplitDrawer';
+import BudgetAllSplits from './BudgetAllSplits';
+import ColumnMenu, { loadChoice } from './ColumnMenu';
 import { api } from '@/lib/client/api';
 import type { PlantRow } from '@/lib/sap/fields';
 import { fmtMs, fmtNum } from '@/lib/format';
@@ -20,13 +22,16 @@ import { invalidate, stop } from '@/lib/wac/cache';
 import { FilterError } from '@/lib/sap/filter';
 import { buildBudgetFilter, defaultBudgetQuery, INITIATE_BLOCKED, selectionSummary, validateBudget, type BudgetQuery } from '@/lib/budget/filter';
 import { runKey, startRun, useEntry } from '@/lib/budget/useBudget';
+import { loadAllBasis, loadAllSplits, type Progress } from '@/lib/budget/loadAll';
+import { peekRateBasis, rateBasisVersion, subscribeRateBasis } from '@/lib/budget/rateBasis';
 import { initiateBudget } from '@/lib/budget/write';
 import { canDisplayBudget, canInitiateBudget } from '@/lib/budget/roles';
-import { DEFAULT_GROUPS, GROUP_LABEL, SUMMARY_COLS, colsOf, distinctRunIds, filterIssues, issuesOf, kpis, rowKey, searchRows, type ColGroup } from '@/lib/budget/view';
-import { downloadBudget, paramsOf, summarySheet } from '@/lib/budget/export';
+import { ALL_COLS, DEFAULT_VISIBLE, GROUP_LABEL, colsByKeys, distinctRunIds, filterIssues, issuesOf, kpis, rowKey, searchRows, type FgRates } from '@/lib/budget/view';
+import { downloadBudget, paramsOf, splitAllSheet, summarySheet, tieOutSheet } from '@/lib/budget/export';
 import type { BudgetInitResult, BudgetSummaryRow } from '@/lib/budget/types';
 
 const CTX = 'budget-run';
+const COLS_STORE = 'bce:budget-cols';
 const SEARCH_KEYS = ['Matnr', 'Maktx', 'Zskugrcodecrs', 'Zskugroupcrs', 'Zscheme', 'WipCode', 'WipDesc', 'Werks'];
 
 /** The "Run and summary" tab of the Budget page (BudgetHub). It lives as long as the page, so a run survives tab switches. */
@@ -38,7 +43,15 @@ export default function BudgetScreen({ email, role, onRun, onOpenApprovals }: { 
   const [editing, setEditing] = useState(true);
   const [runQ, setRunQ] = useState<BudgetQuery | null>(null);
   const [progress, setProgress] = useState('');
-  const [groups, setGroups] = useState<Set<ColGroup>>(new Set(DEFAULT_GROUPS));
+  // Every column of the summary can be shown or hidden; the choice is remembered in this browser.
+  const [visible, setVisible] = useState<Set<string>>(() => new Set(DEFAULT_VISIBLE));
+  useEffect(() => { const s = loadChoice(COLS_STORE, ALL_COLS.map((c) => c.key)); if (s) setVisible(s); }, []);
+  const [view, setView] = useState<'summary' | 'splits'>('summary');
+  const [rateProg, setRateProg] = useState<Progress | null>(null);
+  const [rateNote, setRateNote] = useState('');
+  const rateCtl = useRef<AbortController | null>(null);
+  useEffect(() => () => rateCtl.current?.abort(), []);
+  const rbVer = useSyncExternalStore(subscribeRateBasis, rateBasisVersion, () => 0);
   const [search, setSearch] = useState('');
   const [onlyIssues, setOnlyIssues] = useState(false);
   const [open, setOpen] = useState<BudgetSummaryRow | null>(null);
@@ -62,7 +75,19 @@ export default function BudgetScreen({ email, role, onRun, onOpenApprovals }: { 
   const rows = useMemo(() => (entry?.status === 'done' ? entry.data ?? [] : []), [entry]);
   const k = useMemo(() => kpis(rows), [rows]);
   const shown = useMemo(() => searchRows(onlyIssues ? filterIssues(rows) : rows, search, SEARCH_KEYS), [rows, onlyIssues, search]);
-  const cols = useMemo(() => colsOf(groups), [groups]);
+  const cols = useMemo(() => colsByKeys(visible), [visible]);
+  const colChoices = useMemo(() => ALL_COLS.map((c) => ({ key: c.key, label: c.label, group: c.group })), []);
+  // Selected / C-Map per piece of an FG, once its rates are loaded (rbVer re-creates this when more arrive).
+  const ratesOf = useCallback((r: BudgetSummaryRow): FgRates | undefined => { const b = peekRateBasis(r.Matnr, r.Werks); return b ? { selected: b.selected, cmap: b.cmap } : undefined; }, [rbVer]); // eslint-disable-line react-hooks/exhaustive-deps
+  const loadRates = async () => {
+    rateCtl.current?.abort();
+    const c = new AbortController(); rateCtl.current = c;
+    setRateNote(''); setRateProg({ done: 0, total: shown.length });
+    setVisible((v) => { const n = new Set(v); n.add('_sel'); n.add('_cmap'); return n; });
+    const failed = await loadAllBasis(shown, c.signal, setRateProg);
+    setRateProg(null);
+    if (!c.signal.aborted && failed) setRateNote(`${failed} FG${failed === 1 ? '' : 's'} could not be priced (shown as a dash).`);
+  };
   const running = entry?.status === 'loading';
   const canInit = canInitiateBudget(role);
 
@@ -78,11 +103,21 @@ export default function BudgetScreen({ email, role, onRun, onOpenApprovals }: { 
     void startRun(snap, CTX, email, force, (w, i, n) => setProgress(`Plant ${w} (${i + 1} of ${n})`));
   };
 
-  const toggleGroup = (g: ColGroup) => setGroups((s) => { const n = new Set(s); if (n.has(g)) n.delete(g); else n.add(g); n.add('core'); return n; });
-  const exportXlsx = () => {
-    if (!runQ) return;
-    const sheets = [summarySheet(shown, cols)];
-    void downloadBudget(sheets, paramsOf(runQ, [['Rows', String(shown.length)], ['SAP time', fmtMs(entry?.ms ?? 0)]]));
+  // Excel: the summary plus the split of every FG shown (one SAP split call per FG, those already loaded come from memory), a header vs split sheet and,
+  // where they were loaded, the Selected / C-Map rates.
+  const [xl, setXl] = useState<Progress | null>(null);
+  const xlStop = useRef(false);
+  const exportXlsx = async () => {
+    if (!runQ || xl) return;
+    const q = runQ, list = shown.slice();
+    xlStop.current = false;
+    const items = await loadAllSplits(q, list, CTX, email, () => xlStop.current, setXl);
+    setXl(null);
+    if (xlStop.current) return;
+    const missing = items.filter((x) => !x.split).length;
+    const priced = list.filter((r) => peekRateBasis(r.Matnr, r.Werks)).length;
+    const sheets = [summarySheet(shown, cols, ratesOf), splitAllSheet(items), tieOutSheet(items)];
+    await downloadBudget(sheets, paramsOf(q, [['Rows', String(list.length)], ['SAP time (summary)', fmtMs(entry?.ms ?? 0)], ['Sheets', 'Summary = one line per FG (the columns on screen); Split = every component of every FG; Header vs split = group totals against the header'], ['FGs without a split', missing ? `${missing} (the split call failed; open the FG and Refresh)` : 'none'], ['Selected / C-Map rates', priced ? `${priced} of ${list.length} FGs (BOM costing of the FG and plant)` : 'not loaded']]));
   };
 
   if (!allowed) return null; // the hub only shows this tab to people who may see it; fail closed anyway
@@ -127,25 +162,22 @@ export default function BudgetScreen({ email, role, onRun, onOpenApprovals }: { 
                 <span className="flex-1" />
                 {stale && <Pill tone="warn" title="The selection above is not the one that produced these rows">Selection changed: run again</Pill>}
                 <Button size="sm" onClick={() => run(true)}><RefreshCw size={13} /> Refresh</Button>
-                <Button size="sm" onClick={exportXlsx}><FileSpreadsheet size={13} /> Excel</Button>
+                {rateProg ? <Button size="sm" variant="danger" onClick={() => rateCtl.current?.abort()}><Square size={13} /> Stop rates {rateProg.done} of {rateProg.total}</Button> : <Button size="sm" onClick={() => void loadRates()} disabled={!shown.length} title="Cost per piece at the Selected rate and at the C-Map (MBEW) rate for every FG shown, from the current BOM costing of the FG and plant: one costing and one rate call each."><RefreshCw size={13} /> Load Selected / C-Map</Button>}
+                {xl ? <Button size="sm" variant="danger" onClick={() => { xlStop.current = true; }}><Square size={13} /> Stop export {xl.done} of {xl.total}</Button> : <Button size="sm" onClick={() => void exportXlsx()} title="Summary, the split of every FG shown and a header vs split check. Loads one split per FG from SAP."><FileSpreadsheet size={13} /> Excel with splits</Button>}
                 <Button size="sm" variant="primary" disabled={!canInit || stale || !rows.length} title={!canInit ? 'You need the budget-init role' : stale ? 'Run again with the current selection first' : !runQ.exclDiv ? INITIATE_BLOCKED : 'Save this run as a new version for approval'} onClick={() => setInitOpen(true)}><Send size={13} /> Initiate</Button>
               </div>
 
               {(
                 <>
+                  <Tabs<'summary' | 'splits'> label="Summary view" value={view} onChange={setView} tabs={[{ id: 'summary', label: 'FG summary' }, { id: 'splits', label: 'All FG splits', badge: <Pill>{shown.length}</Pill> }]} />
                   <div className="flex flex-wrap items-center gap-2">
                     <input aria-label="Search the rows" placeholder="Search material, description, CRS, scheme, WIP…" className={cx(inputCls, 'max-w-sm')} value={search} onChange={(e) => setSearch(e.target.value)} />
                     <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={onlyIssues} onChange={(e) => setOnlyIssues(e.target.checked)} /> Only lines with checklist issues</label>
-                    <details className="relative ml-auto">
-                      <summary className="cursor-pointer list-none rounded-xl border border-line bg-panel px-3 py-1.5 text-sm font-semibold hover:bg-sunken">Columns ({cols.length})</summary>
-                      <div className="absolute right-0 z-30 mt-1 w-64 rounded-xl border border-line bg-panel p-2 shadow-pop">
-                        {(Object.keys(GROUP_LABEL) as ColGroup[]).filter((g) => SUMMARY_COLS.some((c) => c.group === g)).map((g) => (
-                          <label key={g} className="flex items-center gap-2 px-2 py-1 text-sm"><input type="checkbox" checked={groups.has(g)} disabled={g === 'core'} onChange={() => toggleGroup(g)} /> {GROUP_LABEL[g]}</label>
-                        ))}
-                      </div>
-                    </details>
+                    <span className="ml-auto" />
+                    {view === 'summary' && <ColumnMenu cols={colChoices} groups={GROUP_LABEL} visible={visible} onChange={setVisible} defaults={DEFAULT_VISIBLE} store={COLS_STORE} />}
                   </div>
-                  {shown.length ? <BudgetTable rows={shown} cols={cols} onOpen={setOpen} selected={open ? rowKey(open) : null} /> : <Card><Empty title={rows.length ? 'No row matches' : 'SAP returned no finished goods'}>{rows.length ? 'Clear the search or the issues filter.' : 'Check the posting date, plant, material type and business line.'}</Empty></Card>}
+                  {rateNote && <p className="text-xs text-warn">{rateNote}</p>}
+                  {view === 'splits' ? <BudgetAllSplits q={runQ} fgs={shown} email={email} ctx={CTX} onOpen={setOpen} /> : shown.length ? <BudgetTable rows={shown} cols={cols} onOpen={setOpen} selected={open ? rowKey(open) : null} ratesOf={ratesOf} /> : <Card><Empty title={rows.length ? 'No row matches' : 'SAP returned no finished goods'}>{rows.length ? 'Clear the search or the issues filter.' : 'Check the posting date, plant, material type and business line.'}</Empty></Card>}
                 </>
               )}
 

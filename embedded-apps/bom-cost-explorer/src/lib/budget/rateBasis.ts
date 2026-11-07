@@ -65,3 +65,21 @@ export async function fetchRateBasis(matnr: string, werks: string, opts: SapGetO
   if ('unavailable' in rates) return { error: rates.reason };
   return { basis: rateBasisOf(cost.rows, rates.rows) };
 }
+
+// ---- cache shared by the summary table, the all-splits view, the split drawer and the Excel export ------------------------------
+const cache = new Map<string, RateBasis>();
+const listeners = new Set<() => void>();
+let version = 0;
+const bk = (matnr: string, werks: string) => `${matnr}|${werks}`;
+export const peekRateBasis = (matnr: string, werks: string): RateBasis | undefined => cache.get(bk(matnr, werks));
+export const subscribeRateBasis = (l: () => void): (() => void) => { listeners.add(l); return () => { listeners.delete(l); }; };
+export const rateBasisVersion = (): number => version;
+/** Loaded once per FG and plant until `force`; a failure is returned, never cached. */
+export async function loadRateBasis(matnr: string, werks: string, opts: SapGetOptions = {}, force = false): Promise<RateBasisResult> {
+  const hit = cache.get(bk(matnr, werks));
+  if (hit && !force) return { basis: hit };
+  const r = await fetchRateBasis(matnr, werks, opts);
+  if ('basis' in r) { cache.set(bk(matnr, werks), r.basis); version++; listeners.forEach((l) => l()); }
+  return r;
+}
+export function resetRateBasis(): void { cache.clear(); version++; listeners.forEach((l) => l()); }

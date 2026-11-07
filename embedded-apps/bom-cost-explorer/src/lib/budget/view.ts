@@ -4,10 +4,11 @@ import { ORIGINS } from './fields';
 import type { BudgetCheckRow, BudgetPendingRow, BudgetSplitRow, BudgetSummaryRow } from './types';
 
 export interface Col<_R = unknown> { key: string; label: string; kind: 's' | 'd' | 'f' | 't'; dp?: number; group: ColGroup; width?: number; sticky?: boolean }
-export type ColGroup = 'core' | 'wip' | 'budget' | 'origin' | 'originAct' | 'originLast' | 'conversion' | 'plan' | 'consumer' | 'activity' | 'check';
+export type ColGroup = 'core' | 'wip' | 'budget' | 'origin' | 'originAct' | 'originLast' | 'conversion' | 'plan' | 'consumer' | 'activity' | 'check' | 'calc' | 'rate';
 export const GROUP_LABEL: Record<ColGroup, string> = {
   core: 'Material', wip: 'WIP', budget: 'Budget / actual / info-record rate', origin: 'Budget by origin', originAct: 'Actual by origin', originLast: 'Info-record rate by origin (info only)',
-  conversion: 'Conversion', plan: 'Plan', consumer: 'Consumer / trade', activity: 'Activity', check: 'Checklist',
+  conversion: 'Conversion', plan: 'Plan', consumer: 'Consumer / trade', activity: 'Activity', check: 'Checklist flags',
+  calc: 'Variance and checklist (calculated here)', rate: 'Selected / C-Map rate (load on demand)',
 };
 /** columns shown at first; the others are one click away in the column menu */
 export const DEFAULT_GROUPS: ColGroup[] = ['core', 'wip', 'budget', 'conversion', 'plan'];
@@ -37,6 +38,32 @@ export const SUMMARY_COLS: Col<BudgetSummaryRow>[] = [
   c('MulBom', 'Multiple BoM active', 'f', 'check', 0), c('MulUnlock', 'Multiple PVer unlocked', 'f', 'check', 0), c('MulProd', 'Alt. BoM issue', 'f', 'check', 0), c('AllBomIn', 'All BoM inactive', 'f', 'check', 0), c('AllPverIn', 'All PVer inactive', 'f', 'check', 0),
 ];
 export const colsOf = (groups: ReadonlySet<ColGroup>): Col<BudgetSummaryRow>[] => SUMMARY_COLS.filter((x) => groups.has(x.group));
+
+/** Columns the table calculates or loads itself (not SAP summary fields): variance, checklist, and cost per piece at the Selected and C-Map rate. Keys start with "_". */
+export const CALC_COLS: Col<BudgetSummaryRow>[] = [
+  c('_var', 'Act vs budget %', 'd', 'calc', 1), c('_lastvar', 'Info rate vs budget % (info only)', 'd', 'calc', 1), c('_issues', 'Checklist', 's', 'calc', 0),
+  c('_sel', 'Selected rate / pc', 'd', 'rate'), c('_cmap', 'C-Map / pc', 'd', 'rate'),
+];
+/** Every column of the summary table, in menu order. */
+export const ALL_COLS: Col<BudgetSummaryRow>[] = [...SUMMARY_COLS, ...CALC_COLS];
+export const isCalcKey = (k: string): boolean => k.startsWith('_');
+/** The columns on screen at first: the default groups, the two variances and the checklist. */
+export const DEFAULT_VISIBLE: string[] = [...SUMMARY_COLS.filter((x) => DEFAULT_GROUPS.includes(x.group)).map((x) => x.key), '_var', '_lastvar', '_issues'];
+export const colsByKeys = (keys: ReadonlySet<string>): Col<BudgetSummaryRow>[] => ALL_COLS.filter((x) => keys.has(x.key));
+
+/** Per-FG Selected / C-Map totals as the table needs them. */
+export interface FgRates { selected: Decimal; cmap: Decimal }
+/** Value of a calculated column; null when it has none (no actual / info rate / rates not loaded). */
+export function calcValue(key: string, r: BudgetSummaryRow, rates?: FgRates): Decimal | null {
+  switch (key) {
+    case '_var': return variancePct(r);
+    case '_lastvar': return lastVariancePct(r);
+    case '_sel': return rates ? rates.selected : null;
+    case '_cmap': return rates ? rates.cmap : null;
+    case '_issues': return D(issuesOf(r).length);
+    default: return null;
+  }
+}
 
 export const dec = (v: string | undefined | null): Decimal | null => { if (v === undefined || v === null || v === '') return null; const d = D(v); return d.isFinite() ? d : null; };
 

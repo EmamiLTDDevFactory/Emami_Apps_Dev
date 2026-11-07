@@ -11,7 +11,7 @@ import type { BudgetQuery } from '@/lib/budget/filter';
 import { splitKey, startSplit, useEntry } from '@/lib/budget/useBudget';
 import { BUCKET_COLOR, BUCKET_HINT, BUCKET_LABEL, SPLIT_BUCKETS, bucketOf, groupedSplitRows, issuesOf, splitTotals } from '@/lib/budget/view';
 import type { BudgetSplitRow, BudgetSummaryRow } from '@/lib/budget/types';
-import { fetchRateBasis, type RateBasis } from '@/lib/budget/rateBasis';
+import { loadRateBasis, peekRateBasis, type RateBasis } from '@/lib/budget/rateBasis';
 
 type Tab = 'components' | 'conversion';
 const n = (v: string, dp = 4) => (D(v).isZero() ? <span className="text-faint">0</span> : fmtNum(v, dp, 'X'));
@@ -26,13 +26,14 @@ export default function SplitDrawer({ q, row, appUser, ctx, onClose }: { q: Budg
   // Selected and C-Map (MBEW) cost per piece: the normal BOM costing of this FG and plant, loaded on demand (one costing + one rate-options call).
   const [basis, setBasis] = useState<{ status: 'idle' | 'loading' | 'ready' | 'error'; data?: RateBasis; error?: string }>({ status: 'idle' });
   const ctl = useRef<AbortController | null>(null);
-  useEffect(() => { ctl.current?.abort(); setBasis({ status: 'idle' }); }, [row?.Matnr, row?.Werks]);
-  const loadBasis = () => {
+  // Rates already loaded for this FG (from the summary table or an earlier open) are shown without a request.
+  useEffect(() => { ctl.current?.abort(); const hit = row ? peekRateBasis(row.Matnr, row.Werks) : undefined; setBasis(hit ? { status: 'ready', data: hit } : { status: 'idle' }); }, [row?.Matnr, row?.Werks]);
+  const loadBasis = (force = false) => {
     if (!row) return;
     ctl.current?.abort();
     const c = new AbortController(); ctl.current = c;
     setBasis({ status: 'loading' });
-    fetchRateBasis(row.Matnr, row.Werks, { signal: c.signal })
+    loadRateBasis(row.Matnr, row.Werks, { signal: c.signal }, force)
       .then((r) => { if (!c.signal.aborted) setBasis('error' in r ? { status: 'error', error: r.error } : { status: 'ready', data: r.basis }); })
       .catch((e) => { if (!c.signal.aborted) setBasis({ status: 'error', error: e instanceof Error ? e.message : 'Could not load the rates.' }); });
   };
@@ -64,9 +65,9 @@ export default function SplitDrawer({ q, row, appUser, ctx, onClose }: { q: Budg
                 {diff && diff.gt('0.001') && <Pill tone="warn" title="The sum of the split rows differs from the summary line SAP sent">Split total differs by {fmtNum(diff, 4, 'X')}</Pill>}
                 {issues.map((i) => <Pill key={i} tone="warn">{i}</Pill>)}
                 <span className="flex-1" />
-                <Button size="sm" disabled={basis.status === 'loading'} onClick={loadBasis} title="Cost per piece at the Selected rate and at the C-Map (MBEW) rate, from the BOM costing of this FG and plant"><RefreshCw size={13} className={basis.status === 'loading' ? 'animate-spin' : undefined} /> {rb ? 'Reload' : 'Load'} Selected / C-Map</Button>
+                <Button size="sm" disabled={basis.status === 'loading'} onClick={() => loadBasis(!!rb)} title="Cost per piece at the Selected rate and at the C-Map (MBEW) rate, from the BOM costing of this FG and plant"><RefreshCw size={13} className={basis.status === 'loading' ? 'animate-spin' : undefined} /> {rb ? 'Reload' : 'Load'} Selected / C-Map</Button>
                 <Button size="sm" onClick={() => void startSplit(q, row.Matnr, row.Werks, ctx, appUser, true)}><RefreshCw size={13} /> Refresh</Button>
-                <Button size="sm" onClick={() => void downloadBudget([splitSheet(rows)], paramsOf(q, [['Finished good', `${row.Matnr} (${row.Werks})`]]), `budget-split-${row.Matnr}`)}><FileSpreadsheet size={13} /> Excel</Button>
+                <Button size="sm" onClick={() => void downloadBudget([splitSheet(rows, 'Split', undefined, rb ? (r) => rb.comps.get(r.ItemCode) : undefined)], paramsOf(q, [['Finished good', `${row.Matnr} (${row.Werks})`]]), `budget-split-${row.Matnr}`)}><FileSpreadsheet size={13} /> Excel</Button>
               </div>
               {rb && <p className="text-2xs text-muted">Selected / C-Map come from the current BOM costing of this FG and plant (not the budget BOM), in INR per piece; a component without that rate is left out of the total and shows a dash.</p>}
               {basis.status === 'error' && <p className="text-xs text-warn">Selected / C-Map not loaded: {basis.error}</p>}
