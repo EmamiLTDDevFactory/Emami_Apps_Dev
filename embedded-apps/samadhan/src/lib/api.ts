@@ -13,7 +13,7 @@ import type {
   ActivityItem, AdminAgent, AdminField, AdminGroup, AgentPrefs, Analytics, Article, ArticleRow, AuditEvent, AutomationRule, BellEvent, BellItem, Breakdown, Company,
   ContactDetail, ContactMatch, ContactRow, Counts, Dashboard, DashboardInsights, DayWindow, Distributor, EmailTemplate, Me, Meta, ParkedMail, PresenceAgent,
   Attachment, AttachmentLimits, AttachmentsInfo, SavedView, Scenario, ScenarioAction, SearchResults, SeverityRule, SlaPolicy, Ticket, TicketDetail, TicketInsights, TicketRow, Todo,
-  AccessUser, Overview, ReportVariantConfig, Role, Variant, Workspace, Application, MatrixCell, PriorityMode, SapDetails, ExternalRef, RefMaster,
+  AccessUser, Overview, ReportVariantConfig, Role, Variant, Workspace, Application, MatrixCell, PriorityMode, SapDetails, ExternalRef, RefMaster, ItDetails, PortalApplication,
 } from './types';
 
 const API_HOST = 'https://audit-capa-api.emamiapps.in';
@@ -96,8 +96,8 @@ const qs = (o: Record<string, string | number | undefined | null>) => {
 
 // ---------- Requester portal (no hub sign-in; the backend ignores the empty token on these routes) ----------
 export interface PortalTicketStatus { id: number; ref?: string; subject: string; status: string; isResolved: boolean; isClosed: boolean; createdAt: string; lastActivityAt: string | null; resolvedAt: string | null }
-export const portalConfig = () => get<{ enabled: boolean; categories?: string[]; helpdeskName?: string; intro?: string; supportEmail?: string; files?: { limits: AttachmentLimits['portal'] } | null }>('/portal/config');
-export const portalCreate = (body: { name: string; email: string; phone: string; distributorCode: string; category: string; subject: string; description: string; website: string }) =>
+export const portalConfig = () => get<{ enabled: boolean; categories?: string[]; applications?: PortalApplication[]; categoriesByWorkspace?: Record<string, string[]>; helpdeskName?: string; intro?: string; supportEmail?: string; files?: { limits: AttachmentLimits['portal'] } | null }>('/portal/config');
+export const portalCreate = (body: { name: string; email: string; phone: string; distributorCode: string; category: string; subject: string; description: string; website: string; applicationId?: number }) =>
   request<{ ticket: { id: number; ref?: string }; files?: { uploadToken: string; limits: AttachmentLimits['portal'] } }>('POST', '/portal/tickets', body).then((r) => ({ ...r.ticket, files: r.files ?? null }));
 export const portalStatus = (id: number | string, email: string) => request<{ ticket: PortalTicketStatus }>('POST', '/portal/status', { id, email }).then((r) => r.ticket);
 export interface PortalArticle { id: number; category: string; folder: string; title: string; body: string; tags: string[] }
@@ -153,6 +153,10 @@ export interface TicketQuery {
   environment?: string;
   externalSystem?: string;
   confidential?: string;
+  /** v7 Phase 5 */
+  layer?: string;
+  platform?: string;
+  hosting?: string;
   statusId?: string;
   priority?: string;
   severity?: string;
@@ -391,5 +395,8 @@ export const refMastersAdmin = {
   import: (kind: string, rows: RefMaster[]) => request<{ saved: number }>('POST', '/admin/ref-masters/import', { kind, rows }).then((r) => r.saved),
   remove: (id: number) => request('DELETE', `/admin/ref-masters/${id}`),
 };
+
+// ---------- v7 Phase 5: IT details ----------
+export const saveIt = (ticketId: number, b: Partial<ItDetails>) => request<{ it: ItDetails }>('PUT', `/tickets/${ticketId}/it`, b).then((r) => r.it);
 
 export type { ActivityItem };

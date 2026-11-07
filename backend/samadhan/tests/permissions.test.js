@@ -20,7 +20,7 @@ const { RULES, ruleFor } = require('../middleware/permission');
 const { SEED_PROFILES } = require('../lib/authSeed');
 
 // Routers mounted after requireAccess in index.js, with their mount prefix.
-const MOUNTS = [['', 'me'], ['', 'tickets'], ['', 'work'], ['', 'reports'], ['', 'insights'], ['', 'attachments'], ['/admin', 'admin'], ['/admin/authz', 'authz'], ['/admin', 'workspaces'], ['', 'sap']];
+const MOUNTS = [['', 'me'], ['', 'tickets'], ['', 'work'], ['', 'reports'], ['', 'insights'], ['', 'attachments'], ['/admin', 'admin'], ['/admin/authz', 'authz'], ['/admin', 'workspaces'], ['', 'sap'], ['', 'it']];
 function registered() {
     const out = [];
     for (const [prefix, file] of MOUNTS) {

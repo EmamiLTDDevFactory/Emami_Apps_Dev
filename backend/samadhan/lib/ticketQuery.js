@@ -172,6 +172,10 @@ function ticketFilter(qy, agentId, scope = null) {
     }
     if (qy.externalSystem) where.push(`EXISTS (SELECT 1 FROM samadhan.ticket_external_refs xr WHERE xr."ticketId" = t.id AND xr.system = ANY(${p(texts(qy.externalSystem))}::text[]))`);
     if (qy.confidential === '1') where.push('t.confidential');
+    // v7 Phase 5: IT details.
+    for (const k of ['layer', 'platform', 'hosting']) {
+        if (qy[k]) where.push(`EXISTS (SELECT 1 FROM samadhan.ticket_it_details itd WHERE itd."ticketId" = t.id AND itd.${k} = ANY(${p(texts(qy[k]))}::text[]))`);
+    }
 
     if (qy.q) {
         // "#100123", "100123" and the readable reference "MSFA-100123" all find the ticket.
@@ -187,7 +191,8 @@ function ticketFilter(qy, agentId, scope = null) {
             const like = p(`%${term}%`);
             where.push(`(t.subject ILIKE ${like} OR c.name ILIKE ${like} OR c.email ILIKE ${like} OR t."distributorName" ILIKE ${like} OR t."distributorCode" ILIKE ${like} OR t."mrUid" ILIKE ${like}`
                 + ` OR EXISTS (SELECT 1 FROM samadhan.ticket_sap_details qd WHERE qd."ticketId" = t.id AND (qd.tcode ILIKE ${like} OR qd."errorText" ILIKE ${like} OR qd."idocNumber" ILIKE ${like} OR qd."shortDumpId" ILIKE ${like}))`
-                + ` OR EXISTS (SELECT 1 FROM samadhan.ticket_external_refs qx WHERE qx."ticketId" = t.id AND qx.ref ILIKE ${like}))`);
+                + ` OR EXISTS (SELECT 1 FROM samadhan.ticket_external_refs qx WHERE qx."ticketId" = t.id AND qx.ref ILIKE ${like})`
+                + ` OR EXISTS (SELECT 1 FROM samadhan.ticket_it_details qi WHERE qi."ticketId" = t.id AND (qi."correlationId" ILIKE ${like} OR qi."serverName" ILIKE ${like} OR qi."assetTag" ILIKE ${like} OR qi."ipOrHost" ILIKE ${like} OR qi.url ILIKE ${like} OR qi."apiEndpoint" ILIKE ${like})))`);
         }
     }
     return { where: `WHERE ${where.join(' AND ')}`, params, order: SORTS[qy.sort] || SORTS.created };

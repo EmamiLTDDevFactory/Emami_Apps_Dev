@@ -243,6 +243,8 @@ async function workspaceMeta(c, byWorkspace) {
         // v7 Phase 4: lists for SAP details, external references and reference masters.
         sapLists: require('../lib/sapSeed').LISTS,
         refMasterKinds: require('../lib/sap').KINDS,
+        // v7 Phase 5: lists for IT details.
+        itLists: require('../lib/itSeed').IT_LISTS,
         impacts: IMPACTS,
         urgencies: URGENCIES,
         statusWorkspaces: statusWs.rows,

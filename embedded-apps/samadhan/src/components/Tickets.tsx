@@ -32,9 +32,9 @@ const VIEW_LABEL: Record<string, string> = Object.fromEntries([...QUICK, ...MORE
 
 const FILTER_KEYS: (keyof TicketQuery)[] = ['statusId', 'priority', 'severity', 'groupId', 'agentId', 'source', 'type', 'category', 'region', 'state', 'depot', 'salesOrg',
   'l2Agent', 'asmName', 'activity', 'due', 'resDue', 'frDue', 'tag', 'created', 'from', 'to', 'requesterId', 'companyId', 'hasAttachments', 'applicationId', 'recordClass',
-  'sapSystem', 'tcode', 'environment', 'externalSystem', 'confidential'];
+  'sapSystem', 'tcode', 'environment', 'externalSystem', 'confidential', 'layer', 'platform', 'hosting'];
 type ListKey = 'statusId' | 'priority' | 'severity' | 'groupId' | 'agentId' | 'source' | 'type' | 'category' | 'region' | 'state' | 'depot' | 'salesOrg' | 'l2Agent' | 'asmName' | 'activity' | 'resDue' | 'frDue'
-  | 'applicationId' | 'recordClass' | 'environment' | 'externalSystem';
+  | 'applicationId' | 'recordClass' | 'environment' | 'externalSystem' | 'layer' | 'platform' | 'hosting';
 const CREATED = [
   { value: '', label: 'Any time' }, { value: '30m', label: 'Last 30 minutes' }, { value: '1h', label: 'Last hour' }, { value: '4h', label: 'Last 4 hours' },
   { value: '12h', label: 'Last 12 hours' }, { value: '24h', label: 'Last 24 hours' }, { value: 'today', label: 'Today' }, { value: 'yesterday', label: 'Yesterday' },
@@ -56,6 +56,9 @@ export default function Tickets({ preset }: { preset: TicketQuery }) {
   // v7 Phase 4: SAP filters when the SAP / S/4 desks are on and the switcher shows them.
   const sapFilters = hasApps && !!meta.sapLists && (meta.workspaces ?? []).some((w) => (w.key === 'SAP' || w.key === 'S4_PROGRAM') && w.enabled !== false)
     && (!ws || ws.key === 'SAP' || ws.key === 'S4_PROGRAM');
+  // v7 Phase 5: IT filters when the Digital Apps / Infra & IT desks are on and the switcher shows them.
+  const itFilters = hasApps && !!meta.itLists && (meta.workspaces ?? []).some((w) => (w.key === 'DIGITAL_APPS' || w.key === 'INFRA_IT') && w.enabled !== false)
+    && (!ws || ws.key === 'DIGITAL_APPS' || ws.key === 'INFRA_IT');
   // v7 permission keys (same people as the old Supervisor / Admin checks by default).
   const isAdmin = can('admin.general');
   const canExport = can('ticket.export');
@@ -239,6 +242,13 @@ export default function Tickets({ preset }: { preset: TicketQuery }) {
                 <input aria-label="T-code" placeholder="T-code (e.g. VA01)" value={query.tcode ?? ''} onChange={(e) => set({ tcode: e.target.value.toUpperCase() || undefined })} className={inputCls} />
                 <MultiSelect label="Environment" values={many('environment')} onChange={setMany('environment')} options={opts(meta.sapLists?.environment ?? [])} />
                 <MultiSelect label="External case" values={many('externalSystem')} onChange={setMany('externalSystem')} options={opts(meta.sapLists?.externalSystem ?? [])} />
+              </>
+            )}
+            {itFilters && (
+              <>
+                <MultiSelect label="Layer" values={many('layer')} onChange={setMany('layer')} options={opts(meta.itLists?.layer ?? [])} />
+                <MultiSelect label="Platform" values={many('platform')} onChange={setMany('platform')} options={opts(meta.itLists?.platform ?? [])} />
+                <MultiSelect label="Hosting" values={many('hosting')} onChange={setMany('hosting')} options={opts(meta.itLists?.hosting ?? [])} />
               </>
             )}
             {can('ticket.viewConfidential') && <Select label="Confidential" value={query.confidential ?? ''} onChange={(v) => set({ confidential: v || undefined })} options={[{ value: '', label: 'All tickets' }, { value: '1', label: 'Confidential only' }]} />}

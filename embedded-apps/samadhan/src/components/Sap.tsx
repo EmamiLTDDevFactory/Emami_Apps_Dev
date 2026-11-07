@@ -17,7 +17,7 @@ const sel = cx('h-9 w-full', inputBase);
 export type SapForm = Partial<SapDetails> & { sapNotes?: string[] | string };
 
 /** Text box with suggestions from a reference master (Admin > SAP & Infra masters). */
-function MasterInput({ kind, value, onChange, parent, label, placeholder }: { kind: string; value: string; onChange: (v: string) => void; parent?: string; label: string; placeholder?: string }) {
+export function MasterInput({ kind, value, onChange, parent, label, placeholder }: { kind: string; value: string; onChange: (v: string) => void; parent?: string; label: string; placeholder?: string }) {
   const [items, setItems] = useState<{ code: string; description: string | null }[]>([]);
   const id = `ref-${kind}`;
   useEffect(() => {

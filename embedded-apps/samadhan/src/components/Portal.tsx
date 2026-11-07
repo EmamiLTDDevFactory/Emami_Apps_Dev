@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState, type ReactNode } from 'react';
 import { ArrowLeft, BookOpen, CheckCircle2, ChevronDown, ChevronRight, Frown, Headset, LifeBuoy, Meh, Search, Send, Smile, type LucideIcon } from 'lucide-react';
+import type { PortalApplication } from '@/lib/types';
 import { portalArticles, portalConfig, portalCreate, portalUpload, portalCsat, portalCsatAnswer, portalStatus, type CsatSurvey, type PortalArticle, type PortalTicketStatus } from '@/lib/api';
 import { BASE_PATH } from '@/lib/config';
 import { fmtDateTime } from '@/lib/format';
@@ -59,7 +60,7 @@ export default function Portal() {
           <>
             {intro && <p className="whitespace-pre-line text-sm text-muted">{intro}</p>}
             <Tabs label="Portal" value={tab} onChange={setTab} tabs={[{ id: 'new', label: 'Raise a ticket' }, { id: 'status', label: 'Check a ticket' }]} />
-            {tab === 'new' ? <><ArticleSearch /><NewRequest categories={config.categories ?? []} files={config.files ?? null} /></> : <StatusCheck />}
+            {tab === 'new' ? <><ArticleSearch /><NewRequest categories={config.categories ?? []} files={config.files ?? null} applications={config.applications ?? []} categoriesByWorkspace={config.categoriesByWorkspace ?? {}} /></> : <StatusCheck />}
           </>
         )}
         <p className="pt-2 text-center text-2xs text-faint">You can also email <a className="text-accent" href={`mailto:${supportEmail}`}>{supportEmail}</a>. Please do not share passwords or OTPs in a ticket.</p>
@@ -68,7 +69,41 @@ export default function Portal() {
   );
 }
 
-function NewRequest({ categories, files }: { categories: string[]; files: { limits: { perFileMb: number; filesPerAction: number } } | null }) {
+/** v7 Phase 5: "Which app or area?" - searchable, grouped by service desk. Shown only when the desks are open to the portal. */
+function AppPicker({ apps, value, onChange }: { apps: PortalApplication[]; value: number | null; onChange: (id: number | null) => void }) {
+  const [q, setQ] = useState('');
+  const term = q.trim().toLowerCase();
+  const shown = apps.filter((a) => !term || `${a.name} ${a.code} ${a.vendor ?? ''} ${a.workspaceName}`.toLowerCase().includes(term));
+  const desks = [...new Map(shown.map((a) => [a.workspaceId, a.workspaceName])).entries()];
+  return (
+    <div className="space-y-2" data-testid="portal-app-picker">
+      <input className={inputCls} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search an app or area (e.g. DMS, VPN, laptop)" aria-label="Search applications" />
+      <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+        {desks.map(([id, name]) => (
+          <div key={id}>
+            {desks.length > 1 && <div className="mb-1 text-2xs font-bold uppercase tracking-wide text-muted">{name}</div>}
+            <div className="flex flex-wrap gap-1.5">
+              {shown.filter((a) => a.workspaceId === id).map((a) => (
+                <button key={a.id} type="button" aria-pressed={value === a.id} onClick={() => onChange(value === a.id ? null : a.id)}
+                  className={cx('rounded-full border px-3 py-1 text-xs font-semibold transition', value === a.id ? 'border-accent bg-accent/10 text-accent ring-2 ring-accent/20' : 'border-line hover:border-accent/50')}>
+                  {a.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+        {!shown.length && <p className="text-2xs text-muted">Nothing matches - pick &quot;Not sure&quot; and describe the issue.</p>}
+      </div>
+      <button type="button" onClick={() => onChange(null)} aria-pressed={value === null} className={cx('text-2xs font-bold', value === null ? 'text-accent' : 'text-muted hover:text-ink')}>Not sure - let the helpdesk decide</button>
+    </div>
+  );
+}
+
+function NewRequest({ categories: salesCategories, files, applications, categoriesByWorkspace }: { categories: string[]; files: { limits: { perFileMb: number; filesPerAction: number } } | null; applications: PortalApplication[]; categoriesByWorkspace: Record<string, string[]> }) {
+  const [appId, setAppId] = useState<number | null>(null);
+  const picked = applications.find((a) => a.id === appId) ?? null;
+  const categories = picked ? (categoriesByWorkspace[String(picked.workspaceId)] ?? []) : salesCategories;
+  const salesish = !picked || picked.workspaceKey === 'SEC_SALES';
   const tray = usePendingFiles(files?.limits.perFileMb ?? 5, files?.limits.filesPerAction ?? 5);
   const [fileNote, setFileNote] = useState('');
   const [f, setF] = useState(EMPTY);
@@ -82,7 +117,7 @@ function NewRequest({ categories, files }: { categories: string[]; files: { limi
     setBusy(true);
     setError('');
     try {
-      const t = await portalCreate(f);
+      const t = await portalCreate({ ...f, ...(picked ? { applicationId: picked.id } : {}) });
       // v7: files go up right after the ticket exists, with the one-ticket upload token from the answer.
       const failed: string[] = [];
       if (t.files && t.id > 0) {
@@ -94,6 +129,7 @@ function NewRequest({ categories, files }: { categories: string[]; files: { limi
       tray.clear();
       setDone({ id: t.id, ref: t.ref, email: f.email.trim() });
       setF(EMPTY);
+      setAppId(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not send your request.');
     } finally {
@@ -118,8 +154,9 @@ function NewRequest({ categories, files }: { categories: string[]; files: { limi
         <Field label="Your name" required><input className={inputCls} value={f.name} onChange={(e) => set({ name: e.target.value })} autoComplete="name" maxLength={200} /></Field>
         <Field label="Email" required hint="Replies are sent here"><input className={inputCls} type="email" value={f.email} onChange={(e) => set({ email: e.target.value })} autoComplete="email" maxLength={320} /></Field>
         <Field label="Mobile number"><input className={inputCls} type="tel" value={f.phone} onChange={(e) => set({ phone: e.target.value })} autoComplete="tel" maxLength={20} /></Field>
-        <Field label="Distributor (DB) code"><input className={inputCls} value={f.distributorCode} onChange={(e) => set({ distributorCode: e.target.value })} maxLength={50} /></Field>
+        {salesish && <Field label="Distributor (DB) code"><input className={inputCls} value={f.distributorCode} onChange={(e) => set({ distributorCode: e.target.value })} maxLength={50} /></Field>}
       </div>
+      {applications.length > 1 && <Field label="Which app or area?"><AppPicker apps={applications} value={appId} onChange={(id) => { setAppId(id); set({ category: '' }); }} /></Field>}
       {categories.length > 0 && (
         <Field label="What is it about?">
           <select className={cx('h-9 w-full', inputBase)} value={f.category} onChange={(e) => set({ category: e.target.value })}>

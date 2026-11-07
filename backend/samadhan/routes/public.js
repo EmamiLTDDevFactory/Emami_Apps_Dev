@@ -31,12 +31,42 @@ function portalLimit(req, bucket) {
 
 const portalEnabled = async () => (await setting('portal.enabled')) !== false;
 
-async function categories() {
+/**
+ * Top-level categories a requester can pick for one desk (default Secondary Sales). v7: other desks' own lists (SAP
+ * modules, Infra categories ...) never leak into the Secondary Sales list; a desk without its own list shows the shared one.
+ */
+async function categories(workspaceId = null) {
+    const { catalog } = require('../lib/workspaces');
+    const c = await catalog();
+    if (!c.ready) {
+        const { rows } = await pool.query(
+            `SELECT c.value FROM samadhan.field_choices c JOIN samadhan.field_definitions d ON d.id = c."fieldId"
+             WHERE d.key = 'category' AND c."parentId" IS NULL AND c.active ORDER BY c.position, c.id`,
+        );
+        return rows.map((r) => r.value);
+    }
+    const ws = workspaceId ? c.wsById.get(workspaceId) : c.wsByKey.get('SEC_SALES');
     const { rows } = await pool.query(
-        `SELECT c.value FROM samadhan.field_choices c JOIN samadhan.field_definitions d ON d.id = c."fieldId"
+        `SELECT c.value, c."workspaceId" FROM samadhan.field_choices c JOIN samadhan.field_definitions d ON d.id = c."fieldId"
          WHERE d.key = 'category' AND c."parentId" IS NULL AND c.active ORDER BY c.position, c.id`,
     );
-    return rows.map((r) => r.value);
+    const own = rows.filter((r) => ws && r.workspaceId === ws.id);
+    if (ws && ws.key !== 'SEC_SALES' && own.length) return own.map((r) => r.value);
+    return rows.filter((r) => r.workspaceId == null || (ws && r.workspaceId === ws.id)).map((r) => r.value);
+}
+
+/**
+ * v7 Phase 5 (§N portal application picker): the applications a requester may pick - active, portal-visible, in a desk
+ * that is available and open to the portal. Empty while service desks are off (the portal looks as before).
+ */
+async function portalApplications() {
+    const { availableWorkspaceIds, catalog, workspacesEnabled } = require('../lib/workspaces');
+    const c = await catalog();
+    if (!c.ready || !(await workspacesEnabled())) return [];
+    const available = await availableWorkspaceIds();
+    return c.applications
+        .filter((a) => a.active && a.portalVisible !== false && available.has(a.workspaceId) && c.wsById.get(a.workspaceId)?.portalEnabled)
+        .map((a) => ({ id: a.id, code: a.code, name: a.name, vendor: a.vendor ?? null, workspaceId: a.workspaceId, workspaceKey: c.wsById.get(a.workspaceId)?.key ?? '', workspaceName: c.wsById.get(a.workspaceId)?.name ?? '' }));
 }
 
 router.get('/portal/config', wrap(async (req, res) => {
@@ -45,6 +75,13 @@ router.get('/portal/config', wrap(async (req, res) => {
     const { option } = require('../lib/config');
     res.json({
         success: true, enabled: true, categories: await categories(),
+        // v7 Phase 5: application picker + each desk's categories (only when service desks are on and open to the portal).
+        ...(await (async () => {
+            const applications = await portalApplications();
+            if (!applications.length) return {};
+            const desks = [...new Set(applications.map((a) => a.workspaceId))];
+            return { applications, categoriesByWorkspace: Object.fromEntries(await Promise.all(desks.map(async (w) => [w, await categories(w)]))) };
+        })()),
         helpdeskName: await option('general.helpdeskName'), intro: await option('portal.intro'), supportEmail: await option('general.supportEmail'),
         // v7: requesters may add files after submitting (portal limits).
         files: require('../lib/storage').storageInfo().enabled ? { limits: (await require('../lib/attachments').limits()).portal } : null,
@@ -68,7 +105,13 @@ router.post('/portal/tickets', wrap(async (req, res) => {
     if (!name || !subject || !description) throw fail(400, 'Fill in your name, the subject and a description of the issue.');
     if (!EMAIL_RE.test(email) || email.length > 320) throw fail(400, 'Enter a valid email address - replies are sent there.');
     if (phone && !PHONE_RE.test(phone)) throw fail(400, 'Enter a valid phone number, or leave it empty.');
-    if (category && !(await categories()).includes(category)) throw fail(400, 'Pick a category from the list.');
+    // v7 Phase 5: the application the requester picked (only from the portal's list); its desk decides the categories.
+    let app = null;
+    if (b.applicationId !== undefined && b.applicationId !== null && b.applicationId !== '') {
+        app = (await portalApplications()).find((a) => a.id === Number(b.applicationId));
+        if (!app) throw fail(400, 'Pick an application from the list.');
+    }
+    if (category && !(await categories(app?.workspaceId ?? null)).includes(category)) throw fail(400, 'Pick a category from the list.');
 
     const [perEmail, total] = await Promise.all([
         pool.query(
@@ -94,6 +137,7 @@ router.post('/portal/tickets', wrap(async (req, res) => {
         source: 'Portal',
         fields,
         notifyRequester: true,
+        ...(app ? { applicationId: app.id } : {}),
     });
     // v7: when attachments are on, a 30-minute token lets the requester add files to this one ticket (routes/attachments.js).
     const { portalUploadToken } = require('./attachments');

@@ -152,6 +152,11 @@ async function createTicket(input) {
     if (cls && f.priority === undefined) {
         matrixPriority = await matrixPriorityFor(cls.workspaceId, f.impact, f.urgency, f.category, f.function);
         if (matrixPriority) severity = SEVERITY_FOR_PRIORITY[matrixPriority];
+        // §O: every Infra & IT cyber-security ticket starts Urgent (and confidential, below).
+        if ((await catalog()).wsById.get(cls.workspaceId)?.key === 'INFRA_IT' && f.category === 'Cyber Security') {
+            matrixPriority = 4;
+            severity = SEVERITY_FOR_PRIORITY[4];
+        }
     }
     const v7 = cls ? {
         applicationId: cls.applicationId, workspaceId: cls.workspaceId, classificationSource: cls.source, classificationConfidence: cls.confidence,
@@ -203,6 +208,8 @@ async function createTicket(input) {
     // v7 Phase 4: SAP details and an external case given with the ticket (New ticket / portal / API).
     if (input.sap && typeof input.sap === 'object') await require('./sap').saveSap(id, input.sap);
     if (input.externalRef && input.externalRef.ref) await require('./sap').addRef(id, input.externalRef, input.actorAgentId ?? null);
+    // v7 Phase 5: IT details given with the ticket (Digital Apps / Infra & IT).
+    if (input.it && typeof input.it === 'object') await require('./it').saveIt(id, input.it);
     if (routed.groupId && !routed.agentId) {
         const agentId = await roundRobinAgent(routed.groupId);
         if (agentId) {
