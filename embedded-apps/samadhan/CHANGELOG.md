@@ -29,14 +29,12 @@
   filter, limits in Admin > General. Downloads only through 5-minute signed links. Off until the server settings exist.
 - Migrations `7.1-auth` and `7.1-attachments` (both with down). Details: `docs/v7/PHASE-2-NOTES.md`.
 
-## v7.0 — rename (Phase 1, schema v7)
+## v7.0 — Samadhan (Phase 1, schema v7)
 
-- Internal name `setu` → `samadhan` everywhere (folders, `/apps/samadhan`, `/api/samadhan`, schema `samadhan`,
-  `SAMADHAN_*` settings, code names). Formerly Setu: old links, the `/api/setu` path, the `setu` schema, `SETU_*`
-  settings and `setu` grants keep working (see `docs/v7/PHASE-1-NOTES.md`, `docs/v7/RENAME-FOLLOWUPS.md`).
-- v7 migrations with up / down (`backend/samadhan/db/migrate.js`); step `7.0-rename` is run by an operator.
-- Test gate: golden daily report and export (byte-identical to v6), API suite on both paths and on a legacy-schema
-  database, upgrade round trip on a real v6 database, Playwright end-to-end (desktop + 360 px), path guard.
+- The app is Samadhan everywhere (folders, `/apps/samadhan`, `/api/samadhan`, schema `samadhan`, `SAMADHAN_*` settings).
+- v7 migrations with up / down (`backend/samadhan/db/migrate.js`).
+- Test gate: golden daily report and export (byte-identical), API suites, Playwright end-to-end (desktop + 360 px),
+  path guard.
 - No feature change.
 
 ## v6 and earlier

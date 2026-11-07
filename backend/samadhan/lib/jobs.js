@@ -72,9 +72,7 @@ let jobsRunning = null;
 let lastJobsAt = 0;
 // The backend can run as several copies at once (Lambda instances); a Postgres advisory lock makes sure only one
 // copy runs the checks at a time, so nobody gets duplicate reminders or double automation actions.
-// Formerly Setu: until every copy runs v7, a copy of the old code may still use the old lock name, so both are taken.
 const JOBS_LOCK = "hashtext('samadhan.scheduled_jobs')";
-const LEGACY_JOBS_LOCK = "hashtext('setu.scheduled_jobs')";
 
 async function runJobs({ force = false } = {}) {
     if (jobsRunning) return jobsRunning;
@@ -83,10 +81,6 @@ async function runJobs({ force = false } = {}) {
         let locked = false;
         try {
             locked = (await client.query(`SELECT pg_try_advisory_lock(${JOBS_LOCK}) AS ok`)).rows[0].ok;
-            if (locked && !(await client.query(`SELECT pg_try_advisory_lock(${LEGACY_JOBS_LOCK}) AS ok`)).rows[0].ok) {
-                await client.query(`SELECT pg_advisory_unlock(${JOBS_LOCK})`);
-                locked = false;
-            }
             if (!locked) return { skipped: 'another copy of the backend is running the checks' };
             const last = (await client.query(`SELECT value FROM samadhan.settings WHERE key = 'jobs.lastRunAt'`)).rows[0]?.value;
             if (!force && last && Date.now() - Number(last) < JOB_INTERVAL_MS - MIN) return { skipped: 'ran recently' };
@@ -104,7 +98,7 @@ async function runJobs({ force = false } = {}) {
             );
             return out;
         } finally {
-            if (locked) await client.query(`SELECT pg_advisory_unlock(${LEGACY_JOBS_LOCK}), pg_advisory_unlock(${JOBS_LOCK})`).catch(() => {});
+            if (locked) await client.query(`SELECT pg_advisory_unlock(${JOBS_LOCK})`).catch(() => {});
             client.release();
             lastJobsAt = Date.now();
         }

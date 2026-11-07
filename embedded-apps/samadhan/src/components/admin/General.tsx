@@ -25,7 +25,7 @@ const WIDGET_LABEL: Record<DashboardWidget, string> = {
 const SEVERITIES: Severity[] = ['FATAL', 'SERIOUS', 'NORMAL'];
 const RATING_KEYS = ['3', '2', '1'] as const;
 const RATING_HINT: Record<(typeof RATING_KEYS)[number], string> = { '3': 'Best (3)', '2': 'Middle (2)', '1': 'Worst (1)' };
-const DEFAULT_INTRO = 'Raise a support ticket with the Emami Secondary Helpdesk, or check the status of one you raised.';
+const DEFAULT_INTRO = 'Raise a support ticket with the Emami Service Desk, or check the status of one you raised.';
 
 interface Draft {
   'general.helpdeskName': string;

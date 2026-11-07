@@ -23,7 +23,7 @@ const FILTERS: { id: Filter; label: string; test: (u: AccessUser) => boolean }[]
   { id: 'none', label: 'No access', test: (u) => u.role === null },
 ];
 
-/** Admin > Roles & access: who can open Samadhan and as what. Same data as Emami Apps Manage Access (app 'samadhan', formerly 'setu'). */
+/** Admin > Roles & access: who can open Samadhan and as what. Same data as Emami Apps Manage Access (app 'samadhan'). */
 export function AccessTab() {
   const { me, reloadMeta } = useSamadhan();
   const [q, setQ] = useState('');

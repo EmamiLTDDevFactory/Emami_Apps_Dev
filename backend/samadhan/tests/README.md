@@ -1,4 +1,4 @@
-# Samadhan tests (formerly Setu)
+# Samadhan tests
 
 ## Unit tests (no database, no network)
 
@@ -48,9 +48,8 @@ SAMADHAN_TEST_ALLOW=1 SAMADHAN_TEST_AI=1 node backend/samadhan/tests/api.test.js
 curl http://localhost:4199/_requests   # every request received, with any problems found
 ```
 
-The old `SETU_TEST_*` names still work. `SAMADHAN_TEST_APP_ID` (default `samadhan`) and `SAMADHAN_TEST_SCHEMA`
-(default `samadhan`) let the same suite prove the pre-rename compatibility layer: run it once more against
-`/api/setu` with app id `setu`. On this Windows machine port 4190 cannot be used — the examples use 4191.
+`SAMADHAN_TEST_APP_ID` (default `samadhan`) and `SAMADHAN_TEST_SCHEMA` (default `samadhan`) can point the suite at
+another app id / schema. On this Windows machine port 4190 cannot be used — the examples use 4191.
 
 ## Golden files (byte-identical outputs)
 

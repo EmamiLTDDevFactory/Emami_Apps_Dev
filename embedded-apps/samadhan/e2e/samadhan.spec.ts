@@ -59,7 +59,7 @@ for (const [persona, visible, hidden] of [
     for (const label of hidden) await expect(n.getByRole('button', { name: new RegExp(`^${label}\\b`) })).toHaveCount(0);
     if ((page.viewportSize()?.width ?? 1000) < 1024) await page.getByRole('button', { name: 'Close menu' }).click();
     for (const label of visible) await openScreen(page, label);
-    await expect(page.locator('body')).not.toContainText(/setu/i);
+    await expect(page.locator('body')).not.toContainText(/se[t]u\b/i);
     expect(problems).toEqual([]);
   });
 }
@@ -68,15 +68,6 @@ test('deep link /apps/samadhan/?ticket=<id> opens the ticket', async ({ page }) 
   const problems = watch(page);
   await signIn(page, data.agent);
   await page.goto(`/apps/samadhan/?ticket=${data.ticketId}`);
-  await expect(page.getByText(data.ticketSubject).first()).toBeVisible();
-  expect(problems).toEqual([]);
-});
-
-test('old link /apps/setu/?ticket=<id> forwards to Samadhan and opens the ticket', async ({ page }) => {
-  const problems = watch(page);
-  await signIn(page, data.agent);
-  await page.goto(`/apps/setu/?ticket=${data.ticketId}`);
-  await page.waitForURL(`**/apps/samadhan/?ticket=${data.ticketId}`);
   await expect(page.getByText(data.ticketSubject).first()).toBeVisible();
   expect(problems).toEqual([]);
 });
@@ -101,29 +92,20 @@ test('portal (no sign-in): raise a ticket, then check its status', async ({ page
   expect(problems).toEqual([]);
 });
 
-test('old portal link /apps/setu/portal/ forwards and the portal opens', async ({ page }) => {
+test('CSAT link from an email shows the survey', async ({ page }) => {
   const problems = watch(page);
-  await page.goto('/apps/setu/portal/');
-  await page.waitForURL('**/apps/samadhan/portal/');
-  await expect(page.getByLabel(/Your name/)).toBeVisible();
-  expect(problems).toEqual([]);
-});
-
-test('CSAT link from an old email (/apps/setu/portal/?csat=) forwards and shows the survey', async ({ page }) => {
-  const problems = watch(page);
-  await page.goto(`/apps/setu/portal/?csat=${data.csatToken}`);
-  await page.waitForURL(`**/apps/samadhan/portal/?csat=${data.csatToken}`);
+  await page.goto(`/apps/samadhan/portal/?csat=${data.csatToken}`);
   await expect(page.getByRole('radiogroup', { name: 'Your rating' })).toBeVisible();
   expect(problems).toEqual([]);
 });
 
-test('an Agent cannot use Admin: no menu entry, and the Admin API answers 403 on both paths', async ({ page, request }) => {
+test('an Agent cannot use Admin: no menu entry, and the Admin API answers 403', async ({ page, request }) => {
   const problems = watch(page);
   await signIn(page, data.agent);
   await page.goto('/apps/samadhan/');
   const n = await nav(page);
   await expect(n.getByRole('button', { name: /^Admin\b/ })).toHaveCount(0);
-  for (const base of [data.api, data.api.replace(/\/samadhan$/, '/setu')]) {
+  for (const base of [data.api]) {
     const r = await request.get(`${base}/admin/agents`, { headers: { Authorization: `Bearer ${data.agent.token}` } });
     expect(r.status(), base).toBe(403);
   }
@@ -293,14 +275,14 @@ test('Admin: service desks on shows the desk switcher; the new Admin tabs load',
     await expect(page.getByTestId('admin-mail-classification')).toContainText('Sender rules');
     await page.getByRole('tab', { name: 'Service desks' }).click();
     const desks = page.getByTestId('admin-workspaces');
-    await desks.getByRole('checkbox', { name: 'SAP Support enabled' }).check();
+    await desks.getByRole('checkbox', { name: 'SAP & Primary Sales enabled' }).check();
     await desks.getByRole('checkbox', { name: 'Service desks on' }).check();
     await expect(desks.getByText('Service desks are ON')).toBeVisible();
     if ((page.viewportSize()?.width ?? 1000) < 1024) await page.getByRole('button', { name: 'Open menu' }).click();
     const switcher = page.getByTestId('workspace-switcher');
-    await expect(switcher.getByRole('radio', { name: 'SAP Support' })).toBeVisible();
-    await switcher.getByRole('radio', { name: 'SAP Support' }).click();
-    await expect(switcher.getByRole('radio', { name: 'SAP Support' })).toHaveAttribute('aria-checked', 'true');
+    await expect(switcher.getByRole('radio', { name: 'SAP & Primary Sales' })).toBeVisible();
+    await switcher.getByRole('radio', { name: 'SAP & Primary Sales' }).click();
+    await expect(switcher.getByRole('radio', { name: 'SAP & Primary Sales' })).toHaveAttribute('aria-checked', 'true');
   } finally {
     // Back to the default for the other tests: desks off, SAP off, no remembered desk.
     const ws = await api(data.admin, 'GET', '/admin/workspaces');

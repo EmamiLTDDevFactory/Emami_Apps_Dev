@@ -3,7 +3,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'Samadhan',
-  description: 'Emami Secondary Support helpdesk: tickets, SLA timers, severity matrix and the daily report',
+  description: 'Emami service desk: tickets, SLA timers, severity matrix and the daily report',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

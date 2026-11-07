@@ -3,16 +3,16 @@
    Removes exactly what load-demo.js and load-v7.js added to Samadhan on the dev backend server - nothing else.
    Run on 172.17.2.21 with:  bash ~/samadhan-demo/run.sh remove
 */
-const APP = process.env.SAMADHAN_APP_DIR || process.env.SETU_APP_DIR || '/home/emamiadmin/apps/emami-apps-hub-backend-dev';
+const APP = process.env.SAMADHAN_APP_DIR || '/home/emamiadmin/apps/emami-apps-hub-backend-dev';
 require(`${APP}/node_modules/dotenv`).config({ path: `${APP}/.env`, quiet: true });
 const { pool, resolveSchema, sharedPool } = require(`${APP}/samadhan/db/pool`);
 
-// Demo people: @demo.samadhan.local, and @demo.setu.local from demos loaded before v7 (formerly Setu).
+// Demo people: @demo.samadhan.local, plus the example domains of the mail-classification demo.
 // v7 Phase 3 demo mail also uses three example domains (load-v7-apps.js).
-const DOMAINS = ['%@demo.samadhan.local', '%@demo.setu.local', '%@demo-dist.example', '%@demo-vendor.example', '%@demo-plant.example'];
+const DOMAINS = ['%@demo.samadhan.local', '%@demo-dist.example', '%@demo-vendor.example', '%@demo-plant.example'];
 
 async function main() {
-  await resolveSchema(); // samadhan, or the legacy setu schema before the v7.0 rename
+  await resolveSchema();
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -35,7 +35,7 @@ async function main() {
     const rules = await client.query('DELETE FROM samadhan.severity_rules WHERE id = ANY($1::int[])', [m.severityRuleIds || []]);
     await client.query(`DELETE FROM samadhan.settings WHERE key = 'demo.manifest'`);
     // PulseDesk extract (load-pulsedesk.js): its articles and companies. Its tickets, requesters and agents went above
-    // (tag demo, @demo.samadhan.local or @demo.setu.local); the configuration values it added are the real Freshdesk set-up and stay.
+    // (tag demo, @demo.samadhan.local); the configuration values it added are the real Freshdesk set-up and stay.
     const pd = (await client.query(`SELECT value FROM samadhan.settings WHERE key = 'pulsedesk.manifest'`)).rows[0]?.value || { articleIds: [], companyIds: [] };
     const articles = await client.query('DELETE FROM samadhan.articles WHERE id = ANY($1::int[])', [pd.articleIds || []]);
     const companies = await client.query(
@@ -45,7 +45,7 @@ async function main() {
     );
     await client.query(`DELETE FROM samadhan.settings WHERE key = 'pulsedesk.manifest'`);
     // Hub inbox rows the demo created for the demo agents (addresses nobody owns)
-    const notes = await client.query(`DELETE FROM emami_apps.notifications WHERE app_id = ANY(ARRAY['samadhan', 'setu']) AND email LIKE ANY($1::text[])`, [DOMAINS]);
+    const notes = await client.query(`DELETE FROM emami_apps.notifications WHERE app_id = 'samadhan' AND email LIKE ANY($1::text[])`, [DOMAINS]);
     // v7 demo (load-v7.js): the report variants, groups, category choices and severity rules it added, and cockpit
     // change-log rows about demo people. Its tickets, agents, views, to-dos and cockpit assignments went above
     // (tag demo; the rest cascades with the demo agents).

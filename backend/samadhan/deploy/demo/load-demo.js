@@ -4,7 +4,7 @@
    Run on 172.17.2.21 with:  bash ~/samadhan-demo/run.sh load      (remove with:  bash ~/samadhan-demo/run.sh remove)
 
    Safe by design:
-   - Writes only to Samadhan's own schema (`samadhan`, or `setu` before the v7.0 rename). Manage Access (emami_apps.authorized_user_apps) is NOT touched - demo
+   - Writes only to Samadhan's own schema (`samadhan`). Manage Access (emami_apps.authorized_user_apps) is NOT touched - demo
      agents exist only inside Samadhan.
    - Every record is marked: tickets tagged `demo`, people at @demo.samadhan.local (an address that can never receive mail),
      WhatsApp people on +91 90000 0xxxx numbers, distributor codes DEMO-..., canned replies (shared and personal) in the
@@ -16,7 +16,7 @@
    - No notifications: the hub inbox / email notifier is switched off inside this process, and requester mail is off.
    - Runs as a one-off process; the running dev backend is not restarted or changed.
 */
-const APP = process.env.SAMADHAN_APP_DIR || process.env.SETU_APP_DIR || '/home/emamiadmin/apps/emami-apps-hub-backend-dev';
+const APP = process.env.SAMADHAN_APP_DIR || '/home/emamiadmin/apps/emami-apps-hub-backend-dev';
 require(`${APP}/node_modules/dotenv`).config({ path: `${APP}/.env`, quiet: true });
 const { pool, resolveSchema, sharedPool } = require(`${APP}/samadhan/db/pool`);
 // No notifications at all from the demo: not to the hub inbox, not by email - even if real agents are in the groups.
@@ -80,7 +80,7 @@ const TYPES = ['mSFA', 'SalesCode DMS', 'SalesCode SFA', 'CDMS', 'Rural mSFA'];
 const SOURCES = ['Email', 'Phone', 'Phone', 'Email', 'WhatsApp', 'Portal'];
 
 async function main() {
-  await resolveSchema(); // samadhan, or the legacy setu schema before the v7.0 rename
+  await resolveSchema();
   const already = await pool.query(`SELECT count(*)::int AS n FROM samadhan.tickets WHERE 'demo' = ANY(tags)`);
   if (already.rows[0].n > 0) {
     console.log(`Demo data is already loaded (${already.rows[0].n} demo tickets). Run "remove" first to reload.`);

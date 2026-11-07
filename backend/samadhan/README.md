@@ -1,11 +1,8 @@
 # Samadhan backend
 
-API for **Samadhan** (Emami helpdesk), mounted at `/api/samadhan` by `backend/server.js`.
+API for **Samadhan** (Emami service desk: SAP and primary sales, secondary sales apps on Arteria today and Salescode.AI
+next, digital apps, IT infrastructure), mounted at `/api/samadhan` by `backend/server.js`.
 The frontend lives in `embedded-apps/samadhan`. Data lives in its own `samadhan` Postgres schema.
-
-> **Formerly Setu.** Before v7 the internal name was `setu` (folder `backend/setu`, `/api/setu`, schema `setu`,
-> `SETU_*` settings). Everything was renamed to `samadhan` in v7 Phase 1, with compatibility kept — see
-> "Samadhan v7 (schema v7)" below.
 
 ## Layout
 
@@ -55,7 +52,7 @@ backend/samadhan/
 
 ## Access
 
-Sign-in is the Emami Apps hub session (no separate login). Access is the **Samadhan** grant in Manage Access (app id `samadhan`; grants made before v7 under `setu` still count); the
+Sign-in is the Emami Apps hub session (no separate login). Access is the **Samadhan** grant in Manage Access (app id `samadhan`); the
 grant's role decides what a person can do:
 
 | Role | Can |
@@ -157,7 +154,6 @@ An Admin can deactivate a Samadhan agent (Admin > Agents); a deactivated agent i
 
 ## Configuration (backend environment)
 
-Every `SAMADHAN_<X>` setting falls back to the pre-v7 `SETU_<X>` when it is not set, so existing server settings keep working.
 
 | Variable | Purpose |
 | --- | --- |
@@ -171,7 +167,7 @@ Every `SAMADHAN_<X>` setting falls back to the pre-v7 `SETU_<X>` when it is not 
 | `SAMADHAN_WHATSAPP_ENABLED` | `true` to connect WhatsApp (default off: WhatsApp replies are saved on the ticket only) |
 | `SAMADHAN_WHATSAPP_TOKEN` / `SAMADHAN_WHATSAPP_PHONE_NUMBER_ID` | Meta WhatsApp Cloud API access token and the helpdesk number's id |
 | `SAMADHAN_WHATSAPP_APP_SECRET` | Meta app secret - webhook signatures are checked with it |
-| `SAMADHAN_WHATSAPP_VERIFY_TOKEN` | any string; enter the same one in Meta when adding the webhook `https://<api>/api/samadhan/whatsapp/webhook` (the old `/api/setu/...` URL keeps working) |
+| `SAMADHAN_WHATSAPP_VERIFY_TOKEN` | any string; enter the same one in Meta when adding the webhook `https://<api>/api/samadhan/whatsapp/webhook` |
 | `SAMADHAN_WHATSAPP_API_VERSION` | Graph API version (default `v21.0`) |
 
 Mail uses the Microsoft Graph app registration from `backend/ccbTeams.js`; it needs the **Mail.ReadWrite** and
@@ -198,34 +194,27 @@ x-internal-secret: <HUB_INTERNAL_API_SECRET>
 
 See `tests/README.md`. Unit tests: `node --test backend/samadhan/tests/unit.test.js`.
 
-## Samadhan v7 (schema v7)
+## Samadhan v7
 
-Phase 1 renamed the internal name `setu` to `samadhan` (formerly Setu) without changing any behaviour:
-
-| What | Now | Kept for compatibility |
-| --- | --- | --- |
-| Folder | `backend/samadhan/` | — |
-| API | `/api/samadhan/*` | `/api/setu/*` answers the same, with `Deprecation`, `Sunset` (`SAMADHAN_LEGACY_SUNSET`, default 2027-05-31) and `Link` headers; callers are logged once a minute per path |
-| Schema | `samadhan` (`SAMADHAN_DB_SCHEMA`, one place: `db/pool.js`) | if only `setu` exists the backend uses it and logs a warning, until the rename is run |
-| Manage Access app id | `samadhan` | grants under `setu` are accepted; new grants follow the id in use (`lib/access.js`) |
-| Settings | `SAMADHAN_*` | `SETU_*` read when the new name is not set |
-| Links | `/apps/samadhan/?ticket=`, `/apps/samadhan/portal/?csat=` | `/apps/setu/...` forwards (`embedded-apps/setu` stub) |
-| Scheduler lock | `hashtext('samadhan.scheduled_jobs')` | the old lock is taken too |
-| Not renamed (stored keys) | hub inbox de-duplication key `setu:<id>:<template>`; the old-text migration strings in `db/schema.js` / `install.sql` | — |
+| What | Where |
+| --- | --- |
+| Folder | `backend/samadhan/` |
+| API | `/api/samadhan/*`; the same router also answers on `TRANSPORT_PATH` (index.js), the route the dev web server forwards today, until its `/api/samadhan` block is added (`deploy/add-samadhan-nginx-route.sh`, root) |
+| Schema | `samadhan` (`SAMADHAN_DB_SCHEMA`, one place: `db/pool.js`) |
+| Manage Access app id | `samadhan` |
+| Settings | `SAMADHAN_*` |
+| Links | `/apps/samadhan/?ticket=`, `/apps/samadhan/portal/?csat=` |
 
 ### Migrations
 
-`db/migrate.js` runs v7 steps, each in one transaction with a down script, recorded in `samadhan.schema_migrations`:
+`db/migrate.js` runs v7 steps, each in one transaction with a down script, recorded in `samadhan.schema_migrations`.
+`7.1-auth`, `7.1-attachments`, `7.2-workspaces` and `7.3-generic` run by themselves at start-up:
 
 ```
 node backend/samadhan/db/migrate.js status
-node backend/samadhan/db/migrate.js up 7.0-rename --yes     # ALTER SCHEMA setu RENAME TO samadhan
-node backend/samadhan/db/migrate.js down 7.0-rename --yes   # back to setu
+node backend/samadhan/db/migrate.js down <id> --yes   # roll one step back
+node backend/samadhan/db/migrate.js up <id> --yes
 ```
-
-`7.0-rename` is explicit: the backend never renames the schema by itself. Stop (or restart right after) the backend
-around it. It refuses if anything outside the tables refers to `setu.` by name. A new database is created as
-`samadhan` directly.
 
 ### Phase 2: permissions, data scope, attachments (schema v9)
 

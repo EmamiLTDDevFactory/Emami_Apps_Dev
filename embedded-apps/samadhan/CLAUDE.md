@@ -1,11 +1,11 @@
-# Samadhan (formerly Setu) — conventions for Claude Code
+# Samadhan — conventions for Claude Code
 
-Scope: this file covers **Samadhan only** (frontend here, backend in `backend/samadhan/`; both were `setu` before v7).
+Scope: this file covers **Samadhan only** (frontend here, backend in `backend/samadhan/`).
 Other apps in this monorepo have their own rules; never change them.
 
 ## Current work
-Samadhan v7 follows `docs/SAMADHAN_MASTER_PROMPT_FINAL.md`. Resume from `docs/v7/PROGRESS.md`. Stop at every STOP point
-and wait for "approved".
+Samadhan v7 follows `docs/SAMADHAN_MASTER_PROMPT_FINAL.md`. Resume from `docs/v7/PROGRESS.md`. Since 2026-11-07 the user
+has asked for the remaining phases end to end (push + dev deploy after a green gate, no waiting); never production.
 
 ## Hard rules
 - **Never delete features**: no screen, route, column, table, API field, setting, shortcut, report column or dropdown
@@ -16,9 +16,9 @@ and wait for "approved".
   Samadhan frontend `package.json` only.
 - **Secrets**: never print, copy or commit `.env` values, tokens or passwords; refer to variable names only.
 - **Databases**: never production. Automated tests use a local `samadhan_test` DB only. Dev DB migrations need prior approval.
-- **Pushes**: only with the full gate green, and only after asking the user every time. Stage by explicit path, never
+- **Pushes**: only with the full gate green (check the gate's own exit code), Feature/Animesh then main. Stage by explicit path, never
   `git add -A` at the root, never force-push, never `--no-verify`.
-- Users never see the word "Setu".
+- One name only: Samadhan (tests/naming.test.js fails on the earlier name).
 
 ## Build / test commands
 - Frontend: `npm run dev` (port 3250), `npm run typecheck`, `npm run build` (static export → `dist/`).

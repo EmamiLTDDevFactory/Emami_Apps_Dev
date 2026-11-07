@@ -1,9 +1,5 @@
 # Samadhan
 
-> **Formerly Setu.** Until v7 the internal name was `setu` (folder `embedded-apps/setu`, `/apps/setu`, `/api/setu`,
-> schema `setu`). Everything is `samadhan` now; old links forward (`embedded-apps/setu` is a small redirect stub) and the
-> backend still answers on `/api/setu`. Details: `backend/samadhan/README.md`, "Samadhan v7 (schema v7)".
-
 Helpdesk for Emami Secondary Support: tickets from the Microsoft 365 support mailbox or logged by agents,
 ticket detail fields, the Category → Function severity matrix, SLA timers on business hours, round-robin
 assignment, automations, a Kanban board and the 36-column daily report.
@@ -119,7 +115,7 @@ NEXT_PUBLIC_SAMADHAN_API_URL=http://localhost:4000/api npm run dev   # http://lo
 
 Locally the hub and this app are on different origins, so set the hub's session keys in this app's
 localStorage (`emami_apps_session_token` = a hub JWT, `emami_apps_user_email` = your email), and add
-`http://localhost:3250` to `FRONTEND_ORIGIN` in `backend/.env`. Without `NEXT_PUBLIC_SAMADHAN_API_URL` (the older `NEXT_PUBLIC_SETU_API_URL` also works) the app
+`http://localhost:3250` to `FRONTEND_ORIGIN` in `backend/.env`. Without `NEXT_PUBLIC_SAMADHAN_API_URL` the app
 uses `https://audit-capa-api.emamiapps.in/api` (and the `/dev-api` prefix on a dev.* host).
 
 ```bash
@@ -127,4 +123,4 @@ npm run typecheck
 npm run build        # static export, moved to dist/
 ```
 
-Deep link to a ticket: `/apps/samadhan/?ticket=<number>` (used by notifications; `/apps/setu/?ticket=<number>` forwards).
+Deep link to a ticket: `/apps/samadhan/?ticket=<number>` (used by notifications).

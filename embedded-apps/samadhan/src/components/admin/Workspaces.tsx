@@ -164,12 +164,13 @@ export function ApplicationsTab() {
       <Card title="Applications and issue areas" sub="Every ticket has one. The code gives the reference (MSFA-100123) and is fixed once a ticket uses it; names, keywords and owners can change any time."
         actions={<Button size="sm" variant="primary" onClick={() => setEditing('new')}><Plus size={13} /> New application</Button>}>
         <input className={cx(inputCls, 'mb-3 max-w-xs')} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search code, name or keyword" aria-label="Search applications" />
-        <Table head={['Code', 'Name', 'Desk', 'Keywords (mail classification)', 'Tickets', 'Active', '']}>
+        <Table head={['Code', 'Name', 'Desk', 'Vendor', 'Keywords (mail classification)', 'Tickets', 'Active', '']}>
           {list.map((a) => (
             <tr key={a.id} className={cx('border-t border-line', !a.active && 'opacity-60')}>
               <td className="px-3 py-2 font-mono text-xs font-bold">{a.code}</td>
               <td className="px-3 py-2 text-xs font-semibold">{a.name}</td>
               <td className="px-3 py-2"><span className={cx('rounded-md border px-1.5 py-0.5 text-2xs font-bold', wsTone(ws(a.workspaceId)))}>{ws(a.workspaceId)?.shortCode}</span></td>
+              <td className="px-3 py-2 text-2xs">{a.vendor ?? ''}</td>
               <td className="max-w-xs px-3 py-2 text-2xs text-muted">{a.aliases.join(', ')}</td>
               <td className="num px-3 py-2 text-xs">{a.tickets ?? 0}</td>
               <td className="px-3 py-2 text-xs">{a.active ? 'Yes' : 'No'}</td>
@@ -187,7 +188,7 @@ function ApplicationDialog({ app, workspaces, onClose, onSaved }: { app: Applica
   const { meta } = useSamadhan();
   const [f, setF] = useState({
     code: app?.code ?? '', name: app?.name ?? '', workspaceId: String(app?.workspaceId ?? workspaces[0]?.id ?? ''), description: app?.description ?? '',
-    aliases: (app?.aliases ?? []).join(', '), criticality: app?.criticality ?? '', businessOwner: app?.businessOwner ?? '',
+    aliases: (app?.aliases ?? []).join(', '), criticality: app?.criticality ?? '', businessOwner: app?.businessOwner ?? '', vendor: app?.vendor ?? '',
     supportGroupId: app?.supportGroupId ? String(app.supportGroupId) : '', portalVisible: app?.portalVisible ?? true, active: app?.active ?? true,
   });
   const [error, setError] = useState('');
@@ -197,7 +198,7 @@ function ApplicationDialog({ app, workspaces, onClose, onSaved }: { app: Applica
     setBusy(true);
     const body: ApplicationInput = {
       code: f.code.trim().toUpperCase(), name: f.name, workspaceId: Number(f.workspaceId), description: f.description, aliases: f.aliases,
-      criticality: f.criticality || null, businessOwner: f.businessOwner || null, supportGroupId: f.supportGroupId ? Number(f.supportGroupId) : null,
+      criticality: f.criticality || null, businessOwner: f.businessOwner || null, vendor: f.vendor || null, supportGroupId: f.supportGroupId ? Number(f.supportGroupId) : null,
       portalVisible: f.portalVisible, active: f.active,
     };
     try {
@@ -218,6 +219,7 @@ function ApplicationDialog({ app, workspaces, onClose, onSaved }: { app: Applica
         <Field label="Description" className="sm:col-span-2"><input className={inputCls} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></Field>
         <Field label="Criticality"><select className={sel} value={f.criticality} onChange={(e) => setF({ ...f, criticality: e.target.value })}><option value="">—</option>{['High', 'Medium', 'Low'].map((c) => <option key={c} value={c}>{c}</option>)}</select></Field>
         <Field label="Business owner"><input className={inputCls} value={f.businessOwner} onChange={(e) => setF({ ...f, businessOwner: e.target.value })} /></Field>
+        <Field label="Vendor / platform" hint="e.g. Arteria (today), Salescode.AI (going forward), SAP"><input className={inputCls} list="vendor-options" value={f.vendor} onChange={(e) => setF({ ...f, vendor: e.target.value })} /><datalist id="vendor-options"><option value="Arteria" /><option value="Salescode.AI" /><option value="SAP" /><option value="In-house" /><option value="Microsoft" /></datalist></Field>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.portalVisible} onChange={(e) => setF({ ...f, portalVisible: e.target.checked })} /> Visible on the portal</label>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} /> Active</label>
         {error && <div className="sm:col-span-2"><Notice onClose={() => setError('')}>{error}</Notice></div>}

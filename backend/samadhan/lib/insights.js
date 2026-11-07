@@ -165,7 +165,7 @@ const TICKET_SCHEMA = {
 
 function ticketSystemPrompt(tree) {
     const taxonomy = tree.map((c) => `- ${c.value}${c.children.length ? `: ${c.children.join(' | ')}` : ''}`).join('\n') || '- (no categories configured)';
-    return `You assist helpdesk agents at Emami Secondary Support, which supports distributors, sales representatives and depot staff using Emami's sales apps (mobile sales force automation, distributor management, SalesCode apps) and SAP-linked master data.
+    return `You assist helpdesk agents at Emami Service Desk, which supports distributors, sales representatives and depot staff using Emami's sales apps (mobile sales force automation, distributor management, SalesCode apps) and SAP-linked master data.
 
 For the ticket you are given, produce:
 - a short factual summary,
@@ -344,7 +344,7 @@ const DASHBOARD_SCHEMA = {
     },
 };
 
-const DASHBOARD_SYSTEM = `You advise the supervisor of Emami Secondary Support, a helpdesk for distributors and sales staff using Emami's sales apps. You are given aggregate numbers for the ticket queue (last 7 days and the current backlog).
+const DASHBOARD_SYSTEM = `You advise the supervisor of Emami Service Desk, a helpdesk for distributors and sales staff using Emami's sales apps. You are given aggregate numbers for the ticket queue (last 7 days and the current backlog).
 
 Write: a one-sentence headline; 2-4 themes (what the tickets are mostly about and why); 1-4 risks (what will go wrong soon if nothing changes, with severity); and 3-6 action points, each with an owner, a priority (now / today / later) and a one-line reason. Be specific: name categories, groups, distributors and numbers from the data. Use only the numbers given; do not invent figures. Plain business English, no jargon.`;
 

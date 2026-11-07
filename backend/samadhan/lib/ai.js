@@ -2,7 +2,7 @@
 
 /*
    Claude for Samadhan's insights (lib/insights.js). Optional: without ANTHROPIC_API_KEY (the same key the rest of the
-   backend uses) - or with SAMADHAN_AI_ENABLED=false (formerly SETU_AI_ENABLED) - every insight falls back to the built-in rules, so Samadhan works
+   backend uses) - or with SAMADHAN_AI_ENABLED=false - every insight falls back to the built-in rules, so Samadhan works
    the same, just without the AI wording.
 
    - Structured output: the answer is constrained to a JSON schema (output_config.format), so it is always parseable.

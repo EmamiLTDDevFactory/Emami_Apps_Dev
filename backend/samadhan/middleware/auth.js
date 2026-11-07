@@ -30,7 +30,7 @@ async function requireAccess(req, res, next) {
     if (!email) return res.status(401).json({ success: false, error: 'Your Emami Apps session has expired or is missing. Please sign in again.' });
     try {
         await ready;
-        // The 'samadhan' grant, or one made before v7 under the old id 'setu' (lib/access.js).
+        // The 'samadhan' grant (lib/access.js).
         const grant = { rows: [await grantFor(email)].filter(Boolean) };
         if (!grant.rows.length) return res.status(403).json({ success: false, error: 'You do not have access to Samadhan. Ask an admin to grant it in Manage Access.' });
         // The grant's role is the source of truth; older 'User' grants count as Agent.

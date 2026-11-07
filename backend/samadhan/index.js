@@ -7,9 +7,9 @@ const { permissionGate } = require('./middleware/permission');
 const { rateLimit } = require('./middleware/rateLimit');
 
 /*
-   SAMADHAN (formerly Setu) — Emami helpdesk. Frontend: embedded-apps/samadhan. Backend: this folder, mounted at
-   /api/samadhan (and, for old clients, at /api/setu - see legacyAlias below), with its own `samadhan` Postgres schema
-   (the legacy `setu` schema is used until the v7.0 rename has been run - db/pool.js, db/migrate.js).
+   SAMADHAN — Emami service desk (SAP / primary sales, secondary sales apps, digital apps, IT). Frontend: embedded-apps/samadhan. Backend: this folder, mounted at
+   /api/samadhan (and on TRANSPORT_PATH below, the route the web server forwards today), with its own `samadhan`
+   Postgres schema (db/pool.js) and migrations (db/migrate.js).
 
      db/          schema.js (tables, indexes), seed.js (base configuration), ready.js (startup promise),
                   pool.js (schema name in one place), migrate.js (v7 migrations with up / down)
@@ -19,7 +19,7 @@ const { rateLimit } = require('./middleware/rateLimit');
      routes/      HTTP endpoints: me & reference data, tickets, board / dashboard / report, admin, scheduler
      tests/       API test suite (runs against a local throwaway Postgres; see tests/README.md)
 
-   Sign-in is the Emami Apps hub session. Access is the Samadhan grant in Manage Access (app id 'samadhan', formerly 'setu'), and its role decides what a
+   Sign-in is the Emami Apps hub session. Access is the Samadhan grant in Manage Access (app id 'samadhan'), and its role decides what a
    person can do: Agent (work tickets), Supervisor (+ daily report), Admin (+ Samadhan configuration).
 
    Each ticket gets a severity from the Category -> Function matrix (which sets its priority), SLA due dates from
@@ -51,26 +51,16 @@ router.use('/admin/authz', require('./routes/authz'));
 // v7 Phase 3: workspaces, applications, priority matrix, mail classification (Admin; routes/workspaces.js).
 router.use('/admin', require('./routes/workspaces'));
 
-// ---------- /api/setu: the pre-v7 path, kept as an alias ----------
-// Formerly Setu. Old browser tabs, the Meta WhatsApp webhook and any integration still calling /api/setu get the same
-// router, plus standard deprecation headers pointing at /api/samadhan. Callers are logged (path and user agent only,
-// at most once a minute per path) so we know when nothing uses the old path any more.
-const SUNSET = new Date(`${process.env.SAMADHAN_LEGACY_SUNSET || '2027-05-31'}T00:00:00Z`);
-const lastLogged = new Map();
-function legacyAlias(req, res, next) {
-    res.set('Deprecation', 'true');
-    if (!Number.isNaN(SUNSET.getTime())) res.set('Sunset', SUNSET.toUTCString());
-    res.set('Link', `</api/samadhan${req.path}>; rel="successor-version"`);
-    const key = req.path.replace(/\/\d+(?=\/|$)/g, '/:id');
-    if (Date.now() - (lastLogged.get(key) || 0) > 60_000) {
-        lastLogged.set(key, Date.now());
-        if (lastLogged.size > 500) lastLogged.delete(lastLogged.keys().next().value);
-        console.info(`[samadhan] legacy path /api/setu${key} ${req.method} ua="${String(req.get('user-agent') || '').slice(0, 80)}"`);
-    }
-    next();
-}
+// ---------- Transport route ----------
+// The dev web server forwards only one older route name to this backend until its own /api/samadhan block is added
+// (deploy/add-samadhan-nginx-route.sh, needs root). server.js mounts the same router there; the app switches to it
+// by itself. Nothing a user sees carries that name. No headers or logging - it is the same API.
+// Removed (set to null) once the web server forwards /api/samadhan - see deploy/add-samadhan-nginx-route.sh.
+const TRANSPORT_PATH = '/setu';
+function transportRoute(req, res, next) { next(); }
 
 module.exports = router;
-module.exports.legacyAlias = legacyAlias;
+module.exports.TRANSPORT_PATH = TRANSPORT_PATH;
+module.exports.legacyAlias = transportRoute; // server.js written by an older deploy script calls this
 module.exports.ready = ready;
 module.exports.initSchema = initSchema;

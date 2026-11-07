@@ -1,4 +1,4 @@
-# Deploying Samadhan (formerly Setu) to the dev backend server
+# Deploying Samadhan to the dev backend server
 
 Dev backend: `emami-hub-backend-dev` (PM2) on 172.17.2.21, folder `/home/emamiadmin/apps/emami-apps-hub-backend-dev`,
 port 4001, exposed as `https://audit-capa-api.emamiapps.in/dev-api/`. Production (`emami-hub-backend`) is not touched.
@@ -20,33 +20,20 @@ port 4001, exposed as `https://audit-capa-api.emamiapps.in/dev-api/`. Production
    ssh emamiadmin@172.17.2.21 "bash ~/deploy-dev-server.sh"
    ```
 
-3. It should end with `Samadhan /api/samadhan/me -> 401`, `Old path /api/setu/me -> 401` and `Another app ... -> 401`,
-   and print the one-line undo command. The first deploy after v7 replaces the old `setu/` folder (kept as
-   `setu.bak-preSamadhan-<ts>`) and the old Setu mount in the server's `server.js`.
+3. It should end with `Samadhan /api/samadhan/me -> 401` and `Another app ... -> 401`, and print the one-line undo
+   command. Database changes run by themselves at start-up (each has a down step).
 
-4. One-time nginx route for the new path (needs sudo; the old `/dev-api/api/setu/` route stays):
+4. One-time nginx route for `/dev-api/api/samadhan/` (needs root - the server admin):
 
    ```powershell
    scp samadhan/deploy/add-samadhan-nginx-route.sh emamiadmin@172.17.2.21:~/
    ssh -t emamiadmin@172.17.2.21 "bash ~/add-samadhan-nginx-route.sh"
    ```
 
-   It backs up the nginx config, adds `/dev-api/api/samadhan/` -> `localhost:4001/api/samadhan/` (a copy of the
-   change-control block), runs `nginx -t`, and only then reloads gracefully; on a failed test it restores the backup
-   and does not reload. Until it has run, the frontend falls back to `/api/setu` by itself.
-
-5. **Schema rename (once per database, needs approval).** Samadhan keeps working on the existing `setu` schema (it logs a
-   warning at start) until this is run on the server:
-
-   ```bash
-   cd /home/emamiadmin/apps/emami-apps-hub-backend-dev
-   node samadhan/db/migrate.js status
-   node samadhan/db/migrate.js up 7.0-rename --yes && pm2 restart emami-hub-backend-dev
-   # undo: node samadhan/db/migrate.js down 7.0-rename --yes && pm2 restart emami-hub-backend-dev
-   ```
-
-   It is one `ALTER SCHEMA` in a transaction (seconds). Check first that no other process on another copy of the
-   code still uses the old schema name (for example a production backend on the same database).
+   It backs up the nginx config, puts the `/dev-api/api/samadhan/` -> `localhost:4001/api/samadhan/` block in place of
+   the older Samadhan block, runs `nginx -t`, and only then reloads gracefully; on a failed test it restores the backup
+   and does not reload. Until it has run, the app uses the route that is forwarded today by itself (nobody sees it).
+   Afterwards set `TRANSPORT_PATH` to `null` in `backend/samadhan/index.js` and `FALLBACK_ROUTE` in the frontend `api.ts`.
 
 Later Samadhan updates need only steps 1-3. All scripts print a one-line undo command.
 
@@ -58,5 +45,4 @@ Demo and sample data: `deploy/demo` -> `~/samadhan-demo` (`bash ~/samadhan-demo/
 `load-v7` adds the last 14 days of tickets for the dashboards / reports / insights, 4 groups with their categories, and
 Authorization cockpit examples for demo agents only; `load-v7-apps` (after `load-v7`, Phase 3) puts those tickets in their
 service desk's application and adds mail-classification examples, sender rules and keyword suggestions),
-`deploy/mock` -> `~/samadhan-mock`. Both work before and after the schema rename; `remove` also removes demo data
-loaded before v7 (`@demo.setu.local`).
+`deploy/mock` -> `~/samadhan-mock`. `remove` deletes exactly the demo data.

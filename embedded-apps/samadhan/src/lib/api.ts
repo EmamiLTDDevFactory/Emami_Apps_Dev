@@ -1,11 +1,11 @@
 /**
  * Client for the Samadhan routes of the shared Emami Apps backend (backend/samadhan/, mounted at /api/samadhan;
- * formerly Setu - the backend still answers on /api/setu as an alias).
+ * and the transport route below).
  * The caller's hub session JWT (same-origin localStorage, written by the hub at sign-in) goes as a Bearer
  * token; the backend checks the Samadhan grant in Manage Access and its role (Agent / Supervisor / Admin).
  *
  * Same dev/prod split as access-tracker's api.ts: a dev.emamiapps.in page reads the dev database through
- * the /dev-api prefix. NEXT_PUBLIC_SAMADHAN_API_URL (or the older NEXT_PUBLIC_SETU_API_URL) overrides it (local development).
+ * the /dev-api prefix. NEXT_PUBLIC_SAMADHAN_API_URL overrides it (local development).
  */
 import { getHubToken } from './hub';
 import type { Scope, Visibility } from './permissions';
@@ -19,7 +19,7 @@ import type {
 const API_HOST = 'https://audit-capa-api.emamiapps.in';
 
 function apiBase(): string {
-  const override = process.env.NEXT_PUBLIC_SAMADHAN_API_URL || process.env.NEXT_PUBLIC_SETU_API_URL;
+  const override = process.env.NEXT_PUBLIC_SAMADHAN_API_URL;
   if (override) return override.replace(/\/+$/, '');
   const isDev = typeof window !== 'undefined' && window.location.hostname.includes('dev');
   return `${API_HOST}${isDev ? '/dev-api' : ''}/api`;
@@ -42,17 +42,19 @@ type Json = Record<string, unknown>;
 // there is answered by another service (a 404 that is not a Samadhan answer - every Samadhan answer has `success`). The
 // app then uses the transport route that is forwarded today, for the rest of the visit (remembered for the tab).
 const ROUTE_KEY = 'samadhan.route';
-const FALLBACK_ROUTE = 'setu';
+// Set to null once the web server forwards /api/samadhan (deploy/add-samadhan-nginx-route.sh).
+const FALLBACK_ROUTE: string | null = 'setu';
 let prefix: string = (() => { try { return sessionStorage.getItem(ROUTE_KEY) || 'samadhan'; } catch { return 'samadhan'; } })();
 /** True when a 404 did not come from Samadhan (so the route itself is missing on the web server). */
 async function notSamadhan(res: Response): Promise<boolean> {
-  if (res.status !== 404 || prefix !== 'samadhan') return false;
+  if (res.status !== 404 || !FALLBACK_ROUTE) return false;
   const body = await res.clone().json().catch(() => null);
   return !body || typeof body.success !== 'boolean';
 }
+/** Use the other route for the rest of the visit (both ways: after the web server change the remembered one goes). */
 function switchToFallbackRoute() {
-  prefix = FALLBACK_ROUTE;
-  try { sessionStorage.setItem(ROUTE_KEY, FALLBACK_ROUTE); } catch { /* private mode: this page only */ }
+  prefix = prefix === 'samadhan' && FALLBACK_ROUTE ? FALLBACK_ROUTE : 'samadhan';
+  try { sessionStorage.setItem(ROUTE_KEY, prefix); } catch { /* private mode: this page only */ }
 }
 
 async function request<T = Json>(method: string, path: string, body?: unknown): Promise<T> {
@@ -274,7 +276,7 @@ export const admin = {
 };
 
 // ---------- v7 attachments (backend routes/attachments.js) ----------
-/** Sends one file as the raw request body (its name in X-File-Name). Same sign-in and /setu fallback as request(). */
+/** Sends one file as the raw request body (its name in X-File-Name). Same sign-in and route fallback as request(). */
 async function sendFile<T>(path: string, file: Blob, name: string, signedIn = true): Promise<T> {
   let res: Response;
   const send = () => fetch(`${apiBase()}/${prefix}${path}`, {
@@ -353,7 +355,7 @@ export interface MailClassification {
   suggestions: { applicationId: number; code: string; keyword: string; hits: number }[];
   aiAvailable: boolean;
 }
-export type ApplicationInput = Partial<Pick<Application, 'code' | 'name' | 'workspaceId' | 'description' | 'icon' | 'criticality' | 'businessOwner' | 'itOwnerAgentId' | 'supportGroupId' | 'portalVisible' | 'active' | 'position'>> & { aliases?: string[] | string };
+export type ApplicationInput = Partial<Pick<Application, 'code' | 'name' | 'workspaceId' | 'description' | 'icon' | 'criticality' | 'businessOwner' | 'vendor' | 'itOwnerAgentId' | 'supportGroupId' | 'portalVisible' | 'active' | 'position'>> & { aliases?: string[] | string };
 export const workspacesAdmin = {
   get: () => get<{ enabled: boolean; workspaces: Workspace[]; applications: Application[]; matrix: MatrixCell[] }>('/admin/workspaces'),
   setFlag: (enabled: boolean) => request<{ enabled: boolean }>('PUT', '/admin/workspaces/flag', { enabled }),

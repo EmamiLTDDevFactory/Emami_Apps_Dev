@@ -8,15 +8,12 @@
      node backend/samadhan/db/migrate.js down <id> --yes
 
    The command uses the backend's own PG* settings (backend/.env) and prints only the host and database name.
-   Stop the backend before a schema rename (or restart it right after): a running copy keeps the schema it found at start.
-
-   Steps:
-     7.0-rename  ALTER SCHEMA setu RENAME TO samadhan (formerly Setu). Explicit. Down: rename back.
+   Steps that are not `explicit` run by themselves at start-up (db/schema.js), in order.
 */
 // As a command, read backend/.env first (the shared pool reads PG* when it is loaded). Values already set win.
 if (require.main === module) require('dotenv').config({ path: require('path').join(__dirname, '..', '..', '.env'), quiet: true });
 const shared = require('../../db');
-const { CONFIGURED, LEGACY, activeSchema, setActiveSchema } = require('./pool');
+const { CONFIGURED, activeSchema } = require('./pool');
 
 const q = (client, text, params) => client.query(text, params);
 const ident = (s) => `"${String(s).replace(/"/g, '""')}"`;
@@ -24,54 +21,16 @@ const ident = (s) => `"${String(s).replace(/"/g, '""')}"`;
 async function ensureTable(client, schema) {
     await q(client, `CREATE TABLE IF NOT EXISTS ${ident(schema)}.schema_migrations (
         id text PRIMARY KEY, "appliedAt" timestamptz NOT NULL DEFAULT now(), note text)`);
+    // A step an operator rolled back stays down: start-up skips it until it is applied again by hand.
+    await q(client, `CREATE TABLE IF NOT EXISTS ${ident(schema)}.schema_migrations_held (id text PRIMARY KEY, "heldAt" timestamptz NOT NULL DEFAULT now())`);
 }
 
 async function schemas(client) {
-    const { rows } = await q(client, 'SELECT nspname FROM pg_namespace WHERE nspname = ANY($1::text[])', [[CONFIGURED, LEGACY]]);
+    const { rows } = await q(client, 'SELECT nspname FROM pg_namespace WHERE nspname = $1', [CONFIGURED]);
     return new Set(rows.map((r) => r.nspname));
 }
 
-/** Text references to "setu." outside table data that a schema rename would not follow (functions, views, triggers, defaults). */
-async function textReferences(client, name) {
-    const like = `%${name}.%`;
-    const { rows } = await q(client, `
-        SELECT 'function ' || n.nspname || '.' || p.proname AS ref FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-          WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') AND p.prosrc ILIKE $1
-        UNION ALL SELECT 'view ' || schemaname || '.' || viewname FROM pg_views WHERE definition ILIKE $1
-          AND schemaname NOT IN ('pg_catalog', 'information_schema')
-        UNION ALL SELECT 'trigger ' || t.tgname FROM pg_trigger t WHERE NOT t.tgisinternal AND pg_get_triggerdef(t.oid) ILIKE $1
-        UNION ALL SELECT 'default ' || table_schema || '.' || table_name || '.' || column_name FROM information_schema.columns
-          WHERE column_default ILIKE $1 AND column_default NOT ILIKE '%nextval(%'`, [like]);
-    return rows.map((r) => r.ref);
-}
-
 const MIGRATIONS = [
-    {
-        id: '7.0-rename',
-        explicit: true,
-        describe: `ALTER SCHEMA ${LEGACY} RENAME TO ${CONFIGURED}`,
-        async up(client) {
-            const found = await schemas(client);
-            if (found.has(CONFIGURED) && !found.has(LEGACY)) return 'already renamed';
-            if (found.has(CONFIGURED) && found.has(LEGACY)) throw new Error(`Both "${LEGACY}" and "${CONFIGURED}" exist - stop and check by hand.`);
-            if (!found.has(LEGACY)) throw new Error(`Schema "${LEGACY}" not found.`);
-            const refs = await textReferences(client, LEGACY);
-            if (refs.length) throw new Error(`Objects refer to "${LEGACY}." by name and would break: ${refs.join(', ')}`);
-            // Privileges and default privileges belong to the schema object and follow the rename; the tickets.id
-            // default is a regclass (nextval of the sequence) and follows it too.
-            await q(client, `ALTER SCHEMA ${ident(LEGACY)} RENAME TO ${ident(CONFIGURED)}`);
-            const paths = await q(client, `SELECT r.rolname, s.setconfig FROM pg_db_role_setting s LEFT JOIN pg_roles r ON r.oid = s.setrole
-                                           WHERE array_to_string(s.setconfig, ',') ILIKE $1`, [`%search_path%${LEGACY}%`]);
-            return paths.rows.length ? `renamed; NOTE: role search_path still names "${LEGACY}" for ${paths.rows.map((r) => r.rolname).join(', ')}` : 'renamed';
-        },
-        async down(client) {
-            const found = await schemas(client);
-            if (found.has(LEGACY) && !found.has(CONFIGURED)) return 'already on the legacy name';
-            if (found.has(LEGACY)) throw new Error(`Schema "${LEGACY}" already exists - stop and check by hand.`);
-            await q(client, `ALTER SCHEMA ${ident(CONFIGURED)} RENAME TO ${ident(LEGACY)}`);
-            return 'renamed back';
-        },
-    },
     {
         // Phase 2: Authorization cockpit (master prompt §K). New tables only; nothing existing is changed. Runs by
         // itself at start-up. Down drops exactly these tables (and with them every cockpit row - the base roles in
@@ -357,6 +316,65 @@ const MIGRATIONS = [
             return 'workspace / application tables and columns dropped (category, function and type values were never changed)';
         },
     },
+    {
+        // Generic Samadhan (user, 2026-11-07): one app id 'samadhan' for the hub rows (grants, access history, usage,
+        // inbox - only rows of this app); the catalogue for primary sales (SAP), secondary sales on Arteria today and
+        // Salescode.AI going forward, digital apps and IT. Labels change only where they are still the seeded ones (an
+        // Admin's own names stay). applications.vendor added. Down: removes the vendor column and the two new
+        // applications when unused; the hub rows keep the 'samadhan' id.
+        id: '7.3-generic',
+        describe: "hub rows under app id 'samadhan'; generic catalogue (Arteria / Salescode.AI / SAP primary sales); applications.vendor",
+        async up(client) {
+            const S = ident(activeSchema());
+            const { APPLICATIONS, SEC_SALES_DESC, SAP_DESC } = require('../lib/workspaceSeed');
+            const has = async (table) => (await q(client, 'SELECT to_regclass($1) AS t', [table])).rows[0].t !== null;
+            const col = async (table, c) => (await q(client, `SELECT 1 FROM information_schema.columns WHERE table_schema = 'emami_apps' AND table_name = $1 AND column_name = $2`, [table, c])).rows.length > 0;
+            let hub = 0;
+            if (await has('emami_apps.authorized_user_apps')) {
+                await q(client, `DELETE FROM emami_apps.authorized_user_apps o WHERE o.app_id = 'setu'
+                                 AND EXISTS (SELECT 1 FROM emami_apps.authorized_user_apps n WHERE n.app_id = 'samadhan' AND n.email = o.email)`);
+                hub += (await q(client, `UPDATE emami_apps.authorized_user_apps SET app_id = 'samadhan' WHERE app_id = 'setu'`)).rowCount;
+            }
+            for (const t of ['access_change_history', 'events', 'notifications']) {
+                if ((await has(`emami_apps.${t}`)) && (await col(t, 'app_id'))) hub += (await q(client, `UPDATE emami_apps.${t} SET app_id = 'samadhan' WHERE app_id = 'setu'`)).rowCount;
+            }
+            if ((await has('emami_apps.notifications')) && (await col('notifications', 'ref_key'))) {
+                await q(client, `UPDATE emami_apps.notifications n SET ref_key = 'samadhan:' || substr(n.ref_key, 6) WHERE n.ref_key LIKE 'setu:%'
+                                 AND NOT EXISTS (SELECT 1 FROM emami_apps.notifications x WHERE x.ref_key = 'samadhan:' || substr(n.ref_key, 6))`);
+            }
+            await q(client, `ALTER TABLE ${S}.applications ADD COLUMN IF NOT EXISTS vendor text`);
+            const OLD = { MSFA: 'mSFA App', RMSFA: 'Rural mSFA App', SUP: 'Supervisor App', MR: 'SalesCode MR App', DMS: 'SalesCode DMS App', SCB2B: 'SalesCode B2B App', B2B: 'B2B App', B2C: 'B2C App' };
+            const ws = Object.fromEntries((await q(client, `SELECT id, key FROM ${S}.workspaces`)).rows.map((r) => [r.key, r.id]));
+            for (const [i, [code, name, wk, aliases, active, vendor]] of APPLICATIONS.entries()) {
+                const ins = await q(client, `INSERT INTO ${S}.applications (code, name, "workspaceId", aliases, active, position, vendor, "seedKey") VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                                             ON CONFLICT (code) DO NOTHING RETURNING id`, [code, name, ws[wk], aliases, active, i + 1, vendor ?? null, `7.3:${code}`]);
+                if (ins.rows.length) continue;
+                if (OLD[code]) {
+                    await q(client, `UPDATE ${S}.applications SET name = $3, aliases = $4, vendor = COALESCE(vendor, $5), position = $6, "updatedAt" = now()
+                                     WHERE code = $1 AND name = $2`, [code, OLD[code], name, aliases, vendor ?? null, i + 1]);
+                }
+                if (vendor) await q(client, `UPDATE ${S}.applications SET vendor = COALESCE(vendor, $2) WHERE code = $1`, [code, vendor]);
+            }
+            // The in-house B2B / B2C codes: off unless tickets already use them.
+            await q(client, `UPDATE ${S}.applications a SET active = false, aliases = '{}' WHERE a.code IN ('B2B', 'B2C')
+                             AND NOT EXISTS (SELECT 1 FROM ${S}.tickets t WHERE t."applicationId" = a.id)`);
+            await q(client, `UPDATE ${S}.applications SET aliases = array_remove(aliases, 'setu') WHERE 'setu' = ANY(aliases)`);
+            await q(client, `UPDATE ${S}.workspaces SET name = 'SAP & Primary Sales', description = $1, "updatedAt" = now() WHERE key = 'SAP' AND name = 'SAP Support'`, [SAP_DESC]);
+            await q(client, `UPDATE ${S}.workspaces SET description = $1, "updatedAt" = now() WHERE key = 'SEC_SALES' AND description LIKE 'Secondary sales and the sales apps%'`, [SEC_SALES_DESC]);
+            // One name for the helpdesk in mail and on screens (only where it is still the old default text).
+            await q(client, `UPDATE ${S}.email_templates SET subject = replace(subject, 'Emami Service Desk', 'Emami Service Desk'),
+                             body = replace(body, 'Emami Service Desk', 'Emami Service Desk') WHERE subject LIKE '%Emami Service Desk%' OR body LIKE '%Emami Service Desk%'`);
+            await q(client, `UPDATE ${S}.settings SET value = '"Samadhan – Emami Service Desk"' WHERE key = 'general.helpdeskName' AND value = '"Emami Service Desk"'`);
+            return `hub rows moved to 'samadhan': ${hub}; catalogue made generic`;
+        },
+        async down(client) {
+            const S = ident(activeSchema());
+            await q(client, `DELETE FROM ${S}.applications a WHERE a."seedKey" IN ('7.3:SCSUP', '7.3:SCB2C')
+                             AND NOT EXISTS (SELECT 1 FROM ${S}.tickets t WHERE t."applicationId" = a.id)`);
+            await q(client, `ALTER TABLE ${S}.applications DROP COLUMN IF EXISTS vendor`);
+            return 'vendor column and unused new applications removed (names and hub rows unchanged)';
+        },
+    },
 ];
 
 async function applied(client, schema) {
@@ -374,15 +392,16 @@ async function run(id, dir) {
         await q(client, 'BEGIN');
         await q(client, "SET LOCAL lock_timeout = '5s'");
         const note = await m[dir](client);
-        const schema = (await schemas(client)).has(CONFIGURED) ? CONFIGURED : LEGACY;
+        const schema = CONFIGURED;
         await ensureTable(client, schema);
         if (dir === 'up') {
             await q(client, `INSERT INTO ${ident(schema)}.schema_migrations (id, note) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET note = EXCLUDED.note, "appliedAt" = now()`, [id, note]);
+            await q(client, `DELETE FROM ${ident(schema)}.schema_migrations_held WHERE id = $1`, [id]);
         } else {
             await q(client, `DELETE FROM ${ident(schema)}.schema_migrations WHERE id = $1`, [id]);
+            await q(client, `INSERT INTO ${ident(schema)}.schema_migrations_held (id) VALUES ($1) ON CONFLICT DO NOTHING`, [id]);
         }
         await q(client, 'COMMIT');
-        if (id === '7.0-rename') setActiveSchema(schema);
         return note;
     } catch (err) {
         await q(client, 'ROLLBACK').catch(() => {});
@@ -392,20 +411,15 @@ async function run(id, dir) {
     }
 }
 
-/**
- * Start-up part (db/schema.js): records 7.0-rename as applied when this database is already on the configured name
- * (new database, or renamed earlier). Non-explicit steps would be applied here, in order.
- */
+/** Start-up part (db/schema.js): applies every step that is not explicit and not applied yet, in order. */
 async function startup() {
     const schema = activeSchema();
     const client = await shared.pool.connect();
     try {
         const done = await applied(client, schema);
-        if (schema === CONFIGURED && !done.has('7.0-rename')) {
-            await q(client, `INSERT INTO ${ident(schema)}.schema_migrations (id, note) VALUES ('7.0-rename', 'schema created under the new name') ON CONFLICT DO NOTHING`);
-        }
+        const held = new Set((await q(client, `SELECT id FROM ${ident(schema)}.schema_migrations_held`)).rows.map((r) => r.id));
         for (const m of MIGRATIONS) {
-            if (!m.explicit && !done.has(m.id)) await run(m.id, 'up');
+            if (!m.explicit && !done.has(m.id) && !held.has(m.id)) await run(m.id, 'up');
         }
     } finally {
         client.release();
@@ -416,7 +430,7 @@ async function status() {
     const client = await shared.pool.connect();
     try {
         const found = await schemas(client);
-        const schema = found.has(CONFIGURED) ? CONFIGURED : found.has(LEGACY) ? LEGACY : null;
+        const schema = found.has(CONFIGURED) ? CONFIGURED : null;
         const done = schema ? await applied(client, schema) : new Set();
         return { schema, steps: MIGRATIONS.map((m) => ({ id: m.id, explicit: Boolean(m.explicit), applied: done.has(m.id), describe: m.describe })) };
     } finally {

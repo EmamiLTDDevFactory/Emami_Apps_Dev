@@ -3,9 +3,9 @@ const crypto = require('crypto');
 const { WHATSAPP } = require('../constants');
 
 // ---------- WhatsApp Business (Meta WhatsApp Cloud API) ----------
-// Inbound: Meta calls POST /api/samadhan/whatsapp/webhook (or the pre-v7 /api/setu/... URL already registered in Meta), signed with the app secret (whatsappIngest.js turns the
+// Inbound: Meta calls POST /api/samadhan/whatsapp/webhook, signed with the app secret (whatsappIngest.js turns the
 // messages into tickets). Outbound: an agent's reply on a WhatsApp ticket goes back as a WhatsApp text message.
-// Off unless SAMADHAN_WHATSAPP_ENABLED=true (or the older SETU_WHATSAPP_ENABLED) and all four keys are set; while off, replies are saved on the ticket only.
+// Off unless SAMADHAN_WHATSAPP_ENABLED=true and all four keys are set; while off, replies are saved on the ticket only.
 
 const whatsappReady = () => WHATSAPP.enabled && Boolean(WHATSAPP.token && WHATSAPP.phoneNumberId && WHATSAPP.appSecret && WHATSAPP.verifyToken);
 

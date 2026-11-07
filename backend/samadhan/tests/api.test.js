@@ -1,16 +1,15 @@
 'use strict';
 /*
-   Samadhan (formerly Setu) API test suite - end-to-end checks against a running backend and its Postgres.
+   Samadhan API test suite - end-to-end checks against a running backend and its Postgres.
 
    ONLY for a throwaway local database: it creates tickets, contacts, groups and grants. It refuses to run unless
-   SAMADHAN_TEST_ALLOW=1 (or the old SETU_TEST_ALLOW=1) and the database host is localhost. Run it on a fresh database (the counts assume no tickets).
+   SAMADHAN_TEST_ALLOW=1 and the database host is localhost. Run it on a fresh database (the counts assume no tickets).
    See tests/README.md for the full setup.
 
      SAMADHAN_TEST_ALLOW=1 SAMADHAN_TEST_API=http://localhost:4191/api/samadhan SAMADHAN_TEST_PG=postgres://postgres@localhost:55432/samadhan_test node backend/samadhan/tests/api.test.js
 
    SAMADHAN_TEST_APP_ID (default samadhan) is the Manage Access app id the test grants use; SAMADHAN_TEST_SCHEMA
-   (default samadhan) the schema the direct checks read. Run it with /api/setu, app id setu and schema setu to prove the
-   pre-rename compatibility layer.
+   (default samadhan) the schema the direct checks read.
 */
 const path = require('path');
 const BACKEND = path.join(__dirname, '..', '..');
@@ -18,7 +17,7 @@ require(path.join(BACKEND, 'node_modules/dotenv')).config({ path: path.join(BACK
 const jwt = require(path.join(BACKEND, 'node_modules/jsonwebtoken'));
 const { Client } = require(path.join(BACKEND, 'node_modules/pg'));
 
-const T = (name, fallback) => process.env[`SAMADHAN_TEST_${name}`] || process.env[`SETU_TEST_${name}`] || fallback;
+const T = (name, fallback) => process.env[`SAMADHAN_TEST_${name}`] || fallback;
 const API = T('API', 'http://localhost:4191/api/samadhan');
 const PG = T('PG', 'postgres://postgres@localhost:55432/samadhan_test');
 const APP = T('APP_ID', 'samadhan');

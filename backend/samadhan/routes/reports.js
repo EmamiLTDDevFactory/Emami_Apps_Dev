@@ -188,7 +188,7 @@ router.get('/dashboard/overview', wrap(async (req, res) => {
 }));
 
 /**
- * "Emami Secondary Helpdesk Dashboard": ticket counts by region, status, type and source, plus unresolved by category,
+ * "Emami Service Desk Dashboard": ticket counts by region, status, type and source, plus unresolved by category,
  * depot and state, and the open Fatal / Serious tickets. Every bar links to the matching ticket list in the app.
  */
 router.get('/dashboard/breakdown', wrap(async (req, res) => {

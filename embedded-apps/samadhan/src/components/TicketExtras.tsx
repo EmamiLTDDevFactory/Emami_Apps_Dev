@@ -15,7 +15,7 @@ export function fillCanned(text: string, t: Ticket, agentName: string): string {
   const v: Record<string, string> = {
     'ticket.requester.name': t.requesterName, requester: t.requesterName, 'ticket.id': String(t.id), id: String(t.id),
     'ticket.subject': t.subject, 'ticket.agent.name': agentName, 'ticket.distributor.code': t.distributorCode ?? '', distributorCode: t.distributorCode ?? '',
-    'ticket.distributor.name': t.distributorName ?? '', distributorName: t.distributorName ?? '', helpdesk_name: 'Emami Secondary Helpdesk',
+    'ticket.distributor.name': t.distributorName ?? '', distributorName: t.distributorName ?? '', helpdesk_name: 'Emami Service Desk',
   };
   return text.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (m, k: string) => v[k] ?? m);
 }

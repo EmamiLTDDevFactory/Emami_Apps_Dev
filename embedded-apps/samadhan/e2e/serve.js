@@ -1,5 +1,5 @@
-// Static server for the end-to-end tests (no dependencies): the built app at /apps/samadhan/ (dist/) and the pre-v7
-// redirect stub at /apps/setu/ (../setu/dist/), like the hub serves them. Usage: node e2e/serve.js [port=3250]
+// Static server for the end-to-end tests (no dependencies): the built app at /apps/samadhan/ (dist/), like the hub
+// serves it. Usage: node e2e/serve.js [port=3250]
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -7,7 +7,6 @@ const path = require('path');
 const PORT = Number(process.argv[2] || 3250);
 const ROOTS = [
     ['/apps/samadhan', path.join(__dirname, '..', 'dist')],
-    ['/apps/setu', path.join(__dirname, '..', '..', 'setu', 'dist')],
 ];
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.txt': 'text/plain', '.woff2': 'font/woff2' };
 
