@@ -33,6 +33,11 @@ export interface Samadhan {
   attachments: AttachmentsInfo | null;
   /** The agent's own settings (My preferences). */
   prefs: AgentPrefs;
+  /** v7 Phase 3: the workspace switcher - '' = All. Always '' while the multi-desk mode is off. */
+  workspace: string;
+  setWorkspace: (key: string) => void;
+  /** Remember an application as recently used (New ticket shows recent ones first). */
+  rememberApp: (applicationId: number) => void;
 }
 
 export type NewTicketPreset = { parentId?: number; [key: string]: string | number | undefined };

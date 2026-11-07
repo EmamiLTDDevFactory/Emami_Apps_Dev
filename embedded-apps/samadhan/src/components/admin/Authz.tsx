@@ -4,7 +4,8 @@ import { AlertTriangle, ChevronDown, ChevronRight, Clock, Download, Eye, KeyRoun
 import { ApiError, authz, type AuthzAccess, type AuthzLogEntry, type AuthzProfile, type SodWarning, type UserAccessPatch } from '@/lib/api';
 import { fmtDateTime } from '@/lib/format';
 import type { Visibility } from '@/lib/permissions';
-import { Button, Card, Drawer, Empty, Field, Kpi, Modal, Notice, Person, Pill, Select, Skeleton, Table, Tabs, cx, inputCls, textareaCls } from '../ui';
+import { Button, Card, Drawer, Empty, Field, Kpi, Modal, MultiSelect, Notice, Person, Pill, Select, Skeleton, Table, Tabs, cx, inputCls, textareaCls } from '../ui';
+import { useSamadhan } from '@/lib/context';
 import { checkboxCls, useLoad } from './shared';
 
 /*
@@ -347,7 +348,8 @@ function UserDrawer({ id, onClose }: { id: number; onClose: () => void }) {
   const access = useLoad(() => authz.user(id));
   const profiles = useLoad(authz.profiles);
   const cat = useLoad(authz.catalogue);
-  const [draft, setDraft] = useState<null | { profiles: { profileId: number; validFrom: string; validTo: string }[]; overrides: { key: string; effect: 'grant' | 'deny'; expiresAt: string }[]; visibility: Visibility }>(null);
+  const [draft, setDraft] = useState<null | { profiles: { profileId: number; validFrom: string; validTo: string }[]; overrides: { key: string; effect: 'grant' | 'deny'; expiresAt: string }[]; visibility: Visibility; workspaces: string[]; applications: string[] }>(null);
+  const { meta } = useSamadhan();
   const [asking, setAsking] = useState(false);
   const [sod, setSod] = useState<SodWarning[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -359,6 +361,9 @@ function UserDrawer({ id, onClose }: { id: number; onClose: () => void }) {
     profiles: a.profiles.map((p) => ({ profileId: p.profileId, validFrom: isoLocal(p.validFrom), validTo: isoLocal(p.validTo) })),
     overrides: a.overrides.map((o) => ({ key: o.key, effect: o.effect, expiresAt: isoLocal(o.expiresAt) })),
     visibility: a.scope.visibility,
+    // v7 Phase 3: [] = all
+    workspaces: Array.isArray(a.scope.workspaces) ? a.scope.workspaces : [],
+    applications: Array.isArray(a.scope.applications) ? a.scope.applications : [],
   } : null);
   const allKeys = cat.data ? Object.values(cat.data.catalogue).flat().filter((k) => !k.startsWith('admin.')) : [];
   const isAdmin = a?.agent.role === 'Admin';
@@ -370,7 +375,7 @@ function UserDrawer({ id, onClose }: { id: number; onClose: () => void }) {
     const body: UserAccessPatch = {
       profiles: d.profiles.map((p) => ({ profileId: p.profileId, validFrom: fromLocal(p.validFrom), validTo: fromLocal(p.validTo) })),
       overrides: d.overrides.filter((o) => o.key).map((o) => ({ key: o.key, effect: o.effect, expiresAt: fromLocal(o.expiresAt) })),
-      scope: { visibility: d.visibility }, reason, acceptSod: !!sod,
+      scope: { visibility: d.visibility, ...((meta.workspaces?.length ?? 0) > 0 ? { workspaces: d.workspaces.length ? d.workspaces : 'all', applications: d.applications.length ? d.applications : 'all' } : {}) }, reason, acceptSod: !!sod,
     };
     try {
       await authz.saveUser(id, body);
@@ -413,7 +418,15 @@ function UserDrawer({ id, onClose }: { id: number; onClose: () => void }) {
           <Card title="Data scope" sub="Which tickets this person sees in lists, counts, board, search, dashboards, reports and the bell.">
             <Select label="Sees" value={d.visibility} onChange={(v) => setDraft({ ...d, visibility: v as Visibility })}
               options={(Object.keys(VIS_LABEL) as Visibility[]).map((v) => ({ value: v, label: VIS_LABEL[v] }))} />
-            <p className="mt-2 text-2xs text-muted">Workspace and application scope arrive with workspaces (next phase).</p>
+            {(meta.workspaces?.length ?? 0) > 0 ? (
+              <div className="mt-3 grid gap-2 sm:grid-cols-2" data-testid="scope-workspaces">
+                <MultiSelect label="Service desks (none = all)" values={d.workspaces} onChange={(v) => setDraft({ ...d, workspaces: v })}
+                  options={(meta.workspaces ?? []).map((w) => ({ value: w.key, label: w.name }))} />
+                <MultiSelect label="Applications (none = all)" values={d.applications} onChange={(v) => setDraft({ ...d, applications: v })} align="right"
+                  options={(meta.applications ?? []).map((x) => ({ value: x.code, label: `${x.code} – ${x.name}` }))} />
+                <p className="text-2xs text-muted sm:col-span-2">Both narrow what the person sees (and the visibility above applies on top). Queue-wide AI insights are hidden for a narrowed scope.</p>
+              </div>
+            ) : <p className="mt-2 text-2xs text-muted">Service-desk and application scope appear once the service desks are set up.</p>}
           </Card>
 
           <Card title="Individual overrides" sub="Grant or deny one permission for this person, optionally until a date. A deny always wins.">
@@ -435,7 +448,7 @@ function UserDrawer({ id, onClose }: { id: number; onClose: () => void }) {
           <Card title="Effective access (saved)" sub="Computed by the same server function that checks every request.">
             <div className="space-y-2 text-sm">
               <div><b>Menu:</b> {a.screens.map((s) => SCREEN_LABEL[s] ?? s).join(' · ') || '-'}</div>
-              <div><b>Sees:</b> {VIS_LABEL[a.scope.visibility]}</div>
+              <div><b>Sees:</b> {VIS_LABEL[a.scope.visibility]}{Array.isArray(a.scope.workspaces) && a.scope.workspaces.length ? ` · desks: ${a.scope.workspaces.join(', ')}` : ''}{Array.isArray(a.scope.applications) && a.scope.applications.length ? ` · apps: ${a.scope.applications.join(', ')}` : ''}</div>
               <div><b>Added to the base role:</b> {a.added.length ? a.added.map((k) => <Pill key={k} tone="good">{k}</Pill>) : '-'}</div>
               <div><b>Removed from the base role:</b> {a.removed.length ? a.removed.map((k) => <Pill key={k} tone="bad">{k}</Pill>) : '-'}</div>
               <details><summary className="cursor-pointer font-semibold">All {a.effective.length} permissions</summary><div className="mt-1 font-mono text-xs leading-6">{a.effective.join(' · ')}</div></details>

@@ -190,6 +190,173 @@ const MIGRATIONS = [
             return 'ticket_attachments dropped, tickets."attachmentCount" dropped (files on the storage server are not touched)';
         },
     },
+    {
+        // Phase 3: workspaces (service desks) and applications (master prompt §H 6 / 7, §I). Additive: new tables, nullable
+        // columns, then the backfill of every existing ticket per the approved docs/v7/APP-MAPPING.md §0 (category /
+        // function / type are never changed), then "applicationId" / "workspaceId" get a default (SS / SEC_SALES) and
+        // NOT NULL, so every insert path - including old scripts that do not know the columns - stays valid.
+        // Only Secondary Sales is enabled; the other workspaces stay off until an Admin turns them on.
+        id: '7.2-workspaces',
+        describe: 'workspaces, applications, priority_matrix, status/field workspace mapping, mail classification tables; workspace / application columns; ticket backfill',
+        async up(client) {
+            const S = ident(activeSchema());
+            const { WORKSPACES, APPLICATIONS, MATRIX, RECORD_CLASSES, CLASSIFICATION_SOURCES, BACKFILL_SQL } = require('../lib/workspaceSeed');
+            const list = (a) => a.map((v) => `'${v}'`).join(', ');
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.workspaces (
+                id serial PRIMARY KEY,
+                key text NOT NULL UNIQUE CHECK (key ~ '^[A-Z][A-Z0-9_]{1,19}$'),
+                name text NOT NULL,
+                "shortCode" text NOT NULL,
+                icon text,
+                color text,
+                description text,
+                enabled boolean NOT NULL DEFAULT false,
+                "portalEnabled" boolean NOT NULL DEFAULT false,
+                position int NOT NULL DEFAULT 0,
+                "priorityMode" text NOT NULL DEFAULT 'SEVERITY_MATRIX' CHECK ("priorityMode" IN ('SEVERITY_MATRIX', 'IMPACT_URGENCY', 'BOTH')),
+                "categoryLabel" text NOT NULL DEFAULT 'Category',
+                "functionLabel" text NOT NULL DEFAULT 'Function',
+                "defaultGroupId" int REFERENCES ${S}.groups(id) ON DELETE SET NULL,
+                "defaultSlaPolicyId" int REFERENCES ${S}.sla_policies(id) ON DELETE SET NULL,
+                settings jsonb NOT NULL DEFAULT '{}',
+                "seedKey" text,
+                "createdAt" timestamptz NOT NULL DEFAULT now(),
+                "updatedAt" timestamptz NOT NULL DEFAULT now())`);
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.applications (
+                id serial PRIMARY KEY,
+                code text NOT NULL UNIQUE CHECK (code ~ '^[A-Z0-9]{2,8}$'),
+                name text NOT NULL,
+                "workspaceId" int NOT NULL REFERENCES ${S}.workspaces(id),
+                description text,
+                icon text,
+                aliases text[] NOT NULL DEFAULT '{}',
+                "techStack" text[] NOT NULL DEFAULT '{}',
+                hosting text[] NOT NULL DEFAULT '{}',
+                "database" text[] NOT NULL DEFAULT '{}',
+                criticality text,
+                "businessOwner" text,
+                "itOwnerAgentId" int REFERENCES ${S}.agents(id) ON DELETE SET NULL,
+                "supportGroupId" int REFERENCES ${S}.groups(id) ON DELETE SET NULL,
+                "defaultSlaPolicyId" int REFERENCES ${S}.sla_policies(id) ON DELETE SET NULL,
+                "portalVisible" boolean NOT NULL DEFAULT true,
+                active boolean NOT NULL DEFAULT true,
+                position int NOT NULL DEFAULT 0,
+                "seedKey" text,
+                "createdAt" timestamptz NOT NULL DEFAULT now(),
+                "updatedAt" timestamptz NOT NULL DEFAULT now())`);
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.priority_matrix (
+                id serial PRIMARY KEY,
+                "workspaceId" int NOT NULL REFERENCES ${S}.workspaces(id) ON DELETE CASCADE,
+                impact smallint NOT NULL CHECK (impact BETWEEN 1 AND 4),
+                urgency smallint NOT NULL CHECK (urgency BETWEEN 1 AND 4),
+                priority smallint NOT NULL CHECK (priority BETWEEN 1 AND 4),
+                UNIQUE ("workspaceId", impact, urgency))`);
+            // A status with no rows here is offered in every workspace (today's statuses keep working everywhere).
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.status_workspaces (
+                "statusId" int NOT NULL REFERENCES ${S}.ticket_statuses(id) ON DELETE CASCADE,
+                "workspaceId" int NOT NULL REFERENCES ${S}.workspaces(id) ON DELETE CASCADE,
+                PRIMARY KEY ("statusId", "workspaceId"))`);
+            // Per-workspace field settings. A field with no row for a workspace behaves as today (field_definitions).
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.field_workspaces (
+                id serial PRIMARY KEY,
+                "fieldId" int NOT NULL REFERENCES ${S}.field_definitions(id) ON DELETE CASCADE,
+                "workspaceId" int NOT NULL REFERENCES ${S}.workspaces(id) ON DELETE CASCADE,
+                "labelOverride" text,
+                "requiredOnCreate" boolean NOT NULL DEFAULT false,
+                "requiredBeforeResolve" boolean NOT NULL DEFAULT false,
+                visible boolean NOT NULL DEFAULT true,
+                position int,
+                section text,
+                "helpText" text,
+                "visibleWhen" jsonb,
+                "portalVisible" boolean NOT NULL DEFAULT false,
+                UNIQUE ("fieldId", "workspaceId"))`);
+            await q(client, `ALTER TABLE ${S}.field_definitions ADD COLUMN IF NOT EXISTS storage text NOT NULL DEFAULT 'column' CHECK (storage IN ('column', 'sap', 'it', 'program', 'custom'))`);
+            await q(client, `ALTER TABLE ${S}.field_choices ADD COLUMN IF NOT EXISTS "workspaceId" int REFERENCES ${S}.workspaces(id)`);
+            await q(client, `ALTER TABLE ${S}.field_choices ADD COLUMN IF NOT EXISTS meta jsonb NOT NULL DEFAULT '{}'`);
+            for (const t of ['groups', 'sla_policies', 'severity_rules', 'canned_responses', 'scenarios', 'automation_rules', 'articles', 'email_templates', 'saved_views']) {
+                await q(client, `ALTER TABLE ${S}.${t} ADD COLUMN IF NOT EXISTS "workspaceId" int REFERENCES ${S}.workspaces(id)`);
+            }
+            for (const t of ['sla_policies', 'automation_rules']) {
+                await q(client, `ALTER TABLE ${S}.${t} ADD COLUMN IF NOT EXISTS "applicationId" int REFERENCES ${S}.applications(id)`);
+            }
+            // Single mailbox classification (§J): Admin sender rules and the learning table (suggestions only).
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.mail_sender_rules (
+                id serial PRIMARY KEY,
+                kind text NOT NULL CHECK (kind IN ('domain', 'email')),
+                pattern text NOT NULL,
+                "applicationId" int NOT NULL REFERENCES ${S}.applications(id) ON DELETE CASCADE,
+                note text,
+                active boolean NOT NULL DEFAULT true,
+                "createdBy" text,
+                "createdAt" timestamptz NOT NULL DEFAULT now(),
+                UNIQUE (kind, pattern))`);
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.classification_learning (
+                "applicationId" int NOT NULL REFERENCES ${S}.applications(id) ON DELETE CASCADE,
+                keyword text NOT NULL,
+                hits int NOT NULL DEFAULT 1,
+                "lastSeenAt" timestamptz NOT NULL DEFAULT now(),
+                PRIMARY KEY ("applicationId", keyword))`);
+
+            // Seeds (once; tagged so down removes exactly these rows)
+            for (const w of WORKSPACES) {
+                await q(client, `INSERT INTO ${S}.workspaces (key, name, "shortCode", icon, color, description, enabled, "portalEnabled", position, "priorityMode", "categoryLabel", "functionLabel", "seedKey")
+                                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) ON CONFLICT (key) DO NOTHING`,
+                [w.key, w.name, w.shortCode, w.icon, w.color, w.description, w.enabled, w.portalEnabled, w.position, w.priorityMode, w.categoryLabel, w.functionLabel, `7.2:${w.key}`]);
+            }
+            const ws = Object.fromEntries((await q(client, `SELECT id, key FROM ${S}.workspaces`)).rows.map((r) => [r.key, r.id]));
+            for (const [i, [code, name, wk, aliases, active]] of APPLICATIONS.entries()) {
+                await q(client, `INSERT INTO ${S}.applications (code, name, "workspaceId", aliases, active, position, "seedKey") VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (code) DO NOTHING`,
+                    [code, name, ws[wk], aliases, active, i + 1, `7.2:${code}`]);
+            }
+            for (const key of ['SAP', 'S4_PROGRAM', 'DIGITAL_APPS', 'INFRA_IT']) {
+                for (const m of MATRIX) {
+                    await q(client, `INSERT INTO ${S}.priority_matrix ("workspaceId", impact, urgency, priority) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`, [ws[key], m.impact, m.urgency, m.priority]);
+                }
+            }
+            // Existing type choices: record class INCIDENT (§H 6); nothing else in Secondary Sales changes.
+            await q(client, `UPDATE ${S}.field_choices c SET meta = c.meta || '{"recordClass": "INCIDENT"}'::jsonb
+                             FROM ${S}.field_definitions d WHERE d.id = c."fieldId" AND d.key = 'type' AND NOT (c.meta ? 'recordClass')`);
+
+            // Ticket columns, backfill, then the defaults and NOT NULL.
+            await q(client, `ALTER TABLE ${S}.tickets
+                ADD COLUMN IF NOT EXISTS "workspaceId" int REFERENCES ${S}.workspaces(id),
+                ADD COLUMN IF NOT EXISTS "applicationId" int REFERENCES ${S}.applications(id),
+                ADD COLUMN IF NOT EXISTS "recordClass" text NOT NULL DEFAULT 'INCIDENT' CHECK ("recordClass" IN (${list(RECORD_CLASSES)})),
+                ADD COLUMN IF NOT EXISTS "classificationSource" text CHECK ("classificationSource" IN (${list(CLASSIFICATION_SOURCES)})),
+                ADD COLUMN IF NOT EXISTS "classificationConfidence" real,
+                ADD COLUMN IF NOT EXISTS impact smallint CHECK (impact BETWEEN 1 AND 4),
+                ADD COLUMN IF NOT EXISTS urgency smallint CHECK (urgency BETWEEN 1 AND 4),
+                ADD COLUMN IF NOT EXISTS custom jsonb NOT NULL DEFAULT '{}'`);
+            const filled = await q(client, `UPDATE ${S}.tickets t SET "applicationId" = a.id, "workspaceId" = a."workspaceId", "classificationSource" = 'backfill'
+                FROM ${S}.applications a WHERE t."applicationId" IS NULL AND a.code = (${BACKFILL_SQL})`);
+            const ss = (await q(client, `SELECT id, "workspaceId" FROM ${S}.applications WHERE code = 'SS'`)).rows[0];
+            await q(client, `ALTER TABLE ${S}.tickets ALTER COLUMN "applicationId" SET DEFAULT ${Number(ss.id)}, ALTER COLUMN "workspaceId" SET DEFAULT ${Number(ss.workspaceId)}`);
+            await q(client, `ALTER TABLE ${S}.tickets ALTER COLUMN "applicationId" SET NOT NULL, ALTER COLUMN "workspaceId" SET NOT NULL`);
+            for (const [name, cols] of [['ws_status', '"workspaceId", "statusId"'], ['ws_created', '"workspaceId", "createdAt"'], ['app_status', '"applicationId", "statusId"'],
+                ['app_created', '"applicationId", "createdAt"'], ['ws_agent', '"workspaceId", "agentId"'], ['record_class', '"recordClass"']]) {
+                await q(client, `CREATE INDEX IF NOT EXISTS tickets_${name}_idx ON ${S}.tickets (${cols})`);
+            }
+            await q(client, `CREATE INDEX IF NOT EXISTS tickets_custom_gin_idx ON ${S}.tickets USING gin (custom)`);
+            return `${WORKSPACES.length} workspaces, ${APPLICATIONS.length} applications seeded; ${filled.rowCount} tickets backfilled`;
+        },
+        async down(client) {
+            const S = ident(activeSchema());
+            await q(client, `ALTER TABLE ${S}.tickets DROP COLUMN IF EXISTS "workspaceId", DROP COLUMN IF EXISTS "applicationId", DROP COLUMN IF EXISTS "recordClass",
+                DROP COLUMN IF EXISTS "classificationSource", DROP COLUMN IF EXISTS "classificationConfidence", DROP COLUMN IF EXISTS impact,
+                DROP COLUMN IF EXISTS urgency, DROP COLUMN IF EXISTS custom`);
+            for (const t of ['sla_policies', 'automation_rules']) await q(client, `ALTER TABLE ${S}.${t} DROP COLUMN IF EXISTS "applicationId"`);
+            for (const t of ['groups', 'sla_policies', 'severity_rules', 'canned_responses', 'scenarios', 'automation_rules', 'articles', 'email_templates', 'saved_views', 'field_choices']) {
+                await q(client, `ALTER TABLE ${S}.${t} DROP COLUMN IF EXISTS "workspaceId"`);
+            }
+            await q(client, `ALTER TABLE ${S}.field_choices DROP COLUMN IF EXISTS meta`);
+            await q(client, `ALTER TABLE ${S}.field_definitions DROP COLUMN IF EXISTS storage`);
+            for (const t of ['classification_learning', 'mail_sender_rules', 'field_workspaces', 'status_workspaces', 'priority_matrix', 'applications', 'workspaces']) {
+                await q(client, `DROP TABLE IF EXISTS ${S}.${t}`);
+            }
+            return 'workspace / application tables and columns dropped (category, function and type values were never changed)';
+        },
+    },
 ];
 
 async function applied(client, schema) {

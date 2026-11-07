@@ -56,6 +56,12 @@ router.put('/me/preferences', wrap(async (req, res) => {
         }
         patch.defaultVariants = { report };
     }
+    // v7 Phase 3: the workspace switcher ('' = All) and the recently used applications (New ticket).
+    if (b.workspace !== undefined) {
+        if (b.workspace !== null && b.workspace !== '' && !/^[A-Z][A-Z0-9_]{1,19}$/.test(String(b.workspace))) throw fail(400, 'Unknown workspace.');
+        patch.workspace = b.workspace || null;
+    }
+    if (b.recentApps !== undefined) patch.recentApps = (Array.isArray(b.recentApps) ? b.recentApps : []).map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, 8);
     const { rows } = await pool.query('UPDATE samadhan.agents SET prefs = prefs || $2::jsonb WHERE id = $1 RETURNING prefs', [req.agent.id, JSON.stringify(patch)]);
     res.json({ success: true, prefs: rows[0].prefs });
 }));
@@ -135,20 +141,51 @@ router.patch('/me/availability', wrap(async (req, res) => {
     res.json({ success: true, availability });
 }));
 
-async function loadFields() {
-    const defs = (await pool.query('SELECT * FROM samadhan.field_definitions ORDER BY position, id')).rows;
-    const choices = (await pool.query('SELECT * FROM samadhan.field_choices WHERE active ORDER BY position, id')).rows;
-    const fields = defs.map((d) => ({ ...d, choices: choices.filter((c) => c.fieldId === d.id && c.parentId === null).map((c) => c.value) }));
+/**
+ * Fields and the category tree for one workspace (v7 Phase 3). Secondary Sales sees the shared choices plus its own,
+ * exactly as before. Another workspace sees its own choices for a field when it has any, else the shared ones, and
+ * its field_workspaces settings (label, required, visible, position, section, help).
+ */
+function fieldsFor(defs, choices, overrides, ws) {
+    const own = (c) => ws && c.workspaceId === ws.id;
+    const isSales = !ws || ws.key === 'SEC_SALES';
+    const pickFor = (fieldId) => {
+        const all = choices.filter((c) => c.fieldId === fieldId);
+        if (isSales) return all.filter((c) => c.workspaceId == null || own(c));
+        const mine = all.filter(own);
+        return mine.length ? mine : all.filter((c) => c.workspaceId == null);
+    };
+    const fields = defs.map((d) => {
+        const o = ws ? overrides.find((x) => x.fieldId === d.id && x.workspaceId === ws.id) : null;
+        const list = pickFor(d.id);
+        return {
+            ...d,
+            ...(o ? { label: o.labelOverride || d.label, required: o.requiredOnCreate, requiredBeforeResolve: o.requiredBeforeResolve, visible: o.visible,
+                position: o.position ?? d.position, section: o.section, helpText: o.helpText, visibleWhen: o.visibleWhen, portalVisible: o.portalVisible } : {}),
+            choices: list.filter((c) => c.parentId === null).map((c) => c.value),
+            ...(d.key === 'type' ? { recordClasses: Object.fromEntries(list.filter((c) => c.parentId === null).map((c) => [c.value, c.meta?.recordClass || 'INCIDENT'])) } : {}),
+        };
+    });
     const category = defs.find((d) => d.key === 'category');
-    const tree = category
-        ? choices.filter((c) => c.fieldId === category.id && c.parentId === null)
-            .map((p) => ({ value: p.value, children: choices.filter((c) => c.parentId === p.id).map((c) => c.value) }))
-        : [];
+    const cats = category ? pickFor(category.id) : [];
+    const tree = cats.filter((c) => c.parentId === null).map((p) => ({ value: p.value, children: choices.filter((c) => c.parentId === p.id).map((c) => c.value) }));
     return { fields, tree };
 }
 
+async function loadFields() {
+    const defs = (await pool.query('SELECT * FROM samadhan.field_definitions ORDER BY position, id')).rows;
+    const choices = (await pool.query('SELECT * FROM samadhan.field_choices WHERE active ORDER BY position, id')).rows;
+    const { catalog } = require('../lib/workspaces');
+    const c = await catalog();
+    if (!c.ready) return { ...fieldsFor(defs, choices, [], null), byWorkspace: null, catalog: c };
+    const overrides = (await pool.query('SELECT * FROM samadhan.field_workspaces')).rows;
+    const byWorkspace = Object.fromEntries(c.workspaces.map((ws) => [ws.key, fieldsFor(defs, choices, overrides, ws)]));
+    const sales = c.wsByKey.get('SEC_SALES');
+    return { ...fieldsFor(defs, choices, overrides, sales), byWorkspace, catalog: c };
+}
+
 router.get('/meta', wrap(async (req, res) => {
-    const [statuses, groups, agents, canned, { fields, tree }, callMode, portalEnabled, scenarios, sourceList, options] = await Promise.all([
+    const [statuses, groups, agents, canned, { fields, tree, byWorkspace, catalog }, callMode, portalEnabled, scenarios, sourceList, options] = await Promise.all([
         pool.query('SELECT * FROM samadhan.ticket_statuses ORDER BY position, id'),
         pool.query('SELECT id, name, assignment FROM samadhan.groups ORDER BY name'),
         pool.query('SELECT id, name, email, role, active, availability FROM samadhan.agents ORDER BY name'),
@@ -184,8 +221,32 @@ router.get('/meta', wrap(async (req, res) => {
         callOutcomes: CALL_OUTCOMES,
         portalEnabled: portalEnabled !== false,
         scenarios: scenarios.rows,
+        // v7 Phase 3 (§M): workspaces, applications, Impact x Urgency, record classes; fields / tree per workspace.
+        // The top-level fields / categoryTree above stay Secondary Sales, as before.
+        ...(catalog.ready ? await workspaceMeta(catalog, byWorkspace) : { workspaces: [], applications: [], byWorkspace: null }),
     });
 }));
+
+async function workspaceMeta(c, byWorkspace) {
+    const { availableWorkspaceIds } = require('../lib/workspaces');
+    const { IMPACTS, RECORD_CLASSES, URGENCIES } = require('../lib/workspaceSeed');
+    const [available, statusWs, groupWs] = await Promise.all([
+        availableWorkspaceIds(),
+        pool.query('SELECT "statusId", "workspaceId" FROM samadhan.status_workspaces'),
+        pool.query('SELECT id, "workspaceId" FROM samadhan.groups'),
+    ]);
+    return {
+        workspaces: c.workspaces.map((w) => ({ ...w, available: available.has(w.id) })),
+        applications: c.applications.map(({ seedKey, ...a }) => ({ ...a, available: a.active && available.has(a.workspaceId) })),
+        priorityMatrix: c.matrix,
+        recordClasses: RECORD_CLASSES,
+        impacts: IMPACTS,
+        urgencies: URGENCIES,
+        statusWorkspaces: statusWs.rows,
+        groupWorkspaces: Object.fromEntries(groupWs.rows.filter((g) => g.workspaceId).map((g) => [g.id, g.workspaceId])),
+        byWorkspace,
+    };
+}
 
 router.get('/distributors/lookup', wrap(async (req, res) => {
     const code = String(req.query.code || '').trim();

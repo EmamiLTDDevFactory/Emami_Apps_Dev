@@ -27,12 +27,27 @@ async function loadTicket(id) {
         err.status = 404;
         throw err;
     }
-    return rows[0];
+    return withRef(rows[0]);
+}
+
+/** v7 Phase 3: application code / name, workspace and the readable reference (MSFA-100123) on a ticket row. */
+async function withRef(t) {
+    const { catalog, ref } = require('./workspaces');
+    const c = await catalog();
+    const app = c.byId.get(t.applicationId);
+    t.applicationCode = app?.code ?? null;
+    t.applicationName = app?.name ?? null;
+    t.workspaceKey = app?.workspaceKey ?? null;
+    t.ref = ref(app?.code, t.id);
+    t.displayRef = app ? t.ref : `#${t.id}`;
+    return t;
 }
 
 function placeholders(t, extra = {}) {
     return {
         'ticket.id': String(t.id),
+        'ticket.ref': t.ref ?? String(t.id),
+        'ticket.application': t.applicationName ?? '',
         'ticket.subject': t.subject,
         'ticket.description': stripTags(t.description),
         'ticket.url': `${APP_URL}${ticketLink(t.id)}`,
@@ -72,6 +87,10 @@ async function emailRequester(t, template, extra = {}) {
     if (!t.requesterEmail) return;
     const msg = await renderTemplate(template, t, extra);
     if (!msg) return;
+    // §J: the acknowledgement names the reference and the application (unless the template already shows it).
+    if (template === 'requester.ticket_received' && t.applicationCode && !msg.html.includes(t.ref)) {
+        msg.html += `<p>Reference: <b>${esc(t.ref)}</b> (${esc(t.applicationName)})</p>`;
+    }
     await sendMail({ to: [t.requesterEmail], subject: msg.subject, html: msg.html });
     await logActivity(t.id, 'email_sent', { template, to: t.requesterEmail });
 }
@@ -107,4 +126,4 @@ async function notifyAgents(t, template, to, extra = {}) {
         notify({ email, appId, kind: template.replace(/^agent\./, ''), title: msg.subject, body, link: ticketLink(t.id), refKey: `setu:${t.id}:${template}` })));
 }
 
-module.exports = { emailRequester, fillPlaceholders, loadTicket, notifyAgents, renderTemplate };
+module.exports = { emailRequester, fillPlaceholders, loadTicket, notifyAgents, renderTemplate, withRef };

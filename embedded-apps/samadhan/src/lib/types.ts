@@ -61,7 +61,62 @@ export interface FieldDef {
   required: boolean;
   position: number;
   choices: string[];
+  /** v7 Phase 3 (per workspace, from field_workspaces): */
+  requiredBeforeResolve?: boolean;
+  visible?: boolean;
+  section?: string | null;
+  helpText?: string | null;
+  /** Type field only: record class of each type value. */
+  recordClasses?: Record<string, RecordClass>;
 }
+
+// ---------- v7 Phase 3: workspaces and applications ----------
+export type PriorityMode = 'SEVERITY_MATRIX' | 'IMPACT_URGENCY' | 'BOTH';
+export type RecordClass = 'INCIDENT' | 'SERVICE_REQUEST' | 'ACCESS_REQUEST' | 'CHANGE' | 'PROBLEM' | 'QUERY' | 'ENHANCEMENT' | 'DEFECT' | 'TASK' | 'RISK';
+export type ClassificationSource = 'manual' | 'subject_tag' | 'keyword' | 'sender_rule' | 'ai' | 'default' | 'backfill';
+export interface Workspace {
+  id: number;
+  key: string;
+  name: string;
+  shortCode: string;
+  icon: string | null;
+  color: string | null;
+  description: string | null;
+  enabled: boolean;
+  portalEnabled: boolean;
+  position: number;
+  priorityMode: PriorityMode;
+  categoryLabel: string;
+  functionLabel: string;
+  defaultGroupId: number | null;
+  defaultSlaPolicyId: number | null;
+  /** True when tickets can be in this workspace now (Secondary Sales always; others with the flag on). */
+  available?: boolean;
+}
+export interface Application {
+  id: number;
+  code: string;
+  name: string;
+  workspaceId: number;
+  workspaceKey: string;
+  description: string | null;
+  icon: string | null;
+  aliases: string[];
+  criticality: string | null;
+  businessOwner: string | null;
+  itOwnerAgentId: number | null;
+  supportGroupId: number | null;
+  defaultSlaPolicyId: number | null;
+  portalVisible: boolean;
+  active: boolean;
+  position: number;
+  available?: boolean;
+  /** Admin listing only */
+  used?: boolean;
+  tickets?: number;
+}
+export interface MatrixCell { workspaceId: number; impact: number; urgency: number; priority: number }
+export interface WorkspaceFields { fields: FieldDef[]; tree: CategoryNode[] }
 
 export interface CategoryNode {
   value: string;
@@ -86,6 +141,16 @@ export interface Meta {
   options: UiOptions;
   bellEventList: BellEvent[];
   agentEmailTemplates: string[];
+  /** v7 Phase 3 (empty / null on an older backend or before migration 7.2). */
+  workspaces?: Workspace[];
+  applications?: Application[];
+  priorityMatrix?: MatrixCell[];
+  recordClasses?: RecordClass[];
+  impacts?: Record<string, string>;
+  urgencies?: Record<string, string>;
+  statusWorkspaces?: { statusId: number; workspaceId: number }[];
+  groupWorkspaces?: Record<string, number>;
+  byWorkspace?: Record<string, WorkspaceFields> | null;
 }
 
 export interface ScenarioRef {
@@ -134,6 +199,12 @@ export interface TicketRow {
   lastActivityDetail: string | null;
   /** v7: number of files on the ticket (absent on an older backend). */
   attachmentCount?: number;
+  /** v7 Phase 3 */
+  applicationId?: number;
+  workspaceId?: number;
+  recordClass?: RecordClass;
+  classificationSource?: ClassificationSource | null;
+  classificationConfidence?: number | null;
   requesterName: string;
   requesterEmail: string | null;
   agentName: string | null;
@@ -159,6 +230,13 @@ export interface Ticket extends TicketRow, Record<EditableField, string | null> 
   mergedIntoId: number | null;
   spam: boolean;
   deletedAt: string | null;
+  /** v7 Phase 3 */
+  ref?: string;
+  applicationCode?: string | null;
+  applicationName?: string | null;
+  workspaceKey?: string | null;
+  impact?: number | null;
+  urgency?: number | null;
 }
 
 export interface Conversation {
@@ -340,6 +418,8 @@ export interface Breakdown {
   depot: NameValue[];
   state: NameValue[];
   critical: { id: number; subject: string; severity: Severity; statusName: string; createdAt: string }[];
+  /** v7 Phase 3 */
+  application?: NameValue[];
 }
 
 export interface AgentPerformance {
@@ -373,6 +453,13 @@ export interface Analytics {
   byType: NameValue[]; bySource: NameValue[]; byStatus: NameValue[]; bySeverity: NameValue[]; byPriority: NameValue[];
   csat: { responses: number; positive: number; neutral: number; negative: number; comments: { rating: 1 | 2 | 3; comment: string; createdAt: string; ticketId: number; agentName: string | null }[] };
   calls: { total: number; outbound: number; inbound: number; connected: number; avgMins: number | null; byOutcome: NameValue[] };
+  /** v7 Phase 3 */
+  byApplication?: ApplicationKpi[];
+  byWorkspace?: { key: string; name: string; value: number }[];
+}
+export interface ApplicationKpi {
+  id: number | null; code: string; name: string; workspace: string; value: number; resolved: number; open: number;
+  resolutionSlaPct: number | null; avgResolutionMins: number | null; reopenedPct: number | null; csatPositivePct: number | null;
 }
 
 export interface ScenarioAction { type: 'setStatus' | 'setPriority' | 'setGroup' | 'setAgent' | 'setField' | 'addTag' | 'reply' | 'note'; value?: number | string; field?: string; text?: string }
@@ -405,6 +492,10 @@ export interface AgentPrefs {
   /** Dashboard widgets to show, in order; null / missing = the Admin default. */
   dashboardWidgets?: DashboardWidget[] | null;
   defaultVariants?: { report: number | null };
+  /** v7 Phase 3: the workspace switcher ('' / missing = All). */
+  workspace?: string | null;
+  /** v7 Phase 3: recently used application ids (New ticket shows them first). */
+  recentApps?: number[];
 }
 
 /** Admin > General options every screen can read (meta.options). */
@@ -420,6 +511,8 @@ export interface UiOptions {
   'presence.enabled': boolean;
   'dashboard.widgets': DashboardWidget[];
   'severity.priority': Record<Severity, number>;
+  /** v7 Phase 3: multi-desk mode (missing on an older backend). */
+  'workspaces.enabled'?: boolean;
 }
 
 export const DASHBOARD_WIDGETS = ['kpis', 'insights', 'trends', 'sla', 'backlog', 'ageing', 'risk', 'byStatus', 'bySeverity', 'agentLoad', 'leaderboard',

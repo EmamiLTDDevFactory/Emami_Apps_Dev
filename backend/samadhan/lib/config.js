@@ -20,6 +20,11 @@ const DEFAULTS = {
     'severity.priority': SEVERITY_PRIORITY,
     'sources.extra': [],
     'presence.enabled': true,
+    // v7 Phase 3 (master prompt §H 6, §J): multi-desk mode off until an Admin turns it on; mail classification;
+    // the APPCODE-id reference in outbound subjects before the kept [#id] token.
+    'workspaces.enabled': false,
+    'mail.classification': { ai: false, threshold: 0.8, defaultCode: 'SS' },
+    'ref.prefixInSubject': true,
     'dashboard.widgets': ['kpis', 'insights', 'trends', 'sla', 'backlog', 'ageing', 'risk', 'byStatus', 'bySeverity', 'agentLoad', 'leaderboard', 'regionStatus', 'categories', 'sources', 'byGroup', 'todos', 'csat', 'recent'],
 };
 
@@ -56,7 +61,7 @@ async function sources() {
 /** The options the app needs on every screen (sent with /meta). */
 async function uiOptions() {
     const keys = ['general.helpdeskName', 'general.supportEmail', 'general.supportPhone', 'csat.question', 'csat.labels', 'export.maxRows',
-        'list.defaultView', 'list.pageSize', 'presence.enabled', 'dashboard.widgets', 'severity.priority'];
+        'list.defaultView', 'list.pageSize', 'presence.enabled', 'dashboard.widgets', 'severity.priority', 'workspaces.enabled'];
     const out = {};
     for (const k of keys) out[k] = await option(k);
     return out;

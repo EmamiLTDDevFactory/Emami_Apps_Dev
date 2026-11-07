@@ -239,3 +239,14 @@ around it. It refuses if anything outside the tables refers to `setu.` by name. 
 - Migrations `7.1-auth` and `7.1-attachments` run at start-up; both have a down step:
   `node backend/samadhan/db/migrate.js down 7.1-attachments --yes`.
 - Server settings, test and roll-back steps: `docs/v7/PHASE-2-NOTES.md`.
+
+### Phase 3: service desks, applications, mail classification (schema v10)
+
+- `lib/workspaceSeed.js` (seeds, the approved backfill rule, Impact × Urgency), `lib/workspaces.js` (catalog cache,
+  references, `classify()` for new mail, learning table, application-change checks), `routes/workspaces.js` (Admin API:
+  `/admin/workspaces`, `/admin/applications`, `/admin/mail-classification`, `/admin/mail-rules`).
+- `createTicket` sets application / desk / record class / classification; `updateTicket` follows the application to its
+  desk; SLA and severity look at the desk; `POST /tickets/:id/classify` confirms or changes a classification.
+- Settings: `workspaces.enabled` (default false), `mail.classification`, `ref.prefixInSubject`.
+- Migration `7.2-workspaces` runs at start-up; down: `node backend/samadhan/db/migrate.js down 7.2-workspaces --yes`.
+- Notes, test and roll-back steps: `docs/v7/PHASE-3-NOTES.md`.

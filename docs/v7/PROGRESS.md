@@ -10,7 +10,8 @@ Resume here in a new session: read this file and `docs/SAMADHAN_MASTER_PROMPT_FI
 | 0 (discovery, baseline, plan) | done — **approved 2026-11-05** ("approved", no individual answers) |
 | 1 (rename + harness) | **code done, full gate GREEN (run 5, 23/23)**; not pushed (push plan awaiting the user's OK) |
 | 2 (permissions, cockpit, data scope, attachments) | **code done, gate GREEN 31/31 (2026-11-07)**; not pushed (asking the user) |
-| 3 – 9 | not started |
+| 3 (service desks, applications, references, mail classification) | **code done, gate GREEN (2026-11-07)**; not pushed (asking the user) |
+| 4 – 9 | not started |
 
 ### Decisions taken at the Phase-0 STOP (approval without individual answers → recommended options)
 - Q-R1 **Option A** (app id `samadhan`, `setu` kept as alias; one line in access-tracker). Q-R2 redirect stub
@@ -172,6 +173,15 @@ Master prompt `docs/SAMADHAN_MASTER_PROMPT_FINAL.md` added to git (user).
   the admin team sets `SAMADHAN_STORAGE=sftp` and the `SAMADHAN_SFTP_*` values on the server.
 - Still with the server admin: nginx route (Phase 1). User: rotate the `emamiadmin` password.
 - After Phase 2: STOP for review.
+
+**Phase 3 (started 2026-11-07, user: "start phase 3"): code done, gate GREEN.**
+- Mapping answers (user, 2026-11-07): Q-M1 mSecSales → MSFA; Q-M2 Rural mSFA → own RMSFA; Q-M3 CDMS → own CDMS;
+  Q-M4 SFA → MR, Manager → SUP, Portal → DMS; Q-M5 B2B stays in Secondary Sales as SCB2B; Q-M6 recommendation
+  ('backfill', not in Needs classification). Recorded in `APP-MAPPING.md` §0.
+- Notes: `PHASE-3-NOTES.md`. Test report: `TEST-REPORT.md` (Phase 3). Demo: `run.sh load-v7-apps`.
+- Next: merge the latest `origin/main`, **ask** before pushing `Feature/Animesh` then `main`; then ask before the dev
+  deploy (migration 7.2 runs at start-up: backfill of every dev ticket) and the demo load. Desks stay OFF on dev until
+  the user decides to switch them on for UAT. Then STOP for review (Phase 4 = SAP workspace).
 
 Earlier plan (kept for reference):
 

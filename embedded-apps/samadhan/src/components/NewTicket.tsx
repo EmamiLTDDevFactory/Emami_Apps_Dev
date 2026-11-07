@@ -7,6 +7,8 @@ import { useSamadhan, type NewTicketPreset } from '@/lib/context';
 import TicketFields, { type Values } from './TicketFields';
 import { Button, Card, Field, Notice, Spinner, cx, inputBase, inputCls, textareaCls } from './ui';
 import { FileTray, uploadPending, usePendingFiles } from './Attachments';
+import ApplicationPicker from './ApplicationPicker';
+import { appById, availableApps, groupsFor, matrixPriority, refOf, statusesFor, usesImpactUrgency, workspaceById } from '@/lib/workspaces';
 
 const EMAIL_RE = /^[^\s@']+@[^\s@']+\.[^\s@']+$/;
 const EMPTY_TOP = { requesterName: '', requesterEmail: '', requesterPhone: '', subject: '', description: '', source: 'Phone', statusId: '2', groupId: '', agentId: '', priority: '', tags: '' };
@@ -15,7 +17,7 @@ const EMPTY_TOP = { requesterName: '', requesterEmail: '', requesterPhone: '', s
 const TOP_KEYS = Object.keys(EMPTY_TOP);
 
 export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
-  const { meta, openTicket, attachments, can } = useSamadhan();
+  const { meta, openTicket, attachments, can, prefs, rememberApp } = useSamadhan();
   const withFiles = Boolean(attachments?.enabled) && can('attachment.upload');
   const tray = usePendingFiles(attachments?.limits.agent.perFileMb ?? 10, attachments?.limits.agent.filesPerAction ?? 10);
   const parentId = preset?.parentId;
@@ -28,6 +30,24 @@ export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: 'good' | 'bad'; text: string } | null>(null);
   const set = (p: Partial<typeof EMPTY_TOP>) => setTop((t) => ({ ...t, ...p }));
+  // v7 Phase 3: the application comes first and decides the desk. A child keeps its parent's unless changed;
+  // otherwise the last one used, else Secondary Sales - General (today's behaviour).
+  const apps = availableApps(meta);
+  const initialApp = (): number | null => {
+    if (parentId || !apps.length) return null;
+    const fromPreset = Number(preset?.applicationId);
+    if (apps.some((a) => a.id === fromPreset)) return fromPreset;
+    const recent = (prefs.recentApps ?? []).find((id) => apps.some((a) => a.id === id));
+    return recent ?? apps.find((a) => a.code === 'SS')?.id ?? apps[0].id;
+  };
+  const [applicationId, setApplicationId] = useState<number | null>(initialApp);
+  const [impact, setImpact] = useState('');
+  const [urgency, setUrgency] = useState('');
+  const app = appById(meta, applicationId);
+  const wsId = app?.workspaceId ?? null;
+  const ws = workspaceById(meta, wsId);
+  const matrix = usesImpactUrgency(meta, wsId);
+  const fromMatrix = matrixPriority(meta, wsId, Number(impact) || null, Number(urgency) || null);
   const emailOk = EMAIL_RE.test(top.requesterEmail.trim());
 
   // Find the requester by name, email or phone (people who wrote in before), as the agent types.
@@ -63,20 +83,24 @@ export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
       if (top.groupId) body.groupId = Number(top.groupId);
       if (top.agentId) body.agentId = Number(top.agentId);
       if (top.priority) body.priority = Number(top.priority);
+      if (applicationId) body.applicationId = applicationId;
+      if (matrix && impact) body.impact = Number(impact);
+      if (matrix && urgency) body.urgency = Number(urgency);
       const t = await createTicket(body);
+      if (applicationId) rememberApp(applicationId);
       // v7: files go up once the ticket exists; a failed file never loses the ticket.
       let fileErrors: string[] = [];
       if (withFiles && tray.ready.length) fileErrors = (await uploadPending(t.id, tray.ready)).errors;
       tray.clear();
       if (fileErrors.length) {
-        setMsg({ tone: 'bad', text: `Ticket #${t.id} created, but some files were not added: ${fileErrors.join(' · ')}` });
+        setMsg({ tone: 'bad', text: `Ticket ${refOf(meta, t)} created, but some files were not added: ${fileErrors.join(' · ')}` });
         if (!another) setTimeout(() => openTicket(t.id), 2500);
         return;
       }
       if (another) {
         // Keep the requester and distributor details for the next call from the same person.
         setTop((x) => ({ ...EMPTY_TOP, requesterName: x.requesterName, requesterEmail: x.requesterEmail, requesterPhone: x.requesterPhone, source: x.source }));
-        setMsg({ tone: 'good', text: `Ticket #${t.id} created. Log the next one below.` });
+        setMsg({ tone: 'good', text: `Ticket ${refOf(meta, t)} created. Log the next one below.` });
       } else {
         openTicket(t.id);
       }
@@ -96,6 +120,11 @@ export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
       </div>
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-4">
+          {apps.length > 0 && (
+            <Card title="Which app or area?" sub={ws && apps.some((a) => a.workspaceId !== apps[0].workspaceId) ? `Service desk: ${ws.name}` : 'Picks the application for reports, routing and the reference (e.g. MSFA-100123)'}>
+              <ApplicationPicker value={applicationId} onChange={setApplicationId} allowInherit={Boolean(parentId)} />
+            </Card>
+          )}
           <Card title="Requester and issue">
             <div className="relative mb-3">
               <UserSearch size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
@@ -127,7 +156,7 @@ export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
             </div>
           </Card>
           <Card title="Ticket details" sub="Category → Function sets severity and priority. Required fields (*) can be completed before resolving.">
-            <TicketFields values={fields} onChange={(p) => setFields((f) => ({ ...f, ...p }))} />
+            <TicketFields values={fields} onChange={(p) => setFields((f) => ({ ...f, ...p }))} workspaceKey={ws?.key} />
           </Card>
         </div>
         <div className="space-y-4">
@@ -140,13 +169,13 @@ export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
               </Field>
               <Field label="Status">
                 <select className={sel} value={top.statusId} onChange={(e) => set({ statusId: e.target.value })}>
-                  {meta.statuses.filter((s) => !s.isClosed).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  {statusesFor(meta, wsId).filter((s) => !s.isClosed).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               </Field>
               <Field label="Group" hint="Empty = routed by the automation rules">
                 <select className={sel} value={top.groupId} onChange={(e) => set({ groupId: e.target.value })}>
                   <option value="">Automatic</option>
-                  {meta.groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                  {groupsFor(meta, wsId).map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
                 </select>
               </Field>
               <Field label="Agent" hint="Empty = round robin where the group uses it">
@@ -155,9 +184,26 @@ export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
                   {meta.agents.filter((a) => a.active).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
               </Field>
-              <Field label="Priority" hint="Empty = from the severity matrix">
+              {matrix && (
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="Impact">
+                    <select className={sel} value={impact} onChange={(e) => setImpact(e.target.value)}>
+                      <option value="">—</option>
+                      {Object.entries(meta.impacts ?? {}).map(([k, l]) => <option key={k} value={k}>{k} · {l}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Urgency">
+                    <select className={sel} value={urgency} onChange={(e) => setUrgency(e.target.value)}>
+                      <option value="">—</option>
+                      {Object.entries(meta.urgencies ?? {}).map(([k, l]) => <option key={k} value={k}>{k} · {l}</option>)}
+                    </select>
+                  </Field>
+                  {fromMatrix && <p className="col-span-2 text-2xs font-semibold text-accent" data-testid="matrix-priority">Priority from Impact × Urgency: {meta.priorities[fromMatrix]}</p>}
+                </div>
+              )}
+              <Field label="Priority" hint={matrix ? 'Empty = from Impact × Urgency' : 'Empty = from the severity matrix'}>
                 <select className={sel} value={top.priority} onChange={(e) => set({ priority: e.target.value })}>
-                  <option value="">From severity</option>
+                  <option value="">{matrix ? 'From Impact × Urgency' : 'From severity'}</option>
                   {Object.entries(meta.priorities).reverse().map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                 </select>
               </Field>
@@ -173,7 +219,7 @@ export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
             <input type="checkbox" checked={another} onChange={(e) => setAnother(e.target.checked)} className="h-4 w-4 accent-[rgb(var(--accent))]" />
             Create another after this one
           </label>
-          <Button variant="primary" className="w-full" onClick={submit} disabled={busy || !top.subject.trim() || !top.requesterName.trim() || !emailOk}>
+          <Button variant="primary" className="w-full" onClick={submit} disabled={busy || !top.subject.trim() || !top.requesterName.trim() || !emailOk || (apps.length > 0 && !applicationId && !parentId)}>
             {busy ? <Spinner /> : <PlusCircle size={14} />} Create ticket
           </Button>
         </div>

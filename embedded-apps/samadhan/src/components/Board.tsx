@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState, type DragEvent } from 'react';
 import { MoreVertical, RefreshCw } from 'lucide-react';
 import { getBoard, updateTicket } from '@/lib/api';
+import { refOf, workspaceByKey } from '@/lib/workspaces';
 import { useSamadhan } from '@/lib/context';
 import { SEVERITY_EDGE } from '@/lib/format';
 import type { TicketRow } from '@/lib/types';
@@ -9,7 +10,8 @@ import { PriorityPill, SlaBadge } from './badges';
 import { Button, Notice, Select, Skeleton, cx } from './ui';
 
 export default function Board() {
-  const { meta, openTicket } = useSamadhan();
+  const { meta, openTicket, workspace } = useSamadhan();
+  const ws = workspaceByKey(meta, workspace);
   const [items, setItems] = useState<TicketRow[] | null>(null);
   const [mine, setMine] = useState('');
   const [groupId, setGroupId] = useState('');
@@ -21,13 +23,13 @@ export default function Board() {
   const load = useCallback(async () => {
     setBusy(true);
     try {
-      setItems(await getBoard({ mine, groupId }));
+      setItems(await getBoard({ mine, groupId, ...(ws ? { workspaceId: String(ws.id) } : {}) }));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load the board.');
     } finally {
       setBusy(false);
     }
-  }, [mine, groupId]);
+  }, [mine, groupId, ws]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -42,7 +44,7 @@ export default function Board() {
       await updateTicket(ticketId, { statusId });
       setError('');
     } catch (e) {
-      setError(`#${ticketId}: ${e instanceof Error ? e.message : 'Could not move the ticket.'}`);
+      setError(`${refOf(meta, items?.find((x) => x.id === ticketId) ?? { id: ticketId })}: ${e instanceof Error ? e.message : 'Could not move the ticket.'}`);
     }
     load();
   };
@@ -96,7 +98,7 @@ export default function Board() {
                       className={cx('relative cursor-grab rounded-xl border border-l-4 border-line bg-panel p-2.5 shadow-card active:cursor-grabbing', SEVERITY_EDGE[t.severity])}
                     >
                       <button type="button" onClick={() => openTicket(t.id)} className="block w-full pr-5 text-left">
-                        <div className="num text-2xs font-bold text-muted">#{t.id}</div>
+                        <div className="num text-2xs font-bold text-muted">{refOf(meta, t)}</div>
                         <div className="line-clamp-2 text-[13px] font-semibold">{t.subject}</div>
                         <div className="mt-0.5 truncate text-2xs text-muted">{t.requesterName}{t.agentName ? ` · ${t.agentName}` : ' · Unassigned'}</div>
                       </button>

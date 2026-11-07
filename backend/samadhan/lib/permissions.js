@@ -59,7 +59,7 @@ const SYSTEM_PROFILES = {
 };
 const ROLE_PROFILE = { Agent: 'AGENT', Supervisor: 'SUPERVISOR', Admin: 'ADMIN' };
 const VISIBILITY = ['all', 'groups', 'own'];
-const DEFAULT_SCOPE = { visibility: 'all' };
+const DEFAULT_SCOPE = { visibility: 'all', workspaces: 'all', applications: 'all' };
 
 /**
  * Effective permissions of one person, from their base role plus the cockpit rows (all already loaded):

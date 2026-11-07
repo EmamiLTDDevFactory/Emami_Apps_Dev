@@ -42,6 +42,11 @@ async function ring(t, event, { title, body = '', only = null, except = null } =
     else ids = t.agentId ? [t.agentId] : await groupMembers(t.groupId);
     ids = [...new Set(ids.filter((id) => id && id !== except))];
     if (!ids.length) return;
+    // v7 Phase 3: "#100123" in a title becomes the readable reference (MSFA-100123) when the ticket has an application.
+    if (t.applicationId) {
+        const label = t.displayRef ?? (await require('./workspaces').refFor(t));
+        if (label && label !== String(t.id)) title = String(title).split(`#${t.id}`).join(label);
+    }
     await pool.query(
         `INSERT INTO samadhan.notifications ("agentId", "ticketId", event, title, body)
          SELECT a.id, $2, $3, $4, $5 FROM samadhan.agents a

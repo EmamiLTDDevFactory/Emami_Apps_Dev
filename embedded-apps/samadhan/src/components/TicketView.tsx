@@ -2,7 +2,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import DOMPurify from 'dompurify';
 import { ArrowRightLeft, Clock, Forward, Lock, Mail, MessageCircle, MessageSquare, Pencil, Phone, PhoneIncoming, PhoneOutgoing, Reply, Save, Send, User, Zap } from 'lucide-react';
-import { addMessage, addTimeLog, getTicket, updateTicket } from '@/lib/api';
+import { addMessage, addTimeLog, classifyTicket, getTicket, updateTicket } from '@/lib/api';
+import { CLASSIFICATION_LABEL, RECORD_CLASS_LABEL, appById, groupsFor, matrixPriority, needsReview, refOf, statusesFor, usesImpactUrgency, workspaceById, wsTone } from '@/lib/workspaces';
+import { appOptions } from './Tickets';
 import { useSamadhan } from '@/lib/context';
 import { ACTION_LABEL, fmtDateTime, fmtMins, fmtSecs, htmlToText, relative } from '@/lib/format';
 import { EDITABLE_FIELDS, type ActivityItem, type CallLog, type Conversation, type Ticket, type TicketDetail } from '@/lib/types';
@@ -55,7 +57,7 @@ const KIND_STYLE: Record<Conversation['kind'], { box: string; label: string; ico
 };
 
 type Props = { ticket: Ticket };
-type Editable = Values & { statusId: string; priority: string; groupId: string; agentId: string; tags: string };
+type Editable = Values & { statusId: string; priority: string; groupId: string; agentId: string; tags: string; applicationId: string; recordClass: string; impact: string; urgency: string };
 
 const toForm = (t: Ticket): Editable => ({
   ...Object.fromEntries(EDITABLE_FIELDS.map((k) => [k, t[k] ?? ''])),
@@ -64,6 +66,11 @@ const toForm = (t: Ticket): Editable => ({
   groupId: t.groupId ? String(t.groupId) : '',
   agentId: t.agentId ? String(t.agentId) : '',
   tags: t.tags.join(', '),
+  // v7 Phase 3
+  applicationId: t.applicationId ? String(t.applicationId) : '',
+  recordClass: t.recordClass ?? '',
+  impact: t.impact ? String(t.impact) : '',
+  urgency: t.urgency ? String(t.urgency) : '',
 });
 
 export default function TicketView({ id }: { id: number }) {
@@ -116,7 +123,45 @@ function TicketScreen({ data, reload }: { data: TicketDetail; reload: () => Prom
   );
 }
 
+/**
+ * v7 Phase 3 (§J): "auto-classified" hint with one-click Confirm / Change application, for tickets the mail
+ * classification placed by default, by AI or by weak keywords. Confirming or changing makes it a manual classification.
+ */
+function ClassificationHint({ ticket: t, reload }: Props & { reload: () => Promise<void> }) {
+  const { meta, can } = useSamadhan();
+  const [changing, setChanging] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  if (!t.applicationId || !needsReview(t.classificationSource, t.classificationConfidence) || !can('ticket.classify')) return null;
+  const run = async (applicationId?: number) => {
+    const target = applicationId ? appById(meta, applicationId) : null;
+    if (target && target.workspaceId !== t.workspaceId && !window.confirm(`${target.name} is in another service desk. Move the ticket there? Its reference becomes ${target.code}-${t.id}.`)) return;
+    setBusy(true);
+    setError('');
+    try { await classifyTicket(t.id, applicationId); setChanging(false); await reload(); } catch (e) { setError(e instanceof Error ? e.message : 'Could not save.'); } finally { setBusy(false); }
+  };
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-warn/30 bg-warn/5 px-2.5 py-1.5 text-2xs" data-testid="classification-hint">
+      <span className="font-semibold text-warn">Auto-classified as {t.applicationName}</span>
+      <span className="text-muted">{CLASSIFICATION_LABEL[t.classificationSource ?? ''] ?? ''}{t.classificationConfidence ? ` · ${Math.round(t.classificationConfidence * 100)}% sure` : ''}</span>
+      {changing ? (
+        <select aria-label="Change application" autoFocus disabled={busy} defaultValue="" onChange={(e) => e.target.value && run(Number(e.target.value))} className={cx('h-7 text-2xs', inputBase)}>
+          <option value="">Choose the application…</option>
+          {appOptions(meta).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      ) : (
+        <>
+          <Button size="sm" disabled={busy} onClick={() => run()}>Confirm</Button>
+          {can('ticket.changeApplication') && <Button size="sm" disabled={busy} onClick={() => setChanging(true)}>Change</Button>}
+        </>
+      )}
+      {error && <span className="text-bad">{error}</span>}
+    </div>
+  );
+}
+
 function TicketHeader({ ticket: t, reload }: Props & { reload: () => Promise<void> }) {
+  const { meta } = useSamadhan();
   const [editing, setEditing] = useState(false);
   const [subject, setSubject] = useState(t.subject);
   const [error, setError] = useState('');
@@ -134,7 +179,8 @@ function TicketHeader({ ticket: t, reload }: Props & { reload: () => Promise<voi
       <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2 text-2xs text-muted">
-            <span className="num font-bold">#{t.id}</span>
+            <span className="num font-bold" data-testid="ticket-header-ref">{refOf(meta, t)}</span>
+            {t.applicationName && <span className={cx('rounded-md border px-1.5 py-0.5 font-bold', wsTone(workspaceById(meta, t.workspaceId)))}>{t.applicationName}</span>}
             <span>· {t.source}</span>
             <span title={fmtDateTime(t.createdAt)}>· created {relative(t.createdAt)}</span>
             {t.escalatedAt && <Pill tone="bad">Escalated</Pill>}
@@ -153,6 +199,7 @@ function TicketHeader({ ticket: t, reload }: Props & { reload: () => Promise<voi
             </h2>
           )}
           {error && <div className="mt-2"><Notice onClose={() => setError('')}>{error}</Notice></div>}
+          <ClassificationHint ticket={t} reload={reload} />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <SeverityPill severity={t.severity} />
@@ -443,7 +490,7 @@ function Composer({ ticket: t, reload, onTyping }: Props & { reload: () => Promi
 }
 
 function Properties({ ticket: t, reload }: Props & { reload: () => Promise<void> }) {
-  const { meta } = useSamadhan();
+  const { meta, can } = useSamadhan();
   const original = useMemo(() => toForm(t), [t]);
   const [form, setForm] = useState<Editable>(original);
   const [busy, setBusy] = useState(false);
@@ -455,10 +502,15 @@ function Properties({ ticket: t, reload }: Props & { reload: () => Promise<void>
 
   const save = async () => {
     const patch: Record<string, unknown> = {};
+    // Changing the application to one in another service desk moves the ticket (and its reference).
+    if (changed.includes('applicationId')) {
+      const target = appById(meta, Number(form.applicationId));
+      if (target && target.workspaceId !== t.workspaceId && !window.confirm(`${target.name} is in another service desk. Move the ticket there? Its reference becomes ${target.code}-${t.id}.`)) return;
+    }
     for (const k of changed) {
       const v = form[k] ?? '';
-      if (k === 'statusId' || k === 'priority') patch[k] = Number(v);
-      else if (k === 'groupId' || k === 'agentId') patch[k] = v ? Number(v) : null;
+      if (k === 'statusId' || k === 'priority' || k === 'applicationId') patch[k] = Number(v);
+      else if (k === 'groupId' || k === 'agentId' || k === 'impact' || k === 'urgency') patch[k] = v ? Number(v) : null;
       else if (k === 'tags') patch.tags = v.split(',').map((x) => x.trim()).filter(Boolean);
       else patch[k] = v;
     }
@@ -477,13 +529,49 @@ function Properties({ ticket: t, reload }: Props & { reload: () => Promise<void>
   };
 
   const groupAgents = meta.agents.filter((a) => a.active);
+  // v7 Phase 3: the workspace follows the application chosen in this form.
+  const wsId = appById(meta, Number(form.applicationId))?.workspaceId ?? t.workspaceId ?? null;
+  const ws = workspaceById(meta, wsId);
+  const matrix = usesImpactUrgency(meta, wsId);
+  const fromMatrix = matrixPriority(meta, wsId, Number(form.impact) || null, Number(form.urgency) || null);
+  const hasApps = (meta.applications?.length ?? 0) > 0;
   return (
-    <Card title="Properties" sub="Severity and priority follow Category → Function" actions={changed.length > 0 && <Pill tone="warn">{changed.length} unsaved</Pill>}>
+    <Card title="Properties" sub={matrix ? 'Priority follows Impact × Urgency' : 'Severity and priority follow Category → Function'} actions={changed.length > 0 && <Pill tone="warn">{changed.length} unsaved</Pill>}>
       <div className="space-y-3">
+        {hasApps && (
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Application" className="col-span-2" hint={ws && t.workspaceId !== ws.id ? `Moves the ticket to ${ws.name}` : undefined}>
+              <select className={cx('h-9 w-full', inputBase)} value={form.applicationId} disabled={!can('ticket.changeApplication')} onChange={(e) => set({ applicationId: e.target.value })} data-testid="prop-application">
+                {appOptions(meta, true).filter((o) => o.value === form.applicationId || appById(meta, Number(o.value))?.available).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </Field>
+            <Field label="Record class">
+              <select className={cx('h-9 w-full', inputBase)} value={form.recordClass} onChange={(e) => set({ recordClass: e.target.value })}>
+                {(meta.recordClasses ?? []).map((c) => <option key={c} value={c}>{RECORD_CLASS_LABEL[c] ?? c}</option>)}
+              </select>
+            </Field>
+            {matrix && (
+              <>
+                <Field label="Impact">
+                  <select className={cx('h-9 w-full', inputBase)} value={form.impact} onChange={(e) => set({ impact: e.target.value })}>
+                    <option value="">—</option>
+                    {Object.entries(meta.impacts ?? {}).map(([k, l]) => <option key={k} value={k}>{k} · {l}</option>)}
+                  </select>
+                </Field>
+                <Field label="Urgency" hint={fromMatrix ? `Priority: ${meta.priorities[fromMatrix]}` : undefined}>
+                  <select className={cx('h-9 w-full', inputBase)} value={form.urgency} onChange={(e) => set({ urgency: e.target.value })}>
+                    <option value="">—</option>
+                    {Object.entries(meta.urgencies ?? {}).map(([k, l]) => <option key={k} value={k}>{k} · {l}</option>)}
+                  </select>
+                </Field>
+              </>
+            )}
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <Field label="Status">
             <select className={cx('h-9 w-full', inputBase)} value={form.statusId} onChange={(e) => set({ statusId: e.target.value })}>
-              {meta.statuses.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              {statusesFor(meta, wsId).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </Field>
           <Field label="Priority">
@@ -494,7 +582,7 @@ function Properties({ ticket: t, reload }: Props & { reload: () => Promise<void>
           <Field label="Group">
             <select className={cx('h-9 w-full', inputBase)} value={form.groupId} onChange={(e) => set({ groupId: e.target.value })}>
               <option value="">—</option>
-              {meta.groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+              {groupsFor(meta, wsId).map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
             </select>
           </Field>
           <Field label="Agent">
@@ -505,7 +593,7 @@ function Properties({ ticket: t, reload }: Props & { reload: () => Promise<void>
           </Field>
         </div>
         <Field label="Tags" hint="Comma separated"><input className={inputCls} value={form.tags} onChange={(e) => set({ tags: e.target.value })} /></Field>
-        <TicketFields compact values={form} onChange={(p) => set(p as Partial<Editable>)} />
+        <TicketFields compact values={form} onChange={(p) => set(p as Partial<Editable>)} workspaceKey={ws?.key} />
         {msg && <Notice tone={msg.tone} onClose={() => setMsg(null)}>{msg.text}</Notice>}
         <div className="sticky bottom-0 flex gap-2 bg-panel pt-1">
           <Button variant="primary" className="flex-1" onClick={save} disabled={busy || changed.length === 0}>{busy ? <Spinner /> : <Save size={14} />} Save changes</Button>
@@ -518,7 +606,7 @@ function Properties({ ticket: t, reload }: Props & { reload: () => Promise<void>
 }
 
 function Requester({ data, reload }: { data: TicketDetail; reload: () => Promise<void> }) {
-  const { openTicket } = useSamadhan();
+  const { meta, openTicket } = useSamadhan();
   const t = data.ticket;
   return (
     <Card title="Requester">
@@ -534,7 +622,7 @@ function Requester({ data, reload }: { data: TicketDetail; reload: () => Promise
             {data.requesterTickets.map((o) => (
               <li key={o.id}>
                 <button type="button" onClick={() => openTicket(o.id)} className="w-full rounded-lg px-1.5 py-1 text-left hover:bg-sunken">
-                  <div className="truncate text-xs font-semibold"><span className="num text-muted">#{o.id}</span> {o.subject}</div>
+                  <div className="truncate text-xs font-semibold"><span className="num text-muted">{refOf(meta, o)}</span> {o.subject}</div>
                   <div className="text-2xs text-muted">{o.statusName} · {relative(o.createdAt)}</div>
                 </button>
               </li>

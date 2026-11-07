@@ -4,7 +4,8 @@ import { Bookmark, Paperclip, CheckSquare, ChevronDown, ChevronLeft, ChevronRigh
 import { bulkTickets, deleteView, exportColumns, exportTickets, getCounts, getViews, listTickets, saveView, type BulkAction, type TicketQuery } from '@/lib/api';
 import { useSamadhan } from '@/lib/context';
 import { ACTIVITY_LABEL, fmtDateTime, fmtNum, relative, SEVERITY_EDGE } from '@/lib/format';
-import type { Counts, SavedView, TicketRow } from '@/lib/types';
+import type { Counts, Meta, SavedView, TicketRow } from '@/lib/types';
+import { RECORD_CLASS_LABEL, availableApps, fieldsFor, refOf, statusesFor, workspaceByKey } from '@/lib/workspaces';
 import { ActivityLine, PriorityPill, SeverityPill, SlaBadge, StatusPill } from './badges';
 import { Button, Card, Empty, Field, Modal, MultiSelect, Notice, Select, Skeleton, cx, inputCls } from './ui';
 
@@ -17,12 +18,22 @@ const MORE: { id: string; label: string }[] = [
   { id: 'my_overdue', label: 'My overdue tickets' }, { id: 'my_groups', label: 'Open in my groups' }, { id: 'urgent_high', label: 'Urgent and high priority' },
   { id: 'due_today', label: 'Due today' }, { id: 'today', label: 'Created today' }, { id: 'watching', label: "Tickets I'm watching" },
   { id: 'resolved', label: 'Resolved' }, { id: 'spam', label: 'Spam' }, { id: 'trash', label: 'Trash' },
+  // v7 Phase 3 (§J): tickets the mail classification could not place with confidence.
+  { id: 'needs_classification', label: 'Needs classification' },
 ];
+
+/** Application options grouped by workspace ("SAP Support · SAP – SAP ECC (current)"), for filters and bulk. */
+export function appOptions(meta: Meta, all = false) {
+  const list = all ? (meta.applications ?? []) : availableApps(meta);
+  const multi = new Set(list.map((a) => a.workspaceId)).size > 1;
+  return list.map((a) => ({ value: String(a.id), label: `${multi ? `${meta.workspaces?.find((w) => w.id === a.workspaceId)?.shortCode ?? ''} · ` : ''}${a.code} – ${a.name}` }));
+}
 const VIEW_LABEL: Record<string, string> = Object.fromEntries([...QUICK, ...MORE].map((v) => [v.id, v.label]));
 
 const FILTER_KEYS: (keyof TicketQuery)[] = ['statusId', 'priority', 'severity', 'groupId', 'agentId', 'source', 'type', 'category', 'region', 'state', 'depot', 'salesOrg',
-  'l2Agent', 'asmName', 'activity', 'due', 'resDue', 'frDue', 'tag', 'created', 'from', 'to', 'requesterId', 'companyId', 'hasAttachments'];
-type ListKey = 'statusId' | 'priority' | 'severity' | 'groupId' | 'agentId' | 'source' | 'type' | 'category' | 'region' | 'state' | 'depot' | 'salesOrg' | 'l2Agent' | 'asmName' | 'activity' | 'resDue' | 'frDue';
+  'l2Agent', 'asmName', 'activity', 'due', 'resDue', 'frDue', 'tag', 'created', 'from', 'to', 'requesterId', 'companyId', 'hasAttachments', 'applicationId', 'recordClass'];
+type ListKey = 'statusId' | 'priority' | 'severity' | 'groupId' | 'agentId' | 'source' | 'type' | 'category' | 'region' | 'state' | 'depot' | 'salesOrg' | 'l2Agent' | 'asmName' | 'activity' | 'resDue' | 'frDue'
+  | 'applicationId' | 'recordClass';
 const CREATED = [
   { value: '', label: 'Any time' }, { value: '30m', label: 'Last 30 minutes' }, { value: '1h', label: 'Last hour' }, { value: '4h', label: 'Last 4 hours' },
   { value: '12h', label: 'Last 12 hours' }, { value: '24h', label: 'Last 24 hours' }, { value: 'today', label: 'Today' }, { value: 'yesterday', label: 'Yesterday' },
@@ -37,7 +48,10 @@ const SORTS = [
 const EXPORT_PREF = 'samadhan.exportColumns';
 
 export default function Tickets({ preset }: { preset: TicketQuery }) {
-  const { me, meta, openTicket, can, setListIds, prefs, attachments } = useSamadhan();
+  const { me, meta, openTicket, can, setListIds, prefs, attachments, workspace } = useSamadhan();
+  // v7 Phase 3: the workspace switcher narrows the list (the counts stay queue-wide, as the views are).
+  const ws = workspaceByKey(meta, workspace);
+  const hasApps = (meta.applications?.length ?? 0) > 0;
   // v7 permission keys (same people as the old Supervisor / Admin checks by default).
   const isAdmin = can('admin.general');
   const canExport = can('ticket.export');
@@ -64,7 +78,7 @@ export default function Tickets({ preset }: { preset: TicketQuery }) {
   const load = useCallback(async () => {
     setBusy(true);
     try {
-      const [list, c, v] = await Promise.all([listTickets({ ...query, pageSize }), getCounts(), getViews()]);
+      const [list, c, v] = await Promise.all([listTickets({ ...query, ...(ws ? { workspaceId: String(ws.id) } : {}), pageSize }), getCounts(), getViews()]);
       setRows(list.items);
       setTotal(list.total);
       setCounts(c);
@@ -75,7 +89,7 @@ export default function Tickets({ preset }: { preset: TicketQuery }) {
     } finally {
       setBusy(false);
     }
-  }, [query, pageSize]);
+  }, [query, pageSize, ws]);
 
   useEffect(() => { load(); }, [load]);
   // A new page / view / filter starts with nothing selected.
@@ -90,8 +104,9 @@ export default function Tickets({ preset }: { preset: TicketQuery }) {
   const set = (patch: TicketQuery) => { setSavedId(null); setQuery((q) => ({ ...q, ...patch, page: patch.page ?? 1 })); };
   const activeFilters = FILTER_KEYS.filter((k) => query[k]);
   const pages = Math.max(1, Math.ceil(total / pageSize));
-  const choices = useCallback((key: string) => meta.fields.find((f) => f.key === key)?.choices ?? [], [meta.fields]);
-  const categories = useMemo(() => meta.categoryTree.map((c) => c.value), [meta.categoryTree]);
+  const wsFields = useMemo(() => fieldsFor(meta, ws?.key), [meta, ws]);
+  const choices = useCallback((key: string) => wsFields.fields.find((f) => f.key === key)?.choices ?? [], [wsFields]);
+  const categories = useMemo(() => wsFields.tree.map((c) => c.value), [wsFields]);
   // Multi-option filters travel as comma-separated values ("4,5" = Resolved or Closed).
   const many = (k: ListKey) => (query[k] ? String(query[k]).split(',') : []);
   const setMany = (k: ListKey) => (v: string[]) => set({ [k]: v.join(',') || undefined });
@@ -110,6 +125,7 @@ export default function Tickets({ preset }: { preset: TicketQuery }) {
   };
 
   const view = query.view ?? '';
+  const moreViews = MORE.filter((m) => m.id !== 'needs_classification' || hasApps);
   const title = savedId ? views.find((v) => v.id === savedId)?.name ?? 'Saved view' : VIEW_LABEL[view] ?? 'Tickets';
   const allPicked = !!rows?.length && rows.every((r) => picked.has(r.id));
   const toggle = (id: number) => setPicked((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
@@ -153,14 +169,14 @@ export default function Tickets({ preset }: { preset: TicketQuery }) {
             ))}
           </div>
           <div className="relative">
-            <Button size="md" onClick={() => setMoreOpen((o) => !o)} aria-expanded={moreOpen} className={cx(Boolean(savedId || MORE.some((m) => m.id === view)) && 'text-accent')}>
-              {savedId || MORE.some((m) => m.id === view) ? title : 'More views'} <ChevronDown size={14} />
+            <Button size="md" onClick={() => setMoreOpen((o) => !o)} aria-expanded={moreOpen} className={cx(Boolean(savedId || moreViews.some((m) => m.id === view)) && 'text-accent')}>
+              {savedId || moreViews.some((m) => m.id === view) ? title : 'More views'} <ChevronDown size={14} />
             </Button>
             {moreOpen && (
               <>
                 <div className="fixed inset-0 z-20" onClick={() => setMoreOpen(false)} />
                 <div className="absolute left-0 z-30 mt-1 max-h-[70vh] w-72 overflow-y-auto rounded-xl border border-line bg-panel p-1.5 shadow-pop">
-                  {MORE.map((v) => (
+                  {moreViews.map((v) => (
                     <button key={v.id} type="button" onClick={() => { setMoreOpen(false); set({ view: v.id }); }} className={cx('flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs font-semibold hover:bg-sunken', !savedId && view === v.id && 'text-accent')}>
                       <span className="flex items-center gap-2">{v.id === 'spam' ? <ShieldAlert size={13} /> : v.id === 'trash' ? <Trash2 size={13} /> : v.id === 'watching' ? <Eye size={13} /> : <Inbox size={13} />}{v.label}</span>
                       {counts?.[v.id] != null && <span className="num text-2xs text-muted">{fmtNum(counts[v.id] ?? 0)}</span>}
@@ -189,8 +205,9 @@ export default function Tickets({ preset }: { preset: TicketQuery }) {
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative">
             <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Ticket no., subject, requester, DB code, MR UID" aria-label="Search tickets" className={cx(inputCls, 'w-72 max-w-full pl-8')} />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={hasApps ? 'MSFA-100123, subject, requester, DB code' : 'Ticket no., subject, requester, DB code, MR UID'} aria-label="Search tickets" className={cx(inputCls, 'w-72 max-w-full pl-8')} />
           </div>
+          {hasApps && <div className="w-48" data-testid="app-filter"><MultiSelect label="Application" values={many('applicationId')} onChange={setMany('applicationId')} options={appOptions(meta, true)} /></div>}
           <Button size="md" onClick={() => setShowFilters((s) => !s)} aria-expanded={showFilters}>
             <Filter size={14} /> Filters{activeFilters.length > 0 && <span className="num rounded-md bg-accent/15 px-1.5 text-2xs text-accent">{activeFilters.length}</span>}
           </Button>
@@ -203,14 +220,15 @@ export default function Tickets({ preset }: { preset: TicketQuery }) {
       {showFilters && (
         <Card bodyClass="p-3">
           <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
-            <MultiSelect label="Status" values={many('statusId')} onChange={setMany('statusId')} options={meta.statuses.map((s) => ({ value: String(s.id), label: s.name }))} />
+            <MultiSelect label="Status" values={many('statusId')} onChange={setMany('statusId')} options={statusesFor(meta, ws?.id).map((s) => ({ value: String(s.id), label: s.name }))} />
             <MultiSelect label="Priority" values={many('priority')} onChange={setMany('priority')} options={Object.entries(meta.priorities).reverse().map(([k, l]) => ({ value: k, label: l }))} />
             <MultiSelect label="Severity" values={many('severity')} onChange={setMany('severity')} options={[{ value: 'FATAL', label: 'Fatal' }, { value: 'SERIOUS', label: 'Serious' }, { value: 'NORMAL', label: 'Normal' }]} />
             <MultiSelect label="Group" values={many('groupId')} onChange={setMany('groupId')} options={[{ value: 'none', label: 'No group' }, ...meta.groups.map((g) => ({ value: String(g.id), label: g.name }))]} />
             <MultiSelect label="Agent" values={many('agentId')} onChange={setMany('agentId')} options={[{ value: 'me', label: 'Me' }, { value: 'none', label: 'Unassigned' }, ...meta.agents.filter((a) => a.active).map((a) => ({ value: String(a.id), label: a.name }))]} />
             <MultiSelect label="Source" values={many('source')} onChange={setMany('source')} options={opts(meta.sources)} />
             <MultiSelect label="Type" values={many('type')} onChange={setMany('type')} options={opts(choices('type'))} />
-            <MultiSelect label="Category" values={many('category')} onChange={setMany('category')} options={opts(categories)} />
+            <MultiSelect label={ws?.categoryLabel ?? 'Category'} values={many('category')} onChange={setMany('category')} options={opts(categories)} />
+            {hasApps && <MultiSelect label="Record class" values={many('recordClass')} onChange={setMany('recordClass')} options={(meta.recordClasses ?? []).map((c) => ({ value: c, label: RECORD_CLASS_LABEL[c] ?? c }))} />}
             <MultiSelect label="Region" values={many('region')} onChange={setMany('region')} options={opts(choices('region'))} />
             <MultiSelect label="State" values={many('state')} onChange={setMany('state')} options={opts(choices('state'))} />
             <MultiSelect label="Depot" values={many('depot')} onChange={setMany('depot')} options={opts(choices('depot'))} />
@@ -262,7 +280,7 @@ export default function Tickets({ preset }: { preset: TicketQuery }) {
                   <button type="button" onClick={() => open(t.id)} className="grid min-w-0 flex-1 grid-cols-1 gap-1.5 py-3 pr-4 text-left transition hover:bg-sunken md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:gap-4">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="num text-2xs font-bold text-muted">#{t.id}</span>
+                        <span className="num shrink-0 text-2xs font-bold text-muted" data-testid="ticket-ref">{refOf(meta, t)}</span>
                         <span className="truncate text-sm font-semibold">{t.subject}</span>
                         {(t.attachmentCount ?? 0) > 0 && <span className="flex shrink-0 items-center gap-0.5 text-2xs text-muted" title={`${t.attachmentCount} file(s)`} aria-label={`${t.attachmentCount} attachments`}><Paperclip size={12} />{t.attachmentCount}</span>}
                       </div>
@@ -313,7 +331,7 @@ function BulkBar({ count, view, busy, onAction, onMerge, isAdmin }: {
   count: number; view: string; busy: boolean; isAdmin: boolean;
   onAction: (a: BulkAction, patch?: Record<string, unknown>, confirm?: string) => void; onMerge: () => void;
 }) {
-  const { meta } = useSamadhan();
+  const { meta, can } = useSamadhan();
   const [tag, setTag] = useState('');
   const n = `${count} ticket${count === 1 ? '' : 's'}`;
   if (view === 'trash') {
@@ -338,6 +356,7 @@ function BulkBar({ count, view, busy, onAction, onMerge, isAdmin }: {
       {pick('Group', meta.groups.map((g) => ({ value: String(g.id), label: g.name })), (v) => onAction('update', { groupId: Number(v) }))}
       {pick('Status', meta.statuses.map((s) => ({ value: String(s.id), label: s.name })), (v) => onAction('update', { statusId: Number(v) }))}
       {pick('Priority', Object.entries(meta.priorities).reverse().map(([k, l]) => ({ value: k, label: l })), (v) => onAction('update', { priority: Number(v) }))}
+      {(meta.applications?.length ?? 0) > 0 && can('ticket.changeApplication') && pick('Set application', appOptions(meta), (v) => onAction('update', { applicationId: Number(v) }))}
       <form className="flex items-center gap-1" onSubmit={(e) => { e.preventDefault(); if (tag.trim()) { onAction('update', { addTag: tag.trim() }); setTag(''); } }}>
         <input value={tag} onChange={(e) => setTag(e.target.value)} placeholder="Add tag" aria-label="Add tag" className="h-8 w-24 rounded-lg border border-line bg-panel px-2 text-xs" />
       </form>
@@ -437,6 +456,7 @@ function ExportDialog({ open, onClose, query, total, title }: { open: boolean; o
 }
 
 function MergeDialog({ open, onClose, ids, rows, onMerge }: { open: boolean; onClose: () => void; ids: number[]; rows: TicketRow[]; onMerge: (primaryId: number) => void }) {
+  const { meta } = useSamadhan();
   const [primary, setPrimary] = useState<number | null>(null);
   useEffect(() => { if (open) setPrimary(ids.length ? Math.min(...ids) : null); }, [open, ids]);
   const list = rows.filter((r) => ids.includes(r.id));
@@ -448,11 +468,11 @@ function MergeDialog({ open, onClose, ids, rows, onMerge }: { open: boolean; onC
           {list.map((r) => (
             <label key={r.id} className={cx('flex items-start gap-2 rounded-lg border px-3 py-2 text-sm', primary === r.id ? 'border-accent bg-accent/5' : 'border-line')}>
               <input type="radio" name="primary" checked={primary === r.id} onChange={() => setPrimary(r.id)} className="mt-1" />
-              <span className="min-w-0"><span className="num text-2xs font-bold text-muted">#{r.id}</span> <span className="font-semibold">{r.subject}</span><span className="block text-2xs text-muted">{r.requesterName} · {r.statusName}</span></span>
+              <span className="min-w-0"><span className="num text-2xs font-bold text-muted">{refOf(meta, r)}</span> <span className="font-semibold">{r.subject}</span><span className="block text-2xs text-muted">{r.requesterName} · {r.statusName}</span></span>
             </label>
           ))}
         </div>
-        <div className="flex justify-end gap-2"><Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={!primary} onClick={() => primary && onMerge(primary)}><Merge size={14} /> Merge into #{primary}</Button></div>
+        <div className="flex justify-end gap-2"><Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={!primary} onClick={() => primary && onMerge(primary)}><Merge size={14} /> Merge into {primary ? refOf(meta, rows.find((r) => r.id === primary) ?? { id: primary }) : ''}</Button></div>
       </div>
     </Modal>
   );

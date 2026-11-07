@@ -9,6 +9,21 @@ const { CREATE_FIELDS, LONG_TEXT_FIELDS, addAgentMessage, createTicket, updateTi
 const { LIVE, VIEWS, VIEW_IDS, liveFor, scopeSql, ticketFilter } = require('../lib/ticketQuery');
 const { assertResolvable, hideTickets, linkTickets, mergeTickets, presence, runScenario, setWatching } = require('../lib/ticketOps');
 const { audit, fail, intOrNull, logActivity, stripTags, textToHtml, touchActivity, updateRow, wrap } = require('../lib/util');
+const { checkApplicationChange } = require('../lib/workspaces');
+const { RECORD_CLASSES } = require('../lib/workspaceSeed');
+
+/** v7 Phase 3 values: impact / urgency 1-4 (or empty), record class from the list. */
+function checkV7Values(o) {
+    for (const k of ['impact', 'urgency']) {
+        if (o[k] !== undefined && o[k] !== null && !(Number.isInteger(o[k]) && o[k] >= 1 && o[k] <= 4)) throw fail(400, `Invalid ${k} (1-4).`);
+    }
+    if (o.recordClass !== undefined && o.recordClass !== null && !RECORD_CLASSES.includes(o.recordClass)) throw fail(400, 'Invalid record class.');
+    if (o.recordClass === null) delete o.recordClass;
+}
+/** Workspace moves are written to the audit log as well as the ticket history (§H 7.1). */
+async function auditMove(req, current, app) {
+    await audit(req.verifiedEmail, 'ticket_workspace_moved', { ticketId: current.id, from: current.workspaceKey, to: app.workspaceKey, application: app.code });
+}
 
 const router = express.Router();
 
@@ -62,7 +77,12 @@ const EXPORT_COLUMNS = {
     CSAT: (t) => ({ 3: 'Extremely satisfied', 2: 'Neither satisfied nor dissatisfied', 1: 'Extremely dissatisfied' })[t.csatRating] ?? '',
 };
 // v7 columns that can be picked but are not in the default export (so the default file stays exactly as before).
-const OPTIONAL_EXPORT_COLUMNS = { Attachments: (t) => t.attachmentCount ?? 0 };
+const OPTIONAL_EXPORT_COLUMNS = {
+    Attachments: (t) => t.attachmentCount ?? 0,
+    // v7 Phase 3
+    Reference: (t) => (t.applicationCode ? `${t.applicationCode}-${t.id}` : t.id), Application: (t) => t.applicationName ?? '',
+    Workspace: (t) => t.workspaceName ?? '', 'Record class': (t) => t.recordClass ?? '', Classification: (t) => t.classificationSource ?? '',
+};
 const exportColumn = (c) => EXPORT_COLUMNS[c] || OPTIONAL_EXPORT_COLUMNS[c];
 const safeCell = (v) => (typeof v === 'string' && /^[=+\-@\t\r]/.test(v) ? `'${v}` : v);
 const istCell = (v) => (v instanceof Date ? v.toLocaleString('sv-SE', { timeZone: 'Asia/Kolkata' }) : v ?? '');
@@ -80,6 +100,11 @@ router.get('/tickets/export', wrap(async (req, res) => {
         params,
     );
     if (rows.length > maxRows) throw fail(400, `More than ${maxRows.toLocaleString('en-IN')} tickets match. Narrow the filters (for example a date range) and export again.`);
+    const cat = await require('../lib/workspaces').catalog();
+    for (const t of rows) {
+        const app = cat.byId.get(t.applicationId);
+        t.applicationCode = app?.code; t.applicationName = app?.name; t.workspaceName = cat.wsById.get(t.workspaceId)?.name;
+    }
     const out = rows.map((t) => columns.map((c) => safeCell(istCell(exportColumn(c)(t)))));
     await audit(req.verifiedEmail, 'tickets_exported', { rows: out.length, view: req.query.view ?? '', columns: columns.length });
     res.json({ success: true, columns, rows: out });
@@ -90,7 +115,7 @@ function cleanFields(body) {
     const out = {};
     for (const k of CREATE_FIELDS) {
         if (body[k] === undefined) continue;
-        if (['groupId', 'agentId', 'priority'].includes(k)) {
+        if (['groupId', 'agentId', 'priority', 'impact', 'urgency'].includes(k)) {
             const n = intOrNull(body[k]);
             if (Number.isNaN(n)) throw fail(400, `Invalid ${k}.`);
             out[k] = n;
@@ -102,6 +127,7 @@ function cleanFields(body) {
         }
     }
     if (out.priority !== undefined && out.priority !== null && !PRIORITIES[out.priority]) throw fail(400, 'Invalid priority.');
+    checkV7Values(out);
     return out;
 }
 
@@ -127,7 +153,12 @@ router.post('/tickets', wrap(async (req, res) => {
         if (parent.deletedAt || parent.mergedIntoId) throw fail(400, `#${parentId} is in the trash or merged.`);
     }
     if (statusId) await assertResolvable(statusId, fields);
+    // v7 Phase 3: the application picked on New ticket (a child ticket keeps its parent's when none is given).
+    let applicationId = intOrNull(b.applicationId);
+    if (Number.isNaN(applicationId)) throw fail(400, 'Invalid application.');
+    if (!applicationId && parentId) applicationId = (await loadTicket(parentId)).applicationId ?? null;
     const t = await createTicket({
+        applicationId,
         subject,
         description: b.description ? textToHtml(String(b.description)) : '',
         requester: { email: requesterEmail || null, name: requesterName, phone: String(b.requesterPhone || '').trim() || null },
@@ -150,7 +181,7 @@ router.get('/tickets/:id', wrap(async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) throw fail(400, 'Invalid ticket number.');
     const t = await loadTicket(id);
-    const related = `SELECT t.id, t.subject, s.name AS "statusName", s."isResolved", t."createdAt" FROM samadhan.tickets t JOIN samadhan.ticket_statuses s ON s.id = t."statusId"`;
+    const related = `SELECT t.id, t.subject, s.name AS "statusName", s."isResolved", t."createdAt", t."applicationId" FROM samadhan.tickets t JOIN samadhan.ticket_statuses s ON s.id = t."statusId"`;
     const [conversations, activities, timeLogs, others, calls, watchers, links, children, parent, csat, todos] = await Promise.all([
         pool.query(
             `SELECT cv.*, a.name AS "agentName" FROM samadhan.conversations cv LEFT JOIN samadhan.agents a ON a.id = cv."agentId"
@@ -195,9 +226,9 @@ router.patch('/tickets/:id', wrap(async (req, res) => {
     const patch = {};
     for (const k of PATCHABLE) {
         if (b[k] === undefined) continue;
-        if (['statusId', 'priority', 'groupId', 'agentId'].includes(k)) {
+        if (['statusId', 'priority', 'groupId', 'agentId', 'applicationId', 'impact', 'urgency'].includes(k)) {
             const n = intOrNull(b[k]);
-            if (Number.isNaN(n) || ((k === 'statusId' || k === 'priority') && n === null)) throw fail(400, `Invalid ${k}.`);
+            if (Number.isNaN(n) || (['statusId', 'priority', 'applicationId'].includes(k) && n === null)) throw fail(400, `Invalid ${k}.`);
             patch[k] = n;
         } else if (k === 'tags') {
             patch.tags = Array.isArray(b.tags) ? b.tags.map((x) => String(x).trim()).filter(Boolean).slice(0, 20) : [];
@@ -208,6 +239,7 @@ router.patch('/tickets/:id', wrap(async (req, res) => {
         }
     }
     if (patch.priority !== undefined && !PRIORITIES[patch.priority]) throw fail(400, 'Invalid priority.');
+    checkV7Values(patch);
     const current = await loadTicket(id);
     // Two people editing the same ticket: the page sends the version it loaded; if someone saved in between,
     // refuse instead of silently overwriting their change.
@@ -215,7 +247,34 @@ router.patch('/tickets/:id', wrap(async (req, res) => {
         throw fail(409, 'Someone else changed this ticket while you were editing. Reload it to see their change, then save again.');
     }
     if (patch.statusId !== undefined) await assertResolvable(patch.statusId, { ...current, ...patch });
+    let moved = null;
+    if (patch.applicationId !== undefined && patch.applicationId !== current.applicationId) {
+        const { app, move } = await checkApplicationChange(req.can, current, patch.applicationId);
+        if (move) moved = app;
+    }
     const t = await updateTicket(id, patch, req.agent.id);
+    if (moved) await auditMove(req, current, moved);
+    res.json({ success: true, ticket: t });
+}));
+
+/**
+ * v7 Phase 3 (§J): confirm the automatic classification ("Confirm") or pick another application ("Change").
+ * Both make it a manual classification, so the ticket leaves "Needs classification"; a change teaches the suggestions.
+ */
+router.post('/tickets/:id/classify', wrap(async (req, res) => {
+    const id = Number(req.params.id);
+    const current = await loadTicket(id);
+    if (current.applicationId === undefined) throw fail(400, 'Applications are not set up on this database yet.');
+    const applicationId = req.body?.applicationId === undefined ? current.applicationId : intOrNull(req.body.applicationId);
+    if (!applicationId || Number.isNaN(applicationId)) throw fail(400, 'Choose an application.');
+    if (applicationId === current.applicationId) {
+        await updateRow('tickets', id, { classificationSource: 'manual', classificationConfidence: null });
+        await logActivity(id, 'classification_confirmed', { applicationId }, req.agent.id);
+        return res.json({ success: true, ticket: await loadTicket(id) });
+    }
+    const { app, move } = await checkApplicationChange(req.can, current, applicationId);
+    const t = await updateTicket(id, { applicationId }, req.agent.id);
+    if (move) await auditMove(req, current, app);
     res.json({ success: true, ticket: t });
 }));
 
@@ -251,10 +310,10 @@ router.post('/tickets/bulk', wrap(async (req, res) => {
             const closed = (await pool.query('SELECT id FROM samadhan.ticket_statuses WHERE "isClosed" ORDER BY position LIMIT 1')).rows[0];
             patch.statusId = closed.id;
         }
-        for (const k of ['statusId', 'priority', 'groupId', 'agentId']) {
+        for (const k of ['statusId', 'priority', 'groupId', 'agentId', 'applicationId']) {
             if (p[k] === undefined) continue;
             const n = p[k] === 'me' ? req.agent.id : intOrNull(p[k]);
-            if (Number.isNaN(n) || ((k === 'statusId' || k === 'priority') && n === null)) throw fail(400, `Invalid ${k}.`);
+            if (Number.isNaN(n) || (['statusId', 'priority', 'applicationId'].includes(k) && n === null)) throw fail(400, `Invalid ${k}.`);
             patch[k] = n;
         }
         if (patch.priority !== undefined && !PRIORITIES[patch.priority]) throw fail(400, 'Invalid priority.');
@@ -266,7 +325,13 @@ router.post('/tickets/bulk', wrap(async (req, res) => {
                 const one = { ...patch };
                 if (addTag && !(current.tags ?? []).includes(addTag)) one.tags = [...(current.tags ?? []), addTag].slice(0, 20);
                 if (one.statusId !== undefined) await assertResolvable(one.statusId, { ...current, ...one });
+                let moved = null;
+                if (one.applicationId !== undefined && one.applicationId !== current.applicationId) {
+                    const { app, move } = await checkApplicationChange(req.can, current, one.applicationId);
+                    if (move) moved = app;
+                } else delete one.applicationId;
                 await updateTicket(id, one, req.agent.id);
+                if (moved) await auditMove(req, current, moved);
                 done.push(id);
             } catch (e) {
                 failed.push({ id, error: e.status && e.status < 500 ? e.message : 'Could not update.' });

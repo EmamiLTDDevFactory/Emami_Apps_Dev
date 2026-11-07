@@ -223,7 +223,91 @@ test('attachments: the portal accepts a screenshot with a new ticket', async ({ 
   await page.getByTestId('file-tray').locator('input[type=file]').setInputFiles({ name: 'error.png', mimeType: 'image/png', buffer: PNG_BYTES });
   await expect(page.getByText('error.png')).toBeVisible();
   await page.getByRole('button', { name: 'Submit ticket' }).click();
-  await expect(page.getByText(/Ticket #\d+ raised/)).toBeVisible();
+  await expect(page.getByText(/Ticket SS-\d+ raised/)).toBeVisible();
   await expect(page.getByText('These files could not be added')).toHaveCount(0);
+  expect(problems).toEqual([]);
+});
+
+// ---------- v7 Phase 3: workspaces, applications, references, classification ----------
+
+/** Direct API call as a persona (setup and clean-up only; what is checked happens in the browser). */
+async function api(who: Persona, method: string, path: string, body?: unknown) {
+  const r = await fetch(`${data.api}${path}`, {
+    method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${who.token}` }, body: body ? JSON.stringify(body) : undefined,
+  });
+  return { status: r.status, body: await r.json().catch(() => null) };
+}
+const REF = /^[A-Z0-9]{2,8}-\d+$/;
+
+test('references: the list and the ticket header show APPCODE-id', async ({ page }) => {
+  const problems = watch(page);
+  await signIn(page, data.agent);
+  await page.goto('/apps/samadhan/');
+  await openScreen(page, 'Tickets');
+  await page.getByRole('tab', { name: 'All' }).click();
+  await page.waitForLoadState('networkidle');
+  await expect(page.getByTestId('ticket-ref').first()).toHaveText(REF);
+  await page.goto(`/apps/samadhan/?ticket=${data.ticketId}`);
+  await expect(page.getByTestId('ticket-header-ref')).toHaveText(new RegExp(`^[A-Z0-9]{2,8}-${data.ticketId}$`));
+  expect(problems).toEqual([]);
+});
+
+test('new ticket: the application comes first and decides the reference', async ({ page }) => {
+  const problems = watch(page);
+  await signIn(page, data.agent);
+  await page.goto('/apps/samadhan/?screen=new');
+  const picker = page.getByTestId('application-picker');
+  await expect(picker).toBeVisible();
+  await picker.getByRole('textbox', { name: 'Search applications' }).fill('msfa');
+  await picker.getByRole('radio', { name: /mSFA App/ }).first().click();
+  await page.getByLabel(/Requester name/).fill('E2E Caller');
+  await page.getByRole('textbox', { name: /^Email/ }).fill('e2e.caller@test.samadhan.local');
+  await page.getByLabel(/^Subject/).fill(`Beat not loading (${test.info().project.name})`);
+  await page.getByRole('button', { name: 'Create ticket' }).click();
+  await expect(page.getByTestId('ticket-header-ref')).toHaveText(/^MSFA-\d+$/);
+  expect(problems).toEqual([]);
+});
+
+test('classification: an automatically classified ticket is confirmed from its header', async ({ page }) => {
+  const problems = watch(page);
+  const made = await api(data.agent, 'POST', '/tickets', { subject: `Unclear problem ${test.info().project.name}`, requesterName: 'E2E Requester', requesterEmail: 'e2e.req@test.samadhan.local' });
+  expect(made.status).toBeLessThan(300);
+  await signIn(page, data.agent);
+  await page.goto(`/apps/samadhan/?ticket=${made.body.ticket.id}`);
+  const hint = page.getByTestId('classification-hint');
+  await expect(hint).toContainText('Auto-classified as Secondary Sales');
+  await hint.getByRole('button', { name: 'Confirm' }).click();
+  await expect(hint).toHaveCount(0);
+  expect(problems).toEqual([]);
+});
+
+test('Admin: service desks on shows the desk switcher; the new Admin tabs load', async ({ page }) => {
+  const problems = watch(page);
+  await signIn(page, data.admin);
+  page.on('dialog', (d) => d.accept());
+  try {
+    await page.goto('/apps/samadhan/?screen=admin');
+    await page.getByRole('tab', { name: 'Applications' }).click();
+    await expect(page.getByTestId('admin-applications')).toContainText('RMSFA');
+    await page.getByRole('tab', { name: 'Mail classification' }).click();
+    await expect(page.getByTestId('admin-mail-classification')).toContainText('Sender rules');
+    await page.getByRole('tab', { name: 'Service desks' }).click();
+    const desks = page.getByTestId('admin-workspaces');
+    await desks.getByRole('checkbox', { name: 'SAP Support enabled' }).check();
+    await desks.getByRole('checkbox', { name: 'Service desks on' }).check();
+    await expect(desks.getByText('Service desks are ON')).toBeVisible();
+    if ((page.viewportSize()?.width ?? 1000) < 1024) await page.getByRole('button', { name: 'Open menu' }).click();
+    const switcher = page.getByTestId('workspace-switcher');
+    await expect(switcher.getByRole('radio', { name: 'SAP Support' })).toBeVisible();
+    await switcher.getByRole('radio', { name: 'SAP Support' }).click();
+    await expect(switcher.getByRole('radio', { name: 'SAP Support' })).toHaveAttribute('aria-checked', 'true');
+  } finally {
+    // Back to the default for the other tests: desks off, SAP off, no remembered desk.
+    const ws = await api(data.admin, 'GET', '/admin/workspaces');
+    const sap = ws.body?.workspaces?.find((w: { key: string }) => w.key === 'SAP');
+    await api(data.admin, 'PUT', '/admin/workspaces/flag', { enabled: false });
+    if (sap) await api(data.admin, 'PUT', `/admin/workspaces/${sap.id}`, { enabled: false });
+    await api(data.admin, 'PUT', '/me/preferences', { workspace: null });
+  }
   expect(problems).toEqual([]);
 });

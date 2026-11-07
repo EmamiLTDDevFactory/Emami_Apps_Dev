@@ -2,13 +2,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { BookOpen, Inbox, Search, User } from 'lucide-react';
 import { globalSearch } from '@/lib/api';
+import { refOf } from '@/lib/workspaces';
 import { useSamadhan } from '@/lib/context';
 import type { SearchResults } from '@/lib/types';
 import { cx } from './ui';
 
 /** Header search across tickets (number, subject, requester, DB code, MR UID), contacts and knowledge-base articles. */
 export default function GlobalSearch() {
-  const { openTicket, openList, go } = useSamadhan();
+  const { meta, openTicket, openList, go } = useSamadhan();
   const [q, setQ] = useState('');
   const [res, setRes] = useState<SearchResults | null>(null);
   const [open, setOpen] = useState(false);
@@ -53,7 +54,7 @@ export default function GlobalSearch() {
           {res.tickets.map((t) => (
             <button key={`t${t.id}`} type="button" className={row} onClick={() => { openTicket(t.id); done(); }}>
               <Inbox size={13} className="shrink-0 text-accent" />
-              <span className="num text-2xs font-bold text-muted">#{t.id}</span>
+              <span className="num text-2xs font-bold text-muted">{refOf(meta, t)}</span>
               <span className="min-w-0 flex-1 truncate">{t.subject}</span>
               <span className={cx('shrink-0 text-2xs', t.isResolved ? 'text-good' : 'text-muted')}>{t.statusName}</span>
             </button>

@@ -102,6 +102,14 @@ src/lib/            api (all backend calls), types, format (IST dates, durations
   (allow-list, sizes, screenshot compression). Shown only when `/me` → `attachments.enabled` is true.
 - Details: `docs/v7/PHASE-2-NOTES.md`.
 
+## Service desks and applications (v7 Phase 3)
+
+- `src/lib/workspaces.ts`: helpers over `/meta` (workspaces, applications, references `refOf`, fields per desk, statuses
+  and groups per desk, Impact × Urgency). On an older backend everything falls back to one desk and `#id`.
+- Desk switcher (`App.tsx`, shown only while the desks are switched on), application picker
+  (`components/ApplicationPicker.tsx`), Admin tabs in `components/admin/Workspaces.tsx`.
+- Details: `docs/v7/PHASE-3-NOTES.md`.
+
 ## Development
 
 ```bash

@@ -100,7 +100,7 @@ router.post('/portal/tickets', wrap(async (req, res) => {
     const { storageInfo } = require('../lib/storage');
     const { limits } = require('../lib/attachments');
     const files = storageInfo().enabled ? { uploadToken: portalUploadToken(t.id), limits: (await limits()).portal } : null;
-    res.status(201).json({ success: true, ticket: { id: t.id }, ...(files ? { files } : {}) });
+    res.status(201).json({ success: true, ticket: { id: t.id, ref: t.ref ?? String(t.id) }, ...(files ? { files } : {}) });
 }));
 
 /** Status of one ticket for the person who raised it: ticket number + their email must match. No conversation text. */
@@ -108,17 +108,19 @@ router.post('/portal/status', wrap(async (req, res) => {
     await ready;
     portalLimit(req, 'status');
     if (!(await portalEnabled())) throw fail(403, 'The support portal is closed.');
-    const id = Number(req.body?.id);
+    // v7 Phase 3: the readable reference (MSFA-100123) works as well as the number.
+    const id = require('../lib/workspaces').parseTicketNumber(req.body?.id);
     const email = String(req.body?.email || '').trim().toLowerCase();
-    if (!Number.isInteger(id) || id < 1 || !EMAIL_RE.test(email)) throw fail(400, 'Enter your ticket number and the email you used.');
+    if (!Number.isInteger(id) || id < 1 || id > 2147483647 || !EMAIL_RE.test(email)) throw fail(400, 'Enter your ticket number and the email you used.');
     const { rows } = await pool.query(
-        `SELECT t.id, t.subject, t."createdAt", t."lastActivityAt", t."resolvedAt", s.name AS status, s."isResolved", s."isClosed"
+        `SELECT t.id, t.subject, t."createdAt", t."lastActivityAt", t."resolvedAt", s.name AS status, s."isResolved", s."isClosed", t."applicationId"
          FROM samadhan.tickets t JOIN samadhan.contacts c ON c.id = t."requesterId" JOIN samadhan.ticket_statuses s ON s.id = t."statusId"
          WHERE t.id = $1 AND c.email = $2`,
         [id, email],
     );
     if (!rows.length) throw fail(404, 'No ticket found with that number and email.');
-    res.json({ success: true, ticket: rows[0] });
+    const { applicationId, ...ticket } = rows[0];
+    res.json({ success: true, ticket: { ...ticket, ref: await require('../lib/workspaces').refFor({ id: ticket.id, applicationId }) } });
 }));
 
 // Knowledge base on the portal: published articles only, so requesters can help themselves before raising a ticket.

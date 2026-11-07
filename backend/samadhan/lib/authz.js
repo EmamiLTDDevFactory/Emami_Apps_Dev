@@ -44,7 +44,7 @@ async function userAccess(agentId) {
         baseProfile: ROLE_PROFILE[agent.role] || 'AGENT',
         profiles: profiles.rows,
         overrides: overrides.rows,
-        scope: agent.role === 'Admin' ? { ...DEFAULT_SCOPE } : (scope.rows[0] ? { visibility: scope.rows[0].visibility } : { ...DEFAULT_SCOPE }),
+        scope: agent.role === 'Admin' ? { ...DEFAULT_SCOPE } : (scope.rows[0] ? { visibility: scope.rows[0].visibility, workspaces: scope.rows[0].workspaces ?? 'all', applications: scope.rows[0].applications ?? 'all' } : { ...DEFAULT_SCOPE }),
         effective: [...keys].sort(),
         screens: [...keys].filter((k) => k.startsWith('screen.')).sort(),
         added: [...keys].filter((k) => !base.has(k)).sort(),
@@ -68,6 +68,11 @@ async function saveUserAccess(agentId, body, actorEmail) {
     const profiles = body.profiles === undefined ? null : (Array.isArray(body.profiles) ? body.profiles : []).map((p) => ({ profileId: Number(p.profileId), validFrom: iso(p.validFrom), validTo: iso(p.validTo) }));
     const overrides = body.overrides === undefined ? null : (Array.isArray(body.overrides) ? body.overrides : []).map((o) => ({ key: String(o.key || ''), effect: o.effect, expiresAt: iso(o.expiresAt) }));
     const visibility = body.scope?.visibility;
+    // v7 Phase 3: workspace keys / application codes, or 'all'.
+    const listOrAll = (v, re) => (v === undefined ? undefined : v === 'all' || (Array.isArray(v) && !v.length) ? 'all' : Array.isArray(v) && v.every((x) => typeof x === 'string' && re.test(x)) ? [...new Set(v)] : null);
+    const scopeWs = listOrAll(body.scope?.workspaces, /^[A-Z][A-Z0-9_]{1,19}$/);
+    const scopeApps = listOrAll(body.scope?.applications, /^[A-Z0-9]{2,8}$/);
+    if (scopeWs === null || scopeApps === null) return { error: 'Workspaces / applications must be "all" or a list of keys / codes.' };
     if (profiles?.some((p) => !Number.isInteger(p.profileId) || p.validFrom === undefined || p.validTo === undefined || (p.validFrom && p.validTo && p.validTo <= p.validFrom))) return { error: 'Check the profiles: unknown profile or invalid dates (valid to must be after valid from).' };
     if (overrides?.some((o) => !KEY_SET.has(o.key) || !['grant', 'deny'].includes(o.effect) || o.expiresAt === undefined)) return { error: 'Check the overrides: unknown permission, effect or date.' };
     if (overrides?.some((o) => isAdminKey(o.key) && o.effect === 'grant')) return { error: 'admin.* permissions come only with the Admin role in Manage Access; they cannot be granted here.' };
@@ -103,10 +108,12 @@ async function saveUserAccess(agentId, body, actorEmail) {
                     [agentId, o.key, o.effect, o.expiresAt, reason, actorEmail]);
             }
         }
-        if (visibility !== undefined) {
-            await client.query(`INSERT INTO samadhan.auth_user_scope ("agentId", visibility, "updatedBy", "updatedAt") VALUES ($1, $2, $3, now())
-                                ON CONFLICT ("agentId") DO UPDATE SET visibility = EXCLUDED.visibility, "updatedBy" = EXCLUDED."updatedBy", "updatedAt" = now()`,
-            [agentId, visibility, actorEmail]);
+        if (visibility !== undefined || scopeWs !== undefined || scopeApps !== undefined) {
+            const cur = before.scope;
+            await client.query(`INSERT INTO samadhan.auth_user_scope ("agentId", visibility, workspaces, applications, "updatedBy", "updatedAt") VALUES ($1, $2, $3, $4, $5, now())
+                                ON CONFLICT ("agentId") DO UPDATE SET visibility = EXCLUDED.visibility, workspaces = EXCLUDED.workspaces, applications = EXCLUDED.applications,
+                                "updatedBy" = EXCLUDED."updatedBy", "updatedAt" = now()`,
+            [agentId, visibility ?? cur.visibility ?? 'all', JSON.stringify(scopeWs ?? cur.workspaces ?? 'all'), JSON.stringify(scopeApps ?? cur.applications ?? 'all'), actorEmail]);
         }
         await client.query('COMMIT');
     } catch (err) {

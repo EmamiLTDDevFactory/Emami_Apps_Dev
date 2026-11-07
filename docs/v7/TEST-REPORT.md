@@ -3,6 +3,40 @@
 Branch `feature/samadhan-v7` (local, not pushed). Gate commit: `a864fc7`. Machine: Windows 11, Node v26.13.0,
 PostgreSQL 18 (throwaway cluster on localhost:55432), Microsoft Edge (Playwright 1.49.1).
 
+## Phase 3 (service desks, applications, references, mail classification) — gate GREEN
+
+**2026-11-07**, run in parts with `--stages=` (machine short of memory). Every part green:
+
+| Part | Steps | Result |
+|---|---|---|
+| static | typecheck · lint (0 errors, 2 warnings = baseline) · production build · backend syntax (73 files) | 4 / 4 |
+| unit | Samadhan unit tests **38 / 38** (incl. `workspaces.unit.test.js`: approved mapping, matrix, references, scope SQL) · shared backend **51 / 51** | 2 / 2 |
+| api | API suite **130 / 130** · Authz suite **59 / 59** | 2 / 2 |
+| rollback | `7.1-auth` down → API **130 / 130** → up → Authz **59 / 59** | 4 / 4 |
+| attach | `7.1-attachments` down → up → Attachments **50 / 50** | 3 / 3 |
+| ws (new) | `7.2-workspaces` down → up → Workspaces suite **97 / 97** | 3 / 3 |
+| compat | API on `/api/setu` **130 / 130** · golden new database byte-identical | 2 / 2 |
+| golden | v6 database: golden before / after `7.0-rename` up / down / up (all byte-identical) · legacy schema API **130 / 130** + Authz **59 / 59** | 10 / 10 |
+| e2e | zero-impact smoke (18 routes) · E2E build · stub build · Playwright **39 passed, 1 skipped** (keyboard on phone, by design) | 4 / 4 |
+| path guard | Samadhan paths only | 1 / 1 |
+
+Workspaces suite covers: meta (5 desks, 29 applications incl. RMSFA / CDMS / SCB2B, byWorkspace), create with an
+application (reference, desk, manual), refusals (desk off, unknown app, impact 5, bad record class), classification
+(subject tag, exact name after "Re:", keyword, default, a switched-off desk never chosen, sender rule, tag beats sender
+rule), search / filters / Needs classification / counts, Confirm / Change with learning + Admin-accepted suggestion,
+moves between desks (403 for an Agent, allowed + audited for a Supervisor, bulk), Impact × Urgency (create, patch,
+manual priority wins, Secondary Sales unchanged, edited matrix), SLA policy by application, bell title with the
+reference, export and daily-report optional columns (defaults unchanged), Admin API permissions and validation, data
+scope by desk / application (list, 404, counts, insights, /me), portal status by reference, board by desk, preferences.
+
+Fixed while building Phase 3 (no test weakened): an empty filter parameter became the id 0 (analytics showed nothing);
+desk toggles now update at once (they waited for the reload); switcher buttons got accessible names. The portal E2E
+expectation was updated from "Ticket #<id> raised" to the new reference format "Ticket SS-<id> raised" (intended change, §N 11).
+A first attempt to let "[MSFA-100123]" alone thread a mail was reverted: the Phase 1 rule (only the existing tokens
+thread) stays and its test passes unchanged.
+
+---
+
 ## Phase 2 (permissions, cockpit, data scope, attachments) — gate GREEN, 31 of 31
 
 **2026-11-07, commit `3d70706` + the gate fix below.** Run in parts with `--stages=` (same steps as a full run): the

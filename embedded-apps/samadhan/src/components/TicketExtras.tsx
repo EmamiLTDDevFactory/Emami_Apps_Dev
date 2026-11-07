@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { CheckSquare, ChevronLeft, ChevronRight, Eye, EyeOff, GitBranch, Link2, ListTodo, Merge, MoreHorizontal, Plus, Printer, RotateCcw, ShieldAlert, Smile, Square, Trash2, Users, Wand2, X } from 'lucide-react';
 import { addTodo, bulkTickets, deleteTodo, linkTickets, mergeTickets, reportPresence, runScenario, updateTodo, watchTicket } from '@/lib/api';
+import { refOf } from '@/lib/workspaces';
 import { useSamadhan } from '@/lib/context';
 import { fmtDateTime, relative } from '@/lib/format';
 import type { PresenceAgent, RelatedTicket, Ticket, TicketDetail } from '@/lib/types';
@@ -192,11 +193,11 @@ export function PresenceBar({ ticketId, replying }: { ticketId: number; replying
 }
 
 function RelatedRow({ r, rel, onUnlink }: { r: RelatedTicket; rel: string; onUnlink?: () => void }) {
-  const { openTicket } = useSamadhan();
+  const { meta, openTicket } = useSamadhan();
   return (
     <li className="group flex items-center gap-2 py-1.5">
       <button type="button" onClick={() => openTicket(r.id)} className="flex min-w-0 flex-1 items-center gap-2 text-left text-[13px] hover:text-accent">
-        <span className="num text-2xs font-bold text-muted">#{r.id}</span>
+        <span className="num text-2xs font-bold text-muted">{refOf(meta, r)}</span>
         <span className="truncate">{r.subject}</span>
       </button>
       <span className="shrink-0 text-2xs text-faint">{rel}</span>

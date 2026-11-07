@@ -7,7 +7,8 @@ const { roundRobinAgent } = require('./assignment');
 const { ruleMatches, rulesFor } = require('./automation');
 const { sendMail } = require('./mail');
 const { emailRequester, loadTicket, notifyAgents, renderTemplate } = require('./notify');
-const { severityFor } = require('./severity');
+const { severityFor, severityRuleFor } = require('./severity');
+const { SEVERITY_FOR_PRIORITY, availableWorkspaceIds, catalog, classify, learnFrom, priorityFromMatrix, recordClassForType } = require('./workspaces');
 const { computeDueDates, nextResponseDue, pausedMinutes } = require('./sla');
 const { esc, fail, logActivity, setting, stripTags, ticketLink, touchActivity, updateRow } = require('./util');
 const { htmlToWhatsAppText, sendWhatsApp } = require('./whatsapp');
@@ -96,13 +97,56 @@ async function findOrCreateContact(r) {
 
 const CREATE_FIELDS = ['type', 'category', 'function', 'region', 'salesOrg', 'state', 'depot', 'distributorCode', 'distributorName', 'asmName',
     'depotCoordinator', 'callSubject', 'callerName', 'callerContactNumber', 'mrUid', 'mobileNo', 'alternateMobileNo', 'l2Agent', 'helpdeskAnalysis',
-    'rcaSolution', 'groupId', 'agentId', 'priority', 'tags'];
+    'rcaSolution', 'groupId', 'agentId', 'priority', 'tags', 'impact', 'urgency', 'recordClass'];
 const LONG_TEXT_FIELDS = ['helpdeskAnalysis', 'rcaSolution'];
+const V7_CREATE_FIELDS = ['impact', 'urgency', 'recordClass'];
+
+/**
+ * v7 Phase 3: the application of a new ticket - the one given (New ticket, portal picker, API), else classified from
+ * the subject / text / sender (one mailbox, §J). null before migration 7.2-workspaces (one desk, nothing to set).
+ */
+async function classificationFor(input) {
+    const c = await catalog();
+    if (!c.ready) return null;
+    if (input.applicationId !== undefined && input.applicationId !== null && input.applicationId !== '') {
+        const app = c.byId.get(Number(input.applicationId));
+        if (!app || !app.active) throw fail(400, 'Unknown or inactive application.');
+        if (!(await availableWorkspaceIds()).has(app.workspaceId)) throw fail(400, `${app.name} belongs to a workspace that is switched off.`);
+        return { applicationId: app.id, workspaceId: app.workspaceId, source: input.classificationSource ?? 'manual', confidence: null };
+    }
+    return classify({ subject: input.subject, body: input.description, fromEmail: input.requester?.email });
+}
+
+/** Priority from Impact x Urgency when the workspace uses it (BOTH: only when no severity rule matches). */
+async function matrixPriorityFor(workspaceId, impact, urgency, category, fn) {
+    if (!workspaceId || !impact || !urgency) return null;
+    const ws = (await catalog()).wsById.get(workspaceId);
+    if (!ws || ws.priorityMode === 'SEVERITY_MATRIX') return null;
+    if (ws.priorityMode === 'BOTH' && (await severityRuleFor(category, fn, workspaceId))) return null;
+    return priorityFromMatrix(workspaceId, impact, urgency);
+}
+
+/** " [MSFA-100123]" before the kept "[#100123]" token in outbound subjects (setting ref.prefixInSubject, default on). */
+async function refTag(t) {
+    if (!t.applicationCode) return '';
+    return (await require('./config').option('ref.prefixInSubject')) === false ? '' : ` [${t.ref}]`;
+}
 
 async function createTicket(input) {
     const contact = await findOrCreateContact(input.requester);
-    const f = Object.fromEntries(Object.entries(input.fields ?? {}).filter(([k, v]) => CREATE_FIELDS.includes(k) && v !== undefined && v !== ''));
-    const severity = await severityFor(f.category ?? null, f.function ?? null);
+    const f = Object.fromEntries(Object.entries(input.fields ?? {}).filter(([k, v]) => CREATE_FIELDS.includes(k) && v !== undefined && v !== '' && v !== null));
+    const cls = await classificationFor(input);
+    if (!cls) for (const k of V7_CREATE_FIELDS) delete f[k]; // columns not there before migration 7.2
+    let severity = await severityFor(f.category ?? null, f.function ?? null, cls?.workspaceId ?? null);
+    let matrixPriority = null;
+    if (cls && f.priority === undefined) {
+        matrixPriority = await matrixPriorityFor(cls.workspaceId, f.impact, f.urgency, f.category, f.function);
+        if (matrixPriority) severity = SEVERITY_FOR_PRIORITY[matrixPriority];
+    }
+    const v7 = cls ? {
+        applicationId: cls.applicationId, workspaceId: cls.workspaceId, classificationSource: cls.source, classificationConfidence: cls.confidence,
+        recordClass: f.recordClass ?? await recordClassForType(f.type),
+    } : {};
     const createdAt = input.createdAt ?? new Date();
     const data = {
         subject: String(input.subject).slice(0, 500),
@@ -115,7 +159,8 @@ async function createTicket(input) {
         statusChangedAt: createdAt,
         severity,
         ...f,
-        priority: f.priority ?? await severityPriority(severity),
+        ...v7,
+        priority: f.priority ?? matrixPriority ?? await severityPriority(severity),
         lastActivityBy: String(input.actorName ?? input.requester.name ?? '').slice(0, 200) || null,
         lastActivityDetail: input.source ?? 'Email',
     };
@@ -171,11 +216,37 @@ async function updateTicket(id, patch, actorAgentId, opts = {}) {
     for (const k of changed) data[k] = patch[k];
     const now = new Date();
 
+    // v7 Phase 3: the workspace follows the application; a manual change is the final classification (and teaches the
+    // keyword suggestions when it corrects an automatic one).
+    if (changed.includes('applicationId')) {
+        const app = (await catalog()).byId.get(patch.applicationId);
+        if (!app) throw fail(400, 'Unknown application.');
+        data.workspaceId = app.workspaceId;
+        data.classificationSource = 'manual';
+        data.classificationConfidence = null;
+        if (['keyword', 'ai', 'default', 'sender_rule', 'subject_tag'].includes(before.classificationSource)) await learnFrom(app.id, before.subject).catch(() => {});
+        if (data.workspaceId !== before.workspaceId) changed.push('workspaceId');
+    }
+    if (changed.includes('type') && !changed.includes('recordClass') && before.recordClass !== undefined) {
+        const rc = await recordClassForType(patch.type);
+        if (rc !== before.recordClass) { data.recordClass = rc; changed.push('recordClass'); }
+    }
+    const workspaceAfter = data.workspaceId ?? before.workspaceId ?? null;
+    const categoryAfter = patch.category !== undefined ? patch.category : before.category;
+    const functionAfter = patch.function !== undefined ? patch.function : before.function;
+
     // Severity follows Category -> Function, and sets priority.
     if (changed.includes('category') || changed.includes('function')) {
-        const sev = await severityFor(patch.category !== undefined ? patch.category : before.category, patch.function !== undefined ? patch.function : before.function);
+        const sev = await severityFor(categoryAfter, functionAfter, workspaceAfter);
         data.severity = sev;
         if (!changed.includes('priority')) data.priority = await severityPriority(sev);
+    }
+    // Impact x Urgency (workspaces in that priority mode) decides the priority unless it was set by hand.
+    if (!changed.includes('priority') && ['impact', 'urgency', 'category', 'function', 'applicationId'].some((k) => changed.includes(k))) {
+        const impact = changed.includes('impact') ? patch.impact : before.impact;
+        const urgency = changed.includes('urgency') ? patch.urgency : before.urgency;
+        const p = await matrixPriorityFor(workspaceAfter, impact, urgency, categoryAfter, functionAfter);
+        if (p) { data.priority = p; data.severity = SEVERITY_FOR_PRIORITY[p]; }
     }
 
     // Status: pause / resume the SLA clock, stamp resolved and closed times.
@@ -200,8 +271,9 @@ async function updateTicket(id, patch, actorAgentId, opts = {}) {
 
     const priority = data.priority ?? before.priority;
     const groupId = changed.includes('groupId') ? patch.groupId ?? null : before.groupId;
-    if (changed.includes('statusId') || priority !== before.priority || groupId !== before.groupId) {
-        Object.assign(data, await computeDueDates({ createdAt: before.createdAt, groupId, priority, slaPausedMins: pausedMins, firstRespondedAt: before.firstRespondedAt }));
+    if (changed.includes('statusId') || priority !== before.priority || groupId !== before.groupId || changed.includes('applicationId')) {
+        Object.assign(data, await computeDueDates({ createdAt: before.createdAt, groupId, priority, slaPausedMins: pausedMins, firstRespondedAt: before.firstRespondedAt,
+            workspaceId: workspaceAfter, applicationId: data.applicationId ?? before.applicationId }));
         data.frReminded = false;
         data.resReminded = false;
     }
@@ -288,11 +360,11 @@ async function addAgentMessage(ticketId, m, agent) {
         to = t.requesterEmail ? [t.requesterEmail, ...to.filter((x) => x !== t.requesterEmail)] : to;
         const signature = await renderTemplate('reply.signature', withAgent);
         html = `${html}${signature ? `<br>${signature.html}` : ''}`;
-        await sendMail({ to, cc, subject: `Re: ${t.subject} [#${t.id}]`, html, attachments: out.files });
+        await sendMail({ to, cc, subject: `Re: ${t.subject}${await refTag(t)} [#${t.id}]`, html, attachments: out.files });
     } else if (m.kind === 'FORWARD') {
         const fwd = await renderTemplate('forward.signature', withAgent);
         html = `${html}${fwd ? `<br>${fwd.html}` : ''}<hr>${t.description}`;
-        await sendMail({ to, cc, subject: `Fwd: ${t.subject} [#${t.id}]`, html, attachments: out.files });
+        await sendMail({ to, cc, subject: `Fwd: ${t.subject}${await refTag(t)} [#${t.id}]`, html, attachments: out.files });
     }
 
     const conv = await pool.query(

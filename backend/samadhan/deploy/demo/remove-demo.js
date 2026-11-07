@@ -8,7 +8,8 @@ require(`${APP}/node_modules/dotenv`).config({ path: `${APP}/.env`, quiet: true 
 const { pool, resolveSchema, sharedPool } = require(`${APP}/samadhan/db/pool`);
 
 // Demo people: @demo.samadhan.local, and @demo.setu.local from demos loaded before v7 (formerly Setu).
-const DOMAINS = ['%@demo.samadhan.local', '%@demo.setu.local'];
+// v7 Phase 3 demo mail also uses three example domains (load-v7-apps.js).
+const DOMAINS = ['%@demo.samadhan.local', '%@demo.setu.local', '%@demo-dist.example', '%@demo-vendor.example', '%@demo-plant.example'];
 
 async function main() {
   await resolveSchema(); // samadhan, or the legacy setu schema before the v7.0 rename
@@ -58,6 +59,16 @@ async function main() {
         v7log = await client.query('DELETE FROM samadhan.auth_change_log WHERE "actorEmail" LIKE ANY($1::text[]) OR target LIKE ANY($1::text[])', [DOMAINS]);
     }
     await client.query(`DELETE FROM samadhan.settings WHERE key = 'demo.v7.manifest'`);
+    // v7 Phase 3 demo (load-v7-apps.js): sender rules and keyword suggestions it added; its tickets went above (tag demo).
+    const v7a = (await client.query(`SELECT value FROM samadhan.settings WHERE key = 'demo.v7apps.manifest'`)).rows[0]?.value || {};
+    if ((await client.query(`SELECT to_regclass('samadhan.mail_sender_rules') AS t`)).rows[0].t) {
+        await client.query('DELETE FROM samadhan.mail_sender_rules WHERE id = ANY($1::int[])', [v7a.ruleIds || []]);
+        for (const [code, kw] of v7a.learning || []) {
+            await client.query('DELETE FROM samadhan.classification_learning l USING samadhan.applications a WHERE a.id = l."applicationId" AND a.code = $1 AND l.keyword = $2', [code, kw]);
+        }
+        await client.query('UPDATE samadhan.groups SET "workspaceId" = NULL WHERE id = ANY($1::int[])', [v7a.groupIds || []]);
+    }
+    await client.query(`DELETE FROM samadhan.settings WHERE key = 'demo.v7apps.manifest'`);
     await client.query('COMMIT');
     console.log(`Removed: ${tickets.rowCount} demo tickets, ${contacts.rowCount} demo contacts, ${agents.rowCount} demo agents, ${dists.rowCount} demo distributors, ${canned.rowCount} demo canned replies, ${articles.rowCount} articles and ${companies.rowCount} companies from PulseDesk, ${choices.rowCount} field choices and ${rules.rowCount} severity rules added by the demo, ${notes.rowCount} demo notifications; v7 demo: ${v7groups.rowCount} groups, ${v7choices.rowCount} category choices, ${v7log.rowCount} cockpit change-log rows.`);
   } catch (e) {

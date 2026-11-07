@@ -10,7 +10,8 @@ const { seed } = require('./seed');
 // 7: v7 migrations (db/migrate.js) - the schema rename step is recorded; it is run by an operator, never here.
 // 8: v7.1 Authorization cockpit tables (migration 7.1-auth, applied by migrate.startup()).
 // 9: v7.1 attachments (migration 7.1-attachments).
-const SCHEMA_VERSION = 9;
+// 10: v7.2 workspaces and applications (migration 7.2-workspaces, applied by migrate.startup()).
+const SCHEMA_VERSION = 10;
 
 async function initSchema() {
     // Which schema this database uses: samadhan, or the legacy setu until the v7.0 rename has been run.
