@@ -98,6 +98,17 @@ Network: the backend server (172.17.2.21) must reach the SFTP server on its port
 - By hand: as Admin open Admin > Authorization cockpit; give an Agent the *Auditor* profile until tomorrow and check they
   can read but not reply; set an Agent's scope to "Only mine" and check the list.
 
+## 3a. Demo data for Phase 2 (dev only)
+
+`bash ~/samadhan-demo/run.sh load-v7` (`deploy/demo/load-v7.js`): about 90 tickets over the last 14 days in 4 new demo
+groups (SAP Functional, SAP Basis & Security, Infrastructure, Digital Apps) and Customer Support, worked like real ones
+(replies, notes, requester follow-ups, escalations, RCA, CSAT, time logs, watchers, linked tickets, overdue ones), so the
+dashboards, analytics, daily report, AI insights and action points show current numbers; 29 category / function choices
+and 4 severity rules for the new groups; a demo Supervisor and 5 specialist agents; cockpit examples (permanent, expiring
+and expired profiles, scopes groups / own, grant and deny overrides, an accepted SoD warning, rights unused for 90 days,
+change log); 5 shared saved views, 3 shared report variants, to-dos. Real people's access is not changed. Everything is
+removed by `bash ~/samadhan-demo/run.sh remove` (recorded in settings `demo.v7.manifest`).
+
 ## 4. Roll back
 - Code: redeploy the previous backend folder (`samadhan.bak-preSamadhan-<ts>` from the deploy) and the previous site build.
 - Database: `node samadhan/db/migrate.js down 7.1-attachments --yes` and/or `down 7.1-auth --yes` (then restart). Down

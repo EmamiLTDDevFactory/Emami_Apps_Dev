@@ -1,6 +1,6 @@
 'use strict';
 /*
-   Removes exactly what load-demo.js added to Samadhan on the dev backend server - nothing else.
+   Removes exactly what load-demo.js and load-v7.js added to Samadhan on the dev backend server - nothing else.
    Run on 172.17.2.21 with:  bash ~/samadhan-demo/run.sh remove
 */
 const APP = process.env.SAMADHAN_APP_DIR || process.env.SETU_APP_DIR || '/home/emamiadmin/apps/emami-apps-hub-backend-dev';
@@ -45,8 +45,21 @@ async function main() {
     await client.query(`DELETE FROM samadhan.settings WHERE key = 'pulsedesk.manifest'`);
     // Hub inbox rows the demo created for the demo agents (addresses nobody owns)
     const notes = await client.query(`DELETE FROM emami_apps.notifications WHERE app_id = ANY(ARRAY['samadhan', 'setu']) AND email LIKE ANY($1::text[])`, [DOMAINS]);
+    // v7 demo (load-v7.js): the report variants, groups, category choices and severity rules it added, and cockpit
+    // change-log rows about demo people. Its tickets, agents, views, to-dos and cockpit assignments went above
+    // (tag demo; the rest cascades with the demo agents).
+    const v7 = (await client.query(`SELECT value FROM samadhan.settings WHERE key = 'demo.v7.manifest'`)).rows[0]?.value || {};
+    await client.query('DELETE FROM samadhan.variants WHERE id = ANY($1::int[])', [v7.variantIds || []]);
+    const v7groups = await client.query(`DELETE FROM samadhan.groups g WHERE g.id = ANY($1::int[]) AND NOT EXISTS (SELECT 1 FROM samadhan.tickets t WHERE t."groupId" = g.id)`, [v7.groupIds || []]);
+    const v7choices = await client.query('DELETE FROM samadhan.field_choices WHERE id = ANY($1::int[])', [v7.choiceIds || []]);
+    await client.query('DELETE FROM samadhan.severity_rules WHERE id = ANY($1::int[])', [v7.severityRuleIds || []]);
+    let v7log = { rowCount: 0 };
+    if ((await client.query(`SELECT to_regclass('samadhan.auth_change_log') AS t`)).rows[0].t) {
+        v7log = await client.query('DELETE FROM samadhan.auth_change_log WHERE "actorEmail" LIKE ANY($1::text[]) OR target LIKE ANY($1::text[])', [DOMAINS]);
+    }
+    await client.query(`DELETE FROM samadhan.settings WHERE key = 'demo.v7.manifest'`);
     await client.query('COMMIT');
-    console.log(`Removed: ${tickets.rowCount} demo tickets, ${contacts.rowCount} demo contacts, ${agents.rowCount} demo agents, ${dists.rowCount} demo distributors, ${canned.rowCount} demo canned replies, ${articles.rowCount} articles and ${companies.rowCount} companies from PulseDesk, ${choices.rowCount} field choices and ${rules.rowCount} severity rules added by the demo, ${notes.rowCount} demo notifications.`);
+    console.log(`Removed: ${tickets.rowCount} demo tickets, ${contacts.rowCount} demo contacts, ${agents.rowCount} demo agents, ${dists.rowCount} demo distributors, ${canned.rowCount} demo canned replies, ${articles.rowCount} articles and ${companies.rowCount} companies from PulseDesk, ${choices.rowCount} field choices and ${rules.rowCount} severity rules added by the demo, ${notes.rowCount} demo notifications; v7 demo: ${v7groups.rowCount} groups, ${v7choices.rowCount} category choices, ${v7log.rowCount} cockpit change-log rows.`);
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
     throw e;
