@@ -11,7 +11,7 @@ Resume here in a new session: read this file and `docs/SAMADHAN_MASTER_PROMPT_FI
 | 1 (rename + harness) | done, pushed to main, deployed to dev |
 | 2 (permissions, cockpit, data scope, attachments) | done, pushed to main, deployed to dev |
 | 3 (service desks, applications, references, mail classification) | done, pushed to main, deployed to dev |
-| 4 (SAP & Primary Sales desk) | **done 2026-11-07**, gate green in parts, pushed to main, deployed to dev; see PHASE-4-NOTES.md |
+| 4 (SAP & Primary Sales desk) | **done 2026-11-07**, gate green in parts, pushed to main (0a577a7); **dev backend deploy pending** (server unreachable off the office network); see PHASE-4-NOTES.md |
 | 5 – 9 | next: 5 (Infra & IT, Digital, IT details) |
 
 ### Decisions taken at the Phase-0 STOP (approval without individual answers → recommended options)
