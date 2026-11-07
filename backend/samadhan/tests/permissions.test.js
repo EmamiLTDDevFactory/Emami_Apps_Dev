@@ -20,7 +20,7 @@ const { RULES, ruleFor } = require('../middleware/permission');
 const { SEED_PROFILES } = require('../lib/authSeed');
 
 // Routers mounted after requireAccess in index.js, with their mount prefix.
-const MOUNTS = [['', 'me'], ['', 'tickets'], ['', 'work'], ['', 'reports'], ['', 'insights'], ['', 'attachments'], ['/admin', 'admin'], ['/admin/authz', 'authz'], ['/admin', 'workspaces'], ['', 'sap'], ['', 'it']];
+const MOUNTS = [['', 'me'], ['', 'tickets'], ['', 'work'], ['', 'reports'], ['', 'insights'], ['', 'attachments'], ['/admin', 'admin'], ['/admin/authz', 'authz'], ['/admin', 'workspaces'], ['', 'sap'], ['', 'it'], ['', 'change']];
 function registered() {
     const out = [];
     for (const [prefix, file] of MOUNTS) {
@@ -39,6 +39,8 @@ const RANK = { Agent: 1, Supervisor: 2, Admin: 3 };
 const OLD_MIN = {
     'GET /tickets/export': 'Supervisor', 'GET /analytics': 'Supervisor', 'GET /reports/daily': 'Supervisor',
     'POST /companies': 'Supervisor', 'POST /articles': 'Supervisor', 'DELETE /articles/:id': 'Supervisor',
+    // v7 Phase 6 routes that did not exist before: the registers are a reporting screen (Supervisor and up by default).
+    'GET /registers': 'Supervisor', 'GET /registers/:kind': 'Supervisor',
 };
 const oldMin = (method, p) => (p.startsWith('/admin') ? 'Admin' : OLD_MIN[`${method} ${p}`] || 'Agent');
 const allowedNew = (role, rule, req = { body: {}, query: {} }) => {

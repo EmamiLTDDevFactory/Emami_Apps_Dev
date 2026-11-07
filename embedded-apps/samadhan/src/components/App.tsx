@@ -1,6 +1,6 @@
 'use client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, BarChart3, BookOpen, Calendar, Columns3, FileSpreadsheet, Headset, Inbox, Keyboard, LayoutDashboard, Menu, PieChart, PlusCircle, RefreshCw, Settings, ShieldX, SlidersHorizontal, Users, X, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, BarChart3, BookOpen, Calendar, CalendarRange, ClipboardCheck, Columns3, Table2, FileSpreadsheet, Headset, Inbox, Keyboard, LayoutDashboard, Menu, PieChart, PlusCircle, RefreshCw, Settings, ShieldX, SlidersHorizontal, Users, X, type LucideIcon } from 'lucide-react';
 import { ApiError, getMe, getMeta, savePrefs, setAvailability, setUnauthorizedHandler, type TicketQuery } from '@/lib/api';
 import { availableWorkspaces, multiDesk, wsTone } from '@/lib/workspaces';
 import { BASE_PATH } from '@/lib/config';
@@ -30,8 +30,12 @@ const Helpdesk = dynamic(() => import('./Helpdesk'), { loading });
 const Analytics = dynamic(() => import('./Analytics'), { loading });
 const Contacts = dynamic(() => import('./Contacts'), { loading });
 const Solutions = dynamic(() => import('./Solutions'), { loading });
+// v7 Phase 6
+const Approvals = dynamic(() => import('./Approvals'), { loading });
+const ChangeCalendar = dynamic(() => import('./ChangeCalendar'), { loading });
+const Registers = dynamic(() => import('./Registers'), { loading });
 
-type NavItem = { id: Screen; label: string; hint: string; icon: LucideIcon };
+type NavItem = { id: Screen; label: string; hint: string; icon: LucideIcon; desks?: boolean };
 const NAV: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', hint: "Today's queue and trends", icon: LayoutDashboard },
   { id: 'helpdesk', label: 'Helpdesk dashboard', hint: 'Region, status, type, source', icon: PieChart },
@@ -42,6 +46,10 @@ const NAV: NavItem[] = [
   { id: 'solutions', label: 'Solutions', hint: 'Knowledge base articles', icon: BookOpen },
   { id: 'analytics', label: 'Analytics', hint: 'SLA, agents, CSAT, trends', icon: BarChart3 },
   { id: 'reports', label: 'Daily report', hint: 'Excel in the template order', icon: FileSpreadsheet },
+  // v7 Phase 6: shown while the service desks are on.
+  { id: 'approvals', label: 'My approvals', hint: 'Access, changes, transports', icon: ClipboardCheck, desks: true },
+  { id: 'calendar', label: 'Change calendar', hint: 'Planned changes, freezes', icon: CalendarRange, desks: true },
+  { id: 'registers', label: 'Registers', hint: 'Change, access, SAP, IT registers', icon: Table2, desks: true },
   { id: 'admin', label: 'Admin', hint: 'Agents, SLA, fields, templates', icon: Settings },
 ];
 
@@ -237,7 +245,7 @@ export default function App() {
   }
 
   const { me, meta } = state;
-  const visibleNav = NAV.filter((n) => ctx.can(SCREEN_KEY[n.id]));
+  const visibleNav = NAV.filter((n) => ctx.can(SCREEN_KEY[n.id]) && (!n.desks || multiDesk(meta)));
   const allowed = (s: Screen) => ctx.can(SCREEN_KEY[s]);
   const activeNav = screen === 'ticket' ? 'tickets' : screen;
 
@@ -340,6 +348,9 @@ export default function App() {
               {screen === 'board' && allowed('board') && <Board />}
               {screen === 'reports' && allowed('reports') && <Reports />}
               {screen === 'admin' && allowed('admin') && <Admin />}
+              {screen === 'approvals' && allowed('approvals') && <Approvals />}
+              {screen === 'calendar' && allowed('calendar') && <ChangeCalendar />}
+              {screen === 'registers' && allowed('registers') && <Registers />}
             </div>
             <Shortcuts />
             <MyPreferences

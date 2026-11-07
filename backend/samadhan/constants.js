@@ -26,7 +26,7 @@ const TRIGGERS = ['ON_CREATE', 'ON_UPDATE', 'TIME'];
 // What the ticket list shows as "last activity" (tickets."lastActivityKind").
 const ACTIVITY_KINDS = ['created', 'status', 'assigned', 'agent_reply', 'requester_reply', 'note', 'forward', 'call'];
 // Events that can reach the in-app bell; Admin > Channels & bell picks which ones are on (default: requester replies only).
-const BELL_EVENTS = ['requester_reply', 'new_ticket', 'assigned', 'note', 'mention', 'status_changed', 'escalated', 'sla_warning', 'sla_breach', 'csat', 'watching', 'external_ref'];
+const BELL_EVENTS = ['requester_reply', 'new_ticket', 'assigned', 'note', 'mention', 'status_changed', 'escalated', 'sla_warning', 'sla_breach', 'csat', 'watching', 'external_ref', 'approval'];
 // Agent notifications by email / hub inbox that each agent can switch off for themselves (agents.prefs.emailMuted).
 const AGENT_EMAIL_TEMPLATES = ['agent.assigned_agent', 'agent.assigned_group', 'agent.requester_replied', 'agent.note_added', 'agent.first_response_reminder',
     'agent.resolution_reminder', 'agent.first_response_violated', 'agent.resolution_violated', 'agent.escalation_l3'];

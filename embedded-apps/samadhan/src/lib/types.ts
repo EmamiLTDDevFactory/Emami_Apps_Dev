@@ -159,6 +159,9 @@ export interface Meta {
   sapLists?: SapLists;
   /** v7 Phase 5 */
   itLists?: ItLists;
+  /** v7 Phase 6 */
+  changeLists?: ChangeLists;
+  catalogItems?: CatalogItem[];
   refMasterKinds?: string[];
 }
 
@@ -344,7 +347,51 @@ export interface TicketDetail {
   externalRefs?: ExternalRef[];
   /** v7 Phase 5 (null before migration 7.5) */
   it?: ItDetails | null;
+  /** v7 Phase 6 (empty / null before migration 7.6) */
+  transports?: Transport[];
+  change?: ChangeDetails | null;
+  approvals?: Approval[];
 }
+
+// ---------- v7 Phase 6: change and access ----------
+export interface Transport {
+  id: number; ticketId: number; trNumber: string; description: string | null; trType: string | null; owner: string | null; sourceSystem: string | null; status: string;
+  targetSystems: string[]; importedQasAt: string | null; testedOkBy: string | null; approvedForPrdBy: string | null; importedPrdAt: string | null; returnCode: number | null;
+  notes: string | null; createdAt: string; updatedAt: string;
+}
+export interface ChangeDetails {
+  ticketId?: number; changeType: string | null; changeRisk: string | null; plannedStart: string | null; plannedEnd: string | null; transportsNa: boolean;
+  testEvidence: string | null; implementationPlan: string | null; backoutPlan: string | null; accessValidTo: string | null; freezeOverrideReason: string | null; updatedAt?: string;
+}
+export type ApprovalState = 'Waiting' | 'Pending' | 'Approved' | 'Rejected' | 'Cancelled';
+export interface Approval {
+  id: number; ticketId: number; chainId: number | null; chainName: string | null; stepNo: number; stepName: string; approverType: string; approverAgentId: number | null;
+  approverAgentName: string | null; approverEmail: string | null; state: ApprovalState; decision: string | null; comment: string | null; decidedAt: string | null;
+  decidedBy: string | null; dueAt: string | null; createdAt: string; round: number;
+}
+export interface ApprovalStep { name: string; type: 'manager' | 'email' | 'agent' | 'approver'; email?: string }
+export interface ApprovalChain { id: number; name: string; workspaceId: number | null; steps: ApprovalStep[]; appliesTo: Record<string, string[]>; active: boolean; used?: number }
+export interface CatalogField { label: string; type: 'text' | 'textarea' | 'date' | 'select' | 'checkbox'; required?: boolean; options?: string[] }
+export interface CatalogItem {
+  id: number; name: string; workspaceId: number; applicationId: number | null; description: string | null; icon: string | null; recordClass: string;
+  category: string | null; function: string | null; formSchema: CatalogField[]; approvalChainId: number | null; approvalChainName?: string | null;
+  fulfilGroupId: number | null; fulfilGroupName?: string | null; portalVisible: boolean; active: boolean; position: number; needsManager?: boolean;
+}
+export interface ChangeLists { trTypes: string[]; trStatuses: string[]; changeTypes: string[]; changeRisks: string[]; decisions: string[]; windowKinds: string[] }
+export interface ChangeWindow { id: number; workspaceId: number | null; workspaceName?: string | null; kind: 'FREEZE' | 'MAINTENANCE'; name: string; startsAt: string; endsAt: string; systems: string[]; note: string | null }
+export interface CalendarChange {
+  id: number; ref: string; subject: string; workspaceId: number | null; changeType: string | null; changeRisk: string | null; plannedStart: string; plannedEnd: string | null;
+  statusName: string; isResolved: boolean; agentName: string | null;
+}
+export interface MyApproval {
+  id: number; ticketId: number; ref: string; stepNo: number; stepName: string; chainName: string | null; subject: string; priority: number; dueAt: string | null;
+  createdAt: string; requesterName: string | null; comment: string | null; decision: string | null;
+}
+export interface RegisterData { title: string; columns: [string, string][]; rows: Record<string, unknown>[] }
+/** The one-click approval page (portal, no sign-in). */
+export interface PublicApproval { id: number; stepName: string; chainName: string | null; ref: string; subject: string; requesterName: string | null; summary: string; createdAt: string; steps: { stepNo: number; stepName: string; state: string }[] }
+/** Portal catalogue item (portal-visible, in a desk open to the portal). */
+export interface PortalCatalogItem { id: number; name: string; description: string | null; icon: string | null; workspaceId: number; formSchema: CatalogField[]; needsManager: boolean }
 
 // ---------- v7 Phase 5: IT details (Digital Apps, Infra & IT) ----------
 export interface ItDetails {

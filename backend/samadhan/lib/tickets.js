@@ -299,6 +299,8 @@ async function updateTicket(id, patch, actorAgentId, opts = {}) {
             if (before.resolutionDueAt && now > before.resolutionDueAt) data.resViolated = true;
         }
         if (next.isClosed && !before.closedAt) data.closedAt = now;
+        // v7 Phase 6: an access request with a validity end date gets a "revoke access" to-do on resolve.
+        if (data.resolvedAt) await require('./change').afterResolved({ ...before, agentId: patch.agentId ?? before.agentId }).catch((e) => console.error('[samadhan] revoke to-do:', e.message));
         if (!next.isResolved && !next.isClosed) { data.resolvedAt = null; data.closedAt = null; }
     }
 

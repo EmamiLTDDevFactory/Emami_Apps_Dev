@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react';
 import { HelpCircle, KeyRound, Link2, PlusCircle, Settings2, ShoppingBag, UserSearch, Wrench } from 'lucide-react';
 import { PasteParser, SapFields, type SapForm } from './Sap';
 import { ItFields } from './ItDetails';
-import type { ItDetails } from '@/lib/types';
+import { CatalogPicker, CatalogQuestions, catalogReady, type Answers } from './Catalog';
+import type { CatalogItem, ItDetails } from '@/lib/types';
 import type { ExternalRefInput } from '@/lib/api';
 import { createTicket, searchContacts } from '@/lib/api';
 import type { ContactMatch } from '@/lib/types';
@@ -65,12 +66,20 @@ export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
   const emailOk = EMAIL_RE.test(top.requesterEmail.trim());
   // v7 Phase 4: record class tiles, SAP details and an external case for the non-sales desks.
   const [need, setNeed] = useState('');
+  const isSales = !ws || ws.key === 'SEC_SALES';
   const [sap, setSap] = useState<SapForm>({});
   const [extRef, setExtRef] = useState<ExternalRefInput>({});
   const [it, setIt] = useState<Partial<ItDetails>>({});
   const itDesk = ws?.key === 'DIGITAL_APPS' || ws?.key === 'INFRA_IT';
   const itFilled = Object.values(it).some((v) => v !== null && v !== undefined && v !== '');
-  const isSales = !ws || ws.key === 'SEC_SALES';
+  // v7 Phase 6: service-catalogue requests (the item presets the fields and starts its approval).
+  const [catItem, setCatItem] = useState<CatalogItem | null>(null);
+  const [answers, setAnswers] = useState<Answers>({});
+  const [manager, setManager] = useState('');
+  const [showCatalog, setShowCatalog] = useState(false);
+  const CATALOG_CLASS: Record<string, string[]> = { SERVICE_REQUEST: ['SERVICE_REQUEST'], ACCESS_REQUEST: ['ACCESS_REQUEST'], CHANGE: ['CHANGE'] };
+  const deskItems = (meta.catalogItems ?? []).filter((i) => i.workspaceId === wsId && (isSales ? showCatalog : !!CATALOG_CLASS[need] && CATALOG_CLASS[need].includes(i.recordClass)));
+  const pickItem = (i: CatalogItem | null) => { setCatItem(i); setAnswers({}); if (i && !top.subject.trim()) set({ subject: i.name }); };
   const sapDesk = ws?.key === 'SAP' || ws?.key === 'S4_PROGRAM';
   const sapFilled = Object.values(sap).some((v) => (Array.isArray(v) ? v.length : v !== null && v !== undefined && v !== ''));
 
@@ -113,6 +122,7 @@ export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
       if (!isSales && need) body.recordClass = need === 'SAP_CASE' ? 'INCIDENT' : need;
       if (sapDesk && sapFilled) body.sap = sap;
       if (itDesk && itFilled) body.it = it;
+      if (catItem && deskItems.some((i) => i.id === catItem.id)) { body.catalogItemId = catItem.id; body.catalogAnswers = answers; if (manager.trim()) body.managerEmail = manager.trim(); }
       if (!isSales && need === 'SAP_CASE' && extRef.ref?.trim()) body.externalRef = { system: extRef.system || meta.sapLists?.externalSystem[0], ...extRef };
       const t = await createTicket(body);
       if (applicationId) rememberApp(applicationId);
@@ -131,6 +141,8 @@ export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
         setSap({});
         setExtRef({});
         setIt({});
+        setCatItem(null);
+        setAnswers({});
         setMsg({ tone: 'good', text: `Ticket ${refOf(meta, t)} created. Log the next one below.` });
       } else {
         openTicket(t.id);
@@ -173,6 +185,20 @@ export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
                   <Field label="Case / ticket number"><input className={inputCls} value={extRef.ref ?? ''} onChange={(e) => setExtRef({ ...extRef, ref: e.target.value })} placeholder="e.g. 000123/2026" /></Field>
                   <Field label="Priority"><select className={cx('h-9 w-full', inputBase)} value={extRef.priority ?? ''} onChange={(e) => setExtRef({ ...extRef, priority: e.target.value })}><option value="">—</option>{meta.sapLists?.sapCasePriority.map((x) => <option key={x}>{x}</option>)}</select></Field>
                   {extRef.priority === 'Very High' && <Field label="Justification" className="sm:col-span-3" hint="Very High outside Production needs a reason"><input className={inputCls} value={extRef.justification ?? ''} onChange={(e) => setExtRef({ ...extRef, justification: e.target.value })} /></Field>}
+                </div>
+              )}
+            </Card>
+          )}
+          {isSales && (meta.catalogItems ?? []).some((i) => i.workspaceId === wsId) && !showCatalog && (
+            <button type="button" className="text-2xs font-bold text-accent hover:underline" onClick={() => setShowCatalog(true)}>Request something from the catalogue (new app user, reinstall, data correction ...)</button>
+          )}
+          {deskItems.length > 0 && (
+            <Card title="Pick a request" sub="Optional - a catalogue request fills in the details and sends it for approval when needed">
+              <CatalogPicker items={deskItems} value={catItem?.id ?? null} onChange={pickItem} />
+              {catItem && (
+                <div className="mt-3 border-t border-line pt-3">
+                  {catItem.approvalChainName && <p className="mb-2 text-2xs text-muted">Approval: <b>{catItem.approvalChainName}</b>{catItem.fulfilGroupName ? ` · fulfilled by ${catItem.fulfilGroupName}` : ''}</p>}
+                  <CatalogQuestions item={catItem} answers={answers} onChange={setAnswers} manager={manager} onManager={setManager} />
                 </div>
               )}
             </Card>
@@ -281,7 +307,7 @@ export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
             <input type="checkbox" checked={another} onChange={(e) => setAnother(e.target.checked)} className="h-4 w-4 accent-[rgb(var(--accent))]" />
             Create another after this one
           </label>
-          <Button variant="primary" className="w-full" onClick={submit} disabled={busy || !top.subject.trim() || !top.requesterName.trim() || !emailOk || (apps.length > 0 && !applicationId && !parentId)}>
+          <Button variant="primary" className="w-full" onClick={submit} disabled={busy || !top.subject.trim() || !top.requesterName.trim() || !emailOk || !catalogReady(catItem && deskItems.some((i) => i.id === catItem.id) ? catItem : null, answers, manager) || (apps.length > 0 && !applicationId && !parentId)}>
             {busy ? <Spinner /> : <PlusCircle size={14} />} Create ticket
           </Button>
         </div>

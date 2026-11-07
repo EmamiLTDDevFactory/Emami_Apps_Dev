@@ -172,6 +172,10 @@ function ticketFilter(qy, agentId, scope = null) {
     }
     if (qy.externalSystem) where.push(`EXISTS (SELECT 1 FROM samadhan.ticket_external_refs xr WHERE xr."ticketId" = t.id AND xr.system = ANY(${p(texts(qy.externalSystem))}::text[]))`);
     if (qy.confidential === '1') where.push('t.confidential');
+    // v7 Phase 6: approvals and transports.
+    if (qy.hasOpenApproval === '1') where.push(`EXISTS (SELECT 1 FROM samadhan.ticket_approvals ta WHERE ta."ticketId" = t.id AND ta.state IN ('Pending', 'Waiting'))`);
+    if (qy.transportStatus) where.push(`EXISTS (SELECT 1 FROM samadhan.ticket_transports tt WHERE tt."ticketId" = t.id AND tt.status = ANY(${p(texts(qy.transportStatus))}::text[]))`);
+    if (qy.changeType) where.push(`EXISTS (SELECT 1 FROM samadhan.ticket_change_details cd WHERE cd."ticketId" = t.id AND cd."changeType" = ANY(${p(texts(qy.changeType))}::text[]))`);
     // v7 Phase 5: IT details.
     for (const k of ['layer', 'platform', 'hosting']) {
         if (qy[k]) where.push(`EXISTS (SELECT 1 FROM samadhan.ticket_it_details itd WHERE itd."ticketId" = t.id AND itd.${k} = ANY(${p(texts(qy[k]))}::text[]))`);
@@ -192,6 +196,7 @@ function ticketFilter(qy, agentId, scope = null) {
             where.push(`(t.subject ILIKE ${like} OR c.name ILIKE ${like} OR c.email ILIKE ${like} OR t."distributorName" ILIKE ${like} OR t."distributorCode" ILIKE ${like} OR t."mrUid" ILIKE ${like}`
                 + ` OR EXISTS (SELECT 1 FROM samadhan.ticket_sap_details qd WHERE qd."ticketId" = t.id AND (qd.tcode ILIKE ${like} OR qd."errorText" ILIKE ${like} OR qd."idocNumber" ILIKE ${like} OR qd."shortDumpId" ILIKE ${like}))`
                 + ` OR EXISTS (SELECT 1 FROM samadhan.ticket_external_refs qx WHERE qx."ticketId" = t.id AND qx.ref ILIKE ${like})`
+                + ` OR EXISTS (SELECT 1 FROM samadhan.ticket_transports qt WHERE qt."ticketId" = t.id AND qt."trNumber" ILIKE ${like})`
                 + ` OR EXISTS (SELECT 1 FROM samadhan.ticket_it_details qi WHERE qi."ticketId" = t.id AND (qi."correlationId" ILIKE ${like} OR qi."serverName" ILIKE ${like} OR qi."assetTag" ILIKE ${like} OR qi."ipOrHost" ILIKE ${like} OR qi.url ILIKE ${like} OR qi."apiEndpoint" ILIKE ${like})))`);
         }
     }

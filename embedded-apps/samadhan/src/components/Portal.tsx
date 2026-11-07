@@ -1,8 +1,10 @@
 'use client';
 import { useEffect, useState, type ReactNode } from 'react';
 import { ArrowLeft, BookOpen, CheckCircle2, ChevronDown, ChevronRight, Frown, Headset, LifeBuoy, Meh, Search, Send, Smile, type LucideIcon } from 'lucide-react';
-import type { PortalApplication } from '@/lib/types';
-import { portalArticles, portalConfig, portalCreate, portalUpload, portalCsat, portalCsatAnswer, portalStatus, type CsatSurvey, type PortalArticle, type PortalTicketStatus } from '@/lib/api';
+import type { PortalApplication, PortalCatalogItem, PublicApproval } from '@/lib/types';
+import { CatalogPicker, CatalogQuestions, catalogReady, type Answers } from './Catalog';
+import { ApprovalStepper } from './Change';
+import { publicApproval, publicDecide, portalArticles, portalConfig, portalCreate, portalUpload, portalCsat, portalCsatAnswer, portalStatus, type CsatSurvey, type PortalArticle, type PortalTicketStatus } from '@/lib/api';
 import { BASE_PATH } from '@/lib/config';
 import { fmtDateTime } from '@/lib/format';
 import { Button, Field, Notice, Pill, Spinner, Tabs, cx, inputBase, inputCls, textareaCls } from './ui';
@@ -22,9 +24,14 @@ export default function Portal() {
   const [error, setError] = useState('');
   // A survey link from the ticket-closed email (?csat=<token>) shows the survey instead of the portal.
   const [csat, setCsat] = useState<{ token: string; home: string } | null>(null);
+  // v7 Phase 6: a one-click approval link (?approval=<token>) shows the request and Approve / Reject.
+  const [approval, setApproval] = useState<string | null>(null);
   useEffect(() => {
-    const token = new URLSearchParams(window.location.search).get('csat');
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('csat');
     if (token) { setCsat({ token, home: window.location.pathname }); return; }
+    const ap = params.get('approval');
+    if (ap) { setApproval(ap); return; }
     portalConfig().then(setConfig).catch((e) => setError(e instanceof Error ? e.message : 'The helpdesk could not be reached.'));
   }, []);
 
@@ -41,14 +48,15 @@ export default function Portal() {
           <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami" width={56} height={46} className="rounded-lg bg-white p-1" />
           <div>
             <h1 className="text-lg font-extrabold leading-tight">{helpdeskName}</h1>
-            <p className="text-xs text-white/75">Support for mSecSales, SalesCode DMS / SFA and distributor systems</p>
+            <p className="text-xs text-white/75">{config?.applications?.length ? 'Support for sales apps, SAP, IT and infrastructure' : 'Support for mSecSales, SalesCode DMS / SFA and distributor systems'}</p>
           </div>
         </div>
       </header>
       <main className="mx-auto max-w-3xl space-y-4 px-4 py-6">
         {csat && <CsatSurveyCard token={csat.token} home={csat.home} />}
+        {approval && <ApprovalCard token={approval} />}
         {error && <Notice>{error}</Notice>}
-        {!csat && !config && !error && <div className="grid h-40 place-items-center"><Spinner /></div>}
+        {!csat && !approval && !config && !error && <div className="grid h-40 place-items-center"><Spinner /></div>}
         {config && !config.enabled && (
           <div className="rounded-2xl border border-line bg-panel p-6 text-center shadow-card">
             <LifeBuoy size={28} className="mx-auto text-accent" />
@@ -60,7 +68,7 @@ export default function Portal() {
           <>
             {intro && <p className="whitespace-pre-line text-sm text-muted">{intro}</p>}
             <Tabs label="Portal" value={tab} onChange={setTab} tabs={[{ id: 'new', label: 'Raise a ticket' }, { id: 'status', label: 'Check a ticket' }]} />
-            {tab === 'new' ? <><ArticleSearch /><NewRequest categories={config.categories ?? []} files={config.files ?? null} applications={config.applications ?? []} categoriesByWorkspace={config.categoriesByWorkspace ?? {}} /></> : <StatusCheck />}
+            {tab === 'new' ? <><ArticleSearch /><NewRequest categories={config.categories ?? []} files={config.files ?? null} applications={config.applications ?? []} categoriesByWorkspace={config.categoriesByWorkspace ?? {}} catalogItems={config.catalogItems ?? []} /></> : <StatusCheck />}
           </>
         )}
         <p className="pt-2 text-center text-2xs text-faint">You can also email <a className="text-accent" href={`mailto:${supportEmail}`}>{supportEmail}</a>. Please do not share passwords or OTPs in a ticket.</p>
@@ -99,11 +107,17 @@ function AppPicker({ apps, value, onChange }: { apps: PortalApplication[]; value
   );
 }
 
-function NewRequest({ categories: salesCategories, files, applications, categoriesByWorkspace }: { categories: string[]; files: { limits: { perFileMb: number; filesPerAction: number } } | null; applications: PortalApplication[]; categoriesByWorkspace: Record<string, string[]> }) {
+function NewRequest({ categories: salesCategories, files, applications, categoriesByWorkspace, catalogItems }: { categories: string[]; files: { limits: { perFileMb: number; filesPerAction: number } } | null; applications: PortalApplication[]; categoriesByWorkspace: Record<string, string[]>; catalogItems: PortalCatalogItem[] }) {
+  // v7 Phase 6: portal-visible catalogue requests of the chosen app's desk.
+  const [item, setItem] = useState<PortalCatalogItem | null>(null);
+  const [answers, setAnswers] = useState<Answers>({});
+  const [manager, setManager] = useState('');
   const [appId, setAppId] = useState<number | null>(null);
   const picked = applications.find((a) => a.id === appId) ?? null;
   const categories = picked ? (categoriesByWorkspace[String(picked.workspaceId)] ?? []) : salesCategories;
   const salesish = !picked || picked.workspaceKey === 'SEC_SALES';
+  const items = picked ? catalogItems.filter((i) => i.workspaceId === picked.workspaceId) : [];
+  const chosen = item && items.some((i) => i.id === item.id) ? item : null;
   const tray = usePendingFiles(files?.limits.perFileMb ?? 5, files?.limits.filesPerAction ?? 5);
   const [fileNote, setFileNote] = useState('');
   const [f, setF] = useState(EMPTY);
@@ -111,13 +125,13 @@ function NewRequest({ categories: salesCategories, files, applications, categori
   const [error, setError] = useState('');
   const [done, setDone] = useState<{ id: number; ref?: string; email: string } | null>(null);
   const set = (p: Partial<typeof EMPTY>) => setF((x) => ({ ...x, ...p }));
-  const ready = f.name.trim() && EMAIL_RE.test(f.email.trim()) && f.subject.trim() && f.description.trim();
+  const ready = f.name.trim() && EMAIL_RE.test(f.email.trim()) && f.subject.trim() && f.description.trim() && catalogReady(chosen, answers, manager);
 
   const submit = async () => {
     setBusy(true);
     setError('');
     try {
-      const t = await portalCreate({ ...f, ...(picked ? { applicationId: picked.id } : {}) });
+      const t = await portalCreate({ ...f, ...(picked ? { applicationId: picked.id } : {}), ...(chosen ? { catalogItemId: chosen.id, catalogAnswers: answers, ...(manager.trim() ? { managerEmail: manager.trim() } : {}) } : {}) });
       // v7: files go up right after the ticket exists, with the one-ticket upload token from the answer.
       const failed: string[] = [];
       if (t.files && t.id > 0) {
@@ -130,6 +144,8 @@ function NewRequest({ categories: salesCategories, files, applications, categori
       setDone({ id: t.id, ref: t.ref, email: f.email.trim() });
       setF(EMPTY);
       setAppId(null);
+      setItem(null);
+      setAnswers({});
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not send your request.');
     } finally {
@@ -156,7 +172,15 @@ function NewRequest({ categories: salesCategories, files, applications, categori
         <Field label="Mobile number"><input className={inputCls} type="tel" value={f.phone} onChange={(e) => set({ phone: e.target.value })} autoComplete="tel" maxLength={20} /></Field>
         {salesish && <Field label="Distributor (DB) code"><input className={inputCls} value={f.distributorCode} onChange={(e) => set({ distributorCode: e.target.value })} maxLength={50} /></Field>}
       </div>
-      {applications.length > 1 && <Field label="Which app or area?"><AppPicker apps={applications} value={appId} onChange={(id) => { setAppId(id); set({ category: '' }); }} /></Field>}
+      {applications.length > 1 && <Field label="Which app or area?"><AppPicker apps={applications} value={appId} onChange={(id) => { setAppId(id); set({ category: '' }); setItem(null); }} /></Field>}
+      {items.length > 0 && (
+        <Field label="Need something? Pick a request (optional)">
+          <div className="space-y-3">
+            <CatalogPicker items={items} value={chosen?.id ?? null} onChange={(i) => { setItem(i); setAnswers({}); if (i && !f.subject.trim()) set({ subject: i.name }); }} />
+            {chosen && <CatalogQuestions item={chosen} answers={answers} onChange={setAnswers} manager={manager} onManager={setManager} />}
+          </div>
+        </Field>
+      )}
       {categories.length > 0 && (
         <Field label="What is it about?">
           <select className={cx('h-9 w-full', inputBase)} value={f.category} onChange={(e) => set({ category: e.target.value })}>
@@ -239,6 +263,40 @@ const RATINGS: { value: 1 | 2 | 3; label: string; icon: LucideIcon; tone: string
 ];
 
 /** Satisfaction survey opened from the link in the ticket-closed email. No sign-in; the token identifies the ticket. */
+/** v7 Phase 6: the approver's one-click page (single-use link from the approval email). */
+function ApprovalCard({ token }: { token: string }) {
+  const [a, setA] = useState<PublicApproval | null>(null);
+  const [error, setError] = useState('');
+  const [comment, setComment] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState('');
+  useEffect(() => { publicApproval(token).then(setA).catch((e) => setError(e instanceof Error ? e.message : 'This link could not be opened.')); }, [token]);
+  const decide = async (decision: string) => {
+    setBusy(true);
+    setError('');
+    try { await publicDecide(token, decision, comment); setDone(decision); } catch (e) { setError(e instanceof Error ? e.message : 'Could not save your decision.'); } finally { setBusy(false); }
+  };
+  if (done) return <div className="rounded-2xl border border-good/30 bg-panel p-6 text-center shadow-card" data-testid="approval-done"><CheckCircle2 size={32} className="mx-auto text-good" /><h2 className="mt-2 text-lg font-extrabold">Thank you - {done === 'Need info' ? 'your question was sent' : `you ${done.toLowerCase()} the request`}</h2><p className="mt-1 text-sm text-muted">You can close this page.</p></div>;
+  if (error && !a) return <Notice>{error}</Notice>;
+  if (!a) return <div className="grid h-40 place-items-center"><Spinner /></div>;
+  return (
+    <div className="space-y-3 rounded-2xl border border-line bg-panel p-5 shadow-card" data-testid="approval-page">
+      <div className="text-2xs font-bold uppercase tracking-wide text-muted">{a.chainName ?? 'Approval'} · your step: {a.stepName}</div>
+      <h2 className="text-lg font-extrabold leading-snug">{a.ref} · {a.subject}</h2>
+      {a.requesterName && <p className="text-xs text-muted">Requested by {a.requesterName} · {fmtDateTime(a.createdAt)}</p>}
+      {a.summary && <p className="whitespace-pre-line rounded-xl bg-sunken p-3 text-sm">{a.summary}</p>}
+      <ApprovalStepper steps={a.steps} />
+      <Field label="Comment" hint="Needed to reject or to ask for more information"><textarea rows={3} className={textareaCls} value={comment} onChange={(e) => setComment(e.target.value)} /></Field>
+      {error && <Notice onClose={() => setError('')}>{error}</Notice>}
+      <div className="flex flex-wrap gap-2">
+        <Button variant="primary" disabled={busy} onClick={() => decide('Approved')}><CheckCircle2 size={14} /> Approve</Button>
+        <Button disabled={busy || comment.trim().length < 3} onClick={() => decide('Rejected')}>Reject</Button>
+        <Button disabled={busy || comment.trim().length < 3} onClick={() => decide('Need info')}>Ask for information</Button>
+      </div>
+    </div>
+  );
+}
+
 function CsatSurveyCard({ token, home }: { token: string; home: string }) {
   const [survey, setSurvey] = useState<CsatSurvey | null>(null);
   const [loadError, setLoadError] = useState('');

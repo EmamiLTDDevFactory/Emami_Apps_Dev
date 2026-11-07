@@ -13,7 +13,8 @@ import type {
   ActivityItem, AdminAgent, AdminField, AdminGroup, AgentPrefs, Analytics, Article, ArticleRow, AuditEvent, AutomationRule, BellEvent, BellItem, Breakdown, Company,
   ContactDetail, ContactMatch, ContactRow, Counts, Dashboard, DashboardInsights, DayWindow, Distributor, EmailTemplate, Me, Meta, ParkedMail, PresenceAgent,
   Attachment, AttachmentLimits, AttachmentsInfo, SavedView, Scenario, ScenarioAction, SearchResults, SeverityRule, SlaPolicy, Ticket, TicketDetail, TicketInsights, TicketRow, Todo,
-  AccessUser, Overview, ReportVariantConfig, Role, Variant, Workspace, Application, MatrixCell, PriorityMode, SapDetails, ExternalRef, RefMaster, ItDetails, PortalApplication,
+  AccessUser, Overview, ReportVariantConfig, Role, Variant, Workspace, Application, MatrixCell, PriorityMode, SapDetails, ExternalRef, RefMaster, ItDetails, PortalApplication, Transport, ChangeDetails, Approval, ApprovalChain, CatalogItem, ChangeWindow, CalendarChange,
+  MyApproval, RegisterData, PublicApproval, PortalCatalogItem,
 } from './types';
 
 const API_HOST = 'https://audit-capa-api.emamiapps.in';
@@ -96,8 +97,8 @@ const qs = (o: Record<string, string | number | undefined | null>) => {
 
 // ---------- Requester portal (no hub sign-in; the backend ignores the empty token on these routes) ----------
 export interface PortalTicketStatus { id: number; ref?: string; subject: string; status: string; isResolved: boolean; isClosed: boolean; createdAt: string; lastActivityAt: string | null; resolvedAt: string | null }
-export const portalConfig = () => get<{ enabled: boolean; categories?: string[]; applications?: PortalApplication[]; categoriesByWorkspace?: Record<string, string[]>; helpdeskName?: string; intro?: string; supportEmail?: string; files?: { limits: AttachmentLimits['portal'] } | null }>('/portal/config');
-export const portalCreate = (body: { name: string; email: string; phone: string; distributorCode: string; category: string; subject: string; description: string; website: string; applicationId?: number }) =>
+export const portalConfig = () => get<{ enabled: boolean; categories?: string[]; applications?: PortalApplication[]; categoriesByWorkspace?: Record<string, string[]>; catalogItems?: PortalCatalogItem[]; helpdeskName?: string; intro?: string; supportEmail?: string; files?: { limits: AttachmentLimits['portal'] } | null }>('/portal/config');
+export const portalCreate = (body: { name: string; email: string; phone: string; distributorCode: string; category: string; subject: string; description: string; website: string; applicationId?: number; catalogItemId?: number; catalogAnswers?: Record<string, string | boolean>; managerEmail?: string }) =>
   request<{ ticket: { id: number; ref?: string }; files?: { uploadToken: string; limits: AttachmentLimits['portal'] } }>('POST', '/portal/tickets', body).then((r) => ({ ...r.ticket, files: r.files ?? null }));
 export const portalStatus = (id: number | string, email: string) => request<{ ticket: PortalTicketStatus }>('POST', '/portal/status', { id, email }).then((r) => r.ticket);
 export interface PortalArticle { id: number; category: string; folder: string; title: string; body: string; tags: string[] }
@@ -153,6 +154,10 @@ export interface TicketQuery {
   environment?: string;
   externalSystem?: string;
   confidential?: string;
+  /** v7 Phase 6 */
+  hasOpenApproval?: string;
+  transportStatus?: string;
+  changeType?: string;
   /** v7 Phase 5 */
   layer?: string;
   platform?: string;
@@ -398,5 +403,33 @@ export const refMastersAdmin = {
 
 // ---------- v7 Phase 5: IT details ----------
 export const saveIt = (ticketId: number, b: Partial<ItDetails>) => request<{ it: ItDetails }>('PUT', `/tickets/${ticketId}/it`, b).then((r) => r.it);
+
+// ---------- v7 Phase 6: change and access ----------
+export const addTransport = (ticketId: number, b: Partial<Transport>) => request<{ transport: Transport }>('POST', `/tickets/${ticketId}/transports`, b).then((r) => r.transport);
+export const updateTransport = (ticketId: number, id: number, b: Partial<Transport>) => request<{ transport: Transport }>('PATCH', `/tickets/${ticketId}/transports/${id}`, b).then((r) => r.transport);
+export const deleteTransport = (ticketId: number, id: number) => request('DELETE', `/tickets/${ticketId}/transports/${id}`);
+export const saveChange = (ticketId: number, b: Partial<ChangeDetails> & { freezeReason?: string }) => request<{ change: ChangeDetails }>('PUT', `/tickets/${ticketId}/change`, b).then((r) => r.change);
+export const ticketApprovals = (ticketId: number) => get<{ approvals: Approval[]; chains: ApprovalChain[] }>(`/tickets/${ticketId}/approvals`);
+export const startApproval = (ticketId: number, chainId: number, managerEmail?: string) => request<{ approvals: Approval[] }>('POST', `/tickets/${ticketId}/approvals`, { chainId, managerEmail }).then((r) => r.approvals);
+export const decideApproval = (ticketId: number, id: number, decision: string, comment?: string) =>
+  request<{ approvals: Approval[] }>('POST', `/tickets/${ticketId}/approvals/${id}/decide`, { decision, comment }).then((r) => r.approvals);
+export const cancelApproval = (ticketId: number) => request<{ approvals: Approval[] }>('DELETE', `/tickets/${ticketId}/approvals`).then((r) => r.approvals);
+export const myApprovals = () => get<{ items: MyApproval[] }>('/approvals/mine').then((r) => r.items);
+export const changeCalendar = (from: string, to: string) => get<{ changes: CalendarChange[]; windows: ChangeWindow[] }>(`/change-calendar${qs({ from, to })}`);
+export const registers = () => get<{ registers: { key: string; title: string }[] }>('/registers').then((r) => r.registers);
+export const register = (kind: string, from: string, to: string, applicationId?: string) => get<RegisterData>(`/registers/${kind}${qs({ from, to, ...(applicationId ? { applicationId } : {}) })}`);
+export const changeAdmin = {
+  chains: () => get<{ chains: ApprovalChain[] }>('/admin/approval-chains').then((r) => r.chains),
+  saveChain: (b: Partial<ApprovalChain>) => request<{ chain: ApprovalChain }>('POST', '/admin/approval-chains', b).then((r) => r.chain),
+  deleteChain: (id: number) => request<{ deactivated?: boolean }>('DELETE', `/admin/approval-chains/${id}`),
+  catalog: () => get<{ items: CatalogItem[] }>('/admin/catalog').then((r) => r.items),
+  saveItem: (b: Partial<CatalogItem>) => request<{ item: CatalogItem }>('POST', '/admin/catalog', b).then((r) => r.item),
+  deleteItem: (id: number) => request('DELETE', `/admin/catalog/${id}`),
+  windows: () => get<{ windows: ChangeWindow[] }>('/admin/change-windows').then((r) => r.windows),
+  saveWindow: (b: Partial<ChangeWindow>) => request<{ window: ChangeWindow }>('POST', '/admin/change-windows', b).then((r) => r.window),
+  deleteWindow: (id: number) => request('DELETE', `/admin/change-windows/${id}`),
+};
+export const publicApproval = (token: string) => get<{ approval: PublicApproval }>(`/portal/approval/${encodeURIComponent(token)}`).then((r) => r.approval);
+export const publicDecide = (token: string, decision: string, comment: string) => request('POST', `/portal/approval/${encodeURIComponent(token)}`, { decision, comment });
 
 export type { ActivityItem };
