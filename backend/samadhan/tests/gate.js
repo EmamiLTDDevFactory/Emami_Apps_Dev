@@ -110,11 +110,19 @@ async function stopBackend() {
 }
 
 let pgError = '';
-function pgRunning() { const r = psql('postgres', 'select 1'); pgError = (r.stderr || '').trim().split('\n').pop() || ''; return r.status === 0; }
+// With a time limit: on 2026-11-07 the cluster accepted connections but could not start a backend (Windows error 487
+// after an out-of-memory crash) and a plain psql waited forever, so the gate hung instead of restarting it.
+function pgRunning() {
+    const r = spawnSync(path.join(PG_BIN, 'psql'), ['-w', '-h', 'localhost', '-p', String(PG_PORT), '-U', 'postgres', '-d', 'postgres', '-qAtc', 'select 1'],
+        { encoding: 'utf8', timeout: 20000, env: { ...process.env, PGCONNECT_TIMEOUT: '10' } });
+    if (r.error) { pgError = `no answer in 20 s (${r.error.code || r.error.message})`; return false; }
+    pgError = (r.stderr || '').trim().split('\n').pop() || '';
+    return r.status === 0;
+}
 const PG_DIR = path.join(process.env.LOCALAPPDATA || os.homedir(), 'samadhan-test-pg');
 // Started through pg_ctl with -l, so the server log is kept in PG_DIR\server.log (it used to go nowhere).
 const pgCtl = (...a) => spawnSync(path.join(PG_BIN, 'pg_ctl'), ['-D', path.join(PG_DIR, 'data'), ...a], { encoding: 'utf8', timeout: 120000 });
-async function waitPg(seconds) { for (let i = 0; i < seconds && !pgRunning(); i++) await sleep(1000); return pgRunning(); }
+async function waitPg(seconds) { const end = Date.now() + seconds * 1000; while (Date.now() < end) { if (pgRunning()) return true; await sleep(1000); } return pgRunning(); }
 async function ensurePg() {
     if (pgRunning()) return { ok: true };
     if (!fs.existsSync(path.join(PG_DIR, 'data'))) return { ok: false, why: `not running and no ${PG_DIR}` };
@@ -126,7 +134,13 @@ async function ensurePg() {
     // Still not answering: on 2026-11-06 a recovery hung for over 20 minutes and only a restart cleared it.
     // This is the throwaway test cluster (every test database is rebuilt each run), so one forced restart is safe.
     console.log(`      test Postgres not ready after 5 min (${pgError}); restarting it once`);
-    pgCtl('stop', '-m', 'immediate', '-w', '-t', '60');
+    if (pgCtl('stop', '-m', 'immediate', '-w', '-t', '60').status !== 0) {
+        // A wedged server can ignore the stop request: end the process named in this cluster's own postmaster.pid.
+        const pidFile = path.join(PG_DIR, 'data', 'postmaster.pid');
+        const pid = fs.existsSync(pidFile) ? Number(fs.readFileSync(pidFile, 'utf8').split(/\r?\n/)[0].trim()) : 0;
+        if (pid) { try { process.kill(pid); } catch { /* already gone */ } await sleep(3000); }
+        fs.rmSync(pidFile, { force: true });
+    }
     start();
     if (await waitPg(300)) return { ok: true };
     return { ok: false, why: `not ready after a restart: ${pgError}; see ${path.join(PG_DIR, 'server.log')}` };

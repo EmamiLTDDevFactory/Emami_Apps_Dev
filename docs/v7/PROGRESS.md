@@ -9,7 +9,8 @@ Resume here in a new session: read this file and `docs/SAMADHAN_MASTER_PROMPT_FI
 | C (working agreement) | done |
 | 0 (discovery, baseline, plan) | done — **approved 2026-11-05** ("approved", no individual answers) |
 | 1 (rename + harness) | **code done, full gate GREEN (run 5, 23/23)**; not pushed (push plan awaiting the user's OK) |
-| 2 – 9 | not started |
+| 2 (permissions, cockpit, data scope, attachments) | **code done, gate GREEN 31/31 (2026-11-07)**; not pushed (asking the user) |
+| 3 – 9 | not started |
 
 ### Decisions taken at the Phase-0 STOP (approval without individual answers → recommended options)
 - Q-R1 **Option A** (app id `samadhan`, `setu` kept as alias; one line in access-tracker). Q-R2 redirect stub
@@ -162,25 +163,15 @@ nginx route: not done — `emamiadmin` has no sudo rights; the server admin runs
 (public `/dev-api/api/samadhan/` is 404 until then; the app falls back to `/api/setu`).
 Master prompt `docs/SAMADHAN_MASTER_PROMPT_FINAL.md` added to git (user).
 
-**Phase 2 (started 2026-11-06; Q-P1 = PLAN §7 defaults; Q-S1 = SFTP server, host-to-host - see below):**
-- DONE, committed locally (`8675596`): permission catalogue + middleware on every route (fail closed), data scope
-  all/groups/own, Authorization cockpit API + UI (6 tabs), migration `7.1-auth` (up/down), tests. Gate run on it:
-  28/29 - the only failure was an E2E selector bug ("Open" also matched "Open menu" on 360 px), fixed since.
-- IN PROGRESS, committed locally as WIP: attachments - `lib/storage.js` (adapter interface; `local` for tests),
-  `lib/fileCheck.js` (allow-list + content sniffing), `lib/attachments.js` (limits, signed 5-min links, lifecycle),
-  `routes/attachments.js` (agent upload/list/link/delete, public /files/:token, portal upload with 30-min token),
-  `lib/mailAttachments.js` (inbound mail files), migration `7.1-attachments`, setting `attachments.limits`,
-  hooks in merge / purge / anonymise, list column + "Has attachments" filter + optional export column.
-- **User decision 2026-11-06: store attachments on an SFTP server (host-to-host); NOT SAP / OData.** The `sap` adapter
-  in lib/storage.js must be replaced by an `sftp` adapter. Credentials come later from the admin team.
-- **OPEN QUESTION (ask on resume):** where to install the SFTP client library (ssh2-sftp-client; none in the repo):
-  (1) Samadhan-only package.json in backend/samadhan, installed by the Samadhan deploy script (recommended - no shared
-  file touched); (2) shared backend/package.json; (3) no library, server's sftp command with an SSH key only.
-- TODO after that: sftp adapter + env names (SAMADHAN_SFTP_HOST/PORT/USER/PASSWORD or KEY/BASE_DIR), outbound reply
-  attachments (20 MB, larger as sign-in links), frontend (Attachments card, paperclip, upload with paste / drag-drop /
-  client-side compression, preview modal, list icon, filter, Admin > General limits, portal upload), API + E2E tests
-  for attachments (local adapter), full gate, PHASE-2-NOTES / CHANGELOG / READMEs / TEST-REPORT, then ask to push.
-- Delete the draft SAP spec idea: no docs/v7/SAP-ATTACHMENT-SERVICE.md is needed any more.
+**Phase 2 (2026-11-06 → 07; Q-P1 = PLAN §7 defaults; Q-S1 = SFTP server, host-to-host): code done, gate GREEN.**
+- Commits (local): `8675596` permissions + cockpit + scope, `926637d` attachments WIP, `9d23b4e` SFTP adapter +
+  Samadhan-only `package.json` (user chose option 1), `3957f01` attachments UI, `3d70706` gate `--stages`, then docs.
+- Notes: `PHASE-2-NOTES.md`. Test report: `TEST-REPORT.md` (Phase 2, 31/31).
+- Next: merge the latest `origin/main`, re-run the gate parts touched by the merge, **ask** before pushing
+  `Feature/Animesh` then `main` (never production); then the dev backend deploy (ask). Attachments stay off on dev until
+  the admin team sets `SAMADHAN_STORAGE=sftp` and the `SAMADHAN_SFTP_*` values on the server.
+- Still with the server admin: nginx route (Phase 1). User: rotate the `emamiadmin` password.
+- After Phase 2: STOP for review.
 
 Earlier plan (kept for reference):
 
