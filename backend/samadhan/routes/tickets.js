@@ -181,7 +181,7 @@ router.get('/tickets/:id', wrap(async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) throw fail(400, 'Invalid ticket number.');
     const t = await loadTicket(id);
-    const related = `SELECT t.id, t.subject, s.name AS "statusName", s."isResolved", t."createdAt" FROM samadhan.tickets t JOIN samadhan.ticket_statuses s ON s.id = t."statusId"`;
+    const related = `SELECT t.id, t.subject, s.name AS "statusName", s."isResolved", t."createdAt", t."applicationId" FROM samadhan.tickets t JOIN samadhan.ticket_statuses s ON s.id = t."statusId"`;
     const [conversations, activities, timeLogs, others, calls, watchers, links, children, parent, csat, todos] = await Promise.all([
         pool.query(
             `SELECT cv.*, a.name AS "agentName" FROM samadhan.conversations cv LEFT JOIN samadhan.agents a ON a.id = cv."agentId"

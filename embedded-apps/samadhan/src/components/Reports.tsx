@@ -73,6 +73,9 @@ function buildConfig(range: Range, from: string, to: string, cols: string[] | nu
 }
 const configKey = (c: ReportVariantConfig) => JSON.stringify(buildConfig(c.range, c.from ?? '', c.to ?? '', c.columns?.length ? c.columns : null, c.filters));
 
+// v7 Phase 3: optional columns the server appends after the 36 (pick them under Columns; never in the default).
+const V7_EXTRA = ['Reference', 'Application', 'Workspace'];
+
 const errText = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
 
 /**
@@ -81,9 +84,10 @@ const errText = (e: unknown, fallback: string) => (e instanceof Error ? e.messag
  * a variant; the agent's default variant is applied and loaded on opening the screen.
  */
 export default function Reports() {
-  const { me, can } = useSamadhan();
+  const { me, meta, can } = useSamadhan();
   const isAdmin = can('admin.general'); // v7: change anyone's variant
   const isSupervisor = can('report.variants.share');
+  const hasApps = (meta.applications?.length ?? 0) > 0;
   const [range, setRange] = useState<Range>('today');
   const [from, setFrom] = useState(istToday());
   const [to, setTo] = useState(istToday());
@@ -105,14 +109,14 @@ export default function Reports() {
     setBusy(true);
     setMsg(null);
     try {
-      const r = await getDailyReport(f, t);
+      const r = await getDailyReport(f, t, hasApps ? V7_EXTRA : undefined);
       setReport({ ...r, from: f, to: t });
     } catch (e) {
       setMsg({ tone: 'bad', text: errText(e, 'Could not load the report.') });
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [hasApps]);
 
   /** Put a variant's setup on screen and load its (resolved) date range. */
   const applyVariant = useCallback((v: Variant) => {
@@ -159,13 +163,15 @@ export default function Reports() {
   };
 
   const colIndex = useMemo(() => new Map((report?.columns ?? []).map((c, i) => [c, i] as const)), [report]);
+  // The template's 36 columns (the optional v7 ones are only shown when picked).
+  const baseCols = useMemo(() => (report?.columns ?? []).filter((c) => !V7_EXTRA.includes(c)), [report]);
 
   // Columns shown in the preview and the download: the chosen ones that still exist, else all of them.
   const shownCols = useMemo(() => {
     if (!report) return [];
     const picked = (cols ?? []).filter((c) => colIndex.has(c));
-    return picked.length ? picked : report.columns;
-  }, [report, cols, colIndex]);
+    return picked.length ? picked : baseCols;
+  }, [report, cols, colIndex, baseCols]);
 
   // Per column: the pick-list options (most frequent OPTIONS_MAX, alphabetical, '(blank)' last) and the distinct count.
   const choices = useMemo(() => {
@@ -506,7 +512,7 @@ export default function Reports() {
           selected={shownCols}
           onApply={(next) => {
             setDialog(null);
-            setCols(next.length === report.columns.length && next.every((c, i) => c === report.columns[i]) ? null : next);
+            setCols(next.length === baseCols.length && next.every((c, i) => c === baseCols[i]) ? null : next);
           }}
         />
       )}

@@ -4,6 +4,7 @@ import { Search } from 'lucide-react';
 import { lookupDistributor } from '@/lib/api';
 import { useSamadhan } from '@/lib/context';
 import type { FieldDef } from '@/lib/types';
+import { fieldsFor, labelsFor, workspaceByKey } from '@/lib/workspaces';
 import { Button, Field, Spinner, cx, inputBase, inputCls, textareaCls } from './ui';
 
 export type Values = Record<string, string>;
@@ -23,8 +24,11 @@ function ChoiceSelect({ value, choices, onChange, label, placeholder = 'Select',
  * Ticket detail fields, driven by the field definitions in Admin > Fields: dropdowns, text, paragraphs and the
  * nested Category -> Function pair. A Distributor Code lookup fills the distributor fields from the DB master.
  */
-export default function TicketFields({ values, onChange, required = true, compact = false }: { values: Values; onChange: (patch: Values) => void; required?: boolean; compact?: boolean }) {
+export default function TicketFields({ values, onChange, required = true, compact = false, workspaceKey }: { values: Values; onChange: (patch: Values) => void; required?: boolean; compact?: boolean; workspaceKey?: string | null }) {
   const { meta } = useSamadhan();
+  // v7 Phase 3: the fields, choices and Category / Function labels of the ticket's workspace (Secondary Sales = as before).
+  const { fields, tree } = fieldsFor(meta, workspaceKey);
+  const labels = labelsFor(meta, workspaceByKey(meta, workspaceKey)?.id);
   const [looking, setLooking] = useState(false);
   const [lookupMsg, setLookupMsg] = useState('');
 
@@ -60,19 +64,19 @@ export default function TicketFields({ values, onChange, required = true, compac
     const v = values[f.key] ?? '';
     const req = required && f.required;
     if (f.type === 'nested') {
-      const node = meta.categoryTree.find((c) => c.value === values.category);
+      const node = tree.find((c) => c.value === values.category);
       return (
         <div key={f.key} className={cx('grid gap-3', compact ? 'grid-cols-1' : 'sm:col-span-2 sm:grid-cols-2')}>
-          <Field label={f.label} required={req}>
-            {meta.categoryTree.length ? (
-              <ChoiceSelect label={f.label} value={values.category ?? ''} choices={meta.categoryTree.map((c) => c.value)} onChange={(c) => onChange({ category: c, function: '' })} />
+          <Field label={workspaceKey && workspaceKey !== 'SEC_SALES' ? labels.category : f.label} required={req}>
+            {tree.length ? (
+              <ChoiceSelect label={workspaceKey && workspaceKey !== 'SEC_SALES' ? labels.category : f.label} value={values.category ?? ''} choices={tree.map((c) => c.value)} onChange={(c) => onChange({ category: c, function: '' })} />
             ) : (
               <input className={inputCls} value={values.category ?? ''} onChange={(e) => onChange({ category: e.target.value })} />
             )}
           </Field>
-          <Field label="Function" required={req}>
+          <Field label={labels.function} required={req}>
             {node && node.children.length ? (
-              <ChoiceSelect label="Function" value={values.function ?? ''} choices={node.children} onChange={(fn) => onChange({ function: fn })} />
+              <ChoiceSelect label={labels.function} value={values.function ?? ''} choices={node.children} onChange={(fn) => onChange({ function: fn })} />
             ) : (
               <input className={inputCls} value={values.function ?? ''} onChange={(e) => onChange({ function: e.target.value })} placeholder={values.category ? 'No functions listed - type one' : 'Pick a category first'} />
             )}
@@ -116,5 +120,5 @@ export default function TicketFields({ values, onChange, required = true, compac
     );
   };
 
-  return <div className={cx('grid gap-3', compact ? 'grid-cols-1' : 'sm:grid-cols-2')}>{meta.fields.map(render)}</div>;
+  return <div className={cx('grid gap-3', compact ? 'grid-cols-1' : 'sm:grid-cols-2')}>{fields.filter((f) => f.visible !== false).map(render)}</div>;
 }

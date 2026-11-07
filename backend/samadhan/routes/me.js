@@ -56,6 +56,12 @@ router.put('/me/preferences', wrap(async (req, res) => {
         }
         patch.defaultVariants = { report };
     }
+    // v7 Phase 3: the workspace switcher ('' = All) and the recently used applications (New ticket).
+    if (b.workspace !== undefined) {
+        if (b.workspace !== null && b.workspace !== '' && !/^[A-Z][A-Z0-9_]{1,19}$/.test(String(b.workspace))) throw fail(400, 'Unknown workspace.');
+        patch.workspace = b.workspace || null;
+    }
+    if (b.recentApps !== undefined) patch.recentApps = (Array.isArray(b.recentApps) ? b.recentApps : []).map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, 8);
     const { rows } = await pool.query('UPDATE samadhan.agents SET prefs = prefs || $2::jsonb WHERE id = $1 RETURNING prefs', [req.agent.id, JSON.stringify(patch)]);
     res.json({ success: true, prefs: rows[0].prefs });
 }));

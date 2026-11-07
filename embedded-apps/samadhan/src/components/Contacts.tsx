@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Building2, ChevronLeft, ChevronRight, ListFilter, Pencil, PhoneIncoming, PhoneOutgoing, Plus, RefreshCw, Search, Users, X } from 'lucide-react';
 import { getContact, listCompanies, listContacts, saveCompany, updateContact } from '@/lib/api';
+import { refOf } from '@/lib/workspaces';
 import { useSamadhan } from '@/lib/context';
 import { SEVERITY_EDGE, fmtDateTime, fmtNum, relative } from '@/lib/format';
 import type { Company, ContactDetail, ContactRow } from '@/lib/types';
@@ -174,7 +175,7 @@ function ContactList({ company, onClearCompany, companies }: { company: { id: nu
 }
 
 function ContactDrawer({ id, companies, onClose, onSaved }: { id: number; companies: Company[]; onClose: () => void; onSaved: () => void }) {
-  const { openTicket, openList } = useSamadhan();
+  const { meta, openTicket, openList } = useSamadhan();
   const [data, setData] = useState<ContactDetail | null>(null);
   const [error, setError] = useState('');
   const [editing, setEditing] = useState(false);
@@ -252,7 +253,7 @@ function ContactDrawer({ id, companies, onClose, onSaved }: { id: number; compan
                     <button type="button" onClick={() => { onClose(); openTicket(t.id); }} className={cx('grid w-full grid-cols-1 gap-1.5 border-l-4 px-4 py-3 text-left transition hover:bg-sunken', SEVERITY_EDGE[t.severity])}>
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="num text-2xs font-bold text-muted">#{t.id}</span>
+                          <span className="num text-2xs font-bold text-muted">{refOf(meta, t)}</span>
                           <span className="truncate text-sm font-semibold">{t.subject}</span>
                         </div>
                         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-2xs text-muted">

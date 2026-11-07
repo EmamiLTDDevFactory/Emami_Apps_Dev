@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertOctagon, Inbox, LayoutGrid, RefreshCw, Ticket } from 'lucide-react';
 import { getBreakdown, type TicketQuery } from '@/lib/api';
+import { refOf, workspaceByKey } from '@/lib/workspaces';
 import { useSamadhan } from '@/lib/context';
 import { fmtDate, fmtNum, istToday, SEVERITY_LABEL, SEVERITY_TONE } from '@/lib/format';
 import type { Breakdown, NameValue } from '@/lib/types';
@@ -23,7 +24,8 @@ const rowsOf = (list: NameValue[]): BarRow[] =>
 
 /** Ticket counts by region, status, type, source ... (Freshdesk's "Emami Secondary Helpdesk Dashboard"). */
 export default function Helpdesk() {
-  const { meta, openList, openTicket } = useSamadhan();
+  const { meta, openList, openTicket, workspace } = useSamadhan();
+  const ws = workspaceByKey(meta, workspace);
   const [days, setDays] = useState('30');
   const [groupId, setGroupId] = useState('');
   const [data, setData] = useState<Breakdown | null>(null);
@@ -35,7 +37,7 @@ export default function Helpdesk() {
     const n = ++seq.current;
     setBusy(true);
     try {
-      const d = await getBreakdown({ days: Number(days), groupId: groupId ? Number(groupId) : undefined });
+      const d = await getBreakdown({ days: Number(days), groupId: groupId ? Number(groupId) : undefined, workspaceId: ws ? String(ws.id) : undefined });
       if (n !== seq.current) return;
       setData(d);
       setError('');
@@ -44,7 +46,7 @@ export default function Helpdesk() {
     } finally {
       if (n === seq.current) setBusy(false);
     }
-  }, [days, groupId]);
+  }, [days, groupId, ws]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -116,6 +118,7 @@ export default function Helpdesk() {
           </Card>
           {bars('Type wise', 'All tickets in the period', data.type, pick((name) => ({ view: '', type: name })))}
           {bars('Source wise', 'All tickets in the period', data.source, pick((name) => ({ view: '', source: name })))}
+          {(data.application?.length ?? 0) > 0 && bars('Application wise', 'All tickets in the period', data.application ?? [], pick((name) => { const a = meta.applications?.find((x) => x.name === name); return a ? { view: '', applicationId: String(a.id) } : { view: '' }; }))}
           {bars('Category wise', 'Unresolved tickets', data.category, pick((name) => ({ view: 'open', category: name })), 'unresolved tickets')}
           {bars('Depot wise', 'Unresolved tickets', data.depot, pick((name) => ({ view: 'open', depot: name })), 'unresolved tickets')}
           {bars('State wise', 'All tickets in the period', data.state, pick((name) => ({ view: '', state: name })))}
@@ -129,7 +132,7 @@ export default function Helpdesk() {
                   <li key={t.id}>
                     <button type="button" onClick={() => openTicket(t.id)} className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left hover:bg-sunken">
                       <Pill tone={SEVERITY_TONE[t.severity]}>{SEVERITY_LABEL[t.severity]}</Pill>
-                      <span className="num shrink-0 text-xs font-bold text-accent">#{t.id}</span>
+                      <span className="num shrink-0 text-xs font-bold text-accent">{refOf(meta, t)}</span>
                       <span className="min-w-0 flex-1 truncate text-[13px] font-medium" title={t.subject}>{t.subject}</span>
                       <span className="hidden shrink-0 text-2xs text-faint sm:inline">{fmtDate(t.createdAt)}</span>
                       <Pill>{t.statusName}</Pill>

@@ -13,7 +13,7 @@ import type {
   ActivityItem, AdminAgent, AdminField, AdminGroup, AgentPrefs, Analytics, Article, ArticleRow, AuditEvent, AutomationRule, BellEvent, BellItem, Breakdown, Company,
   ContactDetail, ContactMatch, ContactRow, Counts, Dashboard, DashboardInsights, DayWindow, Distributor, EmailTemplate, Me, Meta, ParkedMail, PresenceAgent,
   Attachment, AttachmentLimits, AttachmentsInfo, SavedView, Scenario, ScenarioAction, SearchResults, SeverityRule, SlaPolicy, Ticket, TicketDetail, TicketInsights, TicketRow, Todo,
-  AccessUser, Overview, ReportVariantConfig, Role, Variant,
+  AccessUser, Overview, ReportVariantConfig, Role, Variant, Workspace, Application, MatrixCell, PriorityMode,
 } from './types';
 
 const API_HOST = 'https://audit-capa-api.emamiapps.in';
@@ -81,11 +81,11 @@ const qs = (o: Record<string, string | number | undefined | null>) => {
 };
 
 // ---------- Requester portal (no hub sign-in; the backend ignores the empty token on these routes) ----------
-export interface PortalTicketStatus { id: number; subject: string; status: string; isResolved: boolean; isClosed: boolean; createdAt: string; lastActivityAt: string | null; resolvedAt: string | null }
+export interface PortalTicketStatus { id: number; ref?: string; subject: string; status: string; isResolved: boolean; isClosed: boolean; createdAt: string; lastActivityAt: string | null; resolvedAt: string | null }
 export const portalConfig = () => get<{ enabled: boolean; categories?: string[]; helpdeskName?: string; intro?: string; supportEmail?: string; files?: { limits: AttachmentLimits['portal'] } | null }>('/portal/config');
 export const portalCreate = (body: { name: string; email: string; phone: string; distributorCode: string; category: string; subject: string; description: string; website: string }) =>
-  request<{ ticket: { id: number }; files?: { uploadToken: string; limits: AttachmentLimits['portal'] } }>('POST', '/portal/tickets', body).then((r) => ({ ...r.ticket, files: r.files ?? null }));
-export const portalStatus = (id: number, email: string) => request<{ ticket: PortalTicketStatus }>('POST', '/portal/status', { id, email }).then((r) => r.ticket);
+  request<{ ticket: { id: number; ref?: string }; files?: { uploadToken: string; limits: AttachmentLimits['portal'] } }>('POST', '/portal/tickets', body).then((r) => ({ ...r.ticket, files: r.files ?? null }));
+export const portalStatus = (id: number | string, email: string) => request<{ ticket: PortalTicketStatus }>('POST', '/portal/status', { id, email }).then((r) => r.ticket);
 export interface PortalArticle { id: number; category: string; folder: string; title: string; body: string; tags: string[] }
 export const portalArticles = (q = '') => get<{ items: PortalArticle[] }>(`/portal/articles${qs({ q })}`).then((r) => r.items);
 export interface CsatSurvey { ticketId: number; subject: string; agentName: string | null; answered: boolean; question?: string; labels?: Record<'1' | '2' | '3', string> }
@@ -128,6 +128,11 @@ export interface TicketQuery {
   companyId?: string;
   /** v7: '1' = only tickets with files. */
   hasAttachments?: string;
+  /** v7 Phase 3: comma-separated ids / record classes; '1' = needs classification. */
+  applicationId?: string;
+  workspaceId?: string;
+  recordClass?: string;
+  needsClassification?: string;
   statusId?: string;
   priority?: string;
   severity?: string;
@@ -151,6 +156,9 @@ export const getCounts = () => get<{ counts: Counts }>('/tickets/counts').then((
 export const getTicket = (id: number) => get<TicketDetail>(`/tickets/${id}`);
 export const createTicket = (body: Json) => request<{ ticket: Ticket }>('POST', '/tickets', body).then((r) => r.ticket);
 export const updateTicket = (id: number, patch: Json) => request<{ ticket: Ticket }>('PATCH', `/tickets/${id}`, patch).then((r) => r.ticket);
+/** v7 Phase 3: confirm the automatic classification (no applicationId) or change the application. */
+export const classifyTicket = (id: number, applicationId?: number) =>
+  request<{ ticket: Ticket }>('POST', `/tickets/${id}/classify`, applicationId ? { applicationId } : {}).then((r) => r.ticket);
 export const addMessage = (id: number, body: { kind: 'REPLY' | 'NOTE' | 'FORWARD'; text: string; to?: string; cc?: string; statusAfter?: number; attachmentIds?: number[] }) =>
   request<{ delivery: { sent: boolean; reason?: string } | null }>('POST', `/tickets/${id}/messages`, body).then((r) => r.delivery);
 export const logCall = (id: number, body: { phone: string; direction: 'OUTBOUND' | 'INBOUND'; outcome: string; durationMins: number; notes: string }) =>
@@ -192,18 +200,19 @@ export const deleteArticle = (id: number) => request('DELETE', `/articles/${id}`
 export const articleFeedback = (id: number, helpful: boolean) => request('POST', `/articles/${id}/feedback`, { helpful });
 
 // ---------- Board, dashboard, reports ----------
-export const getBoard = (q: { mine?: string; groupId?: string }) => get<{ items: TicketRow[] }>(`/board${qs(q)}`).then((r) => r.items);
+export const getBoard = (q: { mine?: string; groupId?: string; workspaceId?: string }) => get<{ items: TicketRow[] }>(`/board${qs(q)}`).then((r) => r.items);
 export const getDashboard = () => get<Dashboard>('/dashboard');
 export const getOverview = (days = 30) => get<Overview>(`/dashboard/overview${qs({ days })}`);
 export const getVariants = (kind: 'report') => get<{ variants: Variant[] }>(`/variants${qs({ kind })}`).then((r) => r.variants);
 export const saveVariant = (b: { id?: number; kind: 'report'; name: string; shared: boolean; config: ReportVariantConfig }) => request<{ id: number }>('POST', '/variants', b).then((r) => r.id);
 export const deleteVariant = (id: number) => request('DELETE', `/variants/${id}`);
-export const getBreakdown = (q: { days?: number; groupId?: number }) => get<Breakdown>(`/dashboard/breakdown${qs(q)}`);
-export const getAnalytics = (q: { days?: number; groupId?: number }) => get<Analytics>(`/analytics${qs(q)}`);
+export const getBreakdown = (q: { days?: number; groupId?: number; applicationId?: string; workspaceId?: string }) => get<Breakdown>(`/dashboard/breakdown${qs(q)}`);
+export const getAnalytics = (q: { days?: number; groupId?: number; applicationId?: string; workspaceId?: string }) => get<Analytics>(`/analytics${qs(q)}`);
 export const getDashboardInsights = (refresh = false) =>
   get<{ insights: DashboardInsights }>(`/insights/dashboard${refresh ? '?refresh=1' : ''}`).then((r) => r.insights);
 export const getTicketInsights = (id: number, generate = false) => get<TicketInsights>(`/tickets/${id}/insights${generate ? '?generate=1' : ''}`);
-export const getDailyReport = (from: string, to: string) => get<{ columns: string[]; rows: (string | number)[][] }>(`/reports/daily${qs({ from, to })}`);
+export const getDailyReport = (from: string, to: string, extra?: string[]) =>
+  get<{ columns: string[]; rows: (string | number)[][] }>(`/reports/daily${qs({ from, to, ...(extra?.length ? { extra: extra.join(',') } : {}) })}`);
 export const runJobs = () => request<{ result: Json }>('POST', '/jobs/run').then((r) => r.result);
 
 // ---------- Admin ----------
@@ -304,7 +313,7 @@ export interface AuthzOverview { usersByRole: Partial<Record<Role, number>>; cus
 export interface UserAccessPatch {
   profiles?: { profileId: number; validFrom?: string | null; validTo?: string | null }[];
   overrides?: { key: string; effect: 'grant' | 'deny'; expiresAt?: string | null }[];
-  scope?: { visibility: Visibility };
+  scope?: { visibility?: Visibility; workspaces?: 'all' | string[]; applications?: 'all' | string[] };
   reason: string; acceptSod?: boolean;
 }
 export const authz = {
@@ -321,6 +330,31 @@ export const authz = {
   review: () => get<{ users: AuthzReviewRow[] }>('/admin/authz/review').then((r) => r.users),
   revokeExpired: () => request<{ people: number }>('POST', '/admin/authz/review/revoke-expired', {}).then((r) => r.people),
   log: (q: { q?: string; from?: string; to?: string } = {}) => get<{ entries: AuthzLogEntry[] }>(`/admin/authz/log${qs(q)}`).then((r) => r.entries),
+};
+
+// ---------- v7 Phase 3: workspaces, applications, mail classification (Admin) ----------
+export interface SenderRule { id: number; kind: 'domain' | 'email'; pattern: string; applicationId: number; code: string; applicationName: string; note: string | null; createdBy: string | null; createdAt: string }
+export interface MailClassification {
+  settings: { ai: boolean; threshold: number; defaultCode: string };
+  prefixInSubject: boolean;
+  rules: SenderRule[];
+  suggestions: { applicationId: number; code: string; keyword: string; hits: number }[];
+  aiAvailable: boolean;
+}
+export type ApplicationInput = Partial<Pick<Application, 'code' | 'name' | 'workspaceId' | 'description' | 'icon' | 'criticality' | 'businessOwner' | 'itOwnerAgentId' | 'supportGroupId' | 'portalVisible' | 'active' | 'position'>> & { aliases?: string[] | string };
+export const workspacesAdmin = {
+  get: () => get<{ enabled: boolean; workspaces: Workspace[]; applications: Application[]; matrix: MatrixCell[] }>('/admin/workspaces'),
+  setFlag: (enabled: boolean) => request<{ enabled: boolean }>('PUT', '/admin/workspaces/flag', { enabled }),
+  saveWorkspace: (id: number, b: Partial<Pick<Workspace, 'name' | 'shortCode' | 'description' | 'enabled' | 'portalEnabled' | 'position' | 'categoryLabel' | 'functionLabel' | 'defaultGroupId'>> & { priorityMode?: PriorityMode }) =>
+    request<{ workspace: Workspace }>('PUT', `/admin/workspaces/${id}`, b).then((r) => r.workspace),
+  saveMatrix: (id: number, cells: { impact: number; urgency: number; priority: number }[]) => request('PUT', `/admin/workspaces/${id}/matrix`, { cells }),
+  createApplication: (b: ApplicationInput) => request<{ application: Application }>('POST', '/admin/applications', b).then((r) => r.application),
+  saveApplication: (id: number, b: ApplicationInput) => request<{ application: Application }>('PUT', `/admin/applications/${id}`, b).then((r) => r.application),
+  addAlias: (id: number, alias: string) => request('POST', `/admin/applications/${id}/aliases`, { alias }),
+  mail: () => get<MailClassification>('/admin/mail-classification'),
+  saveMail: (b: { ai: boolean; threshold: number; defaultCode: string; prefixInSubject: boolean }) => request('PUT', '/admin/mail-classification', b),
+  addRule: (b: { kind: 'domain' | 'email'; pattern: string; applicationId: number; note?: string }) => request<{ rule: SenderRule }>('POST', '/admin/mail-rules', b),
+  deleteRule: (id: number) => request('DELETE', `/admin/mail-rules/${id}`),
 };
 
 export type { ActivityItem };

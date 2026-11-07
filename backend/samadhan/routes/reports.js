@@ -16,6 +16,9 @@ router.get('/board', wrap(async (req, res) => {
     const params = [];
     if (req.query.mine === '1') { params.push(req.agent.id); where.push(`t."agentId" = $${params.length}`); }
     if (req.query.groupId) { params.push(Number(req.query.groupId)); where.push(`t."groupId" = $${params.length}`); }
+    // v7 Phase 3: the service-desk switcher / an application.
+    const af = appFilters(req.query, params);
+    if (af) where.push(af.slice(5));
     const { rows } = await pool.query(
         `SELECT ${LIST_COLUMNS} ${LIST_FROM} WHERE ${where.join(' AND ')} ORDER BY t.priority DESC, t."createdAt" DESC LIMIT 600`,
         params,
@@ -149,7 +152,7 @@ router.get('/dashboard/overview', wrap(async (req, res) => {
         pool.query(`SELECT coalesce(nullif(t.category, ''), 'Uncategorised') AS name, count(*)::int AS value FROM samadhan.tickets t ${OPEN} GROUP BY 1 ORDER BY 2 DESC LIMIT 12`),
         pool.query(`SELECT t.source AS name, count(*)::int AS value FROM samadhan.tickets t WHERE ${liveFor(req)} AND t."createdAt" >= now() - make_interval(days => $1) GROUP BY 1 ORDER BY 2 DESC`, [days]),
         pool.query(
-            `SELECT t.id, t.subject, t.severity, t.priority, t."resolutionDueAt", t."firstResponseDueAt", t."firstRespondedAt", a.name AS "agentName", s.name AS "statusName"
+            `SELECT t.id, t.subject, t.severity, t.priority, t."resolutionDueAt", t."firstResponseDueAt", t."firstRespondedAt", a.name AS "agentName", s.name AS "statusName", t."applicationId"
              FROM samadhan.tickets t JOIN samadhan.ticket_statuses s ON s.id = t."statusId" LEFT JOIN samadhan.agents a ON a.id = t."agentId"
              WHERE ${liveFor(req)} AND NOT s."isResolved" AND NOT s."pausesSla"
                AND (t."resolutionDueAt" < now() + interval '2 hours' OR (t."firstRespondedAt" IS NULL AND t."firstResponseDueAt" < now() + interval '2 hours'))
@@ -206,7 +209,7 @@ router.get('/dashboard/breakdown', wrap(async (req, res) => {
         by('t.region'), by('s.name'), by('t.type'), by('t.source'),
         by('t.category', true, 12), by('t.depot', true, 12), by('t.state', false, 15),
         pool.query(
-            `SELECT t.id, t.subject, t.severity, s.name AS "statusName", t."createdAt" ${base} AND NOT s."isResolved" AND t.severity IN ('FATAL', 'SERIOUS')
+            `SELECT t.id, t.subject, t.severity, s.name AS "statusName", t."createdAt", t."applicationId" ${base} AND NOT s."isResolved" AND t.severity IN ('FATAL', 'SERIOUS')
              ORDER BY t.severity, t."createdAt" LIMIT 25`,
             params,
         ),

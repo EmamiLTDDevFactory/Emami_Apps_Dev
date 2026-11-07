@@ -7,16 +7,19 @@ import {
 import { getAnalytics, type TicketQuery } from '@/lib/api';
 import { useSamadhan } from '@/lib/context';
 import { fmtDateTime, fmtMins, fmtNum, istToday } from '@/lib/format';
-import type { AgentPerformance, Analytics as Data, NameValue } from '@/lib/types';
+import type { AgentPerformance, Analytics as Data, ApplicationKpi, NameValue } from '@/lib/types';
+import { workspaceByKey } from '@/lib/workspaces';
 import { BarList, type BarRow } from './charts';
 import { Button, Card, cx, Empty, Kpi, Notice, Pill, Select, Skeleton, Tabs } from './ui';
 
-type Tab = 'overview' | 'volume' | 'agents' | 'territory' | 'csat' | 'calls';
+type Tab = 'overview' | 'volume' | 'agents' | 'territory' | 'apps' | 'csat' | 'calls';
 const TABS: { id: Tab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'volume', label: 'Volume' },
   { id: 'agents', label: 'Agents' },
   { id: 'territory', label: 'Territory & category' },
+  // v7 Phase 3 (§N 9)
+  { id: 'apps', label: 'By application' },
   { id: 'csat', label: 'Satisfaction' },
   { id: 'calls', label: 'Calls' },
 ];
@@ -45,9 +48,12 @@ export default function Analytics() {
 }
 
 function AnalyticsScreen() {
-  const { meta, openList, openTicket } = useSamadhan();
+  const { meta, openList, openTicket, workspace } = useSamadhan();
   const [days, setDays] = useState('30');
   const [groupId, setGroupId] = useState('');
+  const [appId, setAppId] = useState('');
+  const ws = workspaceByKey(meta, workspace);
+  const hasApps = (meta.applications?.length ?? 0) > 0;
   const [tab, setTab] = useState<Tab>('overview');
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState('');
@@ -58,7 +64,7 @@ function AnalyticsScreen() {
     const n = ++seq.current;
     setBusy(true);
     try {
-      const d = await getAnalytics({ days: Number(days), groupId: groupId ? Number(groupId) : undefined });
+      const d = await getAnalytics({ days: Number(days), groupId: groupId ? Number(groupId) : undefined, applicationId: appId || undefined, workspaceId: ws ? String(ws.id) : undefined });
       if (n !== seq.current) return;
       setData(d);
       setError('');
@@ -67,13 +73,14 @@ function AnalyticsScreen() {
     } finally {
       if (n === seq.current) setBusy(false);
     }
-  }, [days, groupId]);
+  }, [days, groupId, appId, ws]);
 
   useEffect(() => { load(); }, [load]);
 
   const drill = (q: TicketQuery) => {
     const base: TicketQuery = { view: '', from: istToday(-Number(days)) };
     if (groupId) base.groupId = groupId;
+    if (appId) base.applicationId = appId;
     openList({ ...base, ...q });
   };
   const pick = (make: (name: string) => TicketQuery) => (key: string) => { if (key !== NONE) drill(make(key)); };
@@ -88,6 +95,7 @@ function AnalyticsScreen() {
         <div className="flex flex-wrap items-center gap-2">
           <Select label="Period" value={days} onChange={setDays} options={PERIODS} />
           <Select label="Group" value={groupId} onChange={setGroupId} options={[{ value: '', label: 'All groups' }, ...meta.groups.map((g) => ({ value: String(g.id), label: g.name }))]} />
+          {hasApps && <Select label="Application" value={appId} onChange={setAppId} options={[{ value: '', label: 'All applications' }, ...(meta.applications ?? []).map((a) => ({ value: String(a.id), label: `${a.code} – ${a.name}` }))]} />}
           <Button size="sm" onClick={load} disabled={busy}><RefreshCw size={13} className={busy ? 'animate-spin' : ''} /> Refresh</Button>
         </div>
       </div>
@@ -110,10 +118,45 @@ function AnalyticsScreen() {
               <BarsCard title="By category" list={data.byCategory} onPick={pick((name) => ({ category: name }))} />
             </div>
           )}
+          {tab === 'apps' && <ByApplication list={data.byApplication ?? []} workspaces={data.byWorkspace ?? []} onPick={(id) => drill({ applicationId: String(id) })} />}
           {tab === 'csat' && <Satisfaction csat={data.csat} openTicket={openTicket} />}
           {tab === 'calls' && <Calls calls={data.calls} />}
         </>
       )}
+    </div>
+  );
+}
+
+/** v7 Phase 3: volume, SLA %, mean time to resolve, reopen % and CSAT per application (§N 9). */
+function ByApplication({ list, workspaces, onPick }: { list: ApplicationKpi[]; workspaces: { key: string; name: string; value: number }[]; onPick: (id: number) => void }) {
+  if (!list.length) return <Card><Empty title="No tickets in this period" /></Card>;
+  const pct = (v: number | null) => (v === null ? '-' : `${v}%`);
+  return (
+    <div className="space-y-4" data-testid="analytics-by-application">
+      {workspaces.length > 1 && <BarsCard title="By service desk" list={workspaces.map((w) => ({ name: w.name, value: w.value }))} />}
+      <Card title="By application" sub="Created in the period - click a row to open those tickets" bodyClass="p-0">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="bg-sunken text-left text-2xs uppercase tracking-wide text-muted">
+              <tr>{['Application', 'Tickets', 'Open', 'Resolved', 'Resolution SLA', 'Avg resolution', 'Reopened', 'CSAT positive'].map((h) => <th key={h} className="px-3 py-2 font-bold">{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {list.map((a) => (
+                <tr key={a.id ?? a.code} className="cursor-pointer border-t border-line hover:bg-sunken" onClick={() => a.id && onPick(a.id)}>
+                  <td className="px-3 py-2"><b className="font-mono">{a.code}</b> {a.name}</td>
+                  <td className="num px-3 py-2 font-bold">{fmtNum(a.value)}</td>
+                  <td className="num px-3 py-2">{fmtNum(a.open)}</td>
+                  <td className="num px-3 py-2">{fmtNum(a.resolved)}</td>
+                  <td className="num px-3 py-2">{pct(a.resolutionSlaPct)}</td>
+                  <td className="num px-3 py-2">{fmtMins(a.avgResolutionMins)}</td>
+                  <td className="num px-3 py-2">{pct(a.reopenedPct)}</td>
+                  <td className="num px-3 py-2">{pct(a.csatPositivePct)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
     </div>
   );
 }

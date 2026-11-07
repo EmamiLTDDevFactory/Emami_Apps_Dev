@@ -1,9 +1,10 @@
 'use client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, BarChart3, BookOpen, Calendar, Columns3, FileSpreadsheet, Headset, Inbox, Keyboard, LayoutDashboard, Menu, PieChart, PlusCircle, RefreshCw, Settings, ShieldX, SlidersHorizontal, Users, X, type LucideIcon } from 'lucide-react';
-import { ApiError, getMe, getMeta, setAvailability, setUnauthorizedHandler, type TicketQuery } from '@/lib/api';
+import { ApiError, getMe, getMeta, savePrefs, setAvailability, setUnauthorizedHandler, type TicketQuery } from '@/lib/api';
+import { availableWorkspaces, multiDesk, wsTone } from '@/lib/workspaces';
 import { BASE_PATH } from '@/lib/config';
-import { SamadhanContext, type NewTicketPreset, type Screen, type Samadhan } from '@/lib/context';
+import { SamadhanContext, useSamadhan, type NewTicketPreset, type Screen, type Samadhan } from '@/lib/context';
 import { makeCan, SCREEN_KEY, type Scope } from '@/lib/permissions';
 import { hasHubSession } from '@/lib/hub';
 import type { AgentPrefs, AttachmentsInfo, Availability, BellEvent, Me, Meta } from '@/lib/types';
@@ -142,6 +143,20 @@ export default function App() {
     load();
   }, [load]);
 
+  // v7 Phase 3: the workspace switcher, remembered in My preferences (only while the multi-desk mode is on).
+  const setWorkspace = useCallback((key: string) => {
+    setState((s) => (s.kind === 'ready' ? { ...s, prefs: { ...s.prefs, workspace: key || null } } : s));
+    savePrefs({ workspace: key || null }).catch(() => { /* the choice still applies for this visit */ });
+  }, []);
+  const rememberApp = useCallback((applicationId: number) => {
+    setState((s) => {
+      if (s.kind !== 'ready') return s;
+      const recentApps = [applicationId, ...(s.prefs.recentApps ?? []).filter((x) => x !== applicationId)].slice(0, 8);
+      savePrefs({ recentApps }).catch(() => {});
+      return { ...s, prefs: { ...s.prefs, recentApps } };
+    });
+  }, []);
+
   const reloadMeta = useCallback(async () => {
     const meta = await getMeta();
     setState((s) => (s.kind === 'ready' ? { ...s, meta } : s));
@@ -151,6 +166,8 @@ export default function App() {
     if (state.kind !== 'ready') return null;
     const sup = state.me.role === 'Supervisor' || state.me.role === 'Admin';
     const can = makeCan(state.me.role, state.permissions);
+    const wsKey = state.prefs.workspace ?? '';
+    const workspace = multiDesk(state.meta) && availableWorkspaces(state.meta).some((w) => w.key === wsKey) ? wsKey : '';
     return {
       me: state.me,
       meta: state.meta,
@@ -169,8 +186,11 @@ export default function App() {
       scope: state.scope,
       attachments: state.attachments,
       prefs: state.prefs,
+      workspace,
+      setWorkspace,
+      rememberApp,
     };
-  }, [state, reloadMeta, listIds]);
+  }, [state, reloadMeta, listIds, setWorkspace, rememberApp]);
 
   // Screen guard (v7 §K 9.1): a screen the person may not use - from the menu, a deep link or a typed ?screen= - goes to
   // their first allowed screen with a notice. The API refuses the data anyway (403); this only keeps the page honest.
@@ -245,6 +265,7 @@ export default function App() {
               <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Apps" width={172} height={142} />
             </a>
           </div>
+          {multiDesk(meta) && <WorkspaceSwitcher />}
           <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3" aria-label="Sections">
             {visibleNav.map((n) => (
               <button
@@ -292,7 +313,7 @@ export default function App() {
             <button type="button" className="p-1 lg:hidden" onClick={() => setMenu(true)} aria-label="Open menu"><Menu size={22} /></button>
             <Headset size={18} className="text-accent" />
             <h1 className="text-[15px] font-extrabold">Samadhan</h1>
-            <span className="hidden text-2xs text-muted sm:inline">Emami Secondary Support</span>
+            <span className="hidden text-2xs text-muted sm:inline">{multiDesk(meta) ? (meta.workspaces?.find((w) => w.key === ctx.workspace)?.name ?? 'All service desks') : 'Emami Secondary Support'}</span>
             <div className="flex-1" />
             {!state.mailEnabled && (
               <span className="hidden rounded-full border border-warn/30 bg-warn/10 px-2.5 py-1 text-[11px] font-bold text-warn md:inline" title="SAMADHAN_MAIL_ENABLED is off on the server: replies are saved but no email is sent, and the mailbox is not read.">
@@ -333,5 +354,32 @@ export default function App() {
         </div>
       </div>
     </SamadhanContext.Provider>
+  );
+}
+
+/**
+ * v7 Phase 3 (§N 2): "All" plus the workspaces in the person's scope, at the top of the sidebar. Shown only while the
+ * multi-desk mode is on; the choice narrows the ticket list, the board and the dashboards, and is remembered.
+ */
+function WorkspaceSwitcher() {
+  const { meta, scope, workspace, setWorkspace } = useSamadhan();
+  const inScope = (key: string) => !Array.isArray(scope.workspaces) || !scope.workspaces.length || scope.workspaces.includes(key);
+  const list = availableWorkspaces(meta).filter((w) => inScope(w.key));
+  if (list.length < 2) return null;
+  return (
+    <div className="border-b border-line px-3 py-2" data-testid="workspace-switcher">
+      <div className="mb-1 px-1 text-[10px] font-bold uppercase tracking-wide text-faint">Service desk</div>
+      <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="Service desk">
+        {[{ key: '', name: 'All', shortCode: 'All', color: 'accent' }, ...list].map((w) => {
+          const on = workspace === w.key;
+          return (
+            <button key={w.key || 'all'} type="button" role="radio" aria-checked={on} title={w.name} onClick={() => setWorkspace(w.key)}
+              className={cx('rounded-lg border px-2 py-1 text-[11px] font-bold transition', on ? wsTone(w as never) : 'border-line text-muted hover:text-ink')}>
+              {w.key ? w.shortCode : 'All'}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }

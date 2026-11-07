@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronRight, CircleDashed, LineChart, ShieldCheck, Table2, type LucideIcon } from 'lucide-react';
+import { refOf } from '@/lib/workspaces';
 import { useSamadhan } from '@/lib/context';
 import { fmtMins, fmtNum, SEVERITY_LABEL } from '@/lib/format';
 import type { Overview, Severity } from '@/lib/types';
@@ -202,7 +203,7 @@ const countdown = (ms: number) => {
 };
 
 export function RiskWidget({ ov, stale }: P) {
-  const { openTicket, openList } = useSamadhan();
+  const { meta, openTicket, openList } = useSamadhan();
   const now = useNow();
   const items = useMemo(() => ov.risk.map((r) => {
     const res = r.resolutionDueAt ? new Date(r.resolutionDueAt).getTime() : Infinity;
@@ -235,7 +236,7 @@ export function RiskWidget({ ov, stale }: P) {
                 >
                   <span className="min-w-0 flex-1">
                     <span className="flex items-baseline gap-1.5">
-                      <span className="num text-2xs font-bold text-muted">#{r.id}</span>
+                      <span className="num text-2xs font-bold text-muted">{refOf(meta, r)}</span>
                       <span className="truncate text-xs font-semibold">{r.subject}</span>
                     </span>
                     <span className="mt-1 flex flex-wrap items-center gap-1.5 text-2xs text-muted">

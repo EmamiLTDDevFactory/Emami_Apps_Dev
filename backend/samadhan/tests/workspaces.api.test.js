@@ -280,6 +280,17 @@ const ticket = (who, body) => call(who, 'POST', '/tickets', { requesterName: 'Ra
     const rep = r.body.rows.find((x) => x[0] === t1.id);
     check(r.body.columns.length === 38 && r.body.columns[36] === 'Reference' && rep && rep[36] === `SAP-${t1.id}` && rep[37] === 'SAP ECC (current)', 'daily report: optional Reference / Application appended last', rep?.slice(36));
 
+    // ---- portal status by reference; board by service desk; preferences ----
+    r = await call(null, 'POST', '/portal/status', { id: `SAP-${t1.id}`, email: 'ravi.test@example.com' });
+    check(r.status === 200 && r.body.ticket.id === t1.id && r.body.ticket.ref === `SAP-${t1.id}`, 'portal status accepts SAP-<id> and returns the reference', r.body);
+    r = await call(null, 'POST', '/portal/status', { id: String(t1.id), email: 'ravi.test@example.com' });
+    check(r.status === 200 && r.body.ticket.id === t1.id, 'portal status still accepts the number');
+    r = await call(A1, 'GET', `/board?workspaceId=${ws.SAP.id}`);
+    check(r.status === 200 && r.body.items.length > 0 && r.body.items.every((x) => x.workspaceId === ws.SAP.id), 'board filtered by service desk');
+    r = await call(A1, 'PUT', '/me/preferences', { workspace: 'SAP', recentApps: [app('MSFA').id, 'x', -1] });
+    check(r.status === 200 && r.body.prefs.workspace === 'SAP' && JSON.stringify(r.body.prefs.recentApps) === JSON.stringify([app('MSFA').id]), 'preferences: workspace + recent apps');
+    r = await call(A1, 'PUT', '/me/preferences', { workspace: 'bad key' }); check(r.status === 400, 'preferences: invalid workspace -> 400');
+
     await db.end();
     console.log(fails ? `\n${fails} FAILED` : '\nALL PASSED');
     process.exit(fails ? 1 : 0);

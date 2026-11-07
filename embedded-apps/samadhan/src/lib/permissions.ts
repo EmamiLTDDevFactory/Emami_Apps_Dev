@@ -8,7 +8,8 @@ import type { Role } from './types';
 */
 
 export type Visibility = 'all' | 'groups' | 'own';
-export interface Scope { visibility: Visibility }
+/** v7 Phase 3: workspaces (keys) / applications (codes) may narrow the scope too; 'all' = no limit. */
+export interface Scope { visibility: Visibility; workspaces?: 'all' | string[]; applications?: 'all' | string[] }
 
 // Keys a pre-v7 Agent did not have (Supervisor and Admin did), and keys only an Admin had.
 const SUPERVISOR_UP = new Set([

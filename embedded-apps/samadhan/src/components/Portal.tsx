@@ -74,7 +74,7 @@ function NewRequest({ categories, files }: { categories: string[]; files: { limi
   const [f, setF] = useState(EMPTY);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [done, setDone] = useState<{ id: number; email: string } | null>(null);
+  const [done, setDone] = useState<{ id: number; ref?: string; email: string } | null>(null);
   const set = (p: Partial<typeof EMPTY>) => setF((x) => ({ ...x, ...p }));
   const ready = f.name.trim() && EMAIL_RE.test(f.email.trim()) && f.subject.trim() && f.description.trim();
 
@@ -92,7 +92,7 @@ function NewRequest({ categories, files }: { categories: string[]; files: { limi
       }
       setFileNote(failed.length ? `These files could not be added: ${failed.join(', ')}. Reply to the confirmation email to send them.` : '');
       tray.clear();
-      setDone({ id: t.id, email: f.email.trim() });
+      setDone({ id: t.id, ref: t.ref, email: f.email.trim() });
       setF(EMPTY);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not send your request.');
@@ -105,7 +105,7 @@ function NewRequest({ categories, files }: { categories: string[]; files: { limi
     return (
       <div className="rounded-2xl border border-good/30 bg-panel p-6 text-center shadow-card">
         <CheckCircle2 size={32} className="mx-auto text-good" />
-        <h2 className="mt-2 text-lg font-extrabold">Ticket {done.id > 0 ? `#${done.id}` : ''} raised</h2>
+        <h2 className="mt-2 text-lg font-extrabold">Ticket {done.id > 0 ? (done.ref && done.ref.includes('-') ? done.ref : `#${done.id}`) : ''} raised</h2>
         {fileNote && <div className="mt-2 text-left"><Notice tone="warn">{fileNote}</Notice></div>}
         <p className="mt-1 text-sm text-muted">We have emailed a confirmation to {done.email}. The helpdesk team will reply there; keep the ticket number in the subject when you write again.</p>
         <Button className="mt-4" onClick={() => setDone(null)}>Raise another ticket</Button>
@@ -158,7 +158,9 @@ function StatusCheck() {
     setError('');
     setT(null);
     try {
-      setT(await portalStatus(Number(id.replace(/\D/g, '')), email.trim()));
+      // v7 Phase 3: "MSFA-100123" or "100123" (an older backend gets the number only).
+      const ref = id.trim().toUpperCase();
+      setT(await portalStatus(/^[A-Z0-9]{2,8}-\d+$/.test(ref) ? ref : Number(ref.replace(/\D/g, '')), email.trim()));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not check the ticket.');
     } finally {
@@ -168,7 +170,7 @@ function StatusCheck() {
   return (
     <div className="space-y-3">
       <form className="grid gap-3 rounded-2xl border border-line bg-panel p-5 shadow-card sm:grid-cols-[160px_minmax(0,1fr)_auto] sm:items-end" onSubmit={(e) => { e.preventDefault(); check(); }}>
-        <Field label="Ticket number"><input className={inputCls} inputMode="numeric" value={id} onChange={(e) => setId(e.target.value)} placeholder="100123" /></Field>
+        <Field label="Ticket number or reference"><input className={inputCls} value={id} onChange={(e) => setId(e.target.value)} placeholder="MSFA-100123 or 100123" /></Field>
         <Field label="Email you used"><input className={inputCls} type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
         <Button type="submit" variant="primary" disabled={busy || !/\d/.test(id) || !EMAIL_RE.test(email.trim())}>{busy ? <Spinner /> : <Search size={14} />} Check</Button>
       </form>
@@ -177,7 +179,7 @@ function StatusCheck() {
         <div className="rounded-2xl border border-line bg-panel p-5 shadow-card">
           <div className="flex flex-wrap items-center gap-2">
             <Headset size={16} className="text-accent" />
-            <span className="num text-sm font-bold text-muted">#{t.id}</span>
+            <span className="num text-sm font-bold text-muted">{t.ref && t.ref.includes('-') ? t.ref : `#${t.id}`}</span>
             <span className="min-w-0 flex-1 truncate font-semibold">{t.subject}</span>
             <Pill tone={t.isClosed ? 'neutral' : t.isResolved ? 'good' : 'accent'}>{t.status}</Pill>
           </div>
