@@ -32,9 +32,9 @@ const VIEW_LABEL: Record<string, string> = Object.fromEntries([...QUICK, ...MORE
 
 const FILTER_KEYS: (keyof TicketQuery)[] = ['statusId', 'priority', 'severity', 'groupId', 'agentId', 'source', 'type', 'category', 'region', 'state', 'depot', 'salesOrg',
   'l2Agent', 'asmName', 'activity', 'due', 'resDue', 'frDue', 'tag', 'created', 'from', 'to', 'requesterId', 'companyId', 'hasAttachments', 'applicationId', 'recordClass',
-  'sapSystem', 'tcode', 'environment', 'externalSystem', 'confidential', 'layer', 'platform', 'hosting', 'majorIncident', 'problemId', 'hasOpenApproval', 'transportStatus', 'changeType'];
+  'sapSystem', 'tcode', 'environment', 'externalSystem', 'confidential', 'layer', 'platform', 'hosting', 'majorIncident', 'problemId', 'hasOpenApproval', 'transportStatus', 'changeType', 'testCycle', 'phase', 'defectSeverity', 'retestStatus'];
 type ListKey = 'statusId' | 'priority' | 'severity' | 'groupId' | 'agentId' | 'source' | 'type' | 'category' | 'region' | 'state' | 'depot' | 'salesOrg' | 'l2Agent' | 'asmName' | 'activity' | 'resDue' | 'frDue'
-  | 'applicationId' | 'recordClass' | 'environment' | 'externalSystem' | 'layer' | 'platform' | 'hosting';
+  | 'applicationId' | 'recordClass' | 'environment' | 'externalSystem' | 'layer' | 'platform' | 'hosting' | 'testCycle' | 'phase' | 'defectSeverity' | 'retestStatus';
 const CREATED = [
   { value: '', label: 'Any time' }, { value: '30m', label: 'Last 30 minutes' }, { value: '1h', label: 'Last hour' }, { value: '4h', label: 'Last 4 hours' },
   { value: '12h', label: 'Last 12 hours' }, { value: '24h', label: 'Last 24 hours' }, { value: 'today', label: 'Today' }, { value: 'yesterday', label: 'Yesterday' },
@@ -242,6 +242,14 @@ export default function Tickets({ preset }: { preset: TicketQuery }) {
                 <input aria-label="T-code" placeholder="T-code (e.g. VA01)" value={query.tcode ?? ''} onChange={(e) => set({ tcode: e.target.value.toUpperCase() || undefined })} className={inputCls} />
                 <MultiSelect label="Environment" values={many('environment')} onChange={setMany('environment')} options={opts(meta.sapLists?.environment ?? [])} />
                 <MultiSelect label="External case" values={many('externalSystem')} onChange={setMany('externalSystem')} options={opts(meta.sapLists?.externalSystem ?? [])} />
+              </>
+            )}
+            {hasApps && !!meta.programLists && (meta.workspaces ?? []).some((w) => w.key === 'S4_PROGRAM' && w.available) && (!ws || ws.key === 'S4_PROGRAM') && (
+              <>
+                <MultiSelect label="Test cycle" values={many('testCycle')} onChange={setMany('testCycle')} options={opts(meta.programLists.testCycle)} />
+                <MultiSelect label="Severity" values={many('defectSeverity')} onChange={setMany('defectSeverity')} options={opts(meta.programLists.defectSeverity)} />
+                <MultiSelect label="Activate phase" values={many('phase')} onChange={setMany('phase')} options={opts(meta.programLists.activatePhase)} />
+                <MultiSelect label="Retest" values={many('retestStatus')} onChange={setMany('retestStatus')} options={opts(meta.programLists.retestStatus)} />
               </>
             )}
             {itFilters && (

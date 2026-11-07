@@ -134,8 +134,8 @@ async function rawCall(token, method, url, body) {
   r = await call('admin@emamigroup.com', 'POST', '/admin/canned', { title: 'Dup', shortCode: 'pwd', body: 'x' }); check(r.status === 409, 'duplicate short code -> 409');
   r = await call('admin@emamigroup.com', 'PUT', '/admin/settings', { 'escalation.groupId': cs.id, 'escalation.notifyEmails': 'l3@emamigroup.com', 'sla.reminderMinutes': 45 }); check(r.status === 200, 'settings');
   r = await call('admin@emamigroup.com', 'POST', '/admin/holidays', { date: '2026-10-20', name: 'Durga Puja' }); check(r.status === 200, 'holiday');
-  const autos = (await call('admin@emamigroup.com', 'GET', '/admin/automations')).body.rules; check(autos.filter((a) => !/^(SAP|Digital|Infra): /.test(a.name)).length === 6, 'automations seeded (Secondary Sales; desk routing rules on top)', autos.length);
-  r = await call('admin@emamigroup.com', 'GET', '/admin/sla'); check(r.body.policies.filter((p) => !/incidents$/.test(p.name)).length === 2 && r.body.policies[0].targets.length === 4, 'sla policies (plus the SAP / Infra / Digital incident policies)', r.body.policies.map((p) => p.name));
+  const autos = (await call('admin@emamigroup.com', 'GET', '/admin/automations')).body.rules; check(autos.filter((a) => !/^(SAP|Digital|Infra|S\/4): /.test(a.name)).length === 6, 'automations seeded (Secondary Sales; desk routing rules on top)', autos.length);
+  r = await call('admin@emamigroup.com', 'GET', '/admin/sla'); check(r.body.policies.filter((p) => !/(incidents|defects)$/.test(p.name)).length === 2 && r.body.policies[0].targets.length === 4, 'sla policies (plus the SAP / Infra / Digital incident policies)', r.body.policies.map((p) => p.name));
   r = await call('admin@emamigroup.com', 'GET', '/admin/agents'); check(r.body.agents.length === 4, 'agents list');
   r = await fetch(API + '/jobs/run', { method: 'POST', headers: { 'x-internal-secret': 'localtest' } }); const jb = await r.json(); check(r.status === 200, 'jobs/run via internal secret', jb.result);
   r = await call('admin@emamigroup.com', 'GET', '/admin/audit'); check(r.body.events.length >= 5, 'audit trail', r.body.events.length);

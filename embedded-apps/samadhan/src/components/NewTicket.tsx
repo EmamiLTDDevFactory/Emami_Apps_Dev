@@ -1,10 +1,11 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { HelpCircle, KeyRound, Link2, PlusCircle, Settings2, ShoppingBag, UserSearch, Wrench } from 'lucide-react';
+import { Bug, HelpCircle, KeyRound, Link2, PlusCircle, Settings2, ShoppingBag, UserSearch, Wrench } from 'lucide-react';
 import { PasteParser, SapFields, type SapForm } from './Sap';
 import { ItFields } from './ItDetails';
+import { ProgramFields } from './Program';
 import { CatalogPicker, CatalogQuestions, catalogReady, type Answers } from './Catalog';
-import type { CatalogItem, DuplicateHint, ItDetails } from '@/lib/types';
+import type { CatalogItem, DuplicateHint, ItDetails, ProgramDetails } from '@/lib/types';
 import type { ExternalRefInput } from '@/lib/api';
 import { createTicket, duplicateHints, searchContacts } from '@/lib/api';
 import type { ContactMatch } from '@/lib/types';
@@ -29,6 +30,7 @@ const NEEDS = [
   { key: 'CHANGE', label: 'A change', hint: 'Configuration, an enhancement, a transport', icon: Settings2 },
   { key: 'QUERY', label: 'A question', hint: 'How do I ... ?', icon: HelpCircle },
   { key: 'SAP_CASE', label: 'Track an SAP case', hint: 'An SAP for Me case or a vendor ticket', icon: Link2 },
+  { key: 'DEFECT', label: 'Log a test defect', hint: 'Unit, SIT, UAT, mock cutover or hypercare', icon: Bug },
 ] as const;
 
 export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
@@ -70,6 +72,9 @@ export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
   const [sap, setSap] = useState<SapForm>({});
   const [extRef, setExtRef] = useState<ExternalRefInput>({});
   const [it, setIt] = useState<Partial<ItDetails>>({});
+  const [program, setProgram] = useState<Partial<ProgramDetails>>({});
+  const progDesk = ws?.key === 'S4_PROGRAM';
+  const progFilled = Object.values(program).some((v) => v !== null && v !== undefined && v !== '');
   const itDesk = ws?.key === 'DIGITAL_APPS' || ws?.key === 'INFRA_IT';
   const itFilled = Object.values(it).some((v) => v !== null && v !== undefined && v !== '');
   // v7 Phase 6: service-catalogue requests (the item presets the fields and starts its approval).
@@ -131,6 +136,7 @@ export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
       if (!isSales && need) body.recordClass = need === 'SAP_CASE' ? 'INCIDENT' : need;
       if (sapDesk && sapFilled) body.sap = sap;
       if (itDesk && itFilled) body.it = it;
+      if (progDesk && progFilled) body.program = program;
       if (catItem && deskItems.some((i) => i.id === catItem.id)) { body.catalogItemId = catItem.id; body.catalogAnswers = answers; if (manager.trim()) body.managerEmail = manager.trim(); }
       if (!isSales && need === 'SAP_CASE' && extRef.ref?.trim()) body.externalRef = { system: extRef.system || meta.sapLists?.externalSystem[0], ...extRef };
       const t = await createTicket(body);
@@ -150,6 +156,7 @@ export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
         setSap({});
         setExtRef({});
         setIt({});
+        setProgram({});
         setCatItem(null);
         setAnswers({});
         setMsg({ tone: 'good', text: `Ticket ${refOf(meta, t)} created. Log the next one below.` });
@@ -180,7 +187,7 @@ export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
           {!isSales && (
             <Card title="What do you need?" sub="Pick the closest - it sets the record class and the SLA">
               <div className="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="What do you need">
-                {NEEDS.filter((n) => n.key !== 'SAP_CASE' || sapDesk).map((n) => (
+                {NEEDS.filter((n) => (n.key !== 'SAP_CASE' || sapDesk) && (n.key !== 'DEFECT' || ws?.key === 'S4_PROGRAM')).map((n) => (
                   <button key={n.key} type="button" role="radio" aria-checked={need === n.key} data-testid={`need-${n.key}`} onClick={() => setNeed(need === n.key ? '' : n.key)}
                     className={cx('flex items-start gap-2 rounded-xl border p-2.5 text-left transition', need === n.key ? 'border-accent bg-accent/10 ring-2 ring-accent/20' : 'border-line hover:border-accent/50 hover:bg-sunken')}>
                     <n.icon size={16} className="mt-0.5 shrink-0 text-accent" />
@@ -251,6 +258,11 @@ export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
           {sapDesk && (
             <Card title="SAP details" sub="System, client and T-code help the right team pick it up first time" actions={<PasteParser onApply={(f) => { setSap((x) => ({ ...x, ...f })); if (!top.description.trim() && f.errorText) set({ description: f.errorText }); }} />}>
               <SapFields value={sap} onChange={setSap} />
+            </Card>
+          )}
+          {progDesk && (
+            <Card title="Programme" sub={need === 'DEFECT' ? 'Test cycle and severity: severity sets the priority and the SLA (S1 1 · S2 2 · S3 5 · S4 10 business days)' : 'Phase, test cycle, work-stream ids'}>
+              <ProgramFields value={program} onChange={setProgram} />
             </Card>
           )}
           {itDesk && (

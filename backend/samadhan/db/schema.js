@@ -14,7 +14,7 @@ const { seed } = require('./seed');
 // 11: v7.3 one app id and a generic catalogue (migration 7.3-generic). Since 11 the migrations also run when the
 //     version is unchanged (a forgotten bump can no longer skip one).
 // 12: v7.4 SAP desk (migration 7.4-sap).
-const SCHEMA_VERSION = 15;
+const SCHEMA_VERSION = 16;
 
 async function initSchema() {
     await resolveSchema();

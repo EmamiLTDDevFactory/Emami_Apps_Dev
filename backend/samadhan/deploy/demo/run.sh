@@ -8,6 +8,7 @@
 #   bash ~/samadhan-demo/run.sh load-v7-it       - add the Phase 5 demo: IT details on the Digital Apps / Infra & IT demo tickets
 #   bash ~/samadhan-demo/run.sh load-v7-change   - add the Phase 6 demo: change windows, planned changes with transports, access approvals
 #   bash ~/samadhan-demo/run.sh load-v7-problem  - add the Phase 7 demo: a major incident, a reviewed PIR, a problem / known error
+#   bash ~/samadhan-demo/run.sh load-v7-program  - add the Phase 8 demo: S/4 Programme defects, retests, tasks, hypercare
 #   bash ~/samadhan-demo/run.sh remove           - remove exactly that demo data (both kinds)
 # Runs as a one-off process; the running dev backend (emami-hub-backend-dev) is not restarted or changed.
 set -euo pipefail
@@ -21,6 +22,7 @@ case "${1:-}" in
   load-v7-it)     NOTIFY_EMAIL_ENABLED=false SAMADHAN_MAIL_ENABLED=false node "$HERE/load-v7-it.js" ;;
   load-v7-change) NOTIFY_EMAIL_ENABLED=false SAMADHAN_MAIL_ENABLED=false node "$HERE/load-v7-change.js" ;;
   load-v7-problem) NOTIFY_EMAIL_ENABLED=false SAMADHAN_MAIL_ENABLED=false node "$HERE/load-v7-problem.js" ;;
+  load-v7-program) NOTIFY_EMAIL_ENABLED=false SAMADHAN_MAIL_ENABLED=false node "$HERE/load-v7-program.js" ;;
   remove)         node "$HERE/remove-demo.js" ;;
-  *) echo "usage: bash ~/samadhan-demo/run.sh load|load-pulsedesk|load-v7|load-v7-apps|load-v7-sap|load-v7-it|load-v7-change|load-v7-problem|remove"; exit 1 ;;
+  *) echo "usage: bash ~/samadhan-demo/run.sh load|load-pulsedesk|load-v7|load-v7-apps|load-v7-sap|load-v7-it|load-v7-change|load-v7-problem|load-v7-program|remove"; exit 1 ;;
 esac

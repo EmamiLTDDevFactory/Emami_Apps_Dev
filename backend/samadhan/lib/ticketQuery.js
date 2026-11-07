@@ -172,6 +172,10 @@ function ticketFilter(qy, agentId, scope = null) {
     }
     if (qy.externalSystem) where.push(`EXISTS (SELECT 1 FROM samadhan.ticket_external_refs xr WHERE xr."ticketId" = t.id AND xr.system = ANY(${p(texts(qy.externalSystem))}::text[]))`);
     if (qy.confidential === '1') where.push('t.confidential');
+    // v7 Phase 8: programme filters.
+    for (const [k, col] of [['testCycle', '"testCycle"'], ['phase', '"activatePhase"'], ['defectSeverity', '"defectSeverity"'], ['retestStatus', '"retestStatus"']]) {
+        if (qy[k]) where.push(`EXISTS (SELECT 1 FROM samadhan.ticket_program_details pdq WHERE pdq."ticketId" = t.id AND pdq.${col} = ANY(${p(texts(qy[k]))}::text[]))`);
+    }
     // v7 Phase 7: major incidents and problems.
     if (qy.majorIncident === '1') where.push('t."isMajorIncident"');
     if (qy.problemId) { const pid = Number(qy.problemId); if (Number.isInteger(pid)) where.push(`t."problemId" = ${p(pid)}`); }

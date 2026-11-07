@@ -441,3 +441,32 @@ test('major incident: banner, PIR card, problem card, service health on the dash
   }
   expect(problems).toEqual([]);
 });
+
+// ---------- v7 Phase 8: S/4HANA Programme ----------
+test('S/4 programme: defect with programme details and retest, programme screen', async ({ page }) => {
+  const problems = watch(page);
+  await signIn(page, data.admin);
+  const ws = await api(data.admin, 'GET', '/admin/workspaces');
+  const s4 = ws.body?.workspaces?.find((w: { key: string }) => w.key === 'S4_PROGRAM');
+  const app = ws.body?.applications?.find((a: { code: string }) => a.code === 'S4P');
+  try {
+    await api(data.admin, 'PUT', `/admin/workspaces/${s4.id}`, { enabled: true });
+    await api(data.admin, 'PUT', '/admin/workspaces/flag', { enabled: true });
+    const made = await api(data.admin, 'POST', '/tickets', {
+      subject: `UAT pricing defect ${test.info().project.name}`, requesterName: 'E2E Requester', requesterEmail: 'e2e.req@test.samadhan.local', applicationId: app.id,
+      type: 'Defect – UAT', category: 'Order to Cash (SD)', program: { testCycle: 'UAT', defectSeverity: 'S2 High', testCaseId: 'TC-E2E-1' },
+    });
+    expect(made.status).toBe(201);
+    await page.goto(`/apps/samadhan/?ticket=${made.body.ticket.id}`);
+    await expect(page.getByTestId('program-card')).toContainText('TC-E2E-1');
+    await page.getByTestId('retest').getByRole('button', { name: 'Passed' }).click();
+    await expect(page.getByTestId('retest')).toContainText('Passed');
+    await page.goto('/apps/samadhan/?screen=programme');
+    await expect(page.getByTestId('programme')).toContainText('Defect burn-down');
+  } finally {
+    await api(data.admin, 'PUT', '/admin/workspaces/flag', { enabled: false });
+    if (s4) await api(data.admin, 'PUT', `/admin/workspaces/${s4.id}`, { enabled: false });
+    await api(data.admin, 'PUT', '/me/preferences', { workspace: null });
+  }
+  expect(problems).toEqual([]);
+});

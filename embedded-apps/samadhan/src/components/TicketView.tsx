@@ -21,6 +21,7 @@ import { ExternalRefsCard, SapCard } from './Sap';
 import { ItCard } from './ItDetails';
 import { ApprovalsCard, ChangeCard, TransportsCard } from './Change';
 import { DeclareMajorButton, MajorIncidentBanner, PirCard, ProblemCard } from './Problem';
+import { ProgramCard } from './Program';
 import { sizeOf } from '@/lib/files';
 
 /**
@@ -113,6 +114,8 @@ function TicketScreen({ data, reload }: { data: TicketDetail; reload: () => Prom
   const showApprovals = otherDesk || (data.approvals?.length ?? 0) > 0;
   // v7 Phase 7: PIR for major incidents (and once written); problem card outside Secondary Sales or when linked.
   const showPir = !!t.isMajorIncident || !!t.majorDeclaredAt || !!data.pir;
+  // v7 Phase 8: programme details on the S/4 desk.
+  const showProgram = deskKey === 'S4_PROGRAM' || !!data.program;
   const showProblem = (otherDesk && t.recordClass !== 'CHANGE' && t.recordClass !== 'ACCESS_REQUEST') || !!data.problem || t.recordClass === 'PROBLEM';
   return (
     <div className="space-y-4">
@@ -131,6 +134,7 @@ function TicketScreen({ data, reload }: { data: TicketDetail; reload: () => Prom
           <TicketAssist ticket={t} reload={reload} />
           <Properties ticket={t} reload={reload} />
           {showSap && <SapCard ticketId={t.id} sap={data.sap} reload={reload} />}
+          {showProgram && <ProgramCard ticketId={t.id} program={data.program} isDefect={t.recordClass === 'DEFECT'} reload={reload} />}
           {showPir && <PirCard ticket={t} pir={data.pir} reload={reload} />}
           {showProblem && <ProblemCard ticket={t} problem={data.problem} incidents={data.incidents ?? []} knownError={data.knownError} reload={reload} />}
           {showApprovals && <ApprovalsCard ticket={t} approvals={data.approvals ?? []} reload={reload} />}
