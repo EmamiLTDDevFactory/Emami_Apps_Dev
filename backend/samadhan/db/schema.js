@@ -7,17 +7,23 @@ const { seed } = require('./seed');
 // Everything is CREATE ... IF NOT EXISTS / insert-if-missing, so it is safe to run again. To keep backend cold
 // starts fast it runs only when the stored schema version differs from SCHEMA_VERSION: bump it whenever this
 // file or seed.js changes.
-// 7: v7 migrations (db/migrate.js) - the schema rename step is recorded; it is run by an operator, never here.
+// 7: v7 migrations (db/migrate.js).
 // 8: v7.1 Authorization cockpit tables (migration 7.1-auth, applied by migrate.startup()).
 // 9: v7.1 attachments (migration 7.1-attachments).
 // 10: v7.2 workspaces and applications (migration 7.2-workspaces, applied by migrate.startup()).
-const SCHEMA_VERSION = 10;
+// 11: v7.3 one app id and a generic catalogue (migration 7.3-generic). Since 11 the migrations also run when the
+//     version is unchanged (a forgotten bump can no longer skip one).
+const SCHEMA_VERSION = 11;
 
 async function initSchema() {
     await resolveSchema();
     try {
         const { rows } = await pool.query(`SELECT value FROM samadhan.settings WHERE key = 'schema.version'`);
-        if (Number(rows[0]?.value) === SCHEMA_VERSION) return;
+        if (Number(rows[0]?.value) === SCHEMA_VERSION) {
+            // Tables are current; pending v7 migrations still run (one small query when there is nothing to do).
+            await require('./migrate').startup();
+            return;
+        }
     } catch {
         // First start: the schema is not there yet.
     }

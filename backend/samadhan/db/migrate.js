@@ -21,6 +21,8 @@ const ident = (s) => `"${String(s).replace(/"/g, '""')}"`;
 async function ensureTable(client, schema) {
     await q(client, `CREATE TABLE IF NOT EXISTS ${ident(schema)}.schema_migrations (
         id text PRIMARY KEY, "appliedAt" timestamptz NOT NULL DEFAULT now(), note text)`);
+    // A step an operator rolled back stays down: start-up skips it until it is applied again by hand.
+    await q(client, `CREATE TABLE IF NOT EXISTS ${ident(schema)}.schema_migrations_held (id text PRIMARY KEY, "heldAt" timestamptz NOT NULL DEFAULT now())`);
 }
 
 async function schemas(client) {
@@ -394,8 +396,10 @@ async function run(id, dir) {
         await ensureTable(client, schema);
         if (dir === 'up') {
             await q(client, `INSERT INTO ${ident(schema)}.schema_migrations (id, note) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET note = EXCLUDED.note, "appliedAt" = now()`, [id, note]);
+            await q(client, `DELETE FROM ${ident(schema)}.schema_migrations_held WHERE id = $1`, [id]);
         } else {
             await q(client, `DELETE FROM ${ident(schema)}.schema_migrations WHERE id = $1`, [id]);
+            await q(client, `INSERT INTO ${ident(schema)}.schema_migrations_held (id) VALUES ($1) ON CONFLICT DO NOTHING`, [id]);
         }
         await q(client, 'COMMIT');
         return note;
@@ -413,8 +417,9 @@ async function startup() {
     const client = await shared.pool.connect();
     try {
         const done = await applied(client, schema);
+        const held = new Set((await q(client, `SELECT id FROM ${ident(schema)}.schema_migrations_held`)).rows.map((r) => r.id));
         for (const m of MIGRATIONS) {
-            if (!m.explicit && !done.has(m.id)) await run(m.id, 'up');
+            if (!m.explicit && !done.has(m.id) && !held.has(m.id)) await run(m.id, 'up');
         }
     } finally {
         client.release();
