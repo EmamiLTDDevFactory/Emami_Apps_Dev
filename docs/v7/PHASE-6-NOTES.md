@@ -33,7 +33,7 @@ Master prompt §I, §M, §N 5-10, §O (service catalog, approval chains), §P (c
 - **New screens** (shown while the service desks are on):
   - **My approvals**;
   - **Change calendar**: a month view with risk colours and freeze / maintenance windows; a day list on a phone;
-  - **Registers**: Change & Transport, Access Request Log, SAP Incident, Infra & IT, Digital Apps, Sales Apps.
+  - **Registers**: Change & Transport, Access Request Log, SAP Incident, Infra & IT, Digital Apps, Sales Apps (Phase 7 adds Problem / KEDB and Major Incident).
     Registers have date and application filters and export to Excel. They need the Reports screen (Supervisor and up).
 - **Admin:** Service catalog (questions as simple lines), Approval chains (step editor), Change windows.
 - **Lists:** filters `hasOpenApproval`, `transportStatus` and `changeType`. Search finds transport numbers.

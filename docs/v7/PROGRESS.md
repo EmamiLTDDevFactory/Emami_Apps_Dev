@@ -14,7 +14,8 @@ Resume here in a new session: read this file and `docs/SAMADHAN_MASTER_PROMPT_FI
 | 4 (SAP & Primary Sales desk) | **done 2026-11-07**, gate green in parts, pushed to main (0a577a7); deployed to dev; see PHASE-4-NOTES.md |
 | 5 (Digital Apps, Infra & IT, IT details, portal application picker) | **done 2026-11-07**, gate green in parts, pushed to main; see PHASE-5-NOTES.md |
 | 6 (change & access: catalogue, approvals, SoD, transports, change calendar, registers) | **done 2026-11-07**, gate green in parts, pushed to main; see PHASE-6-NOTES.md |
-| 7 – 9 | next: 7 (major incident, PIR, problem / KEDB, detection, dashboards) |
+| 7 (major incident, PIR, problem / KEDB, detection, service health) | **done 2026-11-07**, gate green in parts, pushed to main; see PHASE-7-NOTES.md |
+| 8 – 9 | next: 8 (S/4HANA Programme: details, defect tracker, burn-down, hypercare) |
 
 ### Decisions taken at the Phase-0 STOP (approval without individual answers → recommended options)
 - Q-R1 **Option A** (app id `samadhan`, `setu` kept as alias; one line in access-tracker). Q-R2 redirect stub

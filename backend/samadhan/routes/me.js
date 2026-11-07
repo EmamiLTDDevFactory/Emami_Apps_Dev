@@ -248,6 +248,8 @@ async function workspaceMeta(c, byWorkspace) {
         // v7 Phase 6: change lists and the service catalogue (§M catalogItems).
         changeLists: (({ TR_TYPES, TR_STATUSES, CHANGE_TYPES, CHANGE_RISKS, DECISIONS, WINDOW_KINDS }) => ({ trTypes: TR_TYPES, trStatuses: TR_STATUSES, changeTypes: CHANGE_TYPES, changeRisks: CHANGE_RISKS, decisions: DECISIONS, windowKinds: WINDOW_KINDS }))(require('../lib/changeSeed')),
         catalogItems: await require('../lib/change').listCatalog(),
+        // v7 Phase 7
+        problemStatuses: require('../lib/problem').PROBLEM_STATUSES,
         impacts: IMPACTS,
         urgencies: URGENCIES,
         statusWorkspaces: statusWs.rows,

@@ -5,7 +5,7 @@ import { bulkTickets, deleteView, exportColumns, exportTickets, getCounts, getVi
 import { useSamadhan } from '@/lib/context';
 import { ACTIVITY_LABEL, fmtDateTime, fmtNum, relative, SEVERITY_EDGE } from '@/lib/format';
 import type { Counts, Meta, SavedView, TicketRow } from '@/lib/types';
-import { RECORD_CLASS_LABEL, availableApps, fieldsFor, refOf, statusesFor, workspaceByKey } from '@/lib/workspaces';
+import { RECORD_CLASS_LABEL, availableApps, fieldsFor, multiDesk, refOf, statusesFor, workspaceByKey } from '@/lib/workspaces';
 import { ActivityLine, PriorityPill, SeverityPill, SlaBadge, StatusPill } from './badges';
 import { Button, Card, Empty, Field, Modal, MultiSelect, Notice, Select, Skeleton, cx, inputCls } from './ui';
 
@@ -32,7 +32,7 @@ const VIEW_LABEL: Record<string, string> = Object.fromEntries([...QUICK, ...MORE
 
 const FILTER_KEYS: (keyof TicketQuery)[] = ['statusId', 'priority', 'severity', 'groupId', 'agentId', 'source', 'type', 'category', 'region', 'state', 'depot', 'salesOrg',
   'l2Agent', 'asmName', 'activity', 'due', 'resDue', 'frDue', 'tag', 'created', 'from', 'to', 'requesterId', 'companyId', 'hasAttachments', 'applicationId', 'recordClass',
-  'sapSystem', 'tcode', 'environment', 'externalSystem', 'confidential', 'layer', 'platform', 'hosting'];
+  'sapSystem', 'tcode', 'environment', 'externalSystem', 'confidential', 'layer', 'platform', 'hosting', 'majorIncident', 'problemId', 'hasOpenApproval', 'transportStatus', 'changeType'];
 type ListKey = 'statusId' | 'priority' | 'severity' | 'groupId' | 'agentId' | 'source' | 'type' | 'category' | 'region' | 'state' | 'depot' | 'salesOrg' | 'l2Agent' | 'asmName' | 'activity' | 'resDue' | 'frDue'
   | 'applicationId' | 'recordClass' | 'environment' | 'externalSystem' | 'layer' | 'platform' | 'hosting';
 const CREATED = [
@@ -251,6 +251,8 @@ export default function Tickets({ preset }: { preset: TicketQuery }) {
                 <MultiSelect label="Hosting" values={many('hosting')} onChange={setMany('hosting')} options={opts(meta.itLists?.hosting ?? [])} />
               </>
             )}
+            {hasApps && multiDesk(meta) && <Select label="Major incidents" value={query.majorIncident ?? ''} onChange={(v) => set({ majorIncident: v || undefined })} options={[{ value: '', label: 'Any ticket' }, { value: '1', label: 'Major incidents only' }]} />}
+            {hasApps && multiDesk(meta) && <Select label="Approvals" value={query.hasOpenApproval ?? ''} onChange={(v) => set({ hasOpenApproval: v || undefined })} options={[{ value: '', label: 'Any approval state' }, { value: '1', label: 'Awaiting approval' }]} />}
             {can('ticket.viewConfidential') && <Select label="Confidential" value={query.confidential ?? ''} onChange={(v) => set({ confidential: v || undefined })} options={[{ value: '', label: 'All tickets' }, { value: '1', label: 'Confidential only' }]} />}
             <MultiSelect label="Region" values={many('region')} onChange={setMany('region')} options={opts(choices('region'))} />
             <MultiSelect label="State" values={many('state')} onChange={setMany('state')} options={opts(choices('state'))} />

@@ -14,7 +14,7 @@ import type {
   ContactDetail, ContactMatch, ContactRow, Counts, Dashboard, DashboardInsights, DayWindow, Distributor, EmailTemplate, Me, Meta, ParkedMail, PresenceAgent,
   Attachment, AttachmentLimits, AttachmentsInfo, SavedView, Scenario, ScenarioAction, SearchResults, SeverityRule, SlaPolicy, Ticket, TicketDetail, TicketInsights, TicketRow, Todo,
   AccessUser, Overview, ReportVariantConfig, Role, Variant, Workspace, Application, MatrixCell, PriorityMode, SapDetails, ExternalRef, RefMaster, ItDetails, PortalApplication, Transport, ChangeDetails, Approval, ApprovalChain, CatalogItem, ChangeWindow, CalendarChange,
-  MyApproval, RegisterData, PublicApproval, PortalCatalogItem,
+  MyApproval, RegisterData, PublicApproval, PortalCatalogItem, Pir, KnownError, ProblemCandidate, DuplicateHint, ServiceHealth,
 } from './types';
 
 const API_HOST = 'https://audit-capa-api.emamiapps.in';
@@ -154,6 +154,9 @@ export interface TicketQuery {
   environment?: string;
   externalSystem?: string;
   confidential?: string;
+  /** v7 Phase 7 */
+  majorIncident?: string;
+  problemId?: string;
   /** v7 Phase 6 */
   hasOpenApproval?: string;
   transportStatus?: string;
@@ -429,6 +432,22 @@ export const changeAdmin = {
   saveWindow: (b: Partial<ChangeWindow>) => request<{ window: ChangeWindow }>('POST', '/admin/change-windows', b).then((r) => r.window),
   deleteWindow: (id: number) => request('DELETE', `/admin/change-windows/${id}`),
 };
+// ---------- v7 Phase 7: major incident, PIR, problems / KEDB ----------
+export const declareMajor = (ticketId: number, b: { bridgeUrl?: string; note?: string }) => request<{ ticket: Ticket }>('POST', `/tickets/${ticketId}/major`, b);
+export const standDownMajor = (ticketId: number, note?: string) => request('DELETE', `/tickets/${ticketId}/major`, { note });
+export const majorUpdate = (ticketId: number, text: string) => request('POST', `/tickets/${ticketId}/major/update`, { text });
+export const savePir = (ticketId: number, b: Partial<Omit<Pir, 'timeline' | 'correctiveActions' | 'preventiveActions'>> & { timeline?: string; correctiveActions?: string; preventiveActions?: string; reviewed?: boolean }) =>
+  request<{ pir: Pir }>('PUT', `/tickets/${ticketId}/pir`, b).then((r) => r.pir);
+export const linkProblem = (ticketId: number, problemId: number | null) => request('POST', `/tickets/${ticketId}/problem`, { problemId });
+export const createProblemFrom = (ticketId: number, subject?: string) => request<{ problem: Ticket }>('POST', `/tickets/${ticketId}/problem`, { create: true, subject }).then((r) => r.problem);
+export const saveKnownError = (ticketId: number, b: Partial<KnownError>) => request<{ knownError: KnownError }>('PUT', `/tickets/${ticketId}/known-error`, b).then((r) => r.knownError);
+export const problemCandidates = () => get<{ items: ProblemCandidate[] }>('/problem-candidates').then((r) => r.items);
+export const candidateToProblem = (id: number) => request<{ problem: Ticket }>('POST', `/problem-candidates/${id}/create`).then((r) => r.problem);
+export const dismissCandidate = (id: number) => request('POST', `/problem-candidates/${id}/dismiss`);
+export const duplicateHints = (q: { applicationId: number; subject?: string; tcode?: string; errorText?: string; serverName?: string }) =>
+  get<{ items: DuplicateHint[] }>(`/duplicates${qs(Object.fromEntries(Object.entries(q).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => [k, String(v)])))}`).then((r) => r.items);
+export const serviceHealth = () => get<ServiceHealth & { success: boolean }>('/service-health');
+
 export const publicApproval = (token: string) => get<{ approval: PublicApproval }>(`/portal/approval/${encodeURIComponent(token)}`).then((r) => r.approval);
 export const publicDecide = (token: string, decision: string, comment: string) => request('POST', `/portal/approval/${encodeURIComponent(token)}`, { decision, comment });
 

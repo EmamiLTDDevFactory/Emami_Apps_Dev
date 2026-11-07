@@ -159,6 +159,8 @@ export interface Meta {
   sapLists?: SapLists;
   /** v7 Phase 5 */
   itLists?: ItLists;
+  /** v7 Phase 7 */
+  problemStatuses?: string[];
   /** v7 Phase 6 */
   changeLists?: ChangeLists;
   catalogItems?: CatalogItem[];
@@ -255,6 +257,12 @@ export interface Ticket extends TicketRow, Record<EditableField, string | null> 
   urgency?: number | null;
   /** v7 Phase 4 */
   confidential?: boolean;
+  /** v7 Phase 7 */
+  isMajorIncident?: boolean;
+  majorDeclaredAt?: string | null;
+  majorBridgeUrl?: string | null;
+  majorNextUpdateAt?: string | null;
+  problemId?: number | null;
 }
 
 export interface Conversation {
@@ -351,6 +359,27 @@ export interface TicketDetail {
   transports?: Transport[];
   change?: ChangeDetails | null;
   approvals?: Approval[];
+  /** v7 Phase 7 */
+  pir?: Pir | null;
+  problem?: ProblemRef | null;
+  incidents?: LinkedIncident[];
+  knownError?: KnownError | null;
+}
+
+// ---------- v7 Phase 7: major incident, PIR, problems / KEDB ----------
+export interface PirAction { text: string; owner?: string; due?: string }
+export interface Pir {
+  ticketId: number; summary: string | null; impactDescription: string | null; timeline: PirAction[]; rootCause: string | null; rootCauseCategory: string | null;
+  contributingFactors: string | null; correctiveActions: PirAction[]; preventiveActions: PirAction[]; reviewedBy: string | null; reviewedAt: string | null; updatedAt: string;
+}
+export interface ProblemRef { id: number; ref: string; subject: string; statusName: string; isResolved: boolean; knownError: boolean | null; workaround: string | null; problemStatus: string | null }
+export interface LinkedIncident { id: number; ref: string; subject: string; statusName: string; isResolved: boolean; createdAt: string; isMajorIncident: boolean }
+export interface KnownError { ticketId: number; status: string; knownError: boolean; symptom: string | null; workaround: string | null; rootCause: string | null; permanentFix: string | null; updatedAt: string }
+export interface ProblemCandidate { id: number; applicationCode: string | null; applicationName: string | null; category: string; function: string | null; ticketIds: number[]; count: number; updatedAt: string }
+export interface DuplicateHint { id: number; ref: string; subject: string; createdAt: string; statusName: string; agentName: string | null }
+export interface ServiceHealth {
+  major: number; problems: number; knownErrors: number; approvals: number; external: number; changesWeek: number; candidates: number;
+  majorList: { id: number; ref: string; subject: string; majorDeclaredAt: string; majorNextUpdateAt: string | null; majorBridgeUrl: string | null }[];
 }
 
 // ---------- v7 Phase 6: change and access ----------

@@ -20,7 +20,7 @@ const { RULES, ruleFor } = require('../middleware/permission');
 const { SEED_PROFILES } = require('../lib/authSeed');
 
 // Routers mounted after requireAccess in index.js, with their mount prefix.
-const MOUNTS = [['', 'me'], ['', 'tickets'], ['', 'work'], ['', 'reports'], ['', 'insights'], ['', 'attachments'], ['/admin', 'admin'], ['/admin/authz', 'authz'], ['/admin', 'workspaces'], ['', 'sap'], ['', 'it'], ['', 'change']];
+const MOUNTS = [['', 'me'], ['', 'tickets'], ['', 'work'], ['', 'reports'], ['', 'insights'], ['', 'attachments'], ['/admin', 'admin'], ['/admin/authz', 'authz'], ['/admin', 'workspaces'], ['', 'sap'], ['', 'it'], ['', 'change'], ['', 'problem']];
 function registered() {
     const out = [];
     for (const [prefix, file] of MOUNTS) {
@@ -41,6 +41,8 @@ const OLD_MIN = {
     'POST /companies': 'Supervisor', 'POST /articles': 'Supervisor', 'DELETE /articles/:id': 'Supervisor',
     // v7 Phase 6 routes that did not exist before: the registers are a reporting screen (Supervisor and up by default).
     'GET /registers': 'Supervisor', 'GET /registers/:kind': 'Supervisor',
+    // v7 Phase 7: declaring / standing down a major incident and editing the PIR (Supervisor and up by default).
+    'POST /tickets/:id/major': 'Supervisor', 'DELETE /tickets/:id/major': 'Supervisor', 'PUT /tickets/:id/pir': 'Supervisor',
 };
 const oldMin = (method, p) => (p.startsWith('/admin') ? 'Admin' : OLD_MIN[`${method} ${p}`] || 'Agent');
 const allowedNew = (role, rule, req = { body: {}, query: {} }) => {

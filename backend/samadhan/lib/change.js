@@ -492,6 +492,6 @@ async function calendar(req, from, to) {
 }
 
 module.exports = {
-    OPEN_STATES, addTransport, afterResolved, approvalByToken, approvalReminders, approvalsMine, assertChangeRules, calendar, cancelApprovals, catalogAnswers,
+    OPEN_STATES, addTransport, afterResolved, agentsWith, approvalByToken, approvalReminders, approvalsMine, assertChangeRules, calendar, cancelApprovals, catalogAnswers,
     decide, deleteTransport, finishCatalogRequest, freezeConflicts, prepareCatalogRequest, getChange, listApprovals, listCatalog, listChains, listTransports, saveChange, startApproval, trRegex, updateTransport,
 };

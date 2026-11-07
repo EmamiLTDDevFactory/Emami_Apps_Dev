@@ -172,6 +172,9 @@ function ticketFilter(qy, agentId, scope = null) {
     }
     if (qy.externalSystem) where.push(`EXISTS (SELECT 1 FROM samadhan.ticket_external_refs xr WHERE xr."ticketId" = t.id AND xr.system = ANY(${p(texts(qy.externalSystem))}::text[]))`);
     if (qy.confidential === '1') where.push('t.confidential');
+    // v7 Phase 7: major incidents and problems.
+    if (qy.majorIncident === '1') where.push('t."isMajorIncident"');
+    if (qy.problemId) { const pid = Number(qy.problemId); if (Number.isInteger(pid)) where.push(`t."problemId" = ${p(pid)}`); }
     // v7 Phase 6: approvals and transports.
     if (qy.hasOpenApproval === '1') where.push(`EXISTS (SELECT 1 FROM samadhan.ticket_approvals ta WHERE ta."ticketId" = t.id AND ta.state IN ('Pending', 'Waiting'))`);
     if (qy.transportStatus) where.push(`EXISTS (SELECT 1 FROM samadhan.ticket_transports tt WHERE tt."ticketId" = t.id AND tt.status = ANY(${p(texts(qy.transportStatus))}::text[]))`);

@@ -47,6 +47,8 @@ async function assertResolvable(statusId, ticket) {
     if (missing.length) throw fail(400, `Fill in all required fields before resolving: ${missing.join(', ')}.`);
     // v7 Phase 6 (§P): approvals complete; changes with their transports in PRD (or N/A) and test evidence; access approved.
     await require('./change').assertChangeRules(ticket);
+    // v7 Phase 7 (§P): a major incident needs its post-incident review before it is resolved.
+    await require('./problem').assertPir(ticket);
 }
 
 async function setWatching(ticketId, agentId, on) {

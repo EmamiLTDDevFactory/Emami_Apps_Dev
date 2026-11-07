@@ -4,9 +4,9 @@ import { HelpCircle, KeyRound, Link2, PlusCircle, Settings2, ShoppingBag, UserSe
 import { PasteParser, SapFields, type SapForm } from './Sap';
 import { ItFields } from './ItDetails';
 import { CatalogPicker, CatalogQuestions, catalogReady, type Answers } from './Catalog';
-import type { CatalogItem, ItDetails } from '@/lib/types';
+import type { CatalogItem, DuplicateHint, ItDetails } from '@/lib/types';
 import type { ExternalRefInput } from '@/lib/api';
-import { createTicket, searchContacts } from '@/lib/api';
+import { createTicket, duplicateHints, searchContacts } from '@/lib/api';
 import type { ContactMatch } from '@/lib/types';
 import { useSamadhan, type NewTicketPreset } from '@/lib/context';
 import TicketFields, { type Values } from './TicketFields';
@@ -79,6 +79,15 @@ export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
   const [showCatalog, setShowCatalog] = useState(false);
   const CATALOG_CLASS: Record<string, string[]> = { SERVICE_REQUEST: ['SERVICE_REQUEST'], ACCESS_REQUEST: ['ACCESS_REQUEST'], CHANGE: ['CHANGE'] };
   const deskItems = (meta.catalogItems ?? []).filter((i) => i.workspaceId === wsId && (isSales ? showCatalog : !!CATALOG_CLASS[need] && CATALOG_CLASS[need].includes(i.recordClass)));
+  // v7 Phase 7 (§P): "similar open tickets in the last 24 h" - offer to open / watch one instead of a duplicate.
+  const [dups, setDups] = useState<DuplicateHint[]>([]);
+  useEffect(() => {
+    if (!applicationId || isSales) { setDups([]); return; }
+    const q = { applicationId, subject: top.subject.trim().length >= 6 ? top.subject.trim() : undefined, tcode: sap.tcode || undefined, errorText: sap.errorText || undefined, serverName: it.serverName || undefined };
+    if (!q.subject && !q.tcode && !q.errorText && !q.serverName) { setDups([]); return; }
+    const t = setTimeout(() => { duplicateHints(q).then(setDups).catch(() => setDups([])); }, 600);
+    return () => clearTimeout(t);
+  }, [applicationId, isSales, top.subject, sap.tcode, sap.errorText, it.serverName]);
   const pickItem = (i: CatalogItem | null) => { setCatItem(i); setAnswers({}); if (i && !top.subject.trim()) set({ subject: i.name }); };
   const sapDesk = ws?.key === 'SAP' || ws?.key === 'S4_PROGRAM';
   const sapFilled = Object.values(sap).some((v) => (Array.isArray(v) ? v.length : v !== null && v !== undefined && v !== ''));
@@ -202,6 +211,12 @@ export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
                 </div>
               )}
             </Card>
+          )}
+          {dups.length > 0 && (
+            <div className="rounded-2xl border border-warn/40 bg-warn/10 p-3 text-xs" data-testid="duplicate-hint">
+              <b>Similar open tickets from the last 24 hours</b> - maybe add to one of these instead:
+              <ul className="mt-1 space-y-0.5">{dups.map((d) => <li key={d.id}><button type="button" className="num font-bold text-accent hover:underline" onClick={() => openTicket(d.id)}>{d.ref}</button> {d.subject} <span className="text-muted">· {d.statusName}{d.agentName ? ` · ${d.agentName}` : ''}</span></li>)}</ul>
+            </div>
           )}
           <Card title="Requester and issue">
             <div className="relative mb-3">

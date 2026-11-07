@@ -25,6 +25,7 @@ router.put('/tickets/:id/sap', wrap(async (req, res) => {
     const after = await sap.saveSap(id, req.body ?? {});
     const changed = Object.keys(sap.cleanSap(req.body ?? {})).filter((k) => JSON.stringify(before?.[k] ?? null) !== JSON.stringify(after?.[k] ?? null));
     if (changed.length) await logActivity(id, 'sap_details_updated', { fields: changed }, req.agent.id);
+    await require('../lib/problem').autoMajor(id);
     res.json({ success: true, sap: after });
 }));
 

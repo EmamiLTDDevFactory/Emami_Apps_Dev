@@ -20,6 +20,7 @@ import { AttachmentsCard, FileTray, Paperclips, uploadPending, usePendingFiles }
 import { ExternalRefsCard, SapCard } from './Sap';
 import { ItCard } from './ItDetails';
 import { ApprovalsCard, ChangeCard, TransportsCard } from './Change';
+import { DeclareMajorButton, MajorIncidentBanner, PirCard, ProblemCard } from './Problem';
 import { sizeOf } from '@/lib/files';
 
 /**
@@ -110,11 +111,15 @@ function TicketScreen({ data, reload }: { data: TicketDetail; reload: () => Prom
   const showTransports = (otherDesk && (deskKey === 'SAP' || deskKey === 'S4_PROGRAM') && t.recordClass === 'CHANGE') || (data.transports?.length ?? 0) > 0;
   const showChange = (otherDesk && (t.recordClass === 'CHANGE' || t.recordClass === 'ACCESS_REQUEST')) || !!data.change;
   const showApprovals = otherDesk || (data.approvals?.length ?? 0) > 0;
+  // v7 Phase 7: PIR for major incidents (and once written); problem card outside Secondary Sales or when linked.
+  const showPir = !!t.isMajorIncident || !!t.majorDeclaredAt || !!data.pir;
+  const showProblem = (otherDesk && t.recordClass !== 'CHANGE' && t.recordClass !== 'ACCESS_REQUEST') || !!data.problem || t.recordClass === 'PROBLEM';
   return (
     <div className="space-y-4">
       <TicketToolbar data={data} reload={reload} />
       <TicketBanners ticket={t} reload={reload} />
       {meta.options['presence.enabled'] !== false && <PresenceBar ticketId={t.id} replying={replying} />}
+      <MajorIncidentBanner ticket={t} reload={reload} />
       <TicketHeader ticket={t} reload={reload} />
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="min-w-0 space-y-4">
@@ -126,6 +131,8 @@ function TicketScreen({ data, reload }: { data: TicketDetail; reload: () => Prom
           <TicketAssist ticket={t} reload={reload} />
           <Properties ticket={t} reload={reload} />
           {showSap && <SapCard ticketId={t.id} sap={data.sap} reload={reload} />}
+          {showPir && <PirCard ticket={t} pir={data.pir} reload={reload} />}
+          {showProblem && <ProblemCard ticket={t} problem={data.problem} incidents={data.incidents ?? []} knownError={data.knownError} reload={reload} />}
           {showApprovals && <ApprovalsCard ticket={t} approvals={data.approvals ?? []} reload={reload} />}
           {showChange && <ChangeCard ticket={t} change={data.change} reload={reload} />}
           {showTransports && <TransportsCard ticketId={t.id} transports={data.transports ?? []} reload={reload} />}
@@ -209,6 +216,7 @@ function TicketHeader({ ticket: t, reload }: Props & { reload: () => Promise<voi
             <span title={fmtDateTime(t.createdAt)}>· created {relative(t.createdAt)}</span>
             {t.escalatedAt && <Pill tone="bad">Escalated</Pill>}
             {t.confidential && <span data-testid="confidential-pill"><Pill tone="bad" title="Only people allowed to see confidential tickets can open this one"><Lock size={11} className="mr-0.5 inline" />Confidential</Pill></span>}
+            {workspaceById(meta, t.workspaceId)?.key && workspaceById(meta, t.workspaceId)?.key !== 'SEC_SALES' && <DeclareMajorButton ticket={t} reload={reload} />}
             {can('ticket.setConfidential') && (
               <button type="button" className="text-2xs font-bold text-faint hover:text-accent" onClick={toggleConfidential} data-testid="toggle-confidential">{t.confidential ? 'Remove confidential' : 'Mark confidential'}</button>
             )}
