@@ -246,7 +246,7 @@ async function main() {
     if (rnd() < 0.7) {
       const rating = rnd() < 0.7 ? 3 : rnd() < 0.6 ? 2 : 1;
       const at = new Date(Math.min(Date.now(), m.createdAt.getTime() + between(6, 30) * HOUR));
-      await pool.query(`INSERT INTO samadhan.csat_requests ("ticketId", token, "sentAt", "answeredAt") VALUES ($1, $2, $3, $4) ON CONFLICT ("ticketId") DO UPDATE SET "sentAt" = EXCLUDED."sentAt", "answeredAt" = EXCLUDED."answeredAt"`, [m.id, `demo-v7-${m.id}-${Math.floor(rnd() * 1e9)}`, at, at]);
+      await pool.query(`INSERT INTO samadhan.csat_requests ("ticketId", token, "sentAt", "answeredAt") VALUES ($1, $2, $3, $4) ON CONFLICT ("ticketId") DO UPDATE SET "sentAt" = EXCLUDED."sentAt", "answeredAt" = EXCLUDED."answeredAt"`, [m.id, require(`${APP}/samadhan/constants`).csatKey(`demo-v7-${m.id}-${Math.floor(rnd() * 1e9)}`), at, at]);
       await pool.query('INSERT INTO samadhan.csat_responses ("ticketId", rating, comment, "agentId", "createdAt") VALUES ($1, $2, $3, $4, $5)',
         [m.id, rating, [null, 'Took too long.', 'OK, resolved.', 'Quick and helpful, thanks!'][rating], m.worker.id, at]);
     }

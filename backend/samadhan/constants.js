@@ -6,6 +6,8 @@ const APP_IDS = [APP_ID];
 /** Environment setting SAMADHAN_<name>. */
 const env = (name, fallback = '') => process.env[`SAMADHAN_${name}`] || fallback;
 const MIN = 60_000;
+/** CSAT survey links are stored only as this hash (the link itself goes to the requester and nowhere else). */
+const csatKey = (token) => 'h:' + require('crypto').createHash('sha256').update(String(token)).digest('hex');
 
 const ROLES = ['Agent', 'Supervisor', 'Admin'];
 const SEVERITIES = ['FATAL', 'SERIOUS', 'NORMAL'];
@@ -70,5 +72,5 @@ const q = (col) => `"${col}"`;
 
 module.exports = {
     AGENT_EMAIL_TEMPLATES, ACTIVITY_KINDS, AGENT_STATUSES, APP_ID, APP_IDS, env, BELL_EVENTS, BELL_SCOPES, CALL_MODES, CALL_OUTCOMES, CONVERSATION_KINDS, CUSTOMER_SOURCES, EDITABLE_FIELDS,
-    EMAIL_RE, MAILBOX, MAIL_ENABLED, MIN, deliverable, APPROVER_DOMAINS, approverDomainOk, PATCHABLE, PHONE_RE, PRIORITIES, ROLES, SEVERITIES, SEVERITY_PRIORITY, SOURCES, STATUS, TRIGGERS, WHATSAPP, q, sqlList,
+    EMAIL_RE, MAILBOX, csatKey, MAIL_ENABLED, MIN, deliverable, APPROVER_DOMAINS, approverDomainOk, PATCHABLE, PHONE_RE, PRIORITIES, ROLES, SEVERITIES, SEVERITY_PRIORITY, SOURCES, STATUS, TRIGGERS, WHATSAPP, q, sqlList,
 };

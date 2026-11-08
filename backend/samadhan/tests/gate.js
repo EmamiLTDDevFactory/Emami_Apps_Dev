@@ -208,7 +208,7 @@ async function e2e() {
     const created = await fetch(`${api}/tickets`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok(people.agent)}` },
         body: JSON.stringify({ subject: 'E2E seeded ticket', requesterName: 'E2E Person', requesterEmail: 'e2e.person@test.samadhan.local', source: 'Phone', description: 'seeded' }) }).then((r) => r.json());
     const csatToken = crypto.randomBytes(24).toString('base64url');
-    psql('e2e_test', `INSERT INTO ${S}.csat_requests ("ticketId", token) VALUES (${Number(created.ticket.id)}, '${csatToken}')`);
+    psql('e2e_test', `INSERT INTO ${S}.csat_requests ("ticketId", token) VALUES (${Number(created.ticket.id)}, '${require(path.join(__dirname, '..', 'constants')).csatKey(csatToken)}')`);
     const data = {
         admin: { email: people.admin, token: tok(people.admin) }, sup: { email: people.sup, token: tok(people.sup) }, agent: { email: people.agent, token: tok(people.agent) },
         ticketId: created.ticket.id, ticketSubject: 'E2E seeded ticket', csatToken, api,
