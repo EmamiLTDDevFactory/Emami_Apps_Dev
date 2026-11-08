@@ -118,4 +118,8 @@ describe('dates and payload', () => {
     const p = actionPayload({ action: 'CREATE', scenId: '14', validFrom: '2027-04-01' }, ' A@B.com ');
     expect(p).toMatchObject({ Action: 'CREATE', ScenId: '0000000014', Email: 'a@b.com', ValidFrom: '2027-04-01T00:00:00' });
   });
+  it('BudgetVersion is always a string (SAP Edm.String): blank = next free', () => {
+    expect(actionPayload({ action: 'CREATE' }, 'a@b.com').BudgetVersion).toBe('');
+    expect(actionPayload({ action: 'COPY', scenId: '14', budgetVersion: 3 }, 'a@b.com').BudgetVersion).toBe('3');
+  });
 });

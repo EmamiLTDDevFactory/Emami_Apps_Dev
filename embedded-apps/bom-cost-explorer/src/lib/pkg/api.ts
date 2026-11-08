@@ -37,12 +37,12 @@ export const fetchItems = (scenId: string, opts: SapGetOptions = {}) => read(PKG
 export const fetchOverrides = (scenId: string, opts: SapGetOptions = {}) => read(PKG_SET.OVR, { $filter: scenFilter(scenId) }, ovr, opts);
 
 const dt = (iso?: string) => (iso ? `${iso}T00:00:00` : undefined);
-/** Decimals go as strings (OData V2 JSON), dates as Edm.DateTime. The user is the hub session email; SAP checks the rights for it. */
+/** BudgetVersion is an Edm.String on SAP (a JSON number is rejected: 'Failed to read property BudgetVersion'; blank = next free). Decimals go as strings (OData V2 JSON), dates as Edm.DateTime. The user is the hub session email; SAP checks the rights for it. */
 export function actionPayload(a: PkgActionBody, email: string) {
   return {
     Action: a.action, ScenId: a.scenId ? padScen(a.scenId) : '', Email: email.trim().toLowerCase(),
     Descr: a.descr ?? '', ValidFrom: dt(a.validFrom), ValidTo: dt(a.validTo), KeyDate: dt(a.keyDate),
-    BudgetVersion: a.budgetVersion === undefined || a.budgetVersion === '' ? 0 : Number(a.budgetVersion),
+    BudgetVersion: a.budgetVersion === undefined || a.budgetVersion === '' ? '' : String(a.budgetVersion),
     MtartSel: a.mtartSel ?? '', MatklSel: a.matklSel ?? '', MatnrSel: a.matnrSel ?? '', Prio: a.prio ?? '', Norm: a.norm ?? '',
     Level: a.level ?? '', Rule: a.rule ?? '', Value: a.value ?? '0', ScopeMatnr: a.scopeMatnr ?? '', ScopeMatkl: a.scopeMatkl ?? '', ScopeIdnrk: a.scopeIdnrk ?? '',
   };
