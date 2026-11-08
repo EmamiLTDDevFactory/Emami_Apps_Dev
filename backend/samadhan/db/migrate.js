@@ -906,6 +906,23 @@ const MIGRATIONS = [
             return 'Integrations removed';
         },
     },
+    {
+        // Security review 2026-11-08: CSAT survey links were stored as sent. Each stored link becomes 'h:' + its SHA-256
+        // (constants.csatKey), so a database read cannot rebuild a working link. Links already emailed keep working.
+        // Down cannot bring the plain links back (one-way); it only records the step as rolled back. Code older than
+        // this step answers 404 for converted links, so roll the code back only knowing that.
+        id: '7.10-csat-hash',
+        describe: 'CSAT survey links stored as SHA-256 hashes only',
+        async up(client) {
+            const S = ident(activeSchema());
+            if (!(await q(client, 'SELECT to_regclass($1) AS t', [`${activeSchema()}.csat_requests`])).rows[0].t) return 'No survey links table yet';
+            const r = await q(client, `UPDATE ${S}.csat_requests SET token = 'h:' || encode(sha256(convert_to(token, 'UTF8')), 'hex') WHERE token NOT LIKE 'h:%'`);
+            return `${r.rowCount} survey links hashed`;
+        },
+        async down() {
+            return 'Survey links stay hashed (one-way)';
+        },
+    },
 ];
 
 async function applied(client, schema) {

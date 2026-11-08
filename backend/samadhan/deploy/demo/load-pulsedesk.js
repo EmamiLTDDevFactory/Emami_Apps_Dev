@@ -205,7 +205,7 @@ async function main() {
       if (!t.csat) continue;
       const tid = ticketId[t.id];
       await client.query(`INSERT INTO samadhan.csat_requests ("ticketId", token, "sentAt", "answeredAt") VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
-        [tid, `pulsedesk-${tid}-${Math.random().toString(36).slice(2, 12)}`, t.sla.closedAt ?? t.csat.at, t.csat.at]);
+        [tid, require(`${APP}/samadhan/constants`).csatKey(`pulsedesk-${tid}-${Math.random().toString(36).slice(2, 12)}`), t.sla.closedAt ?? t.csat.at, t.csat.at]);
       await client.query('INSERT INTO samadhan.csat_responses ("ticketId", rating, comment, "agentId", "createdAt") VALUES ($1, $2, $3, $4, $5)',
         [tid, CSAT[t.csat.rating] ?? 2, t.csat.comment || null, t.agentId ? agentId[t.agentId] : null, t.csat.at]);
       csat++;

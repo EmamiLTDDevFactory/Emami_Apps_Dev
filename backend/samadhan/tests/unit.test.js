@@ -25,6 +25,15 @@ test('ticket number from subject: the three formats, bounded to valid ticket ids
     assert.equal(ticketNumberFromSubject(null), null);
 });
 
+test('csatKey: survey links are stored as a one-way hash, never as sent', () => {
+    const { csatKey } = require('../constants');
+    const k = csatKey('abcDEF123_-abcDEF123_-');
+    assert.match(k, /^h:[0-9a-f]{64}$/);
+    assert.equal(k, csatKey('abcDEF123_-abcDEF123_-'));
+    assert.notEqual(k, csatKey('abcDEF123_-abcDEF123_-x'));
+    assert.ok(!k.includes('abcDEF'));
+});
+
 test('deliverable: real addresses yes, reserved / demo domains no (they keep the in-app bell only)', () => {
     const { deliverable } = require('../constants');
     for (const ok of ['ravi@abctraders.in', 'animesh@emamigroup.com', 'a.b@sub.example-corp.com', 'x@localstore.in']) assert.equal(deliverable(ok), true, ok);

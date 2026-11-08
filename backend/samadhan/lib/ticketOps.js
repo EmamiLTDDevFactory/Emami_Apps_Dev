@@ -1,7 +1,7 @@
 'use strict';
 const crypto = require('crypto');
 const { pool } = require('../db/pool');
-const { EDITABLE_FIELDS, PRIORITIES } = require('../constants');
+const { EDITABLE_FIELDS, PRIORITIES, csatKey } = require('../constants');
 const { emailRequester, fillPlaceholders, loadTicket } = require('./notify');
 const { addAgentMessage, updateTicket } = require('./tickets');
 const { fail, logActivity, setting, textToHtml, updateRow } = require('./util');
@@ -217,7 +217,7 @@ async function maybeSendCsat(t) {
     if (!t.requesterEmail || t.mergedIntoId || t.spam || t.deletedAt) return;
     if ((await setting('csat.enabled')) === false) return;
     const token = crypto.randomBytes(24).toString('base64url');
-    const ins = await pool.query('INSERT INTO samadhan.csat_requests ("ticketId", token) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING token', [t.id, token]);
+    const ins = await pool.query('INSERT INTO samadhan.csat_requests ("ticketId", token) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING "ticketId"', [t.id, csatKey(token)]);
     if (!ins.rows.length) return;
     const { APP_URL } = require('../../ccbTeams');
     await emailRequester(t, 'requester.csat', { 'csat.url': `${APP_URL}/apps/samadhan/portal/?csat=${token}` });

@@ -1,7 +1,7 @@
 'use strict';
 const express = require('express');
 const { pool } = require('../db/pool');
-const { EMAIL_RE, MAIL_ENABLED, PHONE_RE, WHATSAPP } = require('../constants');
+const { EMAIL_RE, MAIL_ENABLED, PHONE_RE, WHATSAPP, csatKey } = require('../constants');
 const { ready } = require('../db/ready');
 const { createTicket } = require('../lib/tickets');
 const { inboundMessages, metaJson, validSignature, whatsappReady } = require('../lib/whatsapp');
@@ -245,14 +245,14 @@ router.get('/portal/articles', wrap(async (req, res) => {
 }));
 
 // CSAT survey link from the closing email: the token alone identifies the ticket (no sign-in, no other details shown).
-// The link works for 30 days after it was sent.
+// The link works for 30 days after it was sent. Only its SHA-256 is stored, so a database read cannot rebuild a link.
 async function csatRequest(token) {
     if (!/^[A-Za-z0-9_-]{20,64}$/.test(String(token))) throw fail(404, 'This survey link is not valid.');
     const { rows } = await pool.query(
         `SELECT r."ticketId", r."answeredAt", t.subject, t."agentId", a.name AS "agentName"
          FROM samadhan.csat_requests r JOIN samadhan.tickets t ON t.id = r."ticketId" LEFT JOIN samadhan.agents a ON a.id = t."agentId"
          WHERE r.token = $1 AND r."sentAt" > now() - interval '30 days'`,
-        [token],
+        [csatKey(token)],
     );
     if (!rows.length) throw fail(404, 'This survey link is not valid or has expired.');
     return rows[0];
@@ -277,7 +277,7 @@ router.post('/portal/csat/:token', wrap(async (req, res) => {
     const rating = Number(req.body?.rating);
     if (![1, 2, 3].includes(rating)) throw fail(400, 'Pick a rating.');
     const comment = String(req.body?.comment || '').trim().slice(0, 1000) || null;
-    const done = await pool.query('UPDATE samadhan.csat_requests SET "answeredAt" = now() WHERE token = $1 AND "answeredAt" IS NULL RETURNING "ticketId"', [req.params.token]);
+    const done = await pool.query('UPDATE samadhan.csat_requests SET "answeredAt" = now() WHERE token = $1 AND "answeredAt" IS NULL RETURNING "ticketId"', [csatKey(req.params.token)]);
     if (!done.rows.length) throw fail(409, 'Thank you - we already have your rating for this ticket.');
     await pool.query('INSERT INTO samadhan.csat_responses ("ticketId", rating, comment, "agentId") VALUES ($1, $2, $3, $4)', [r.ticketId, rating, comment, r.agentId]);
     await pool.query('INSERT INTO samadhan.activities ("ticketId", action, details) VALUES ($1, $2, $3)', [r.ticketId, 'csat_received', JSON.stringify({ rating })]);
