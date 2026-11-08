@@ -4,14 +4,14 @@ import { ChevronDown, ChevronRight, Search } from 'lucide-react';
 import { Button, Card, Field, Spinner, cx, inputCls } from '../ui';
 import { CatBadge, ErrorBox, NO_RECORDS, SkeletonRows, SourceChip, errorText, td, th } from './shared';
 import { fetchHistory, fetchRateSources } from '@/lib/budgetMgmt/api';
-import { COUNTRIES, type BudHistRow, type BudRateSrcRow, type HistoryFilter } from '@/lib/budgetMgmt/types';
+import { COUNTRIES, MATERIAL_TYPES, type BudHistRow, type BudRateSrcRow, type HistoryFilter } from '@/lib/budgetMgmt/types';
 import { defaultHistWindow, showDate, stripZeros, validateHistory, type Errors } from '@/lib/budgetMgmt/rules';
 import { fmtNum } from '@/lib/format';
 
 const rowKey = (r: BudHistRow, i: number) => r.Rowid || `${r.Matnr}|${r.Werks}|${i}`;
 
 export default function HistoryTab({ gjahr }: { gjahr: string }) {
-  const [f, setF] = useState<HistoryFilter>(() => { const w = defaultHistWindow(gjahr); return { land1: 'IN', gjahr, histFrom: w.from, histTo: w.to, catAFrom: '8,000,000', catBFrom: '4,000,000' }; });
+  const [f, setF] = useState<HistoryFilter>(() => { const w = defaultHistWindow(gjahr); return { land1: 'IN', gjahr, histFrom: w.from, histTo: w.to, catAFrom: '8,000,000', catBFrom: '4,000,000', mtart: [] }; });
   const [errs, setErrs] = useState<Errors<keyof HistoryFilter>>({});
   const [rows, setRows] = useState<BudHistRow[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -53,6 +53,14 @@ export default function HistoryTab({ gjahr }: { gjahr: string }) {
           <Field label="To" error={errs.histTo}>{(id) => <input id={id} type="date" className={cx(inputCls, errs.histTo && 'border-bad')} value={f.histTo} onChange={(e) => set('histTo', e.target.value)} />}</Field>
           <Field label="Cat A ≥" error={errs.catAFrom}>{(id) => <input id={id} className={cx(inputCls, errs.catAFrom && 'border-bad')} inputMode="decimal" value={f.catAFrom} onChange={(e) => num('catAFrom')(e.target.value)} />}</Field>
           <Field label="Cat B ≥" error={errs.catBFrom}>{(id) => <input id={id} className={cx(inputCls, errs.catBFrom && 'border-bad')} inputMode="decimal" value={f.catBFrom} onChange={(e) => num('catBFrom')(e.target.value)} />}</Field>
+          <fieldset className="sm:col-span-2 lg:col-span-4 xl:col-span-7">
+            <legend className="mb-1 text-xs font-semibold">Material type <span className="font-normal text-muted">(none ticked = all types)</span></legend>
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              {MATERIAL_TYPES.map((t) => (
+                <label key={t} className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={(f.mtart ?? []).includes(t)} onChange={(e) => set('mtart', e.target.checked ? [...(f.mtart ?? []), t] : (f.mtart ?? []).filter((x) => x !== t))} />{t}</label>
+              ))}
+            </div>
+          </fieldset>
           <div className="flex items-end"><Button type="submit" variant="primary" disabled={loading}>{loading ? <Spinner /> : <Search size={14} />} Load History</Button></div>
         </form>
       </Card>

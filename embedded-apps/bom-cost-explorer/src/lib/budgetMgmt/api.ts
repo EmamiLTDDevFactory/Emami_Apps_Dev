@@ -26,7 +26,8 @@ export function historyFilter(f: HistoryFilter): string {
     `Land1 eq ${odataString(f.land1)}`, `Gjahr eq ${odataString(f.gjahr)}`,
     `HistFrom eq ${odataDate(f.histFrom)}`, `HistTo eq ${odataDate(f.histTo)}`,
     `CatAFrom eq ${dec(f.catAFrom)}`, `CatBFrom eq ${dec(f.catBFrom)}`,
-  ].join(' and ');
+    or('Mtart', f.mtart ?? []),
+  ].filter(Boolean).join(' and ');
 }
 
 export function rateFilter(f: RateFilter): string {

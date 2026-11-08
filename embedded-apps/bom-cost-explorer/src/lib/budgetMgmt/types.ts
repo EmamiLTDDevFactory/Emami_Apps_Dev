@@ -23,7 +23,9 @@ export interface BudRateSrcRow {
   ValidFrom: string; ValidTo: string; RatePc: number; LocalCurr: string; RateLocal: number;
 }
 
-export interface HistoryFilter { land1: string; gjahr: string; histFrom: string; histTo: string; catAFrom: string; catBFrom: string }
+/** mtart: material types to read (BudHistSet Mtart); none = every type, nothing sent. */
+export const MATERIAL_TYPES = ['ROH', 'PKGN', 'VERP', 'HALB', 'FERT'] as const;
+export interface HistoryFilter { land1: string; gjahr: string; histFrom: string; histTo: string; catAFrom: string; catBFrom: string; mtart?: string[] }
 export interface RateFilter { gjahr: string; land1: string; status: string; matnr?: string[]; werks?: string[] }
 export interface RateEdit { adjType: AdjType; adjValue: string; overrideRate: string; overrideRsn: string }
 export interface ActionPayload { action: RateAction; gjahr: string; land1: string; matnrCsv: string; werksCsv: string; reason: string; email: string }
