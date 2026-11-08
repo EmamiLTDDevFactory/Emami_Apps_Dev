@@ -73,10 +73,10 @@ router.put('/tickets/:id/known-error', wrap(async (req, res) => {
 
 // ---------- candidates, duplicates, health ----------
 router.get('/problem-candidates', wrap(async (req, res) => {
-    res.json({ success: true, items: await pr.listCandidates() });
+    res.json({ success: true, items: await pr.listCandidates(req) });
 }));
 router.post('/problem-candidates/:cid/create', wrap(async (req, res) => {
-    res.status(201).json({ success: true, problem: await pr.candidateToProblem(Number(req.params.cid), req.agent) });
+    res.status(201).json({ success: true, problem: await pr.candidateToProblem(Number(req.params.cid), req.agent, req) });
 }));
 router.post('/problem-candidates/:cid/dismiss', wrap(async (req, res) => {
     await pr.dismissCandidate(Number(req.params.cid), req.agent);

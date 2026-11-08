@@ -31,16 +31,24 @@ checked by hand, and the gate is green.
 | 16 | Low | **`/registers/constructor` returned a 500**, and `/tickets/export/` (trailing slash) escaped the heavy rate-limit bucket. | `Object.hasOwn`; trailing slashes are normalised. |
 | 17 | Medium | **Ticket ids sent in request bodies skipped the scope check.** These are problem `incidentIds` / `problemId` and to-do `ticketId`, plus the linked / child / parent lists on ticket detail and the subject shown on to-dos. They exposed subjects and statuses, including of confidential tickets. | `ticketVisible` is checked on body ids, and the related lists and to-do subjects are filtered by the caller's scope. |
 
-## Open: decisions or other owners
+## Second round (same day): the items first listed as open
 
-- **`ticket.overridePriority` is not enforced.** It is Supervisor-only in the catalogue, but agents set priority today, and tests rely on it (Urgent + Production flags a major incident). It's a product decision whether agents should lose that.
-- **`xlsx` 0.18.5 has known file-parsing CVEs** (CVE-2023-30533, CVE-2024-22363). It is used only for admin uploads in the browser. Upgrade to `https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz`, as cascade-pricing and expense already do. Not done here because installing from an outside URL needs approval.
-- **The portal can be used to send spam from the helpdesk mailbox.** Anyone can raise a portal ticket for any address, and the acknowledgement comes from the Emami mailbox. Current limits are 10 per address per day and 300 per hour for the whole portal. The fix is an email OTP before the ticket is created: a feature, not done here.
-- **The problem-candidates list isn't filtered by scope.** It is only reachable with `problem.manage`, which supervisors hold.
-- **AI cost controls.** `?generate=1` always calls the model, with `max_tokens` 16000. A per-desk daily cap is advisable before turning AI on widely.
-- **CSAT survey tokens** don't expire and are stored in plain text. They are 192-bit random. An expiry needs a migration.
+| # | Item | Done |
+|---|---|---|
+| 18 | **`ticket.overridePriority` was not enforced.** | Enforced on PATCH and bulk updates. It is now part of the Agent role by default, so agents can still set priority as today, but an Admin can take it away per person or profile. The Priority field locks for anyone without it. |
+| 19 | **The portal could be used to send spam from the helpdesk mailbox.** | While Samadhan sends mail, a 6-digit code emailed to the requester is needed before a portal ticket. The code works once for 10 minutes, with 5 wrong tries, and is stored hashed. One code a minute and 5 an hour per address; at most 300 code mails an hour for the whole portal. The code mail is fixed text. An Admin can switch it off with the setting `portal.emailCode = false`. Unit test added. |
+| 20 | **AI cost.** | A daily AI allowance per desk (and for mail routing and the dashboard): `SAMADHAN_AI_DAILY_LIMIT`, default 300 calls a day each, 0 = no limit. Over it, the built-in suggestions are shown. Mail routing is capped at 4,000 output tokens. |
+| 21 | **CSAT links didn't expire.** | They work for 30 days after they are sent. |
+| 22 | **The problem-candidates list wasn't filtered by scope.** | A candidate is shown, and can be turned into a problem, only when all its tickets are in the caller's scope. |
+
+## Still open
+
+- **`xlsx` 0.18.5 has known file-parsing CVEs** (CVE-2023-30533, CVE-2024-22363). It is used only for admin uploads in the browser. The fix is version 0.20.3 from `https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz`, as cascade-pricing and expense use. It can't be installed on this PC: npm here refuses packages fetched from a URL ("Fetching packages of type remote have been disabled"). Whoever owns that npm policy can run, in `embedded-apps/samadhan`: `npm install "xlsx@https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"`.
+- **CSAT tokens are still stored in plain text.** They are 192-bit random and now expire. Hashing them needs a migration.
 
 ## For the hub and server owners (not Samadhan code)
+
+Ready-to-apply steps are in `backend/samadhan/deploy/SERVER-HARDENING.md`.
 
 - **nginx:**
   - add the `/dev-api/api/samadhan/` route

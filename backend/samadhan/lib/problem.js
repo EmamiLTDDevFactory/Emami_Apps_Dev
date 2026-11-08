@@ -256,13 +256,19 @@ async function detectCandidates() {
     }, 0);
 }
 
-const listCandidates = () => quiet(async () => (await pool.query(
+/** A candidate is shown (and can be used) only when every ticket in it is in the caller's scope. */
+function allInScope(req) {
+    const s = req ? require('./ticketQuery').scopeSql(req.scope, req.agent?.id) : '';
+    return s ? ` AND NOT EXISTS (SELECT 1 FROM samadhan.tickets t WHERE t.id = ANY(pc."ticketIds") AND NOT (${s}))` : '';
+}
+
+const listCandidates = (req) => quiet(async () => (await pool.query(
     `SELECT pc.*, ap.code AS "applicationCode", ap.name AS "applicationName", cardinality(pc."ticketIds") AS count
      FROM samadhan.problem_candidates pc LEFT JOIN samadhan.applications ap ON ap.id = pc."applicationId"
-     WHERE pc."dismissedAt" IS NULL AND pc."problemTicketId" IS NULL ORDER BY cardinality(pc."ticketIds") DESC, pc."updatedAt" DESC LIMIT 50`)).rows, []);
+     WHERE pc."dismissedAt" IS NULL AND pc."problemTicketId" IS NULL${allInScope(req)} ORDER BY cardinality(pc."ticketIds") DESC, pc."updatedAt" DESC LIMIT 50`)).rows, []);
 
-async function candidateToProblem(id, agent) {
-    const c = (await pool.query('SELECT * FROM samadhan.problem_candidates WHERE id = $1 AND "dismissedAt" IS NULL AND "problemTicketId" IS NULL', [id])).rows[0];
+async function candidateToProblem(id, agent, req = null) {
+    const c = (await pool.query(`SELECT pc.* FROM samadhan.problem_candidates pc WHERE pc.id = $1 AND pc."dismissedAt" IS NULL AND pc."problemTicketId" IS NULL${allInScope(req)}`, [id])).rows[0];
     if (!c) throw fail(404, 'Candidate not found (already turned into a problem or dismissed).');
     const t = await createProblem(c.ticketIds, { subject: `Problem: recurring ${c.category}${c.function ? ` / ${c.function}` : ''}` }, agent);
     await pool.query('UPDATE samadhan.problem_candidates SET "problemTicketId" = $2 WHERE id = $1', [id, t.id]);
