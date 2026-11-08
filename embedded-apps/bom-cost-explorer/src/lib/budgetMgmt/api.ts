@@ -38,11 +38,11 @@ export function rateFilter(f: RateFilter): string {
   ].filter(Boolean).join(' and ');
 }
 
-export const sourceFilter = (matnr: string, werks: string, land1: string) =>
-  `Matnr eq ${odataString(padMatnr(matnr))} and Werks eq ${odataString(werks)} and Land1 eq ${odataString(land1)}`;
+export const sourceFilter = (matnr: string, bukrs: string, werks: string, land1: string) =>
+  [`Matnr eq ${odataString(padMatnr(matnr))}`, `Bukrs eq ${odataString(bukrs)}`, werks ? `Werks eq ${odataString(werks)}` : null, `Land1 eq ${odataString(land1)}`].filter(Boolean).join(' and ');
 
 const hist = (r: Record<string, unknown>): BudHistRow => ({
-  Rowid: str(r.Rowid), Matnr: str(r.Matnr), Maktx: str(r.Maktx), Land1: str(r.Land1), Werks: str(r.Werks), Mtart: str(r.Mtart), BaseUom: str(r.BaseUom),
+  Rowid: str(r.Rowid), Matnr: str(r.Matnr), Maktx: str(r.Maktx), Land1: str(r.Land1), Werks: str(r.Werks), Bukrs: str(r.Bukrs), Mtart: str(r.Mtart), BaseUom: str(r.BaseUom),
   NetQty: num(r.NetQty), NetValue: num(r.NetValue), Currency: str(r.Currency), AvgRate: num(r.AvgRate), CtryValue: num(r.CtryValue), Matcat: str(r.Matcat),
 });
 const rate = (r: Record<string, unknown>): BudRateRow => ({
@@ -62,7 +62,7 @@ const read = async <T,>(set: string, filter: string, map: (r: Record<string, unk
 
 export const fetchHistory = (f: HistoryFilter, opts: SapGetOptions = {}) => read(BUD_MGMT_SET.HIST, historyFilter(f), hist, opts);
 export const fetchRates = (f: RateFilter, opts: SapGetOptions = {}) => read(BUD_MGMT_SET.RATE, rateFilter(f), rate, opts);
-export const fetchRateSources = (matnr: string, werks: string, land1: string, opts: SapGetOptions = {}) => read(BUD_MGMT_SET.SRC, sourceFilter(matnr, werks, land1), src, opts);
+export const fetchRateSources = (matnr: string, bukrs: string, werks: string, land1: string, opts: SapGetOptions = {}) => read(BUD_MGMT_SET.SRC, sourceFilter(matnr, bukrs, werks, land1), src, opts);
 
 export const rateKeyPath = (r: Pick<BudRateRow, 'Gjahr' | 'Land1' | 'Matnr' | 'Werks' | 'ValidFrom'>) =>
   `${BUD_MGMT_SET.RATE}(Gjahr=${odataString(r.Gjahr)},Land1=${odataString(r.Land1)},Matnr=${odataString(padMatnr(r.Matnr))},Werks=${odataString(r.Werks)},ValidFrom=${odataString(r.ValidFrom)})`;

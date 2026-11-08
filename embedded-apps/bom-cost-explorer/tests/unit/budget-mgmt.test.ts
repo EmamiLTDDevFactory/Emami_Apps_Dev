@@ -26,7 +26,8 @@ describe('budget rate management rules', () => {
     expect(historyFilter({ ...hist, mtart: [] })).toBe(historyFilter(hist));
     expect(rateFilter({ gjahr: '2026', land1: 'IN', status: 'D' })).toBe("Gjahr eq '2026' and Land1 eq 'IN' and ApprStatus eq 'D'");
     expect(rateFilter({ gjahr: '2026', land1: 'IN', status: '', matnr: ['1', '2'], werks: ['1000'] })).toBe("Gjahr eq '2026' and Land1 eq 'IN' and (Matnr eq '000000000000000001' or Matnr eq '000000000000000002') and Werks eq '1000'");
-    expect(sourceFilter('10000001', '1000', 'IN')).toBe("Matnr eq '000000000010000001' and Werks eq '1000' and Land1 eq 'IN'");
+    expect(sourceFilter('10000001', 'UN10', '1000', 'IN')).toBe("Matnr eq '000000000010000001' and Bukrs eq 'UN10' and Werks eq '1000' and Land1 eq 'IN'");
+    expect(sourceFilter('10000001', 'UN10', '', 'IN')).toBe("Matnr eq '000000000010000001' and Bukrs eq 'UN10' and Land1 eq 'IN'");
   });
   it('validates the history filter', () => {
     expect(validateHistory(hist)).toEqual({});

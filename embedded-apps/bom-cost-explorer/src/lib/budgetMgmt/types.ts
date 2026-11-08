@@ -7,7 +7,7 @@ export const STATUS_LABEL: Record<ApprStatus, string> = { D: 'Draft', S: 'Submit
 export const SOURCE_LIST = ['CONTRACT', 'INFOREC', 'MARKT', 'CONSUMP', 'MBEW'] as const;
 
 export interface BudHistRow {
-  Rowid: string; Matnr: string; Maktx: string; Land1: string; Werks: string; Mtart: string; BaseUom: string;
+  Rowid: string; Matnr: string; Maktx: string; Land1: string; Werks: string; Bukrs: string; Mtart: string; BaseUom: string;
   NetQty: number; NetValue: number; Currency: string; AvgRate: number; CtryValue: number; Matcat: string;
 }
 

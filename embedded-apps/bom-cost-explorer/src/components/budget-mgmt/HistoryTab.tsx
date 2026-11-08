@@ -8,7 +8,7 @@ import { COUNTRIES, MATERIAL_TYPES, type BudHistRow, type BudRateSrcRow, type Hi
 import { defaultHistWindow, filterHistory, groupHistory, showDate, stripZeros, validateHistory, type Errors } from '@/lib/budgetMgmt/rules';
 import { fmtNum } from '@/lib/format';
 
-const plantKey = (g: string, r: BudHistRow) => `${g}|${r.Werks}`;
+const plantKey = (g: string, r: BudHistRow) => `${g}|${r.Bukrs}|${r.Werks}`;
 
 export default function HistoryTab({ gjahr }: { gjahr: string }) {
   const [f, setF] = useState<HistoryFilter>(() => { const w = defaultHistWindow(gjahr); return { land1: 'IN', gjahr, histFrom: w.from, histTo: w.to, catAFrom: '8,000,000', catBFrom: '4,000,000', mtart: [] }; });
@@ -39,7 +39,7 @@ export default function HistoryTab({ gjahr }: { gjahr: string }) {
     if (plantOpen === k) return setPlantOpen('');
     setPlantOpen(k);
     if (sources[k]) return;
-    try { setSources((s) => ({ ...s, [k]: { loading: true } })); const list = await fetchRateSources(r.Matnr, r.Werks, r.Land1 || f.land1); setSources((s) => ({ ...s, [k]: { rows: list } })); }
+    try { setSources((s) => ({ ...s, [k]: { loading: true } })); const list = await fetchRateSources(r.Matnr, r.Bukrs, r.Werks, r.Land1 || f.land1); setSources((s) => ({ ...s, [k]: { rows: list } })); }
     catch (x) { setSources((s) => ({ ...s, [k]: { error: errorText(x) } })); }
   }
 
