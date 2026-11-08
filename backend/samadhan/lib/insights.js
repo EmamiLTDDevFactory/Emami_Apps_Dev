@@ -241,7 +241,7 @@ async function generateTicket(id) {
             itDetails: await require('./it').getIt(t.id).then((d) => (d ? { layer: d.layer, environment: d.environment, httpStatus: d.httpStatus, server: d.serverName, url: d.url } : null)).catch(() => null),
         };
         try {
-            analysis = await structured({ system: ticketSystemPrompt(tree, t.workspaceKey), user: JSON.stringify(caseData), schema: TICKET_SCHEMA });
+            analysis = await structured({ system: ticketSystemPrompt(tree, t.workspaceKey), user: JSON.stringify(caseData), schema: TICKET_SCHEMA, bucket: t.workspaceKey || 'general' });
             source = 'ai';
             // Only suggestions that exist in the configured list are passed on.
             const cat = tree.find((c) => c.value === analysis.suggestedCategory);
@@ -390,7 +390,7 @@ async function generateDashboard() {
                 ...stats,
                 oldest: stats.oldest.map((o) => ({ ...o, subject: redact(o.subject, 120) })),
             };
-            const analysis = await structured({ system: DASHBOARD_SYSTEM, user: JSON.stringify(data), schema: DASHBOARD_SCHEMA });
+            const analysis = await structured({ system: DASHBOARD_SYSTEM, user: JSON.stringify(data), schema: DASHBOARD_SCHEMA, bucket: 'dashboard' });
             return { ...base, ...analysis, actionPoints: (analysis.actionPoints || []).slice(0, 8), source: 'ai', model: MODEL, aiNote: null };
         } catch (err) {
             if (!(err instanceof AiUnavailable)) console.error('[samadhan] dashboard insight:', err.message);

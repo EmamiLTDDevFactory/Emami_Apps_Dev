@@ -97,8 +97,10 @@ const qs = (o: Record<string, string | number | undefined | null>) => {
 
 // ---------- Requester portal (no hub sign-in; the backend ignores the empty token on these routes) ----------
 export interface PortalTicketStatus { id: number; ref?: string; subject: string; status: string; isResolved: boolean; isClosed: boolean; createdAt: string; lastActivityAt: string | null; resolvedAt: string | null }
-export const portalConfig = () => get<{ enabled: boolean; categories?: string[]; applications?: PortalApplication[]; categoriesByWorkspace?: Record<string, string[]>; catalogItems?: PortalCatalogItem[]; helpdeskName?: string; intro?: string; supportEmail?: string; files?: { limits: AttachmentLimits['portal'] } | null }>('/portal/config');
-export const portalCreate = (body: { name: string; email: string; phone: string; distributorCode: string; category: string; subject: string; description: string; website: string; applicationId?: number; catalogItemId?: number; catalogAnswers?: Record<string, string | boolean>; managerEmail?: string }) =>
+export const portalConfig = () => get<{ enabled: boolean; categories?: string[]; applications?: PortalApplication[]; categoriesByWorkspace?: Record<string, string[]>; catalogItems?: PortalCatalogItem[]; helpdeskName?: string; intro?: string; supportEmail?: string; files?: { limits: AttachmentLimits['portal'] } | null; emailCode?: boolean }>('/portal/config');
+/** Emails a 6-digit code to the requester (needed before a portal ticket while the server sends mail). */
+export const portalEmailCode = (email: string) => request<{ required: boolean }>('POST', '/portal/email-code', { email });
+export const portalCreate = (body: { name: string; email: string; phone: string; distributorCode: string; category: string; subject: string; description: string; website: string; applicationId?: number; catalogItemId?: number; catalogAnswers?: Record<string, string | boolean>; managerEmail?: string; emailCode?: string }) =>
   request<{ ticket: { id: number; ref?: string }; files?: { uploadToken: string; limits: AttachmentLimits['portal'] } }>('POST', '/portal/tickets', body).then((r) => ({ ...r.ticket, files: r.files ?? null }));
 export const portalStatus = (id: number | string, email: string) => request<{ ticket: PortalTicketStatus }>('POST', '/portal/status', { id, email }).then((r) => r.ticket);
 export interface PortalArticle { id: number; category: string; folder: string; title: string; body: string; tags: string[] }

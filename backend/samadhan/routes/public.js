@@ -1,7 +1,7 @@
 'use strict';
 const express = require('express');
 const { pool } = require('../db/pool');
-const { EMAIL_RE, PHONE_RE, WHATSAPP } = require('../constants');
+const { EMAIL_RE, MAIL_ENABLED, PHONE_RE, WHATSAPP } = require('../constants');
 const { ready } = require('../db/ready');
 const { createTicket } = require('../lib/tickets');
 const { inboundMessages, metaJson, validSignature, whatsappReady } = require('../lib/whatsapp');
@@ -16,7 +16,7 @@ const router = express.Router();
 // Portal limits per client address (the one nginx saw - clientIp); the per-email and whole-portal caps in the
 // database are the backstop for callers behind one shared address.
 const WINDOW_MS = 10 * 60_000;
-const PORTAL_LIMITS = { submit: 5, status: 30 };
+const PORTAL_LIMITS = { submit: 5, status: 30, code: 10 };
 const hits = new Map();
 function portalLimit(req, bucket) {
     const ip = clientIp(req);
@@ -88,7 +88,38 @@ router.get('/portal/config', wrap(async (req, res) => {
         helpdeskName: await option('general.helpdeskName'), intro: await option('portal.intro'), supportEmail: await option('general.supportEmail'),
         // v7: requesters may add files after submitting (portal limits).
         files: require('../lib/storage').storageInfo().enabled ? { limits: (await require('../lib/attachments').limits()).portal } : null,
+        // Security review: a 6-digit code emailed to the requester comes before the ticket (lib/portalCode.js).
+        emailCode: await emailCodeRequired(),
     });
+}));
+
+// The email code is needed only while Samadhan sends mail (with mail off nothing can be abused, and no code could
+// arrive); an Admin can switch it off with the setting portal.emailCode = false.
+async function emailCodeRequired() {
+    return MAIL_ENABLED && (await setting('portal.emailCode')) !== false;
+}
+const codeMails = []; // send times, for a whole-portal cap of 300 code mails an hour
+router.post('/portal/email-code', wrap(async (req, res) => {
+    await ready;
+    portalLimit(req, 'code');
+    if (!(await portalEnabled())) throw fail(403, 'The support portal is closed. Please email the helpdesk instead.');
+    if (!(await emailCodeRequired())) return res.json({ success: true, required: false });
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    if (!EMAIL_RE.test(email) || email.length > 320) throw fail(400, 'Enter a valid email address first.');
+    const now = Date.now();
+    while (codeMails.length && now - codeMails[0] > 3_600_000) codeMails.shift();
+    if (codeMails.length >= 300) throw fail(429, 'The portal is very busy. Please try again shortly, or email the helpdesk.');
+    const r = require('../lib/portalCode').issue(email, now);
+    if (r.wait) throw fail(429, `A code was sent a moment ago - check your inbox, or ask for a new one in ${r.wait} seconds.`);
+    codeMails.push(now);
+    // Fixed text only: nothing the caller typed (other than their own address) goes into this mail.
+    await require('../lib/mail').sendMail({
+        to: [email],
+        subject: `Your Emami Service Desk code: ${r.code}`,
+        html: `<p>Hello,</p><p>Your code to raise a ticket on the Emami Service Desk portal is <b style="font-size:18px;letter-spacing:2px">${r.code}</b>. It works once, for 10 minutes.</p>`
+            + '<p>If you did not ask for it, you can ignore this email.</p><p>Emami Service Desk</p>',
+    });
+    res.json({ success: true, required: true });
 }));
 
 router.post('/portal/tickets', wrap(async (req, res) => {
@@ -133,6 +164,10 @@ router.post('/portal/tickets', wrap(async (req, res) => {
     ]);
     if (perEmail.rows[0].n >= 10) throw fail(429, 'You have raised 10 tickets today. Please reply on an existing ticket, or email the helpdesk.');
     if (total.rows[0].n >= 300) throw fail(429, 'The portal is very busy. Please try again shortly, or email the helpdesk.');
+    // Last check before the ticket (so a mistake elsewhere in the form does not use the code up).
+    if ((await emailCodeRequired()) && !require('../lib/portalCode').verify(email, b.emailCode)) {
+        throw fail(400, 'Enter the 6-digit code we emailed you (it works once, for 10 minutes), or ask for a new one.');
+    }
 
     // The distributor master fills in the distributor details, as on the agent screen.
     const fields = { category: category || undefined, distributorCode: distributorCode || undefined, mobileNo: phone || undefined };
@@ -210,11 +245,13 @@ router.get('/portal/articles', wrap(async (req, res) => {
 }));
 
 // CSAT survey link from the closing email: the token alone identifies the ticket (no sign-in, no other details shown).
+// The link works for 30 days after it was sent.
 async function csatRequest(token) {
     if (!/^[A-Za-z0-9_-]{20,64}$/.test(String(token))) throw fail(404, 'This survey link is not valid.');
     const { rows } = await pool.query(
         `SELECT r."ticketId", r."answeredAt", t.subject, t."agentId", a.name AS "agentName"
-         FROM samadhan.csat_requests r JOIN samadhan.tickets t ON t.id = r."ticketId" LEFT JOIN samadhan.agents a ON a.id = t."agentId" WHERE r.token = $1`,
+         FROM samadhan.csat_requests r JOIN samadhan.tickets t ON t.id = r."ticketId" LEFT JOIN samadhan.agents a ON a.id = t."agentId"
+         WHERE r.token = $1 AND r."sentAt" > now() - interval '30 days'`,
         [token],
     );
     if (!rows.length) throw fail(404, 'This survey link is not valid or has expired.');

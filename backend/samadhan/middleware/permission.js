@@ -24,14 +24,16 @@ const RULES = [
     ['PATCH', '/tickets/:id', (req) => {
         const b = req.body ?? {};
         return ['ticket.edit', ...(b.agentId !== undefined || b.groupId !== undefined ? ['ticket.assign'] : []),
-            ...(b.applicationId !== undefined ? ['ticket.changeApplication'] : []), ...(b.confidential !== undefined ? ['ticket.setConfidential'] : [])];
+            ...(b.applicationId !== undefined ? ['ticket.changeApplication'] : []), ...(b.confidential !== undefined ? ['ticket.setConfidential'] : []),
+            ...(b.priority !== undefined ? ['ticket.overridePriority'] : [])];
     }],
     ['POST', '/tickets/bulk', (req) => {
         const a = String(req.body?.action || '');
         const extra = { spam: 'ticket.spam', unspam: 'ticket.spam', trash: 'ticket.trash', restore: 'ticket.trash', purge: 'ticket.purge', merge: 'ticket.merge' }[a];
         return ['ticket.bulk', ...(extra ? [extra] : []), ...(a === 'update' || a === 'close' ? ['ticket.edit'] : []),
             ...(req.body?.patch?.applicationId !== undefined ? ['ticket.changeApplication'] : []),
-            ...(req.body?.patch?.agentId !== undefined || req.body?.patch?.groupId !== undefined ? ['ticket.assign'] : [])];
+            ...(req.body?.patch?.agentId !== undefined || req.body?.patch?.groupId !== undefined ? ['ticket.assign'] : []),
+            ...(req.body?.patch?.priority !== undefined ? ['ticket.overridePriority'] : [])];
     }],
     ['POST', '/tickets/:id/merge', 'ticket.merge'], ['POST', '/tickets/:id/links', 'ticket.link'], ['POST', '/tickets/:id/watch', 'ticket.view'],
     ['POST', '/tickets/:id/scenarios/:sid', 'scenario.run'], ['POST', '/tickets/:id/presence', 'ticket.view'],

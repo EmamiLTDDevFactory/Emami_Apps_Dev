@@ -31,6 +31,27 @@ test('deliverable: real addresses yes, reserved / demo domains no (they keep the
     for (const no of ['agent1@demo.samadhan.local', 'x@localhost', 'a@b.test', 'a@example.com', 'a@mail.example.org', 'a@x.invalid', 'not-an-email', '', null]) assert.equal(deliverable(no), false, String(no));
 });
 
+test('portal email code: single use, 10 minutes, 5 wrong tries, one a minute / 5 an hour', () => {
+    const { issue, verify } = require('../lib/portalCode');
+    const t0 = Date.UTC(2026, 10, 8, 6, 0, 0);
+    const a = issue('Ravi@ABC.in', t0);
+    assert.match(a.code, /^\d{6}$/);
+    assert.ok(issue('ravi@abc.in', t0 + 30_000).wait > 0, 'a second code within a minute waits');
+    assert.equal(verify('ravi@abc.in', 'abcdef', t0), false, 'not six digits');
+    assert.equal(verify('other@abc.in', a.code, t0), false, 'another address');
+    assert.equal(verify('ravi@abc.in', a.code, t0 + 11 * 60_000), false, 'expired after 10 minutes');
+    const b = issue('ravi@abc.in', t0 + 12 * 60_000);
+    assert.equal(verify('RAVI@abc.in', b.code, t0 + 12 * 60_000), true, 'right code, any case of the address');
+    assert.equal(verify('ravi@abc.in', b.code, t0 + 12 * 60_000), false, 'single use');
+    const c = issue('ravi@abc.in', t0 + 14 * 60_000);
+    const wrong = c.code === '000000' ? '000001' : '000000';
+    for (let i = 0; i < 5; i++) verify('ravi@abc.in', wrong, t0 + 14 * 60_000);
+    assert.equal(verify('ravi@abc.in', c.code, t0 + 14 * 60_000), false, 'ended after 5 wrong tries');
+    issue('ravi@abc.in', t0 + 16 * 60_000);
+    issue('ravi@abc.in', t0 + 18 * 60_000);
+    assert.ok(issue('ravi@abc.in', t0 + 20 * 60_000).wait > 0, 'at most 5 codes an hour');
+});
+
 test('noise filter parks auto-replies, out-of-office and our own notifications', () => {
     const msg = (from, subject, headers = []) => ({ from: { emailAddress: { address: from } }, subject, internetMessageHeaders: headers });
     assert.equal(noiseReason(msg('noreply@vendor.com', 'Hello')), 'auto_reply');

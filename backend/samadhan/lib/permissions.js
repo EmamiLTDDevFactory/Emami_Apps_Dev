@@ -39,6 +39,9 @@ const AGENT = [
     'screen.changeCalendar', 'screen.approvals',
     'ticket.view', 'ticket.create', 'ticket.edit', 'ticket.reply', 'ticket.note', 'ticket.forward', 'ticket.assign', 'ticket.bulk', 'ticket.merge',
     'ticket.link', 'ticket.child', 'ticket.spam', 'ticket.trash', 'ticket.changeApplication', 'ticket.classify',
+    // Agents set priority by hand today (Urgent + Production flags a major incident): kept, now as a real key an Admin
+    // can take away per person / profile (2026-11-08 security review).
+    'ticket.overridePriority',
     'attachment.upload', 'attachment.download',
     'transport.manage', 'externalRef.manage', 'problem.manage', 'change.schedule',
     'canned.personal', 'scenario.run',

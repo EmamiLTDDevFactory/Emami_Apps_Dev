@@ -4,7 +4,7 @@ import { ArrowLeft, BookOpen, CheckCircle2, ChevronDown, ChevronRight, Frown, He
 import type { PortalApplication, PortalCatalogItem, PublicApproval } from '@/lib/types';
 import { CatalogPicker, CatalogQuestions, catalogReady, type Answers } from './Catalog';
 import { ApprovalStepper } from './Change';
-import { publicApproval, publicDecide, portalArticles, portalConfig, portalCreate, portalUpload, portalCsat, portalCsatAnswer, portalStatus, type CsatSurvey, type PortalArticle, type PortalTicketStatus } from '@/lib/api';
+import { publicApproval, publicDecide, portalArticles, portalConfig, portalCreate, portalEmailCode, portalUpload, portalCsat, portalCsatAnswer, portalStatus, type CsatSurvey, type PortalArticle, type PortalTicketStatus } from '@/lib/api';
 import { BASE_PATH } from '@/lib/config';
 import { fmtDateTime } from '@/lib/format';
 import { Button, Field, Notice, Pill, Spinner, Tabs, cx, inputBase, inputCls, textareaCls } from './ui';
@@ -68,7 +68,7 @@ export default function Portal() {
           <>
             {intro && <p className="whitespace-pre-line text-sm text-muted">{intro}</p>}
             <Tabs label="Portal" value={tab} onChange={setTab} tabs={[{ id: 'new', label: 'Raise a ticket' }, { id: 'status', label: 'Check a ticket' }]} />
-            {tab === 'new' ? <><ArticleSearch /><NewRequest categories={config.categories ?? []} files={config.files ?? null} applications={config.applications ?? []} categoriesByWorkspace={config.categoriesByWorkspace ?? {}} catalogItems={config.catalogItems ?? []} /></> : <StatusCheck />}
+            {tab === 'new' ? <><ArticleSearch /><NewRequest categories={config.categories ?? []} files={config.files ?? null} applications={config.applications ?? []} categoriesByWorkspace={config.categoriesByWorkspace ?? {}} catalogItems={config.catalogItems ?? []} emailCode={config.emailCode === true} /></> : <StatusCheck />}
           </>
         )}
         <p className="pt-2 text-center text-2xs text-faint">You can also email <a className="text-accent" href={`mailto:${supportEmail}`}>{supportEmail}</a>. Please do not share passwords or OTPs in a ticket.</p>
@@ -107,7 +107,11 @@ function AppPicker({ apps, value, onChange }: { apps: PortalApplication[]; value
   );
 }
 
-function NewRequest({ categories: salesCategories, files, applications, categoriesByWorkspace, catalogItems }: { categories: string[]; files: { limits: { perFileMb: number; filesPerAction: number } } | null; applications: PortalApplication[]; categoriesByWorkspace: Record<string, string[]>; catalogItems: PortalCatalogItem[] }) {
+function NewRequest({ categories: salesCategories, files, applications, categoriesByWorkspace, catalogItems, emailCode }: { categories: string[]; files: { limits: { perFileMb: number; filesPerAction: number } } | null; applications: PortalApplication[]; categoriesByWorkspace: Record<string, string[]>; catalogItems: PortalCatalogItem[]; emailCode: boolean }) {
+  // Security review: while the server sends mail, a code emailed to the requester comes before the ticket.
+  const [code, setCode] = useState('');
+  const [codeNote, setCodeNote] = useState('');
+  const [sending, setSending] = useState(false);
   // v7 Phase 6: portal-visible catalogue requests of the chosen app's desk.
   const [item, setItem] = useState<PortalCatalogItem | null>(null);
   const [answers, setAnswers] = useState<Answers>({});
@@ -125,13 +129,26 @@ function NewRequest({ categories: salesCategories, files, applications, categori
   const [error, setError] = useState('');
   const [done, setDone] = useState<{ id: number; ref?: string; email: string } | null>(null);
   const set = (p: Partial<typeof EMPTY>) => setF((x) => ({ ...x, ...p }));
-  const ready = f.name.trim() && EMAIL_RE.test(f.email.trim()) && f.subject.trim() && f.description.trim() && catalogReady(chosen, answers, manager);
+  const ready = f.name.trim() && EMAIL_RE.test(f.email.trim()) && f.subject.trim() && f.description.trim() && catalogReady(chosen, answers, manager)
+    && (!emailCode || /^\d{6}$/.test(code.trim()));
+  const sendCode = async () => {
+    setSending(true);
+    setError('');
+    try {
+      await portalEmailCode(f.email.trim());
+      setCodeNote(`We emailed a 6-digit code to ${f.email.trim()}. It works once, for 10 minutes.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not send the code.');
+    } finally {
+      setSending(false);
+    }
+  };
 
   const submit = async () => {
     setBusy(true);
     setError('');
     try {
-      const t = await portalCreate({ ...f, ...(picked ? { applicationId: picked.id } : {}), ...(chosen ? { catalogItemId: chosen.id, catalogAnswers: answers, ...(manager.trim() ? { managerEmail: manager.trim() } : {}) } : {}) });
+      const t = await portalCreate({ ...f, ...(emailCode ? { emailCode: code.trim() } : {}), ...(picked ? { applicationId: picked.id } : {}), ...(chosen ? { catalogItemId: chosen.id, catalogAnswers: answers, ...(manager.trim() ? { managerEmail: manager.trim() } : {}) } : {}) });
       // v7: files go up right after the ticket exists, with the one-ticket upload token from the answer.
       const failed: string[] = [];
       if (t.files && t.id > 0) {
@@ -146,6 +163,8 @@ function NewRequest({ categories: salesCategories, files, applications, categori
       setAppId(null);
       setItem(null);
       setAnswers({});
+      setCode('');
+      setCodeNote('');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not send your request.');
     } finally {
@@ -202,6 +221,16 @@ function NewRequest({ categories: salesCategories, files, applications, categori
       )}
       {/* Left empty by people; bots that fill every field are turned away quietly. */}
       <input type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" className="absolute -left-[9999px] h-px w-px opacity-0" value={f.website} onChange={(e) => set({ website: e.target.value })} />
+      {emailCode && (
+        <Field label="Email code" required hint="We email you a 6-digit code to check the address before the ticket is raised">
+          <div className="flex flex-wrap items-center gap-2">
+            <input className={cx(inputCls, 'w-36 tracking-widest')} inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} aria-label="Email code" />
+            <Button type="button" disabled={sending || !EMAIL_RE.test(f.email.trim())} onClick={sendCode}>{sending ? <Spinner /> : null} {codeNote ? 'Send a new code' : 'Send code'}</Button>
+          </div>
+          {codeNote && <p className="mt-1 text-xs text-muted">{codeNote}</p>}
+        </Field>
+      )}
       {error && <Notice onClose={() => setError('')}>{error}</Notice>}
       <Button type="submit" variant="primary" disabled={busy || !ready}>{busy ? <Spinner /> : <Send size={14} />} Submit ticket</Button>
     </form>

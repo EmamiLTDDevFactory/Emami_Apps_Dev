@@ -52,12 +52,30 @@ const redact = (text, max = 2000) => String(text ?? '')
     .trim()
     .slice(0, max);
 
+/*
+   Daily AI budget per bucket (a service desk key, 'mail' for mail routing, 'dashboard'): SAMADHAN_AI_DAILY_LIMIT calls a
+   day each (default 300; 0 = no limit), counted per IST day in memory per backend copy, like the rate limits. Over the
+   budget the caller gets AiUnavailable and shows the built-in suggestions, as when AI is off.
+*/
+const usage = new Map(); // "day|bucket" -> calls
+function spend(bucket) {
+    const limit = Number(require('../constants').env('AI_DAILY_LIMIT', '300'));
+    if (!Number.isFinite(limit) || limit <= 0) return;
+    const day = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
+    const key = `${day}|${bucket || 'general'}`;
+    const n = usage.get(key) ?? 0;
+    if (n >= limit) throw new AiUnavailable(`Today's AI allowance for this desk (${limit}) is used up.`);
+    usage.set(key, n + 1);
+    if (usage.size > 200) for (const k of usage.keys()) if (!k.startsWith(day)) usage.delete(k);
+}
+
 /**
  * One structured request. `system` is the stable prefix (cached); `user` carries the case data.
  * Returns the parsed JSON object that matches `schema`.
  */
-async function structured({ system, user, schema, effort = 'medium' }) {
+async function structured({ system, user, schema, effort = 'medium', bucket = 'general', maxTokens = 16000 }) {
     if (!aiEnabled()) throw new AiUnavailable('AI is not configured on the server.');
+    spend(bucket);
     let Sdk;
     try {
         Sdk = sdk();
@@ -68,7 +86,7 @@ async function structured({ system, user, schema, effort = 'medium' }) {
     try {
         response = await getClient().beta.messages.create({
             model: MODEL,
-            max_tokens: 16000,
+            max_tokens: maxTokens,
             betas: ['server-side-fallback-2026-07-01'],
             fallbacks: 'default',
             cache_control: { type: 'ephemeral' },

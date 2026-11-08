@@ -13,7 +13,7 @@ export interface Scope { visibility: Visibility; workspaces?: 'all' | string[]; 
 
 // Keys a pre-v7 Agent did not have (Supervisor and Admin did), and keys only an Admin had.
 const SUPERVISOR_UP = new Set([
-  'screen.analytics', 'screen.reports', 'ticket.export', 'ticket.moveWorkspace', 'ticket.overridePriority', 'ticket.declareMajor',
+  'screen.analytics', 'screen.reports', 'ticket.export', 'ticket.moveWorkspace', 'ticket.declareMajor',
   'ticket.viewConfidential', 'ticket.setConfidential', 'ticket.pir.edit', 'attachment.delete', 'article.edit', 'article.publish',
   'views.share', 'report.variants.share', 'insights.refresh', 'company.create',
 ]);

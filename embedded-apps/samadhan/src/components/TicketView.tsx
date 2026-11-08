@@ -623,7 +623,7 @@ function Properties({ ticket: t, reload }: Props & { reload: () => Promise<void>
             </select>
           </Field>
           <Field label="Priority">
-            <select className={cx('h-9 w-full', inputBase)} value={form.priority} onChange={(e) => set({ priority: e.target.value })}>
+            <select className={cx('h-9 w-full', inputBase)} value={form.priority} disabled={!can('ticket.overridePriority')} onChange={(e) => set({ priority: e.target.value })}>
               {Object.entries(meta.priorities).reverse().map(([k, l]) => <option key={k} value={k}>{l}</option>)}
             </select>
           </Field>
