@@ -57,10 +57,14 @@ const WHATSAPP = {
 };
 const MAILBOX = String(env('MAILBOX') || 'emami.helpdesk@emamigroup.com').trim().toLowerCase();
 const EMAIL_RE = /^[^\s@']+@[^\s@']+\.[^\s@']+$/;
+// Reserved domains (RFC 2606 / 6761, e.g. the demo data's @demo.samadhan.local) can never receive mail: sending to
+// them only spends the shared Graph mailbox quota (2026-11-07: 22 throttled sends). They still get the in-app bell.
+const UNDELIVERABLE_RE = /@(?:[^@\s]+\.)?(?:local|localhost|test|example|invalid|example\.(?:com|net|org))$/i;
+const deliverable = (email) => EMAIL_RE.test(String(email ?? '').trim()) && !UNDELIVERABLE_RE.test(String(email).trim());
 const sqlList = (arr) => arr.map((v) => `'${v}'`).join(', ');
 const q = (col) => `"${col}"`;
 
 module.exports = {
     AGENT_EMAIL_TEMPLATES, ACTIVITY_KINDS, AGENT_STATUSES, APP_ID, APP_IDS, env, BELL_EVENTS, BELL_SCOPES, CALL_MODES, CALL_OUTCOMES, CONVERSATION_KINDS, CUSTOMER_SOURCES, EDITABLE_FIELDS,
-    EMAIL_RE, MAILBOX, MAIL_ENABLED, MIN, PATCHABLE, PHONE_RE, PRIORITIES, ROLES, SEVERITIES, SEVERITY_PRIORITY, SOURCES, STATUS, TRIGGERS, WHATSAPP, q, sqlList,
+    EMAIL_RE, MAILBOX, MAIL_ENABLED, MIN, deliverable, PATCHABLE, PHONE_RE, PRIORITIES, ROLES, SEVERITIES, SEVERITY_PRIORITY, SOURCES, STATUS, TRIGGERS, WHATSAPP, q, sqlList,
 };

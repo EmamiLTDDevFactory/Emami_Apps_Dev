@@ -25,6 +25,12 @@ test('ticket number from subject: the three formats, bounded to valid ticket ids
     assert.equal(ticketNumberFromSubject(null), null);
 });
 
+test('deliverable: real addresses yes, reserved / demo domains no (they keep the in-app bell only)', () => {
+    const { deliverable } = require('../constants');
+    for (const ok of ['ravi@abctraders.in', 'animesh@emamigroup.com', 'a.b@sub.example-corp.com', 'x@localstore.in']) assert.equal(deliverable(ok), true, ok);
+    for (const no of ['agent1@demo.samadhan.local', 'x@localhost', 'a@b.test', 'a@example.com', 'a@mail.example.org', 'a@x.invalid', 'not-an-email', '', null]) assert.equal(deliverable(no), false, String(no));
+});
+
 test('noise filter parks auto-replies, out-of-office and our own notifications', () => {
     const msg = (from, subject, headers = []) => ({ from: { emailAddress: { address: from } }, subject, internetMessageHeaders: headers });
     assert.equal(noiseReason(msg('noreply@vendor.com', 'Hello')), 'auto_reply');
