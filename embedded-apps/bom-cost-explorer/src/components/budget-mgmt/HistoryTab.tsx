@@ -5,7 +5,7 @@ import { Button, Card, Field, Spinner, cx, inputCls } from '../ui';
 import { CatBadge, ErrorBox, NO_RECORDS, SkeletonRows, SourceChip, errorText, td, th } from './shared';
 import { fetchHistory, fetchRateSources } from '@/lib/budgetMgmt/api';
 import { COUNTRIES, MATERIAL_TYPES, type BudHistRow, type BudRateSrcRow, type HistoryFilter } from '@/lib/budgetMgmt/types';
-import { defaultHistWindow, groupHistory, showDate, stripZeros, validateHistory, type Errors } from '@/lib/budgetMgmt/rules';
+import { defaultHistWindow, filterHistory, groupHistory, showDate, stripZeros, validateHistory, type Errors } from '@/lib/budgetMgmt/rules';
 import { fmtNum } from '@/lib/format';
 
 const plantKey = (g: string, r: BudHistRow) => `${g}|${r.Werks}`;
@@ -18,6 +18,8 @@ export default function HistoryTab({ gjahr }: { gjahr: string }) {
   const [error, setError] = useState('');
   const [open, setOpen] = useState('');
   const [plantOpen, setPlantOpen] = useState('');
+  const [q, setQ] = useState('');
+  const [cats, setCats] = useState<string[]>([]);
   const [sources, setSources] = useState<Record<string, { rows?: BudRateSrcRow[]; error?: string; loading?: boolean }>>({});
 
   // The shared fiscal year pre-fills this tab (and moves the history window with it).
@@ -42,6 +44,7 @@ export default function HistoryTab({ gjahr }: { gjahr: string }) {
   }
 
   const groups = useMemo(() => groupHistory(rows ?? []), [rows]);
+  const shown = useMemo(() => filterHistory(groups, q, cats), [groups, q, cats]);
   const counts = useMemo(() => { const c = { A: 0, B: 0, C: 0 }; for (const g of groups) if (g.Matcat in c) c[g.Matcat as 'A']++; return c; }, [groups]);
   const num = (k: keyof HistoryFilter) => (v: string) => set(k, v);
 
@@ -69,6 +72,23 @@ export default function HistoryTab({ gjahr }: { gjahr: string }) {
 
       {error && <ErrorBox>{error}</ErrorBox>}
       {rows && rows.length > 0 && <p className="text-sm font-semibold text-ink">Loaded {groups.length} materials ({rows.length} plant rows) — Cat A: {counts.A} · Cat B: {counts.B} · Cat C: {counts.C}</p>}
+      {rows && rows.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-panel px-3 py-2 shadow-card">
+          <div className="relative">
+            <Search size={14} className="pointer-events-none absolute left-2.5 top-2.5 text-faint" />
+            <input aria-label="Filter by material" className={`${inputCls} w-72 pl-8`} placeholder="Material no. or description (comma for several)" value={q} onChange={(e) => setQ(e.target.value)} />
+          </div>
+          <div className="flex items-center gap-1.5" role="group" aria-label="Filter by category">
+            <span className="text-xs font-semibold">Category</span>
+            {(['A', 'B', 'C'] as const).map((c) => (
+              <button key={c} type="button" aria-pressed={cats.includes(c)} onClick={() => setCats((x) => (x.includes(c) ? x.filter((y) => y !== c) : [...x, c]))}
+                className={cx('rounded-full px-3 py-1 text-xs font-bold ring-1', cats.includes(c) ? 'bg-accent text-white ring-accent' : 'bg-panel text-ink ring-line')}>{c} ({counts[c]})</button>
+            ))}
+          </div>
+          <span className="text-xs text-muted">{shown.length} of {groups.length} materials</span>
+          {(q || cats.length > 0) && <button type="button" className="text-xs font-semibold text-accent underline" onClick={() => { setQ(''); setCats([]); }}>Clear filters</button>}
+        </div>
+      )}
       {rows && rows.length === 0 && !error && <Card><p className="py-6 text-center text-sm text-muted">{NO_RECORDS}</p></Card>}
 
       {(loading || (rows && rows.length > 0)) && (
@@ -76,25 +96,24 @@ export default function HistoryTab({ gjahr }: { gjahr: string }) {
           <div className="max-h-[65vh] overflow-auto">
             <table className="w-full border-collapse">
               <thead className="sticky top-0 z-10 bg-sunken">
-                <tr><th className={th} /><th className={th}>Material</th><th className={th}>Description</th><th className={th}>Country</th><th className={th}>Plants</th><th className={th}>Type</th><th className={th}>UOM</th>
+                <tr><th className={th} /><th className={th}>Material</th><th className={th}>Description</th><th className={th}>UOM</th>
                   <th className={cx(th, 'text-right')}>Net Qty</th><th className={cx(th, 'text-right')}>Net Value</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Avg Rate</th><th className={cx(th, 'text-right')}>Country Total</th><th className={th}>Cat</th></tr>
               </thead>
-              {loading ? <SkeletonRows cols={13} /> : (
+              {loading ? <SkeletonRows cols={10} /> : (
                 <tbody>
-                  {groups.map((g) => {
+                  {shown.map((g) => {
                     const isOpen = open === g.key;
                     return (
                       <Fragment key={g.key}>
                         <tr className="cursor-pointer border-b border-line/60 hover:bg-sunken/60" onClick={() => setOpen(isOpen ? '' : g.key)} aria-expanded={isOpen}>
                           <td className={td}>{isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
-                          <td className={cx(td, 'num')}>{stripZeros(g.Matnr)}</td><td className={td}>{g.Maktx}</td><td className={td}>{g.Land1}</td>
-                          <td className={td} title={g.plants.map((p) => p.Werks).join(', ')}>{g.plants.length === 1 ? g.plants[0].Werks : `${g.plants.length} plants`}</td><td className={td}>{g.Mtart || '—'}</td><td className={td}>{g.BaseUom || '—'}</td>
+                          <td className={cx(td, 'num')}>{stripZeros(g.Matnr)}</td><td className={td}>{g.Maktx}</td><td className={td}>{g.BaseUom || '—'}</td>
                           <td className={cx(td, 'num text-right')}>{fmtNum(g.NetQty, 3)}</td><td className={cx(td, 'num text-right')}>{fmtNum(g.NetValue, 2)}</td><td className={td}>{g.Currency || '—'}</td>
                           <td className={cx(td, 'num text-right')}>{fmtNum(g.AvgRate, 6)}</td><td className={cx(td, 'num text-right')}>{fmtNum(g.CtryValue, 2)}</td><td className={td}><CatBadge cat={g.Matcat} /></td>
                         </tr>
                         {isOpen && (
                           <tr className="border-b border-line bg-bg">
-                            <td colSpan={13} className="px-4 py-3">
+                            <td colSpan={10} className="px-4 py-3">
                               <p className="mb-2 text-xs font-bold">{stripZeros(g.Matnr)} — {g.Maktx} — by plant <span className="font-normal text-muted">(click a plant for its rate sources)</span></p>
                               <table className="w-full max-w-4xl border-collapse">
                                 <thead><tr><th className={th}>Plant</th><th className={th}>UOM</th><th className={cx(th, 'text-right')}>Net Qty</th><th className={cx(th, 'text-right')}>Net Value</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Avg Rate</th></tr></thead>
@@ -137,6 +156,7 @@ export default function HistoryTab({ gjahr }: { gjahr: string }) {
                       </Fragment>
                     );
                   })}
+                  {!shown.length && <tr><td colSpan={10} className="px-3 py-8 text-center text-sm text-muted">No materials match the filter</td></tr>}
                 </tbody>
               )}
             </table>

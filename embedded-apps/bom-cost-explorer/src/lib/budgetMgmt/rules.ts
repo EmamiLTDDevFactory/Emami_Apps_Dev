@@ -94,3 +94,10 @@ export function groupHistory(rows: BudHistRow[]): BudHistGroup[] {
     };
   });
 }
+
+/** Material filter (number or description, a comma / space list matches any) and category filter (A / B / C, none = all) of the loaded History. */
+export function filterHistory(groups: BudHistGroup[], q: string, cats: string[]): BudHistGroup[] {
+  const terms = q.split(/[\s,;]+/).map((t) => t.trim().toLowerCase()).filter(Boolean);
+  return groups.filter((g) => (!cats.length || cats.includes(g.Matcat))
+    && (!terms.length || terms.some((t) => g.Matnr.toLowerCase().includes(t) || stripZeros(g.Matnr).toLowerCase().includes(t) || g.Maktx.toLowerCase().includes(t))));
+}

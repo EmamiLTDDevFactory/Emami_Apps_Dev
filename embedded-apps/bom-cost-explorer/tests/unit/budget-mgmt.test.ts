@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { actionBody, historyFilter, patchBody, rateFilter, rateKeyPath, sourceFilter } from '@/lib/budgetMgmt/api';
-import { csvList, dateText, defaultHistWindow, fiscalYear, isEditable, padMatnr, showDate, stripZeros, toSapDate, validateAction, validateEdit, validateHistory, groupHistory } from '@/lib/budgetMgmt/rules';
+import { csvList, dateText, defaultHistWindow, fiscalYear, isEditable, padMatnr, showDate, stripZeros, toSapDate, validateAction, validateEdit, validateHistory, groupHistory, filterHistory } from '@/lib/budgetMgmt/rules';
 
 const hist = { land1: 'IN', gjahr: '2026', histFrom: '2025-04-01', histTo: '2026-03-31', catAFrom: '8,000,000', catBFrom: '4,000,000' };
 
@@ -79,6 +79,22 @@ describe('history at material + country level', () => {
   it('a mixed unit or currency across the plants is left blank', () => {
     const [g] = groupHistory([row({ BaseUom: 'PC' }), row({ Werks: 'X', BaseUom: 'KG', Currency: 'USD' })]);
     expect(g.BaseUom).toBe(''); expect(g.Currency).toBe('');
+  });
+});
+
+describe('history filter on material and category', () => {
+  const r = (Matnr: string, Maktx: string, Matcat: string) => ({ Rowid: '1', Matnr, Maktx, Land1: 'IN', Werks: 'P1', Mtart: 'PKGN', BaseUom: 'PC', NetQty: 1, NetValue: 1, Currency: 'INR', AvgRate: 1, CtryValue: 1, Matcat }) as never;
+  const g = groupHistory([r('000000000151000001', 'Cap blue', 'A'), r('000000000151000002', 'Carton white', 'B'), r('000000000151000003', 'Label', 'C')]);
+  it('no filter shows everything', () => { expect(filterHistory(g, '', [])).toHaveLength(3); });
+  it('material: number (with or without leading zeros) or description, several allowed', () => {
+    expect(filterHistory(g, '151000002', []).map((x) => x.Matnr)).toEqual(['000000000151000002']);
+    expect(filterHistory(g, 'CAP', [])).toHaveLength(1);
+    expect(filterHistory(g, '151000001, label', [])).toHaveLength(2);
+  });
+  it('category: any of the chosen; combines with the material filter', () => {
+    expect(filterHistory(g, '', ['A', 'C'])).toHaveLength(2);
+    expect(filterHistory(g, 'ca', ['B']).map((x) => x.Maktx)).toEqual(['Carton white']);
+    expect(filterHistory(g, 'label', ['A'])).toHaveLength(0);
   });
 });
 
