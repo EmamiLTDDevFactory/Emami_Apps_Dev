@@ -43,7 +43,7 @@ checked by hand, and the gate is green.
 
 ## Still open
 
-- **`xlsx` 0.18.5 has known file-parsing CVEs** (CVE-2023-30533, CVE-2024-22363). It is used only for admin uploads in the browser. The fix is version 0.20.3 from `https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz`, as cascade-pricing and expense use. It can't be installed on this PC: npm here refuses packages fetched from a URL ("Fetching packages of type remote have been disabled"). Whoever owns that npm policy can run, in `embedded-apps/samadhan`: `npm install "xlsx@https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"`.
+- ~~`xlsx` 0.18.5 has known file-parsing CVEs (CVE-2023-30533, CVE-2024-22363)~~ - **fixed**: 0.20.3 (official SheetJS build from `https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz`, SHA-256 `8dc73fc3b00203e72d176e85b50938627c7b086e607c682e8d3c22c02bb99fe8`, no install scripts, no dependencies) is kept in `embedded-apps/samadhan/vendor/` and installed as a `file:` dependency, so every build (this PC, Amplify) installs exactly that file and never fetches it from a URL.
 - ~~CSAT tokens stored in plain text~~ - **fixed** (migration `7.10-csat-hash`, runs at start-up): only `h:` + SHA-256 of each link is stored; links already sent keep working. The step is one-way (down leaves them hashed).
 
 ## For the hub and server owners (not Samadhan code)
