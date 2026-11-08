@@ -118,6 +118,11 @@ describe('dates and payload', () => {
     const p = actionPayload({ action: 'CREATE', scenId: '14', validFrom: '2027-04-01' }, ' A@B.com ');
     expect(p).toMatchObject({ Action: 'CREATE', ScenId: '0000000014', Email: 'a@b.com', ValidFrom: '2027-04-01T00:00:00' });
   });
+  it('edit fields use the SAP names OvrLevel / OvrRule / NewValue', () => {
+    const p = actionPayload({ action: 'EDIT', scenId: '14', level: 'Z', rule: 'P', value: '-10', scopeMatnr: 'A' }, 'a@b.com') as Record<string, unknown>;
+    expect(p).toMatchObject({ OvrLevel: 'Z', OvrRule: 'P', NewValue: '-10', ScopeMatnr: 'A' });
+    expect(p).not.toHaveProperty('Level'); expect(p).not.toHaveProperty('Rule'); expect(p).not.toHaveProperty('Value');
+  });
   it('BudgetVersion is always a string (SAP Edm.String): blank = next free', () => {
     expect(actionPayload({ action: 'CREATE' }, 'a@b.com').BudgetVersion).toBe('');
     expect(actionPayload({ action: 'COPY', scenId: '14', budgetVersion: 3 }, 'a@b.com').BudgetVersion).toBe('3');

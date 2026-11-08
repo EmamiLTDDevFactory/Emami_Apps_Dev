@@ -1,7 +1,7 @@
 /**
  * Packing material budget rate, browser -> SAP gateway (static export: no API routes; the gateway does the CSRF handshake for the writes).
  * Reads: PkgScenSet, PkgItemSet, PkgOvrSet. Every action is one POST of PkgActionSet. The entity and property names below are the assumed
- * contract (not yet checked against the live $metadata): they live in this file only. SAP decides the rights by the email sent.
+ * contract, checked by probing the live service (the edit fields are OvrLevel / OvrRule / NewValue, not Level / Rule / Value): they live in this file only. SAP decides the rights by the email sent.
  */
 import { sapGetCollection, sapWrite, SAP_MAX_TIMEOUT_MS, type SapGetOptions } from '../sap/client';
 import { odataString } from '../sap/filter';
@@ -24,8 +24,8 @@ const item = (r: Raw): PkgItem => ({
   PctSap: num(r.PctSap), PctUsed: num(r.PctUsed), ZbudSap: num(r.ZbudSap), ZbudUsed: num(r.ZbudUsed), CompBaseRate: num(r.CompBaseRate), CompBudRate: num(r.CompBudRate),
 });
 const ovr = (r: Raw): PkgOvr => ({
-  ScenId: str(r.ScenId), OvrDate: isoDate(r.OvrDate), OvrTime: timeText(r.OvrTime), OvrUser: str(r.OvrUser), Level: str(r.Level), Matnr: str(r.Matnr), Matkl: str(r.Matkl),
-  Idnrk: str(r.Idnrk), Rule: str(r.Rule), OldValue: str(r.OldValue), NewValue: str(r.NewValue),
+  ScenId: str(r.ScenId), OvrDate: isoDate(r.OvrDate), OvrTime: timeText(r.OvrTime), OvrUser: str(r.OvrUser), Level: str(r.OvrLevel), Matnr: str(r.Matnr), Matkl: str(r.Matkl),
+  Idnrk: str(r.Idnrk), Rule: str(r.OvrRule), OldValue: str(r.OldValue), NewValue: str(r.NewValue),
 });
 
 const read = async <T,>(set: string, params: Record<string, string | undefined>, map: (r: Raw) => T, opts: SapGetOptions): Promise<T[]> =>
@@ -44,7 +44,7 @@ export function actionPayload(a: PkgActionBody, email: string) {
     Descr: a.descr ?? '', ValidFrom: dt(a.validFrom), ValidTo: dt(a.validTo), KeyDate: dt(a.keyDate),
     BudgetVersion: a.budgetVersion === undefined || a.budgetVersion === '' ? '' : String(a.budgetVersion),
     MtartSel: a.mtartSel ?? '', MatklSel: a.matklSel ?? '', MatnrSel: a.matnrSel ?? '', Prio: a.prio ?? '', Norm: a.norm ?? '',
-    Level: a.level ?? '', Rule: a.rule ?? '', Value: a.value ?? '0', ScopeMatnr: a.scopeMatnr ?? '', ScopeMatkl: a.scopeMatkl ?? '', ScopeIdnrk: a.scopeIdnrk ?? '',
+    OvrLevel: a.level ?? '', OvrRule: a.rule ?? '', NewValue: a.value ?? '0', ScopeMatnr: a.scopeMatnr ?? '', ScopeMatkl: a.scopeMatkl ?? '', ScopeIdnrk: a.scopeIdnrk ?? '',
   };
 }
 
