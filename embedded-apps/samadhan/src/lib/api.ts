@@ -52,25 +52,32 @@ async function notSamadhan(res: Response): Promise<boolean> {
   const body = await res.clone().json().catch(() => null);
   return !body || typeof body.success !== 'boolean';
 }
-/** Use the other route for the rest of the visit (both ways: after the web server change the remembered one goes). */
-function switchToFallbackRoute() {
-  prefix = prefix === 'samadhan' && FALLBACK_ROUTE ? FALLBACK_ROUTE : 'samadhan';
+/**
+ * The route `used` was missing: use the other one for the rest of the visit (both ways: after the web server change the
+ * remembered one goes). Several requests start together on load (me + meta); each switches away from the route IT used,
+ * so a second 404 for the same route does not flip the prefix back (2026-11-08: a fresh tab showed "Could not load
+ * Samadhan" because two parallel requests toggled it twice).
+ */
+function switchFrom(used: string) {
+  if (prefix !== used) return;
+  prefix = used === 'samadhan' && FALLBACK_ROUTE ? FALLBACK_ROUTE : 'samadhan';
   try { sessionStorage.setItem(ROUTE_KEY, prefix); } catch { /* private mode: this page only */ }
 }
 
 async function request<T = Json>(method: string, path: string, body?: unknown): Promise<T> {
   let res: Response;
-  const send = () => fetch(`${apiBase()}/${prefix}${path}`, {
+  const send = (route: string) => fetch(`${apiBase()}/${route}${path}`, {
     method,
     headers: { Authorization: `Bearer ${getHubToken()}`, ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
     body: body !== undefined ? JSON.stringify(body) : undefined,
     cache: 'no-store',
   });
   try {
-    res = await send();
+    const used = prefix;
+    res = await send(used);
     if (await notSamadhan(res)) {
-      switchToFallbackRoute();
-      res = await send();
+      switchFrom(used);
+      res = await send(prefix);
     }
   } catch {
     throw new ApiError('Could not reach the Emami Apps server. Check the network and try again.', 0);
@@ -304,14 +311,15 @@ export const admin = {
 /** Sends one file as the raw request body (its name in X-File-Name). Same sign-in and route fallback as request(). */
 async function sendFile<T>(path: string, file: Blob, name: string, signedIn = true): Promise<T> {
   let res: Response;
-  const send = () => fetch(`${apiBase()}/${prefix}${path}`, {
+  const send = (route: string) => fetch(`${apiBase()}/${route}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(name), ...(signedIn ? { Authorization: `Bearer ${getHubToken()}` } : {}) },
     body: file,
   });
   try {
-    res = await send();
-    if (await notSamadhan(res)) { switchToFallbackRoute(); res = await send(); }
+    const used = prefix;
+    res = await send(used);
+    if (await notSamadhan(res)) { switchFrom(used); res = await send(prefix); }
   } catch {
     throw new ApiError('Could not reach the Emami Apps server. Check the network and try again.', 0);
   }
