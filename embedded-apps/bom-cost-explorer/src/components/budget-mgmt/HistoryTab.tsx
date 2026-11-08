@@ -8,6 +8,8 @@ import { COUNTRIES, MATERIAL_TYPES, type BudHistRow, type BudRateSrcRow, type Hi
 import { defaultHistWindow, filterHistory, groupHistory, latestSourceRate, projectedValue, showDate, sortByCountryTotal, stripZeros, validateHistory, type Errors } from '@/lib/budgetMgmt/rules';
 import { fmtNum } from '@/lib/format';
 
+/** Rupees as lakhs (1 lakh = 100,000). */
+const lakh = (v: number) => v / 100000;
 const plantKey = (g: string, r: BudHistRow) => `${g}|${r.Bukrs}|${r.Werks}`;
 
 export default function HistoryTab({ gjahr }: { gjahr: string }) {
@@ -46,7 +48,8 @@ export default function HistoryTab({ gjahr }: { gjahr: string }) {
   const groups = useMemo(() => sortByCountryTotal(groupHistory(rows ?? [])), [rows]);
 
   // Projected rate: the latest rate source of every material, read in table order (biggest country total first), a few at a time.
-  const [proj, setProj] = useState<Record<string, { rate: number | null; failed?: boolean }>>({});
+  const [proj, setProj] = useState<Record<string, { rate: number | null; failed?: string }>>({});
+  const [retry, setRetry] = useState(0);
   useEffect(() => {
     setProj({});
     if (!groups.length) return;
@@ -55,13 +58,14 @@ export default function HistoryTab({ gjahr }: { gjahr: string }) {
       try {
         const lists = await Promise.all(g.plants.map(async (p) => { const k = plantKey(g.key, p); const list = await fetchRateSources(p.Matnr, p.Bukrs, p.Werks, p.Land1 || f.land1); if (live) setSources((s) => ({ ...s, [k]: { rows: list } })); return list; }));
         if (live) setProj((x) => ({ ...x, [g.key]: { rate: latestSourceRate(lists.flat()) } }));
-      } catch { if (live) setProj((x) => ({ ...x, [g.key]: { rate: null, failed: true } })); }
+      } catch (x) { if (live) setProj((y) => ({ ...y, [g.key]: { rate: null, failed: errorText(x) } })); }
     };
     const worker = async () => { while (live && next < groups.length) await one(groups[next++]); };
-    for (let i = 0; i < 6; i++) void worker();
+    for (let i = 0; i < 3; i++) void worker();
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groups]);
+  }, [groups, retry]);
+  const failed = Object.values(proj).filter((x) => x.failed);
   const projDone = Object.keys(proj).length;
   const shown = useMemo(() => filterHistory(groups, q, cats), [groups, q, cats]);
   const counts = useMemo(() => { const c = { A: 0, B: 0, C: 0 }; for (const g of groups) if (g.Matcat in c) c[g.Matcat as 'A']++; return c; }, [groups]);
@@ -105,6 +109,7 @@ export default function HistoryTab({ gjahr }: { gjahr: string }) {
             ))}
           </div>
           <span className="text-xs text-muted">{shown.length} of {groups.length} materials</span>
+          {projDone === groups.length && failed.length > 0 && <span className="text-xs font-semibold text-bad" title={failed[0].failed}>{failed.length} rate reads failed: {failed[0].failed} <button type="button" className="underline" onClick={() => setRetry((n) => n + 1)}>Retry</button></span>}
           {projDone < groups.length && <span className="text-xs text-muted">Reading latest rates: {projDone} / {groups.length}</span>}
           {(q || cats.length > 0) && <button type="button" className="text-xs font-semibold text-accent underline" onClick={() => { setQ(''); setCats([]); }}>Clear filters</button>}
         </div>
@@ -117,7 +122,7 @@ export default function HistoryTab({ gjahr }: { gjahr: string }) {
             <table className="w-full border-collapse">
               <thead className="sticky top-0 z-10 bg-sunken">
                 <tr><th className={th} /><th className={th}>Material</th><th className={th}>Description</th><th className={th}>UOM</th>
-                  <th className={cx(th, 'text-right')}>Net Qty</th><th className={cx(th, 'text-right')}>Net Value</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Avg Rate</th><th className={cx(th, 'text-right')}>Country Total</th><th className={cx(th, 'text-right')}>Proj Rate</th><th className={cx(th, 'text-right')}>Proj Value</th><th className={th}>Cat</th></tr>
+                  <th className={cx(th, 'text-right')}>Net Qty</th><th className={cx(th, 'text-right')}>Net Value (Lakhs)</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Avg Rate</th><th className={cx(th, 'text-right')}>Country Total</th><th className={cx(th, 'text-right')}>Proj Rate</th><th className={cx(th, 'text-right')}>Proj Value (Lakhs)</th><th className={th}>Cat</th></tr>
               </thead>
               {loading ? <SkeletonRows cols={12} /> : (
                 <tbody>
@@ -128,9 +133,9 @@ export default function HistoryTab({ gjahr }: { gjahr: string }) {
                         <tr className="cursor-pointer border-b border-line/60 hover:bg-sunken/60" onClick={() => setOpen(isOpen ? '' : g.key)} aria-expanded={isOpen}>
                           <td className={td}>{isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
                           <td className={cx(td, 'num')}>{stripZeros(g.Matnr)}</td><td className={td}>{g.Maktx}</td><td className={td}>{g.BaseUom || '—'}</td>
-                          <td className={cx(td, 'num text-right')}>{fmtNum(g.NetQty, 3)}</td><td className={cx(td, 'num text-right')}>{fmtNum(g.NetValue, 2)}</td><td className={td}>{g.Currency || '—'}</td>
+                          <td className={cx(td, 'num text-right')}>{fmtNum(g.NetQty, 3)}</td><td className={cx(td, 'num text-right')}>{fmtNum(lakh(g.NetValue), 3)}</td><td className={td}>{g.Currency || '—'}</td>
                           <td className={cx(td, 'num text-right')}>{fmtNum(g.AvgRate, 6)}</td><td className={cx(td, 'num text-right')}>{fmtNum(g.CtryValue, 2)}</td>{(() => { const pr = proj[g.key]; return pr
-                            ? <><td className={cx(td, 'num text-right')} title={pr.failed ? 'Rate sources could not be read' : undefined}>{pr.rate == null ? '—' : fmtNum(pr.rate, 6)}</td><td className={cx(td, 'num text-right')}>{pr.rate == null ? '—' : fmtNum(projectedValue(g.NetQty, pr.rate), 2)}</td></>
+                            ? <><td className={cx(td, 'num text-right')} title={pr.failed}>{pr.failed ? 'error' : pr.rate == null ? '—' : fmtNum(pr.rate, 3)}</td><td className={cx(td, 'num text-right')}>{pr.rate == null ? '—' : fmtNum(lakh(projectedValue(g.NetQty, pr.rate)), 3)}</td></>
                             : <><td className={cx(td, 'text-right text-faint')}>…</td><td className={cx(td, 'text-right text-faint')}>…</td></>; })()}
                           <td className={td}><CatBadge cat={g.Matcat} /></td>
                         </tr>
@@ -139,7 +144,7 @@ export default function HistoryTab({ gjahr }: { gjahr: string }) {
                             <td colSpan={12} className="px-4 py-3">
                               <p className="mb-2 text-xs font-bold">{stripZeros(g.Matnr)} — {g.Maktx} — by plant <span className="font-normal text-muted">(click a plant for its rate sources)</span></p>
                               <table className="w-full max-w-4xl border-collapse">
-                                <thead><tr><th className={th}>Plant</th><th className={th}>UOM</th><th className={cx(th, 'text-right')}>Net Qty</th><th className={cx(th, 'text-right')}>Net Value</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Avg Rate</th></tr></thead>
+                                <thead><tr><th className={th}>Plant</th><th className={th}>UOM</th><th className={cx(th, 'text-right')}>Net Qty</th><th className={cx(th, 'text-right')}>Net Value (Lakhs)</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Avg Rate</th></tr></thead>
                                 <tbody>
                                   {g.plants.map((p) => {
                                     const k = plantKey(g.key, p); const pOpen = plantOpen === k; const s = sources[k];
@@ -147,7 +152,7 @@ export default function HistoryTab({ gjahr }: { gjahr: string }) {
                                       <Fragment key={k}>
                                         <tr className="cursor-pointer border-b border-line/60 hover:bg-sunken/60" onClick={() => void togglePlant(p, k)} aria-expanded={pOpen}>
                                           <td className={td}><span className="inline-flex items-center gap-1">{pOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}{p.Werks}</span></td><td className={td}>{p.BaseUom}</td>
-                                          <td className={cx(td, 'num text-right')}>{fmtNum(p.NetQty, 3)}</td><td className={cx(td, 'num text-right')}>{fmtNum(p.NetValue, 2)}</td><td className={td}>{p.Currency}</td><td className={cx(td, 'num text-right')}>{fmtNum(p.AvgRate, 6)}</td>
+                                          <td className={cx(td, 'num text-right')}>{fmtNum(p.NetQty, 3)}</td><td className={cx(td, 'num text-right')}>{fmtNum(lakh(p.NetValue), 3)}</td><td className={td}>{p.Currency}</td><td className={cx(td, 'num text-right')}>{fmtNum(p.AvgRate, 6)}</td>
                                         </tr>
                                         {pOpen && (
                                           <tr className="border-b border-line">
