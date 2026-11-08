@@ -4,9 +4,9 @@
  * The approval rights live in SAP (ZBOM_BUD_AUTH), which decides by the email sent; the screen always sends the hub session email.
  */
 import { sapGetCollection, sapWrite, SAP_MAX_TIMEOUT_MS, type SapGetOptions } from '../sap/client';
-import { odataString } from '../sap/filter';
+import { odataDate, odataString } from '../sap/filter';
 import type { ActionPayload, ActionResult, BudHistRow, BudRateRow, BudRateSrcRow, HistoryFilter, RateEdit, RateFilter } from './types';
-import { amount, dateText, padMatnr, toSapDate } from './rules';
+import { amount, dateText, padMatnr } from './rules';
 
 export const BUD_MGMT_SET = { HIST: 'BudHistSet', RATE: 'BudRateSet', SRC: 'BudRateSrcSet', ACTION: 'BudRateActionSet' } as const;
 
@@ -24,7 +24,7 @@ const dec = (s: string) => `${amount(s)}m`;
 export function historyFilter(f: HistoryFilter): string {
   return [
     `Land1 eq ${odataString(f.land1)}`, `Gjahr eq ${odataString(f.gjahr)}`,
-    `HistFrom eq ${odataString(toSapDate(f.histFrom))}`, `HistTo eq ${odataString(toSapDate(f.histTo))}`,
+    `HistFrom eq ${odataDate(f.histFrom)}`, `HistTo eq ${odataDate(f.histTo)}`,
     `CatAFrom eq ${dec(f.catAFrom)}`, `CatBFrom eq ${dec(f.catBFrom)}`,
   ].join(' and ');
 }
