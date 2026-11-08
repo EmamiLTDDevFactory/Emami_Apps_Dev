@@ -5,10 +5,10 @@ import { Button, Card, Field, Spinner, cx, inputCls } from '../ui';
 import { CatBadge, ErrorBox, NO_RECORDS, SkeletonRows, SourceChip, errorText, td, th } from './shared';
 import { fetchHistory, fetchRateSources } from '@/lib/budgetMgmt/api';
 import { COUNTRIES, MATERIAL_TYPES, type BudHistRow, type BudRateSrcRow, type HistoryFilter } from '@/lib/budgetMgmt/types';
-import { defaultHistWindow, showDate, stripZeros, validateHistory, type Errors } from '@/lib/budgetMgmt/rules';
+import { defaultHistWindow, groupHistory, showDate, stripZeros, validateHistory, type Errors } from '@/lib/budgetMgmt/rules';
 import { fmtNum } from '@/lib/format';
 
-const rowKey = (r: BudHistRow, i: number) => r.Rowid || `${r.Matnr}|${r.Werks}|${i}`;
+const plantKey = (g: string, r: BudHistRow) => `${g}|${r.Werks}`;
 
 export default function HistoryTab({ gjahr }: { gjahr: string }) {
   const [f, setF] = useState<HistoryFilter>(() => { const w = defaultHistWindow(gjahr); return { land1: 'IN', gjahr, histFrom: w.from, histTo: w.to, catAFrom: '8,000,000', catBFrom: '4,000,000', mtart: [] }; });
@@ -17,6 +17,7 @@ export default function HistoryTab({ gjahr }: { gjahr: string }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [open, setOpen] = useState('');
+  const [plantOpen, setPlantOpen] = useState('');
   const [sources, setSources] = useState<Record<string, { rows?: BudRateSrcRow[]; error?: string; loading?: boolean }>>({});
 
   // The shared fiscal year pre-fills this tab (and moves the history window with it).
@@ -27,20 +28,21 @@ export default function HistoryTab({ gjahr }: { gjahr: string }) {
     const e = validateHistory(f);
     setErrs(e);
     if (Object.keys(e).length) return;
-    setLoading(true); setError(''); setOpen(''); setSources({}); setRows(null);
+    setLoading(true); setError(''); setOpen(''); setPlantOpen(''); setSources({}); setRows(null);
     try { setRows(await fetchHistory(f)); } catch (x) { setError(errorText(x)); }
     setLoading(false);
   }
 
-  async function toggle(r: BudHistRow, k: string) {
-    if (open === k) return setOpen('');
-    setOpen(k);
+  async function togglePlant(r: BudHistRow, k: string) {
+    if (plantOpen === k) return setPlantOpen('');
+    setPlantOpen(k);
     if (sources[k]) return;
     try { setSources((s) => ({ ...s, [k]: { loading: true } })); const list = await fetchRateSources(r.Matnr, r.Werks, r.Land1 || f.land1); setSources((s) => ({ ...s, [k]: { rows: list } })); }
     catch (x) { setSources((s) => ({ ...s, [k]: { error: errorText(x) } })); }
   }
 
-  const counts = useMemo(() => { const c = { A: 0, B: 0, C: 0 }; for (const r of rows ?? []) if (r.Matcat in c) c[r.Matcat as 'A']++; return c; }, [rows]);
+  const groups = useMemo(() => groupHistory(rows ?? []), [rows]);
+  const counts = useMemo(() => { const c = { A: 0, B: 0, C: 0 }; for (const g of groups) if (g.Matcat in c) c[g.Matcat as 'A']++; return c; }, [groups]);
   const num = (k: keyof HistoryFilter) => (v: string) => set(k, v);
 
   return (
@@ -66,7 +68,7 @@ export default function HistoryTab({ gjahr }: { gjahr: string }) {
       </Card>
 
       {error && <ErrorBox>{error}</ErrorBox>}
-      {rows && rows.length > 0 && <p className="text-sm font-semibold text-ink">Loaded {rows.length} materials — Cat A: {counts.A} · Cat B: {counts.B} · Cat C: {counts.C}</p>}
+      {rows && rows.length > 0 && <p className="text-sm font-semibold text-ink">Loaded {groups.length} materials ({rows.length} plant rows) — Cat A: {counts.A} · Cat B: {counts.B} · Cat C: {counts.C}</p>}
       {rows && rows.length === 0 && !error && <Card><p className="py-6 text-center text-sm text-muted">{NO_RECORDS}</p></Card>}
 
       {(loading || (rows && rows.length > 0)) && (
@@ -74,37 +76,61 @@ export default function HistoryTab({ gjahr }: { gjahr: string }) {
           <div className="max-h-[65vh] overflow-auto">
             <table className="w-full border-collapse">
               <thead className="sticky top-0 z-10 bg-sunken">
-                <tr><th className={th} /><th className={th}>Material</th><th className={th}>Description</th><th className={th}>Country</th><th className={th}>Plant</th><th className={th}>Type</th><th className={th}>UOM</th>
+                <tr><th className={th} /><th className={th}>Material</th><th className={th}>Description</th><th className={th}>Country</th><th className={th}>Plants</th><th className={th}>Type</th><th className={th}>UOM</th>
                   <th className={cx(th, 'text-right')}>Net Qty</th><th className={cx(th, 'text-right')}>Net Value</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Avg Rate</th><th className={cx(th, 'text-right')}>Country Total</th><th className={th}>Cat</th></tr>
               </thead>
               {loading ? <SkeletonRows cols={13} /> : (
                 <tbody>
-                  {rows!.map((r, i) => {
-                    const k = rowKey(r, i); const isOpen = open === k; const s = sources[k];
+                  {groups.map((g) => {
+                    const isOpen = open === g.key;
                     return (
-                      <Fragment key={k}>
-                        <tr className="cursor-pointer border-b border-line/60 hover:bg-sunken/60" onClick={() => void toggle(r, k)} aria-expanded={isOpen}>
+                      <Fragment key={g.key}>
+                        <tr className="cursor-pointer border-b border-line/60 hover:bg-sunken/60" onClick={() => setOpen(isOpen ? '' : g.key)} aria-expanded={isOpen}>
                           <td className={td}>{isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
-                          <td className={cx(td, 'num')}>{stripZeros(r.Matnr)}</td><td className={td}>{r.Maktx}</td><td className={td}>{r.Land1}</td><td className={td}>{r.Werks}</td><td className={td}>{r.Mtart}</td><td className={td}>{r.BaseUom}</td>
-                          <td className={cx(td, 'num text-right')}>{fmtNum(r.NetQty, 3)}</td><td className={cx(td, 'num text-right')}>{fmtNum(r.NetValue, 2)}</td><td className={td}>{r.Currency}</td>
-                          <td className={cx(td, 'num text-right')}>{fmtNum(r.AvgRate, 6)}</td><td className={cx(td, 'num text-right')}>{fmtNum(r.CtryValue, 2)}</td><td className={td}><CatBadge cat={r.Matcat} /></td>
+                          <td className={cx(td, 'num')}>{stripZeros(g.Matnr)}</td><td className={td}>{g.Maktx}</td><td className={td}>{g.Land1}</td>
+                          <td className={td} title={g.plants.map((p) => p.Werks).join(', ')}>{g.plants.length === 1 ? g.plants[0].Werks : `${g.plants.length} plants`}</td><td className={td}>{g.Mtart || '—'}</td><td className={td}>{g.BaseUom || '—'}</td>
+                          <td className={cx(td, 'num text-right')}>{fmtNum(g.NetQty, 3)}</td><td className={cx(td, 'num text-right')}>{fmtNum(g.NetValue, 2)}</td><td className={td}>{g.Currency || '—'}</td>
+                          <td className={cx(td, 'num text-right')}>{fmtNum(g.AvgRate, 6)}</td><td className={cx(td, 'num text-right')}>{fmtNum(g.CtryValue, 2)}</td><td className={td}><CatBadge cat={g.Matcat} /></td>
                         </tr>
                         {isOpen && (
                           <tr className="border-b border-line bg-bg">
                             <td colSpan={13} className="px-4 py-3">
-                              <p className="mb-2 text-xs font-bold">{stripZeros(r.Matnr)} — {r.Maktx} — Rate sources</p>
-                              {!s || s.loading ? <Spinner /> : s.error ? <ErrorBox>{s.error}</ErrorBox> : s.rows!.length === 0 ? <p className="text-xs text-muted">{NO_RECORDS}</p> : (
-                                <table className="w-full max-w-4xl border-collapse">
-                                  <thead><tr><th className={th}>Source</th><th className={th}>Cond</th><th className={th}>Vendor</th><th className={cx(th, 'text-right')}>Rate</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Per</th><th className={th}>Valid</th><th className={cx(th, 'text-right')}>Rate/Pc (INR)</th></tr></thead>
-                                  <tbody>{s.rows!.map((x, j) => (
-                                    <tr key={j} className="border-b border-line/60">
-                                      <td className={td}><SourceChip src={x.RateSrc} /></td><td className={td}>{x.CondType || '—'}</td><td className={td}>{x.Vendor ? `${x.Vendor} ${x.Vendname}` : '—'}</td>
-                                      <td className={cx(td, 'num text-right')}>{fmtNum(x.Rate, 2)}</td><td className={td}>{x.Currency}</td><td className={cx(td, 'num text-right')}>{x.PriceUnit || '—'}</td>
-                                      <td className={td}>{x.ValidFrom ? `${showDate(x.ValidFrom)} – ${showDate(x.ValidTo)}` : '—'}</td>
-                                      <td className={cx(td, 'num text-right font-extrabold text-accent')}>{fmtNum(x.RatePc, 2)}</td>
-                                    </tr>))}</tbody>
-                                </table>
-                              )}
+                              <p className="mb-2 text-xs font-bold">{stripZeros(g.Matnr)} — {g.Maktx} — by plant <span className="font-normal text-muted">(click a plant for its rate sources)</span></p>
+                              <table className="w-full max-w-4xl border-collapse">
+                                <thead><tr><th className={th}>Plant</th><th className={th}>UOM</th><th className={cx(th, 'text-right')}>Net Qty</th><th className={cx(th, 'text-right')}>Net Value</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Avg Rate</th></tr></thead>
+                                <tbody>
+                                  {g.plants.map((p) => {
+                                    const k = plantKey(g.key, p); const pOpen = plantOpen === k; const s = sources[k];
+                                    return (
+                                      <Fragment key={k}>
+                                        <tr className="cursor-pointer border-b border-line/60 hover:bg-sunken/60" onClick={() => void togglePlant(p, k)} aria-expanded={pOpen}>
+                                          <td className={td}><span className="inline-flex items-center gap-1">{pOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}{p.Werks}</span></td><td className={td}>{p.BaseUom}</td>
+                                          <td className={cx(td, 'num text-right')}>{fmtNum(p.NetQty, 3)}</td><td className={cx(td, 'num text-right')}>{fmtNum(p.NetValue, 2)}</td><td className={td}>{p.Currency}</td><td className={cx(td, 'num text-right')}>{fmtNum(p.AvgRate, 6)}</td>
+                                        </tr>
+                                        {pOpen && (
+                                          <tr className="border-b border-line">
+                                            <td colSpan={6} className="px-3 py-2">
+                                              <p className="mb-1 text-xs font-bold">Rate sources — plant {p.Werks}</p>
+                                              {!s || s.loading ? <Spinner /> : s.error ? <ErrorBox>{s.error}</ErrorBox> : s.rows!.length === 0 ? <p className="text-xs text-muted">{NO_RECORDS}</p> : (
+                                                <table className="w-full border-collapse">
+                                                  <thead><tr><th className={th}>Source</th><th className={th}>Cond</th><th className={th}>Vendor</th><th className={cx(th, 'text-right')}>Rate</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Per</th><th className={th}>Valid</th><th className={cx(th, 'text-right')}>Rate/Pc (INR)</th></tr></thead>
+                                                  <tbody>{s.rows!.map((x, j) => (
+                                                    <tr key={j} className="border-b border-line/60">
+                                                      <td className={td}><SourceChip src={x.RateSrc} /></td><td className={td}>{x.CondType || '—'}</td><td className={td}>{x.Vendor ? `${x.Vendor} ${x.Vendname}` : '—'}</td>
+                                                      <td className={cx(td, 'num text-right')}>{fmtNum(x.Rate, 2)}</td><td className={td}>{x.Currency}</td><td className={cx(td, 'num text-right')}>{x.PriceUnit || '—'}</td>
+                                                      <td className={td}>{x.ValidFrom ? `${showDate(x.ValidFrom)} – ${showDate(x.ValidTo)}` : '—'}</td>
+                                                      <td className={cx(td, 'num text-right font-extrabold text-accent')}>{fmtNum(x.RatePc, 2)}</td>
+                                                    </tr>))}</tbody>
+                                                </table>
+                                              )}
+                                            </td>
+                                          </tr>
+                                        )}
+                                      </Fragment>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
                             </td>
                           </tr>
                         )}

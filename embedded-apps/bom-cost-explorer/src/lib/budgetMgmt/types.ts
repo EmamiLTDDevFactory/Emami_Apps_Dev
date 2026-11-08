@@ -30,3 +30,9 @@ export interface RateFilter { gjahr: string; land1: string; status: string; matn
 export interface RateEdit { adjType: AdjType; adjValue: string; overrideRate: string; overrideRsn: string }
 export interface ActionPayload { action: RateAction; gjahr: string; land1: string; matnrCsv: string; werksCsv: string; reason: string; email: string }
 export interface ActionResult { RowsActed: number; Message: string }
+
+/** History rows of one material in one country, summed over its plants (SAP returns one row per plant). */
+export interface BudHistGroup {
+  key: string; Matnr: string; Maktx: string; Land1: string; Mtart: string; BaseUom: string; Currency: string;
+  NetQty: number; NetValue: number; AvgRate: number; CtryValue: number; Matcat: string; plants: BudHistRow[];
+}

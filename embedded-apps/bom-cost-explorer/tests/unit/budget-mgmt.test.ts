@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { actionBody, historyFilter, patchBody, rateFilter, rateKeyPath, sourceFilter } from '@/lib/budgetMgmt/api';
-import { csvList, dateText, defaultHistWindow, fiscalYear, isEditable, padMatnr, showDate, stripZeros, toSapDate, validateAction, validateEdit, validateHistory } from '@/lib/budgetMgmt/rules';
+import { csvList, dateText, defaultHistWindow, fiscalYear, isEditable, padMatnr, showDate, stripZeros, toSapDate, validateAction, validateEdit, validateHistory, groupHistory } from '@/lib/budgetMgmt/rules';
 
 const hist = { land1: 'IN', gjahr: '2026', histFrom: '2025-04-01', histTo: '2026-03-31', catAFrom: '8,000,000', catBFrom: '4,000,000' };
 
@@ -63,3 +63,22 @@ describe('budget rate management rules', () => {
     expect(['S', 'A', 'R'].some(isEditable)).toBe(false);
   });
 });
+
+describe('history at material + country level', () => {
+  const row = (o: Record<string, unknown>) => ({ Rowid: '1', Matnr: '151029248', Maktx: 'M', Land1: 'IN', Werks: 'UN13', Mtart: 'PKGN', BaseUom: 'PC', NetQty: 0, NetValue: 0, Currency: 'INR', AvgRate: 0, CtryValue: 2971.46, Matcat: 'C', ...o }) as never;
+  it('sums the plants of one material and country; country total and category are taken, not added', () => {
+    const [g, ...rest] = groupHistory([row({ Werks: 'UN13', NetValue: -22.9, NetQty: 10 }), row({ Werks: 'UN02', NetValue: 2994.36, NetQty: 30 })]);
+    expect(rest).toHaveLength(0);
+    expect(g.NetValue).toBeCloseTo(2971.46, 6); expect(g.NetQty).toBe(40); expect(g.AvgRate).toBeCloseTo(2971.46 / 40, 6);
+    expect(g.CtryValue).toBe(2971.46); expect(g.Matcat).toBe('C'); expect(g.plants.map((p) => p.Werks)).toEqual(['UN02', 'UN13']);
+  });
+  it('keeps different materials and countries apart; zero quantity gives a zero rate', () => {
+    const g = groupHistory([row({}), row({ Matnr: '2' }), row({ Land1: 'LK' })]);
+    expect(g).toHaveLength(3); expect(g[0].AvgRate).toBe(0);
+  });
+  it('a mixed unit or currency across the plants is left blank', () => {
+    const [g] = groupHistory([row({ BaseUom: 'PC' }), row({ Werks: 'X', BaseUom: 'KG', Currency: 'USD' })]);
+    expect(g.BaseUom).toBe(''); expect(g.Currency).toBe('');
+  });
+});
+

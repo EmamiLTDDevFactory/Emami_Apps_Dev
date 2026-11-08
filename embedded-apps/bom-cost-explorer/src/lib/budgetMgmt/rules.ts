@@ -1,5 +1,6 @@
 /** Pure rules of the budget rate management screens: dates, material numbers, filters and the frontend validation. */
-import type { ActionPayload, AdjType, HistoryFilter, RateEdit, RateAction } from './types';
+import Decimal from 'decimal.js';
+import type { ActionPayload, AdjType, BudHistGroup, BudHistRow, HistoryFilter, RateEdit, RateAction } from './types';
 
 /** YYYYMMDD -> DD.MM.YYYY (anything else is shown as it is). */
 export const showDate = (v: string) => (/^\d{8}$/.test(v) ? `${v.slice(6)}.${v.slice(4, 6)}.${v.slice(0, 4)}` : v);
@@ -72,3 +73,24 @@ export const ACTION_FROM: Record<RateAction, { from: string; to: string }> = {
 };
 export const isEditable = (status: string) => status === 'D' || status === 'V';
 export const adjLabel = (t: string): AdjType | string => t;
+
+/**
+ * History at material + country level: quantity and value are summed over the plants (the plant rows are kept for the drill-down), the average
+ * rate is value / quantity. Country total and category are SAP's own country-level figures, the same on every plant row, so they are taken, not added.
+ * A mixed unit of measure or currency across the plants is left blank rather than added up wrongly.
+ */
+export function groupHistory(rows: BudHistRow[]): BudHistGroup[] {
+  const by = new Map<string, BudHistRow[]>();
+  for (const r of rows) { const k = `${r.Matnr}|${r.Land1}`; by.set(k, [...(by.get(k) ?? []), r]); }
+  return Array.from(by, ([key, plants]) => {
+    const h = plants[0];
+    const qty = plants.reduce((s, r) => s.plus(String(r.NetQty)), new Decimal(0));
+    const val = plants.reduce((s, r) => s.plus(String(r.NetValue)), new Decimal(0));
+    const same = (f: (r: BudHistRow) => string) => (plants.every((r) => f(r) === f(h)) ? f(h) : '');
+    return {
+      key, Matnr: h.Matnr, Maktx: h.Maktx, Land1: h.Land1, Mtart: same((r) => r.Mtart), BaseUom: same((r) => r.BaseUom), Currency: same((r) => r.Currency),
+      NetQty: qty.toNumber(), NetValue: val.toNumber(), AvgRate: qty.isZero() ? 0 : val.div(qty).toNumber(), CtryValue: h.CtryValue, Matcat: h.Matcat,
+      plants: [...plants].sort((a, b) => a.Werks.localeCompare(b.Werks)),
+    };
+  });
+}
