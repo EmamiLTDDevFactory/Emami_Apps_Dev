@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { actionBody, historyFilter, patchBody, rateFilter, rateKeyPath, sourceFilter } from '@/lib/budgetMgmt/api';
-import { csvList, dateText, defaultHistWindow, fiscalYear, isEditable, padMatnr, showDate, stripZeros, toSapDate, validateAction, validateEdit, validateHistory, groupHistory, filterHistory } from '@/lib/budgetMgmt/rules';
+import { csvList, dateText, defaultHistWindow, fiscalYear, isEditable, padMatnr, showDate, stripZeros, toSapDate, validateAction, validateEdit, validateHistory, groupHistory, filterHistory, latestSourceRate, projectedValue, sortByCountryTotal } from '@/lib/budgetMgmt/rules';
 
 const hist = { land1: 'IN', gjahr: '2026', histFrom: '2025-04-01', histTo: '2026-03-31', catAFrom: '8,000,000', catBFrom: '4,000,000' };
 
@@ -99,3 +99,16 @@ describe('history filter on material and category', () => {
   });
 });
 
+
+describe('projected rate and value', () => {
+  const s = (RatePc: number, ValidFrom: string) => ({ RateSrc: 'P', CondType: '', Vendor: '', Vendname: '', Rate: RatePc, Currency: 'INR', PriceUnit: 1, ValidFrom, ValidTo: '99991231', RatePc, LocalCurr: 'INR', RateLocal: RatePc });
+  it('takes the rate with the latest ValidFrom, ignoring zero rates', () => {
+    expect(latestSourceRate([s(10, '20250401'), s(12, '20260401'), s(0, '20270101')])).toBe(12);
+    expect(latestSourceRate([])).toBeNull();
+  });
+  it('value = quantity x rate, without float noise', () => { expect(projectedValue(3, 0.1)).toBe(0.3); });
+  it('sorts by country total, biggest first', () => {
+    const g = (k: string, CtryValue: number) => ({ key: k, CtryValue }) as never;
+    expect(sortByCountryTotal([g('a', 1), g('b', 9), g('c', 5)]).map((x) => (x as { key: string }).key)).toEqual(['b', 'c', 'a']);
+  });
+});

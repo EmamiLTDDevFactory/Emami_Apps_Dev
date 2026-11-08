@@ -1,6 +1,6 @@
 /** Pure rules of the budget rate management screens: dates, material numbers, filters and the frontend validation. */
 import Decimal from 'decimal.js';
-import type { ActionPayload, AdjType, BudHistGroup, BudHistRow, HistoryFilter, RateEdit, RateAction } from './types';
+import type { ActionPayload, AdjType, BudHistGroup, BudHistRow, BudRateSrcRow, HistoryFilter, RateEdit, RateAction } from './types';
 
 /** YYYYMMDD -> DD.MM.YYYY (anything else is shown as it is). */
 export const showDate = (v: string) => (/^\d{8}$/.test(v) ? `${v.slice(6)}.${v.slice(4, 6)}.${v.slice(0, 4)}` : v);
@@ -94,6 +94,19 @@ export function groupHistory(rows: BudHistRow[]): BudHistGroup[] {
     };
   });
 }
+
+/** Biggest country total first (the order of the History table). */
+export const sortByCountryTotal = (groups: BudHistGroup[]): BudHistGroup[] => [...groups].sort((a, b) => b.CtryValue - a.CtryValue);
+
+/** Projected rate = the latest rate of the rate sources (greatest ValidFrom, INR per piece); null when there is none. */
+export function latestSourceRate(rows: BudRateSrcRow[]): number | null {
+  let best: BudRateSrcRow | null = null;
+  for (const r of rows) if (r.RatePc > 0 && (!best || r.ValidFrom > best.ValidFrom)) best = r;
+  return best ? best.RatePc : null;
+}
+
+/** Projected value = quantity x projected rate. */
+export const projectedValue = (qty: number, rate: number): number => new Decimal(String(qty)).times(String(rate)).toNumber();
 
 /** Material filter (number or description, a comma / space list matches any) and category filter (A / B / C, none = all) of the loaded History. */
 export function filterHistory(groups: BudHistGroup[], q: string, cats: string[]): BudHistGroup[] {

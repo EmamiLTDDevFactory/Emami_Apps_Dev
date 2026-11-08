@@ -5,7 +5,7 @@ import { Button, Card, Field, Spinner, cx, inputCls } from '../ui';
 import { CatBadge, ErrorBox, NO_RECORDS, SkeletonRows, SourceChip, errorText, td, th } from './shared';
 import { fetchHistory, fetchRateSources } from '@/lib/budgetMgmt/api';
 import { COUNTRIES, MATERIAL_TYPES, type BudHistRow, type BudRateSrcRow, type HistoryFilter } from '@/lib/budgetMgmt/types';
-import { defaultHistWindow, filterHistory, groupHistory, showDate, stripZeros, validateHistory, type Errors } from '@/lib/budgetMgmt/rules';
+import { defaultHistWindow, filterHistory, groupHistory, latestSourceRate, projectedValue, showDate, sortByCountryTotal, stripZeros, validateHistory, type Errors } from '@/lib/budgetMgmt/rules';
 import { fmtNum } from '@/lib/format';
 
 const plantKey = (g: string, r: BudHistRow) => `${g}|${r.Bukrs}|${r.Werks}`;
@@ -43,7 +43,26 @@ export default function HistoryTab({ gjahr }: { gjahr: string }) {
     catch (x) { setSources((s) => ({ ...s, [k]: { error: errorText(x) } })); }
   }
 
-  const groups = useMemo(() => groupHistory(rows ?? []), [rows]);
+  const groups = useMemo(() => sortByCountryTotal(groupHistory(rows ?? [])), [rows]);
+
+  // Projected rate: the latest rate source of every material, read in table order (biggest country total first), a few at a time.
+  const [proj, setProj] = useState<Record<string, { rate: number | null; failed?: boolean }>>({});
+  useEffect(() => {
+    setProj({});
+    if (!groups.length) return;
+    let live = true; let next = 0;
+    const one = async (g: (typeof groups)[number]) => {
+      try {
+        const lists = await Promise.all(g.plants.map(async (p) => { const k = plantKey(g.key, p); const list = await fetchRateSources(p.Matnr, p.Bukrs, p.Werks, p.Land1 || f.land1); if (live) setSources((s) => ({ ...s, [k]: { rows: list } })); return list; }));
+        if (live) setProj((x) => ({ ...x, [g.key]: { rate: latestSourceRate(lists.flat()) } }));
+      } catch { if (live) setProj((x) => ({ ...x, [g.key]: { rate: null, failed: true } })); }
+    };
+    const worker = async () => { while (live && next < groups.length) await one(groups[next++]); };
+    for (let i = 0; i < 6; i++) void worker();
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groups]);
+  const projDone = Object.keys(proj).length;
   const shown = useMemo(() => filterHistory(groups, q, cats), [groups, q, cats]);
   const counts = useMemo(() => { const c = { A: 0, B: 0, C: 0 }; for (const g of groups) if (g.Matcat in c) c[g.Matcat as 'A']++; return c; }, [groups]);
   const num = (k: keyof HistoryFilter) => (v: string) => set(k, v);
@@ -86,6 +105,7 @@ export default function HistoryTab({ gjahr }: { gjahr: string }) {
             ))}
           </div>
           <span className="text-xs text-muted">{shown.length} of {groups.length} materials</span>
+          {projDone < groups.length && <span className="text-xs text-muted">Reading latest rates: {projDone} / {groups.length}</span>}
           {(q || cats.length > 0) && <button type="button" className="text-xs font-semibold text-accent underline" onClick={() => { setQ(''); setCats([]); }}>Clear filters</button>}
         </div>
       )}
@@ -97,9 +117,9 @@ export default function HistoryTab({ gjahr }: { gjahr: string }) {
             <table className="w-full border-collapse">
               <thead className="sticky top-0 z-10 bg-sunken">
                 <tr><th className={th} /><th className={th}>Material</th><th className={th}>Description</th><th className={th}>UOM</th>
-                  <th className={cx(th, 'text-right')}>Net Qty</th><th className={cx(th, 'text-right')}>Net Value</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Avg Rate</th><th className={cx(th, 'text-right')}>Country Total</th><th className={th}>Cat</th></tr>
+                  <th className={cx(th, 'text-right')}>Net Qty</th><th className={cx(th, 'text-right')}>Net Value</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Avg Rate</th><th className={cx(th, 'text-right')}>Country Total</th><th className={cx(th, 'text-right')}>Proj Rate</th><th className={cx(th, 'text-right')}>Proj Value</th><th className={th}>Cat</th></tr>
               </thead>
-              {loading ? <SkeletonRows cols={10} /> : (
+              {loading ? <SkeletonRows cols={12} /> : (
                 <tbody>
                   {shown.map((g) => {
                     const isOpen = open === g.key;
@@ -109,11 +129,14 @@ export default function HistoryTab({ gjahr }: { gjahr: string }) {
                           <td className={td}>{isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
                           <td className={cx(td, 'num')}>{stripZeros(g.Matnr)}</td><td className={td}>{g.Maktx}</td><td className={td}>{g.BaseUom || '—'}</td>
                           <td className={cx(td, 'num text-right')}>{fmtNum(g.NetQty, 3)}</td><td className={cx(td, 'num text-right')}>{fmtNum(g.NetValue, 2)}</td><td className={td}>{g.Currency || '—'}</td>
-                          <td className={cx(td, 'num text-right')}>{fmtNum(g.AvgRate, 6)}</td><td className={cx(td, 'num text-right')}>{fmtNum(g.CtryValue, 2)}</td><td className={td}><CatBadge cat={g.Matcat} /></td>
+                          <td className={cx(td, 'num text-right')}>{fmtNum(g.AvgRate, 6)}</td><td className={cx(td, 'num text-right')}>{fmtNum(g.CtryValue, 2)}</td>{(() => { const pr = proj[g.key]; return pr
+                            ? <><td className={cx(td, 'num text-right')} title={pr.failed ? 'Rate sources could not be read' : undefined}>{pr.rate == null ? '—' : fmtNum(pr.rate, 6)}</td><td className={cx(td, 'num text-right')}>{pr.rate == null ? '—' : fmtNum(projectedValue(g.NetQty, pr.rate), 2)}</td></>
+                            : <><td className={cx(td, 'text-right text-faint')}>…</td><td className={cx(td, 'text-right text-faint')}>…</td></>; })()}
+                          <td className={td}><CatBadge cat={g.Matcat} /></td>
                         </tr>
                         {isOpen && (
                           <tr className="border-b border-line bg-bg">
-                            <td colSpan={10} className="px-4 py-3">
+                            <td colSpan={12} className="px-4 py-3">
                               <p className="mb-2 text-xs font-bold">{stripZeros(g.Matnr)} — {g.Maktx} — by plant <span className="font-normal text-muted">(click a plant for its rate sources)</span></p>
                               <table className="w-full max-w-4xl border-collapse">
                                 <thead><tr><th className={th}>Plant</th><th className={th}>UOM</th><th className={cx(th, 'text-right')}>Net Qty</th><th className={cx(th, 'text-right')}>Net Value</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Avg Rate</th></tr></thead>
@@ -156,7 +179,7 @@ export default function HistoryTab({ gjahr }: { gjahr: string }) {
                       </Fragment>
                     );
                   })}
-                  {!shown.length && <tr><td colSpan={10} className="px-3 py-8 text-center text-sm text-muted">No materials match the filter</td></tr>}
+                  {!shown.length && <tr><td colSpan={12} className="px-3 py-8 text-center text-sm text-muted">No materials match the filter</td></tr>}
                 </tbody>
               )}
             </table>
