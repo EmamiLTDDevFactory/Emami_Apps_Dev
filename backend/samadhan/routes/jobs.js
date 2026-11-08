@@ -12,7 +12,8 @@ const { rateLimit } = require('../middleware/rateLimit');
 const router = express.Router();
 
 // Scheduler entry point: Admin, or a scheduler holding HUB_INTERNAL_API_SECRET. Registered before requireAccess.
-router.post('/jobs/run', rateLimit, wrap(async (req, res) => {
+// Who is calling is checked BEFORE the rate limit: otherwise anonymous junk requests use up the scheduler's allowance.
+const allowed = wrap(async (req, res) => {
     const secret = process.env.HUB_INTERNAL_API_SECRET;
     const given = Buffer.from(String(req.get('x-internal-secret') || ''));
     const expected = Buffer.from(String(secret || ''));
@@ -30,7 +31,12 @@ router.post('/jobs/run', rateLimit, wrap(async (req, res) => {
             )
             : { rows: [] };
         if (grant.rows[0]?.role !== 'Admin') throw fail(403, 'Admins only.');
+        req.verifiedEmail = email; // an Admin's runs count against their own limit, not the scheduler's
     }
+    req.jobsAllowed = true;
+});
+
+router.post('/jobs/run', (req, res, next) => allowed(req, res).then(() => (req.jobsAllowed ? next() : undefined)), rateLimit, wrap(async (req, res) => {
     await ready;
     res.json({ success: true, result: await runJobs({ force: true }) });
 }));

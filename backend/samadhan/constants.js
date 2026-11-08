@@ -61,10 +61,14 @@ const EMAIL_RE = /^[^\s@']+@[^\s@']+\.[^\s@']+$/;
 // them only spends the shared Graph mailbox quota (2026-11-07: 22 throttled sends). They still get the in-app bell.
 const UNDELIVERABLE_RE = /@(?:[^@\s]+\.)?(?:local|localhost|test|example|invalid|example\.(?:com|net|org))$/i;
 const deliverable = (email) => EMAIL_RE.test(String(email ?? '').trim()) && !UNDELIVERABLE_RE.test(String(email).trim());
+// Manager approvals go only to company mailboxes (Microsoft SSO domains): otherwise a requester could name an outside
+// address of their own as "manager" and approve their own request. SAMADHAN_APPROVER_DOMAINS: comma-separated.
+const APPROVER_DOMAINS = String(env('APPROVER_DOMAINS') || 'emamigroup.com').toLowerCase().split(',').map((d) => d.trim()).filter(Boolean);
+const approverDomainOk = (email) => APPROVER_DOMAINS.includes(String(email ?? '').trim().toLowerCase().split('@')[1] ?? '');
 const sqlList = (arr) => arr.map((v) => `'${v}'`).join(', ');
 const q = (col) => `"${col}"`;
 
 module.exports = {
     AGENT_EMAIL_TEMPLATES, ACTIVITY_KINDS, AGENT_STATUSES, APP_ID, APP_IDS, env, BELL_EVENTS, BELL_SCOPES, CALL_MODES, CALL_OUTCOMES, CONVERSATION_KINDS, CUSTOMER_SOURCES, EDITABLE_FIELDS,
-    EMAIL_RE, MAILBOX, MAIL_ENABLED, MIN, deliverable, PATCHABLE, PHONE_RE, PRIORITIES, ROLES, SEVERITIES, SEVERITY_PRIORITY, SOURCES, STATUS, TRIGGERS, WHATSAPP, q, sqlList,
+    EMAIL_RE, MAILBOX, MAIL_ENABLED, MIN, deliverable, APPROVER_DOMAINS, approverDomainOk, PATCHABLE, PHONE_RE, PRIORITIES, ROLES, SEVERITIES, SEVERITY_PRIORITY, SOURCES, STATUS, TRIGGERS, WHATSAPP, q, sqlList,
 };

@@ -47,6 +47,9 @@ test('sender verification: DMARC fail or SPF fail without DKIM pass is unverifie
     assert.equal(senderUnverified(msg('spf=softfail; dkim=pass; dmarc=pass')), false, 'DKIM pass vouches for it');
     assert.equal(senderUnverified(msg('spf=fail; dkim=none; dmarc=none')), true);
     assert.equal(senderUnverified(msg(null)), false, 'no header (internal mail) is not treated as forged');
+    // Only the top-most header (added by our own mail server) counts: a forged lower one cannot add "dkim=pass".
+    const two = { internetMessageHeaders: [{ name: 'Authentication-Results', value: 'spf=fail; dkim=none; dmarc=none' }, { name: 'Authentication-Results', value: 'attacker.example; dkim=pass' }] };
+    assert.equal(senderUnverified(two), true, 'a sender-added dkim=pass header is ignored');
 });
 
 test('business hours: due dates skip nights, Sundays and holidays', () => {

@@ -20,7 +20,7 @@ const RULES = [
     ['GET', '/contacts/search', 'ticket.view'], ['PATCH', '/me/availability', ANY], ['GET', '/meta', ANY], ['GET', '/distributors/lookup', 'ticket.view'],
     // tickets.js
     ['GET', '/tickets', 'ticket.view'], ['GET', '/tickets/counts', 'ticket.view'], ['GET', '/tickets/export', 'ticket.export'],
-    ['GET', '/tickets/export/columns', 'ticket.view'], ['POST', '/tickets', 'ticket.create'], ['GET', '/tickets/:id', 'ticket.view'],
+    ['GET', '/tickets/export/columns', 'ticket.view'], ['POST', '/tickets', (req) => ['ticket.create', ...(req.body?.parentId ? ['ticket.child'] : [])]], ['GET', '/tickets/:id', 'ticket.view'],
     ['PATCH', '/tickets/:id', (req) => {
         const b = req.body ?? {};
         return ['ticket.edit', ...(b.agentId !== undefined || b.groupId !== undefined ? ['ticket.assign'] : []),
@@ -30,7 +30,8 @@ const RULES = [
         const a = String(req.body?.action || '');
         const extra = { spam: 'ticket.spam', unspam: 'ticket.spam', trash: 'ticket.trash', restore: 'ticket.trash', purge: 'ticket.purge', merge: 'ticket.merge' }[a];
         return ['ticket.bulk', ...(extra ? [extra] : []), ...(a === 'update' || a === 'close' ? ['ticket.edit'] : []),
-            ...(req.body?.patch?.applicationId !== undefined ? ['ticket.changeApplication'] : [])];
+            ...(req.body?.patch?.applicationId !== undefined ? ['ticket.changeApplication'] : []),
+            ...(req.body?.patch?.agentId !== undefined || req.body?.patch?.groupId !== undefined ? ['ticket.assign'] : [])];
     }],
     ['POST', '/tickets/:id/merge', 'ticket.merge'], ['POST', '/tickets/:id/links', 'ticket.link'], ['POST', '/tickets/:id/watch', 'ticket.view'],
     ['POST', '/tickets/:id/scenarios/:sid', 'scenario.run'], ['POST', '/tickets/:id/presence', 'ticket.view'],
@@ -180,6 +181,10 @@ async function permissionGate(req, res, next) {
         req.permissions = access.permissions;
         req.scope = { ...access.scope, confidential: access.permissions.has('ticket.viewConfidential') };
         req.can = (key) => access.permissions.has(key);
+        // A ticket number in the path must be plain digits (or a named route such as "bulk"): "1e5", "100000.0" or
+        // "0x186a0" would otherwise pass the scope check below and still become ticket 100000 in the handler.
+        const seg = /^\/tickets\/([^/]+)/.exec(req.path)?.[1];
+        if (seg !== undefined && !/^(?:[1-9]\d{0,9}|[a-z][a-z-]*)$/.test(seg)) return res.status(404).json({ success: false, error: 'Ticket not found.' });
         const rule = ruleFor(req.method, req.path);
         if (!rule) return res.status(403).json({ success: false, error: 'This action is not available.' });
         let needed = typeof rule.key === 'function' ? rule.key(req) : rule.key;

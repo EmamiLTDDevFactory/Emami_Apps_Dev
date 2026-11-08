@@ -16,6 +16,16 @@ const { fail, logActivity, textToHtml, stripTags } = require('./util');
 const missing = (e) => e.code === '42P01' || e.code === '42703';
 const quiet = async (fn, fallback) => { try { return await fn(); } catch (e) { if (missing(e)) return fallback; throw e; } };
 const hash = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
+/** Constant-time check of a presented key against its stored SHA-256 (hex). */
+const matches = (given, storedHash) => {
+    if (!given || !storedHash) return false;
+    const a = Buffer.from(hash(given), 'hex');
+    const b = Buffer.from(String(storedHash), 'hex');
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+};
+// Failed key attempts (401) keep their own small budget in the log (newest 50), so a flood of bad keys cannot push
+// the real calls out of it - see logCall.
+const logAuthFailure = (integration, details) => logCall(integration, details);
 const newSecret = (prefix) => `${prefix}_${crypto.randomBytes(24).toString('base64url')}`;
 const hint = (s) => `${s.slice(0, 7)}…${s.slice(-4)}`;
 const KEYS = ['calm', 'monitoring', 'teams', 'solman'];
@@ -28,7 +38,8 @@ async function logCall(integration, { source = null, ok, status, summary, extern
     await quiet(async () => {
         await pool.query(`INSERT INTO samadhan.integration_calls (integration, source, ok, status, summary, "externalId", "ticketId") VALUES ($1, $2, $3, $4, $5, $6, $7)`,
             [integration, source, ok, status, String(summary || '').slice(0, 500), externalId ? String(externalId).slice(0, 200) : null, ticketId]);
-        // Keep the log small: the newest 500 calls per integration.
+        // Keep the log small: the newest 500 calls per integration, of which refused keys (401) keep only their newest 50.
+        await pool.query(`DELETE FROM samadhan.integration_calls WHERE integration = $1 AND status = 401 AND id NOT IN (SELECT id FROM samadhan.integration_calls WHERE integration = $1 AND status = 401 ORDER BY id DESC LIMIT 50)`, [integration]);
         await pool.query(`DELETE FROM samadhan.integration_calls WHERE integration = $1 AND id NOT IN (SELECT id FROM samadhan.integration_calls WHERE integration = $1 ORDER BY id DESC LIMIT 500)`, [integration]);
     }, null);
 }
@@ -43,8 +54,8 @@ async function calmTicket(req) {
     const integ = await getIntegration('calm');
     const key = presented(req);
     if (!integ?.enabled) throw fail(404, 'Not found.');
-    if (!key || !integ.secretHash || hash(key) !== integ.secretHash) {
-        await logCall('calm', { ok: false, status: 401, summary: 'Wrong or missing API key' });
+    if (!matches(key, integ.secretHash)) {
+        await logAuthFailure('calm', { ok: false, status: 401, summary: 'Wrong or missing API key' });
         throw fail(401, 'Invalid API key.');
     }
     const b = req.body ?? {};
@@ -93,8 +104,8 @@ async function monitoringAlert(req) {
     if (!integ?.enabled) throw fail(404, 'Not found.');
     const src = (await pool.query('SELECT * FROM samadhan.integration_sources WHERE id = $1 AND enabled', [Number(req.params.sourceId)])).rows[0];
     const token = presented(req);
-    if (!src || !token || hash(token) !== src.tokenHash) {
-        await logCall('monitoring', { source: src?.name ?? null, ok: false, status: 401, summary: 'Wrong or missing token' });
+    if (!src || !matches(token, src.tokenHash)) {
+        await logAuthFailure('monitoring', { source: src?.name ?? null, ok: false, status: 401, summary: 'Wrong or missing token' });
         throw fail(401, 'Invalid token.');
     }
     const b = req.body ?? {};

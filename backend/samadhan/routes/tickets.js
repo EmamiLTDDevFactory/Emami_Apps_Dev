@@ -198,6 +198,9 @@ router.get('/tickets/:id', wrap(async (req, res) => {
     if (!Number.isInteger(id)) throw fail(400, 'Invalid ticket number.');
     const t = await loadTicket(id);
     const related = `SELECT t.id, t.subject, s.name AS "statusName", s."isResolved", t."createdAt", t."applicationId" FROM samadhan.tickets t JOIN samadhan.ticket_statuses s ON s.id = t."statusId"`;
+    // Linked / child / parent tickets outside the caller's scope (or confidential ones they may not see) are left out.
+    const scoped = scopeSql(req.scope, req.agent.id);
+    const inScope = scoped ? ` AND ${scoped}` : '';
     const [conversations, activities, timeLogs, others, calls, watchers, links, children, parent, csat, todos] = await Promise.all([
         pool.query(
             `SELECT cv.*, a.name AS "agentName" FROM samadhan.conversations cv LEFT JOIN samadhan.agents a ON a.id = cv."agentId"
@@ -219,9 +222,9 @@ router.get('/tickets/:id', wrap(async (req, res) => {
             [id],
         ),
         pool.query('SELECT a.id, a.name FROM samadhan.ticket_watchers w JOIN samadhan.agents a ON a.id = w."agentId" WHERE w."ticketId" = $1 ORDER BY a.name', [id]),
-        pool.query(`${related} JOIN samadhan.ticket_links l ON l."linkedId" = t.id WHERE l."ticketId" = $1 ORDER BY t.id`, [id]),
-        pool.query(`${related} WHERE t."parentId" = $1 AND t."deletedAt" IS NULL ORDER BY t.id`, [id]),
-        t.parentId ? pool.query(`${related} WHERE t.id = $1`, [t.parentId]) : { rows: [] },
+        pool.query(`${related} JOIN samadhan.ticket_links l ON l."linkedId" = t.id WHERE l."ticketId" = $1${inScope} ORDER BY t.id`, [id]),
+        pool.query(`${related} WHERE t."parentId" = $1 AND t."deletedAt" IS NULL${inScope} ORDER BY t.id`, [id]),
+        t.parentId ? pool.query(`${related} WHERE t.id = $1${inScope}`, [t.parentId]) : { rows: [] },
         pool.query('SELECT rating, comment, "createdAt" FROM samadhan.csat_responses WHERE "ticketId" = $1 ORDER BY id DESC LIMIT 1', [id]),
         pool.query('SELECT * FROM samadhan.todos WHERE "ticketId" = $1 AND "agentId" = $2 ORDER BY done, "dueAt" NULLS LAST, id', [id, req.agent.id]),
     ]);

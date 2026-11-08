@@ -10,7 +10,7 @@
 */
 const crypto = require('crypto');
 const { pool } = require('../db/pool');
-const { STATUS } = require('../constants');
+const { APPROVER_DOMAINS, STATUS, approverDomainOk } = require('../constants');
 const { fail, logActivity, setting } = require('./util');
 const seed = require('./changeSeed');
 
@@ -225,6 +225,12 @@ async function setTicketStatus(ticketId, statusId, agentId) {
     await updateTicket(ticketId, { statusId }, agentId ?? null, { skipAutomations: true }).catch((e) => console.error('[samadhan] approval status:', e.message));
 }
 
+/** A manager approver: a company mailbox (never an outside address) and not the requester. */
+function managerChecks(mgr, requesterEmail) {
+    if (requesterEmail && mgr === String(requesterEmail).toLowerCase()) throw fail(400, 'Segregation of duties: the requester cannot approve their own request.');
+    if (!approverDomainOk(mgr)) throw fail(400, `The manager's email must be a company address (${APPROVER_DOMAINS.map((d) => `@${d}`).join(', ')}).`);
+}
+
 /** Starts a chain on a ticket: step 1 Pending (due in 2 days), the others Waiting; the ticket waits in "Awaiting Approval". */
 async function startApproval(ticket, chainId, { managerEmail } = {}, agent = null) {
     const chain = (await pool.query('SELECT * FROM samadhan.approval_chains WHERE id = $1 AND active', [chainId])).rows[0];
@@ -237,7 +243,11 @@ async function startApproval(ticket, chainId, { managerEmail } = {}, agent = nul
     const mgr = String(managerEmail || '').trim().toLowerCase();
     if (steps.some((s) => s.type === 'manager')) {
         if (!/^[^\s@']+@[^\s@']+\.[^\s@']+$/.test(mgr)) throw fail(400, "Enter the requester's manager's email - the first approval goes there.");
-        if (ticket.requesterEmail && mgr === String(ticket.requesterEmail).toLowerCase()) throw fail(400, 'Segregation of duties: the requester cannot approve their own request.');
+        managerChecks(mgr, ticket.requesterEmail);
+        // The agent starting the chain, or the one implementing it, cannot name themselves as the manager.
+        if ((agent?.email && mgr === String(agent.email).toLowerCase()) || (ticket.agentEmail && mgr === String(ticket.agentEmail).toLowerCase())) {
+            throw fail(400, 'Segregation of duties: the manager approval must go to someone other than the agents handling the request.');
+        }
     }
     const round = Number((await pool.query('SELECT COALESCE(max(round), 0) AS r FROM samadhan.ticket_approvals WHERE "ticketId" = $1', [ticket.id])).rows[0].r) + 1;
     const rows = [];
@@ -292,9 +302,12 @@ async function decide(approvalId, { decision, comment }, actor) {
         if (twice.rows.length) throw fail(403, 'Segregation of duties: one person cannot approve two steps of the same approval.');
     }
     const state = decision === 'Need info' ? 'Pending' : decision;
-    await pool.query(
-        `UPDATE samadhan.ticket_approvals SET state = $2, decision = $3, comment = $4, "decidedAt" = now(), "decidedBy" = $5, "tokenHash" = NULL, "tokenExpiresAt" = NULL WHERE id = $1`,
-        [step.id, state, decision, note || null, who.email]);
+    // Only if the step is still exactly as read: two people opening the same link at once cannot both decide it.
+    const saved = await pool.query(
+        `UPDATE samadhan.ticket_approvals SET state = $2, decision = $3, comment = $4, "decidedAt" = now(), "decidedBy" = $5, "tokenHash" = NULL, "tokenExpiresAt" = NULL
+         WHERE id = $1 AND state = 'Pending' AND "tokenHash" IS NOT DISTINCT FROM $6`,
+        [step.id, state, decision, note || null, who.email, step.tokenHash ?? null]);
+    if (!saved.rowCount) throw fail(409, 'Someone else decided this step a moment ago - reload to see it.');
     await logActivity(ticket.id, 'approval_decided', { step: step.stepName, decision, by: who.name, ...(note ? { comment: note } : {}), ...(who.override ? { override: true } : {}) }, who.agentId ?? null);
     const ref = ticket.displayRef ?? `#${ticket.id}`;
     if (decision === 'Need info') {
@@ -457,7 +470,7 @@ async function prepareCatalogRequest({ catalogItemId, catalogAnswers: answers, m
         if (chain && (chain.steps || []).some((s) => s.type === 'manager')) {
             const mgr = String(managerEmail || '').trim().toLowerCase();
             if (!/^[^\s@']+@[^\s@']+\.[^\s@']+$/.test(mgr)) throw fail(400, "Enter the manager's email - this request needs their approval.");
-            if (requesterEmail && mgr === String(requesterEmail).toLowerCase()) throw fail(400, 'Segregation of duties: the requester cannot approve their own request.');
+            managerChecks(mgr, requesterEmail);
         }
     }
     const fields = { recordClass: item.recordClass, ...(item.defaultType ? { type: item.defaultType } : {}), ...(item.category ? { category: item.category } : {}),

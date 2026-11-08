@@ -54,7 +54,8 @@ for (const [persona, visible, hidden] of [
     const problems = watch(page);
     await signIn(page, data[persona]);
     await page.goto('/apps/samadhan/');
-    await expect(page.getByRole('navigation', { name: 'Sections' }).or(page.getByRole('button', { name: 'Open menu' })).first()).toBeVisible();
+    // The first load after the test servers start can take longer than 5 s on a busy PC (seen in 3 gate runs).
+    await expect(page.getByRole('navigation', { name: 'Sections' }).or(page.getByRole('button', { name: 'Open menu' })).first()).toBeVisible({ timeout: 15_000 });
     const n = await nav(page);
     for (const label of hidden) await expect(n.getByRole('button', { name: new RegExp(`^${label}\\b`) })).toHaveCount(0);
     if ((page.viewportSize()?.width ?? 1000) < 1024) await page.getByRole('button', { name: 'Close menu' }).click();

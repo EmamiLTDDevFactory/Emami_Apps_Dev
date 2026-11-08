@@ -35,9 +35,18 @@ class AiUnavailable extends Error {}
 
 const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 const PHONE_RE = /(?:\+?\d[\d\s().-]{7,}\d)/g;
-/** Replaces email addresses and phone numbers, and trims, before text is sent to the model. */
+/**
+ * Replaces email addresses, phone numbers, identity / bank numbers and secrets, and trims, before text is sent to
+ * the model. URL query strings are dropped (they can carry tokens); the host and path stay for context.
+ */
 const redact = (text, max = 2000) => String(text ?? '')
+    .replace(/\b(https?:\/\/[^\s?#"'<>]+)[?#][^\s"'<>]*/gi, '$1')
+    .replace(/\b(password|passwd|pwd|pass ?code|otp|pin|secret|api[ _-]?key|token)\b(\s*(?:is|:|=|-)\s*)\S+/gi, '$1$2[secret]')
     .replace(EMAIL_RE, '[email]')
+    .replace(/\b[A-Z]{5}\d{4}[A-Z]\b/g, '[PAN]')
+    .replace(/\b[A-Z]{4}0[A-Z0-9]{6}\b/g, '[IFSC]')
+    .replace(/\b\d{4} \d{4} \d{4}\b/g, '[ID number]')
+    .replace(/\b(aadha+r|account|a\/c|acct)(\s*(?:no\.?|number|#)?\s*[:\-]?\s*)\d[\d ]{5,20}\d\b/gi, '$1$2[number]')
     .replace(PHONE_RE, '[phone]')
     .replace(/\s+/g, ' ')
     .trim()

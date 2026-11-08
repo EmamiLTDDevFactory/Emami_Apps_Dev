@@ -6,7 +6,7 @@ const {
     LINK_MINUTES, limits, listAttachments, loadAttachment, readAttachment, removeAttachments, saveAttachment, signLink, verifyLink,
 } = require('../lib/attachments');
 const { storageInfo } = require('../lib/storage');
-const { fail, wrap } = require('../lib/util');
+const { clientIp, fail, wrap } = require('../lib/util');
 
 /*
    Attachments API (v7 Phase 2, master prompt §L).
@@ -104,7 +104,7 @@ function portalTokenValid(ticketId, token) {
 // 20 portal uploads per address per 10 minutes (the per-ticket file cap below is the real backstop).
 const uploadHits = new Map();
 function uploadLimit(req) {
-    const ip = String(req.get('x-forwarded-for') || req.ip || '').split(',')[0].trim() || 'unknown';
+    const ip = clientIp(req);
     const now = Date.now();
     const list = (uploadHits.get(ip) || []).filter((t) => now - t < 10 * 60_000);
     if (list.length >= 20) throw fail(429, 'Too many uploads from your network. Please try again in a few minutes.');

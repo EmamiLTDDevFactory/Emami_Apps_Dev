@@ -3,7 +3,7 @@ const express = require('express');
 const { pool } = require('../db/pool');
 const { EMAIL_RE, PHONE_RE } = require('../constants');
 const { LIST_COLUMNS, LIST_FROM } = require('../lib/queries');
-const { liveFor, ticketFilter } = require('../lib/ticketQuery');
+const { liveFor, scopeSql, ticketFilter, ticketVisible } = require('../lib/ticketQuery');
 const { audit, fail, intOrNull, wrap } = require('../lib/util');
 
 const router = express.Router();
@@ -18,8 +18,10 @@ const managesAll = (req) => req.can('admin.general');
 
 // ---- To-dos: private to each agent, optionally tied to a ticket ----
 router.get('/todos', wrap(async (req, res) => {
+    // The ticket's subject only when the ticket is still in this person's scope.
+    const scoped = scopeSql(req.scope, req.agent.id);
     const { rows } = await pool.query(
-        `SELECT td.*, t.subject AS "ticketSubject" FROM samadhan.todos td LEFT JOIN samadhan.tickets t ON t.id = td."ticketId"
+        `SELECT td.*, t.subject AS "ticketSubject" FROM samadhan.todos td LEFT JOIN samadhan.tickets t ON t.id = td."ticketId"${scoped ? ` AND ${scoped}` : ''}
          WHERE td."agentId" = $1 AND (NOT td.done OR td."createdAt" > now() - interval '7 days')
          ORDER BY td.done, td."dueAt" NULLS LAST, td.id DESC LIMIT 100`,
         [req.agent.id],
@@ -33,6 +35,7 @@ router.post('/todos', wrap(async (req, res) => {
     if (!body) throw fail(400, 'Write the to-do first.');
     const ticketId = intOrNull(b.ticketId);
     if (Number.isNaN(ticketId)) throw fail(400, 'Invalid ticket.');
+    if (ticketId && !(await ticketVisible(pool, req, ticketId))) throw fail(404, 'Ticket not found.');
     const dueAt = b.dueAt ? new Date(b.dueAt) : null;
     if (dueAt && Number.isNaN(dueAt.getTime())) throw fail(400, 'Invalid due date.');
     const { rows } = await pool.query(
