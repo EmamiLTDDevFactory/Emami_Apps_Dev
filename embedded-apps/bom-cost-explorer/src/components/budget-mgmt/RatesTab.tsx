@@ -1,13 +1,16 @@
 'use client';
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Pencil, Save, Search, X } from 'lucide-react';
 import { Button, Card, Field, Pill, Spinner, cx, inputCls } from '../ui';
 import { CatBadge, ErrorBox, NO_RECORDS, SkeletonRows, SourceChip, StatusBadge, errorText, td, th } from './shared';
+import RateEditPanel from './RateEditPanel';
+import SourcePriorityEditor from '../rates/SourcePriorityEditor';
 import { fetchRates, patchRate } from '@/lib/budgetMgmt/api';
 import { COUNTRIES, STATUS_LABEL, type AdjType, type BudRateRow, type RateEdit } from '@/lib/budgetMgmt/types';
-import { amount, isEditable, stripZeros, validateEdit, type Errors } from '@/lib/budgetMgmt/rules';
+import { DEFAULT_B_PRIORITY, isEditable, stripZeros, validateEdit, type Errors } from '@/lib/budgetMgmt/rules';
 import { fmtNum } from '@/lib/format';
 
+const PRIO_KEY = 'bud-mgmt-b-priority';
 const keyOf = (r: BudRateRow) => `${r.Gjahr}|${r.Land1}|${r.Matnr}|${r.Werks}|${r.ValidFrom}`;
 const ADJ: { v: AdjType; label: string }[] = [{ v: 'N', label: 'None' }, { v: 'P', label: 'Percent (%)' }, { v: 'A', label: 'Amount' }];
 
@@ -25,6 +28,10 @@ export default function RatesTab({ gjahr }: { gjahr: string }) {
   const [fErr, setFErr] = useState<Errors<keyof RateEdit>>({});
   const [saveErr, setSaveErr] = useState('');
   const [saving, setSaving] = useState(false);
+  // Category B source priority (spec 7.2): kept in this browser until a central setting exists.
+  const [prio, setPrioState] = useState<string[]>([...DEFAULT_B_PRIORITY]);
+  useEffect(() => { try { const v = JSON.parse(localStorage.getItem(PRIO_KEY) ?? 'null'); if (Array.isArray(v) && v.length) setPrioState(v.map(String)); } catch { /* default */ } }, []);
+  const setPrio = (v: string[]) => { setPrioState(v); try { localStorage.setItem(PRIO_KEY, JSON.stringify(v)); } catch { /* not kept */ } };
   const [yearShown, setYearShown] = useState(gjahr);
   // Shared FY changed from the page header: pre-fill (the user's own edit of the field is kept until the header changes again).
   if (yearShown !== gjahr) { setYearShown(gjahr); setYear(gjahr); }
@@ -42,7 +49,7 @@ export default function RatesTab({ gjahr }: { gjahr: string }) {
   }
 
   async function save(r: BudRateRow) {
-    const e = validateEdit(form);
+    const e = validateEdit(form, r.SrcRate > 0 ? r.SrcRate : undefined);
     setFErr(e);
     if (Object.keys(e).length) return;
     setSaving(true); setSaveErr('');
@@ -51,7 +58,6 @@ export default function RatesTab({ gjahr }: { gjahr: string }) {
   }
 
   const shown = useMemo(() => { const n = q.trim().toLowerCase(); return (rows ?? []).filter((r) => !n || stripZeros(r.Matnr).toLowerCase().includes(n) || r.Matnr.toLowerCase().includes(n)); }, [rows, q]);
-  const reasonMissing = form.overrideRate.trim() !== '' && amount(form.overrideRate) > 0 && !form.overrideRsn.trim();
 
   return (
     <div className="flex flex-col gap-3">
@@ -63,6 +69,11 @@ export default function RatesTab({ gjahr }: { gjahr: string }) {
           <div className="flex items-end"><Button type="submit" variant="primary" disabled={loading}>{loading ? <Spinner /> : <Search size={14} />} Load</Button></div>
         </form>
       </Card>
+
+      <details className="rounded-2xl border border-line bg-panel px-4 py-2 shadow-card">
+        <summary className="cursor-pointer text-sm font-bold">Category B rate source priority <span className="font-normal text-muted">(first source with a valid rate is used)</span></summary>
+        <div className="mt-2 max-w-sm"><SourcePriorityEditor value={prio} onChange={setPrio} compact /></div>
+      </details>
 
       {error && <ErrorBox>{error}</ErrorBox>}
       {rows && rows.length === 0 && !error && <Card><p className="py-6 text-center text-sm text-muted">{NO_RECORDS}</p></Card>}
@@ -98,12 +109,7 @@ export default function RatesTab({ gjahr }: { gjahr: string }) {
                         {isEd && (
                           <tr className="border-b border-line bg-accent/5">
                             <td colSpan={13} className="px-4 py-3">
-                              <div className="grid gap-3 md:grid-cols-4">
-                                <Field label="Adj type">{(id) => <select id={id} className={inputCls} value={form.adjType} onChange={(e) => setForm({ ...form, adjType: e.target.value as AdjType, adjValue: '' })}>{ADJ.map((a) => <option key={a.v} value={a.v}>{a.label}</option>)}</select>}</Field>
-                                {form.adjType !== 'N' && <Field label="Adj value" error={fErr.adjValue}>{(id) => <input id={id} className={cx(inputCls, fErr.adjValue && 'border-bad')} inputMode="decimal" value={form.adjValue} onChange={(e) => setForm({ ...form, adjValue: e.target.value })} />}</Field>}
-                                <Field label="Override rate" error={fErr.overrideRate}>{(id) => <input id={id} className={cx(inputCls, fErr.overrideRate && 'border-bad')} inputMode="decimal" value={form.overrideRate} onChange={(e) => setForm({ ...form, overrideRate: e.target.value })} />}</Field>
-                                <Field label="Override reason" error={fErr.overrideRsn}>{(id) => <input id={id} className={cx(inputCls, (fErr.overrideRsn || reasonMissing) && 'border-bad')} value={form.overrideRsn} onChange={(e) => setForm({ ...form, overrideRsn: e.target.value })} />}</Field>
-                              </div>
+                              <RateEditPanel r={r} form={form} setForm={setForm} errs={fErr} prio={prio} />
                               <div className="mt-3 flex flex-wrap items-center gap-2">
                                 <Button variant="primary" size="sm" disabled={saving} onClick={() => void save(r)}>{saving ? <Spinner /> : <Save size={13} />} Save changes</Button>
                                 <Button size="sm" disabled={saving} onClick={() => setEditing('')}><X size={13} /> Cancel</Button>

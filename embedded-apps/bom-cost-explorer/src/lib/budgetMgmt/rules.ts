@@ -43,7 +43,7 @@ export function validateHistory(f: HistoryFilter): Errors<keyof HistoryFilter> {
   return e;
 }
 
-export function validateEdit(r: RateEdit): Errors<keyof RateEdit> {
+export function validateEdit(r: RateEdit, base?: number): Errors<keyof RateEdit> {
   const e: Errors<keyof RateEdit> = {};
   if (r.adjType === 'P' || r.adjType === 'A') {
     const v = amount(r.adjValue);
@@ -55,6 +55,8 @@ export function validateEdit(r: RateEdit): Errors<keyof RateEdit> {
     if (!Number.isFinite(o) || o <= 0) e.overrideRate = 'Override rate must be greater than 0';
     else if (!r.overrideRsn.trim()) e.overrideRsn = 'A reason is required with an override rate';
   }
+  // The budgeted basic rate must stay above zero (a percent or amount adjustment can push it down, an override is checked above).
+  if (base !== undefined && !e.adjValue && !e.overrideRate && r.overrideRate.trim() === '' && budgetedBasic(base, r) <= 0) e.adjValue = 'The budgeted basic rate would be zero or negative';
   return e;
 }
 
@@ -114,3 +116,57 @@ export function filterHistory(groups: BudHistGroup[], q: string, cats: string[])
   return groups.filter((g) => (!cats.length || cats.includes(g.Matcat))
     && (!terms.length || terms.some((t) => g.Matnr.toLowerCase().includes(t) || stripZeros(g.Matnr).toLowerCase().includes(t) || g.Maktx.toLowerCase().includes(t))));
 }
+
+
+/* ---- Rate derivation (spec sections 7-10): the client-side preview of what the adjustment and override give. SAP stays the source of truth. ---- */
+
+/** Rate source codes as the History drill-down (BudRateSrcSet) and BOM costing name them, folded to the priority codes (CONTRACT, INFOREC, MARKT, CONSUMP, MBEW = C-Map). */
+export function srcCode(s: string): string {
+  const c = String(s ?? '').trim().toUpperCase().replace(/[\s_-]+/g, '');
+  if (c.startsWith('CONT')) return 'CONTRACT';
+  if (c.startsWith('INFO')) return 'INFOREC';
+  if (c.startsWith('MARK')) return 'MARKT';
+  if (c.startsWith('CONS')) return 'CONSUMP';
+  if (c === 'MBEW' || c === 'CMAP' || c === 'MAP') return 'MBEW';
+  return c;
+}
+/** C-Map (SAP's moving average price): no freight / delivery conditions (spec 7.3 and 9.1). */
+export const isCMap = (src: string) => srcCode(src) === 'MBEW';
+/** Freight applies to Contract, Info record, a manual rate and a selected rate of one of those; not to C-Map. */
+export const freightApplies = (src: string) => !isCMap(src);
+
+/** Base x (1 + percent / 100) or base + amount; no adjustment returns the base. */
+export function adjustRate(base: number, type: string, value: number): number {
+  if (type === 'P') return new Decimal(String(base)).times(new Decimal(100).plus(String(value)).div(100)).toNumber();
+  if (type === 'A') return new Decimal(String(base)).plus(String(value)).toNumber();
+  return base;
+}
+/** The budgeted basic rate of an edit: the override when one is entered (section 10), else the base with the adjustment. */
+export function budgetedBasic(base: number, e: RateEdit): number {
+  const o = amount(e.overrideRate);
+  if (e.overrideRate.trim() !== '' && Number.isFinite(o)) return o;
+  if (e.adjType === 'N') return base;
+  const v = amount(e.adjValue);
+  return Number.isFinite(v) && e.adjValue.trim() !== '' ? adjustRate(base, e.adjType, v) : base;
+}
+/** Landed rate = budgeted basic rate + the applicable delivery conditions. */
+export const landedRate = (basic: number, freight: number, applies: boolean): number => (applies ? new Decimal(String(basic)).plus(String(freight)).toNumber() : basic);
+
+/** First source of the priority list that has a rate, with its latest rate (greatest ValidFrom); null when none has. Spec 7.2. */
+export function pickByPriority(rows: BudRateSrcRow[], prio: readonly string[]): { source: string; rate: number; row: BudRateSrcRow } | null {
+  for (const p of prio) {
+    const code = srcCode(p);
+    let best: BudRateSrcRow | null = null;
+    for (const r of rows) if (srcCode(r.RateSrc) === code && r.RatePc > 0 && (!best || r.ValidFrom > best.ValidFrom)) best = r;
+    if (best) return { source: code, rate: best.RatePc, row: best };
+  }
+  return null;
+}
+/** Market rate for comparison: the latest rate of the market source, null when there is none. */
+export function marketRate(rows: BudRateSrcRow[]): BudRateSrcRow | null {
+  let best: BudRateSrcRow | null = null;
+  for (const r of rows) if (srcCode(r.RateSrc) === 'MARKT' && r.RatePc > 0 && (!best || r.ValidFrom > best.ValidFrom)) best = r;
+  return best;
+}
+/** Default priority of Category B (spec 7.2): Contract, Info record, C-Map. */
+export const DEFAULT_B_PRIORITY = ['CONTRACT', 'INFOREC', 'MBEW'] as const;

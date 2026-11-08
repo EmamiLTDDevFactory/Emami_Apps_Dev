@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { actionBody, historyFilter, patchBody, rateFilter, rateKeyPath, sourceFilter } from '@/lib/budgetMgmt/api';
-import { csvList, dateText, defaultHistWindow, fiscalYear, isEditable, padMatnr, showDate, stripZeros, toSapDate, validateAction, validateEdit, validateHistory, groupHistory, filterHistory, latestSourceRate, projectedValue, sortByCountryTotal } from '@/lib/budgetMgmt/rules';
+import { csvList, dateText, defaultHistWindow, fiscalYear, isEditable, padMatnr, showDate, stripZeros, toSapDate, validateAction, validateEdit, validateHistory, groupHistory, filterHistory, latestSourceRate, projectedValue, sortByCountryTotal, adjustRate, budgetedBasic, landedRate, validateEdit as validateEdit2, srcCode, freightApplies, pickByPriority, marketRate, DEFAULT_B_PRIORITY } from '@/lib/budgetMgmt/rules';
 
 const hist = { land1: 'IN', gjahr: '2026', histFrom: '2025-04-01', histTo: '2026-03-31', catAFrom: '8,000,000', catBFrom: '4,000,000' };
 
@@ -110,5 +110,33 @@ describe('projected rate and value', () => {
   it('sorts by country total, biggest first', () => {
     const g = (k: string, CtryValue: number) => ({ key: k, CtryValue }) as never;
     expect(sortByCountryTotal([g('a', 1), g('b', 9), g('c', 5)]).map((x) => (x as { key: string }).key)).toEqual(['b', 'c', 'a']);
+  });
+});
+
+describe('rate derivation preview', () => {
+  const e = (adjType: 'N' | 'P' | 'A', adjValue = '', overrideRate = ''): never => ({ adjType, adjValue, overrideRate, overrideRsn: 'r' }) as never;
+  const s = (RateSrc: string, RatePc: number, ValidFrom = '20260101') => ({ RateSrc, CondType: '', Vendor: '', Vendname: '', Rate: RatePc, Currency: 'INR', PriceUnit: 1, ValidFrom, ValidTo: '99991231', RatePc, LocalCurr: 'INR', RateLocal: RatePc });
+  it('percent and amount adjustments, positive and negative (spec 8)', () => {
+    expect(adjustRate(100, 'P', 5)).toBe(105); expect(adjustRate(100, 'P', -5)).toBe(95); expect(adjustRate(105, 'P', 5)).toBe(110.25);
+    expect(adjustRate(100, 'A', 5)).toBe(105); expect(adjustRate(100, 'A', -5)).toBe(95);
+  });
+  it('override wins over the adjustment; landed = basic + freight where it applies', () => {
+    expect(budgetedBasic(100, e('P', '5'))).toBe(105); expect(budgetedBasic(100, e('P', '5', '90'))).toBe(90); expect(budgetedBasic(100, e('N'))).toBe(100);
+    expect(landedRate(100, 8, true)).toBe(108); expect(landedRate(100, 8, false)).toBe(100);
+  });
+  it('a final rate of zero or below is refused', () => {
+    expect(validateEdit2(e('P', '-100'), 100).adjValue).toBeTruthy(); expect(validateEdit2(e('A', '-100'), 100).adjValue).toMatch(/zero or negative/);
+    expect(validateEdit2(e('A', '-99'), 100).adjValue).toBeUndefined(); expect(validateEdit2(e('N'), 100)).toEqual({});
+  });
+  it('source codes fold and C-Map has no freight', () => {
+    expect(['CONT', 'INFO', 'MARKT', 'CONS', 'C-MAP', 'MBEW'].map(srcCode)).toEqual(['CONTRACT', 'INFOREC', 'MARKT', 'CONSUMP', 'MBEW', 'MBEW']);
+    expect(freightApplies('MBEW')).toBe(false); expect(freightApplies('CONT')).toBe(true);
+  });
+  it('priority picks the first source with a valid rate (spec 7.2 example)', () => {
+    const rows = [s('CONT', 105), s('INFO', 108), s('MBEW', 103)];
+    expect(pickByPriority(rows, DEFAULT_B_PRIORITY)?.rate).toBe(105);
+    expect(pickByPriority([s('CONT', 0), s('INFO', 108), s('MBEW', 103)], DEFAULT_B_PRIORITY)?.source).toBe('INFOREC');
+    expect(pickByPriority([], DEFAULT_B_PRIORITY)).toBeNull();
+    expect(marketRate([s('MARKT', 110, '20250101'), s('MARKT', 112, '20260101')])?.RatePc).toBe(112);
   });
 });
