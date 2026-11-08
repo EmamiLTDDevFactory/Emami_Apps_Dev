@@ -1,6 +1,6 @@
 'use strict';
 const { graphToken } = require('../../ccbTeams');
-const { EMAIL_RE, MAILBOX, MAIL_ENABLED } = require('../constants');
+const { MAILBOX, MAIL_ENABLED, deliverable } = require('../constants');
 
 // ---------- Mail (Microsoft 365 helpdesk mailbox via Graph) ----------
 
@@ -17,7 +17,7 @@ async function graph(path, init = {}) {
 
 /** Sends from the helpdesk mailbox, or logs when mail is switched off (development, shadow mode). */
 async function sendMail({ to, cc = [], subject, html, attachments = [] }) {
-    const rcpt = (list) => list.filter((a) => EMAIL_RE.test(a)).map((address) => ({ emailAddress: { address } }));
+    const rcpt = (list) => list.filter(deliverable).map((address) => ({ emailAddress: { address } }));
     if (!rcpt(to).length) return;
     if (!MAIL_ENABLED) {
         console.info(`[samadhan] mail disabled - would send "${String(subject).slice(0, 60)}" to ${to.length} recipient(s)${attachments.length ? ` with ${attachments.length} file(s)` : ''}`);

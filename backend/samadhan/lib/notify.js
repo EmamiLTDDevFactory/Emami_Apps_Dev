@@ -4,6 +4,7 @@ const { pool } = require('../db/pool');
 const { APP_URL } = require('../../ccbTeams');
 const { grantAppId } = require('./access');
 const { sendMail } = require('./mail');
+const { deliverable } = require('../constants');
 const { esc, fmtIst, logActivity, stripTags, ticketLink } = require('./util');
 
 // ---------- Templates & notifications ----------
@@ -122,7 +123,7 @@ async function notifyAgents(t, template, to, extra = {}) {
     // Hub inbox rows carry the app id and a de-duplication key per ticket and template.
     const appId = await grantAppId();
     await Promise.all([...new Set(recipients)].map((email) =>
-        notify({ email, appId, kind: template.replace(/^agent\./, ''), title: msg.subject, body, link: ticketLink(t.id), refKey: `samadhan:${t.id}:${template}` })));
+        notify({ email, appId, kind: template.replace(/^agent\./, ''), title: msg.subject, body, link: ticketLink(t.id), refKey: `samadhan:${t.id}:${template}`, sendMail: deliverable(email) })));
 }
 
 module.exports = { emailRequester, fillPlaceholders, loadTicket, notifyAgents, renderTemplate, withRef };
