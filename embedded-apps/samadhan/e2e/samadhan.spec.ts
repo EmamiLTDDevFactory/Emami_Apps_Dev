@@ -73,6 +73,26 @@ test('deep link /apps/samadhan/?ticket=<id> opens the ticket', async ({ page }) 
   expect(problems).toEqual([]);
 });
 
+// Dev today: nginx does not forward /api/samadhan yet - another service answers it with a 404 that is not a Samadhan
+// answer - so the app must switch to the transport route. On a fresh tab me + meta start together and both get that 404
+// (2026-11-08: they flipped the route twice and the app showed "Could not load Samadhan").
+test('route fallback: a fresh tab loads when /api/samadhan is missing on the web server', async ({ page }) => {
+  const problems = watch(page, [404]);
+  const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': '*' };
+  await page.route('**/api/samadhan/**', (r) => r.request().method() === 'OPTIONS'
+    ? r.fulfill({ status: 204, headers: cors })
+    : r.fulfill({ status: 404, headers: cors, contentType: 'application/json', body: JSON.stringify({ message: 'Not found' }) }));
+  await signIn(page, data.agent);
+  await page.goto('/apps/samadhan/');
+  await expect(page.getByRole('navigation', { name: 'Sections' }).or(page.getByRole('button', { name: 'Open menu' })).first()).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText('Could not load Samadhan')).toHaveCount(0);
+  // The tab now remembers the transport route (whatever its name), not the missing one.
+  const route = await page.evaluate(() => sessionStorage.getItem('samadhan.route'));
+  expect(route && route !== 'samadhan').toBeTruthy();
+  // The browser logs each expected 404 as a console error; anything else still fails the test.
+  expect(problems.filter((p) => !/404/.test(p))).toEqual([]);
+});
+
 test('portal (no sign-in): raise a ticket, then check its status', async ({ page }) => {
   const problems = watch(page);
   await page.goto('/apps/samadhan/portal/');
