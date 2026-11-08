@@ -52,9 +52,9 @@ async function processMessage(m) {
             [existing.id, fromEmail],
         )).rows.length > 0;
     }
-    // A reply whose sender failed SPF / DKIM / DMARC may be forged: park it for an agent to check instead of
-    // adding it to (or reopening) someone's ticket.
-    if (existing && onThread && senderUnverified(m)) { await park(m, 'sender_not_verified'); return 'parked'; }
+    // A mail whose sender failed SPF / DKIM / DMARC may be forged: park it for an agent to check instead of adding it
+    // to (or reopening) someone's ticket - or opening a new ticket in someone else's name.
+    if (senderUnverified(m)) { await park(m, 'sender_not_verified'); return 'parked'; }
     // Flood guard: more than 20 new tickets from one sender in an hour are parked for review.
     const recent = await pool.query(
         `SELECT count(*)::int AS n FROM samadhan.tickets t JOIN samadhan.contacts c ON c.id = t."requesterId"

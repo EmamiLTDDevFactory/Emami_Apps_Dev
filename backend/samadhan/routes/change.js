@@ -205,7 +205,7 @@ router.get('/registers', wrap(async (req, res) => {
     res.json({ success: true, registers: Object.entries(REGISTERS).map(([key, r]) => ({ key, title: r.title })) });
 }));
 router.get('/registers/:kind', wrap(async (req, res) => {
-    const r = REGISTERS[req.params.kind];
+    const r = Object.hasOwn(REGISTERS, req.params.kind) ? REGISTERS[req.params.kind] : null;
     if (!r) throw fail(404, 'Unknown register.');
     const { scopeSql } = require('../lib/ticketQuery');
     const s = scopeSql(req.scope, req.agent.id);

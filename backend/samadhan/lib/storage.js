@@ -128,7 +128,12 @@ function sftpAdapter() {
             throw err;
         }
     }
-    const fail = (what, err) => Object.assign(new Error(`File storage (SFTP) could not ${what}: ${err.message}`), { status: err.code === 2 || /no such file/i.test(err.message) ? 404 : 502 });
+    // The SFTP error names the host and path: it goes to the server log only, the caller gets a plain message.
+    const fail = (what, err) => {
+        const missing = err.code === 2 || /no such file/i.test(err.message);
+        if (!missing) console.error(`[samadhan] SFTP could not ${what}:`, err.message);
+        return Object.assign(new Error(missing ? 'The file is no longer in storage.' : `File storage could not ${what}. Please try again later.`), { status: missing ? 404 : 502 });
+    };
 
     return {
         name: 'sftp',

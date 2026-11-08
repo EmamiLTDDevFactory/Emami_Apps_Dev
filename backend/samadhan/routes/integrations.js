@@ -6,7 +6,7 @@
 const express = require('express');
 const { ready } = require('../db/ready');
 const integ = require('../lib/integrations');
-const { audit, fail, wrap } = require('../lib/util');
+const { audit, clientIp, fail, wrap } = require('../lib/util');
 
 // ---------- inbound (public) ----------
 const publicRouter = express.Router();
@@ -14,7 +14,7 @@ const WINDOW_MS = 60_000;
 const LIMIT = 120;
 const hits = new Map();
 function limit(req) {
-    const ip = String(req.get('x-forwarded-for') || req.ip || '').split(',')[0].trim() || 'unknown';
+    const ip = clientIp(req);
     const now = Date.now();
     const list = (hits.get(ip) || []).filter((t) => now - t < WINDOW_MS);
     if (list.length >= LIMIT) throw fail(429, 'Too many requests - slow down.');

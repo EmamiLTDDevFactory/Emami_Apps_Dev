@@ -83,12 +83,11 @@ function ticketNumberFromSubject(subject) {
 /**
  * Did the sender's domain vouch for this message? Reads Exchange Online's Authentication-Results header.
  * A DMARC fail, or an SPF fail without a DKIM pass, means the From address may be forged.
+ * Only the top-most header counts: that is the one our own mail server added. Lower ones came with the message, so
+ * a sender could add a fake "dkim=pass" there.
  */
 function senderUnverified(m) {
-    const h = (m.internetMessageHeaders ?? [])
-        .filter((x) => String(x.name).toLowerCase() === 'authentication-results')
-        .map((x) => String(x.value).toLowerCase())
-        .join(' ');
+    const h = String((m.internetMessageHeaders ?? []).find((x) => String(x.name).toLowerCase() === 'authentication-results')?.value ?? '').toLowerCase();
     if (!h) return false;
     if (/\bdmarc=fail\b/.test(h)) return true;
     return /\bspf=(fail|softfail)\b/.test(h) && !/\bdkim=pass\b/.test(h);

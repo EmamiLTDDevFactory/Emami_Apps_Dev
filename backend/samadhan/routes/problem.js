@@ -6,10 +6,16 @@
 const express = require('express');
 const { loadTicket } = require('../lib/notify');
 const pr = require('../lib/problem');
+const { pool } = require('../db/pool');
+const { ticketVisible } = require('../lib/ticketQuery');
 const { fail, wrap } = require('../lib/util');
 
 const router = express.Router();
 const idOf = (req) => Number(req.params.id);
+/** Ticket numbers taken from a request body must be in the caller's scope, like the one in the path. */
+async function inScope(req, ids) {
+    for (const id of ids) if (!Number.isInteger(id) || !(await ticketVisible(pool, req, id))) throw fail(404, `Ticket ${Number.isInteger(id) ? `#${id} ` : ''}not found.`);
+}
 
 // ---------- major incident ----------
 router.post('/tickets/:id/major', wrap(async (req, res) => {
@@ -48,11 +54,14 @@ router.post('/tickets/:id/problem', wrap(async (req, res) => {
     const t = await loadTicket(idOf(req));
     const b = req.body ?? {};
     if (b.create) {
-        const p = await pr.createProblem([t.id, ...(Array.isArray(b.incidentIds) ? b.incidentIds : [])], b, req.agent);
+        const extra = Array.isArray(b.incidentIds) ? b.incidentIds.map(Number) : [];
+        await inScope(req, extra);
+        const p = await pr.createProblem([t.id, ...extra], b, req.agent);
         return res.status(201).json({ success: true, problem: p });
     }
     const pid = b.problemId === null || b.problemId === '' ? null : Number(b.problemId);
     if (pid !== null && !Number.isInteger(pid)) throw fail(400, 'Invalid problem number.');
+    if (pid !== null) await inScope(req, [pid]);
     await pr.linkToProblem([t.id], pid, req.agent);
     res.json({ success: true });
 }));

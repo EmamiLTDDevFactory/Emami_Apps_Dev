@@ -41,13 +41,30 @@ async function updateRow(table, id, data, client = pool) {
     await client.query(`UPDATE samadhan.${table} SET ${sets.join(', ')} WHERE id = $1`, [id, ...keys.map((k) => data[k])]);
 }
 
+const DB_MESSAGES = {
+    23503: 'That refers to something that does not exist (any more).', '22P02': 'A value is not in the right format.', 23514: 'A value is not allowed here.',
+    22007: 'A date or time is not valid.', 22008: 'A date or time is out of range.', 22003: 'A number is out of range.', 22001: 'A value is too long.',
+};
+
+/**
+ * The caller's address for the public routes' rate limits. Behind nginx ($proxy_add_x_forwarded_for) the LAST
+ * X-Forwarded-For entry is the address nginx itself saw; earlier entries are whatever the caller sent (spoofable).
+ */
+function clientIp(req) {
+    const xff = String(req.get('x-forwarded-for') || '').split(',').map((s) => s.trim()).filter(Boolean);
+    return xff[xff.length - 1] || req.socket?.remoteAddress || req.ip || 'unknown';
+}
+
 const wrap = (fn) => async (req, res) => {
     try {
         await fn(req, res);
     } catch (err) {
-        const status = err.status || (err.code === '23505' ? 409 : ['23503', '22P02', '23514', '22007', '22008', '22003', '22001'].includes(err.code) ? 400 : 500);
+        const status = err.status || (err.code === '23505' ? 409 : DB_MESSAGES[err.code] ? 400 : 500);
         if (status === 500) console.error('[samadhan]', err);
-        const msg = err.code === '23505' ? 'That value is already used.' : status === 500 ? 'Something went wrong. Please try again.' : err.message;
+        // Database errors never pass their own text through (it names tables and constraints): a plain message instead.
+        const msg = err.code === '23505' ? 'That value is already used.'
+            : !err.status && DB_MESSAGES[err.code] ? DB_MESSAGES[err.code]
+                : status === 500 && !err.status ? 'Something went wrong. Please try again.' : err.message;
         res.status(status).json({ success: false, error: msg });
     }
 };
@@ -59,4 +76,4 @@ function istDayStart(offsetDays = 0) {
     return new Date(new Date(`${ymd}T00:00:00+05:30`).getTime() + offsetDays * 86_400_000);
 }
 
-module.exports = { audit, esc, fail, fmtIst, intOrNull, istDayStart, logActivity, setting, stripTags, textToHtml, ticketLink, touchActivity, updateRow, wrap };
+module.exports = { audit, clientIp, esc, fail, fmtIst, intOrNull, istDayStart, logActivity, setting, stripTags, textToHtml, ticketLink, touchActivity, updateRow, wrap };

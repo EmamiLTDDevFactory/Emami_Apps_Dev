@@ -6,20 +6,20 @@ const { ready } = require('../db/ready');
 const { createTicket } = require('../lib/tickets');
 const { inboundMessages, metaJson, validSignature, whatsappReady } = require('../lib/whatsapp');
 const { processWhatsApp } = require('../lib/whatsappIngest');
-const { fail, setting, textToHtml, wrap } = require('../lib/util');
+const { clientIp, fail, setting, textToHtml, wrap } = require('../lib/util');
 
 const router = express.Router();
 
 // ---------- Routes without a hub sign-in: requester portal, WhatsApp webhook ----------
 // They sit before requireAccess (index.js). Each has its own limits, because there is no signed-in person to key on.
 
-// Portal limits per client address (from X-Forwarded-For behind nginx / API Gateway). The address can be spoofed,
-// so the per-email and whole-portal caps in the database are the real backstop.
+// Portal limits per client address (the one nginx saw - clientIp); the per-email and whole-portal caps in the
+// database are the backstop for callers behind one shared address.
 const WINDOW_MS = 10 * 60_000;
 const PORTAL_LIMITS = { submit: 5, status: 30 };
 const hits = new Map();
 function portalLimit(req, bucket) {
-    const ip = String(req.get('x-forwarded-for') || req.ip || '').split(',')[0].trim() || 'unknown';
+    const ip = clientIp(req);
     const key = `${bucket}:${ip}`;
     const now = Date.now();
     const list = (hits.get(key) || []).filter((t) => now - t < WINDOW_MS);
@@ -255,7 +255,9 @@ router.post('/portal/csat/:token', wrap(async (req, res) => {
 
 // WhatsApp Cloud API webhook. GET: Meta's one-time verification. POST: messages (signed with the app secret).
 router.get('/whatsapp/webhook', (req, res) => {
-    const ok = WHATSAPP.verifyToken && req.query['hub.mode'] === 'subscribe' && req.query['hub.verify_token'] === WHATSAPP.verifyToken;
+    const given = Buffer.from(String(req.query['hub.verify_token'] ?? ''));
+    const expected = Buffer.from(String(WHATSAPP.verifyToken || ''));
+    const ok = expected.length > 0 && req.query['hub.mode'] === 'subscribe' && given.length === expected.length && require('crypto').timingSafeEqual(given, expected);
     if (!ok) return res.sendStatus(403);
     res.type('text/plain').send(String(req.query['hub.challenge'] ?? ''));
 });

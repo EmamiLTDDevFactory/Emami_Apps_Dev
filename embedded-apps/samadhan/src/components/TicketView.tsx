@@ -44,7 +44,13 @@ function safeHtml(html: string, loadRemoteImages: boolean): { html: string; bloc
       blockedImages++;
     }
     const style = node.getAttribute('style');
-    if (style && /position\s*:|z-index|inset\s*:/i.test(style)) node.removeAttribute('style');
+    // Positioning, transforms and negative margins can lay a mail over the app's own buttons: drop that style.
+    if (style && /position\s*:|z-index|inset\s*:|transform\s*:|margin[a-z-]*\s*:\s*-/i.test(style)) node.removeAttribute('style');
+    // A remote url(...) in a style (background-image etc.) is a tracking pixel too: held back like remote images.
+    else if (style && !loadRemoteImages && /url\s*\(\s*['"]?\s*(https?:)?\/\//i.test(style)) {
+      node.removeAttribute('style');
+      blockedImages++;
+    }
   });
   const clean = DOMPurify.sanitize(html, {
     FORBID_TAGS: ['style', 'form', 'input', 'button', 'textarea', 'select', 'iframe', 'object', 'embed', 'meta', 'link', 'base'],
