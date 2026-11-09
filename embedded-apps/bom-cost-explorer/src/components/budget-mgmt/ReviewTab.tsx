@@ -100,19 +100,19 @@ export default function ReviewTab({ gjahr, email }: { gjahr: string; email: stri
             <div className="px-3 py-2"><Pill tone="accent">{shown.length} rows</Pill></div>
             <table className="w-full border-collapse">
               <thead className="sticky top-0 z-10 bg-sunken">
-                <tr><th className={th}>Material</th><th className={th}>Plant</th><th className={th}>Cat</th><th className={th}>Source</th><th className={cx(th, 'text-right')}>Derived</th><th className={th}>Rule &amp; breakup</th><th className={cx(th, 'text-right')}>Override</th><th className={cx(th, 'text-right')}>Landed</th><th className={th}>Status</th>
+                <tr><th className={th}>Material</th><th className={th}>Plant</th><th className={th}>Cat</th><th className={th}>Source</th><th className={cx(th, 'text-right')}>Derived</th><th className={th}>Rule &amp; breakup</th><th className={cx(th, 'text-right')}>Override</th><th className={cx(th, 'text-right')}>Freight</th><th className={cx(th, 'text-right')}>Landed Rate</th><th className={th}>Status</th>
                   <th className={th}>Submitted by / on</th><th className={th}>Approved by / on</th><th className={th}>Rejected by / reason</th></tr>
               </thead>
-              {loading ? <SkeletonRows cols={12} /> : (
+              {loading ? <SkeletonRows cols={13} /> : (
                 <tbody>{shown.map((r, i) => { const bu = rateBreakup(r, prio); return (
                   <Fragment key={`${r.Matnr}|${r.Werks}|${r.ValidFrom}`}>
-                  {(i === 0 || shown[i - 1].Matcat !== r.Matcat) && <tr className="bg-sunken/60"><td colSpan={12} className="px-2 py-1 text-xs font-bold"><CatBadge cat={r.Matcat} /> Category {r.Matcat || '—'}</td></tr>}
+                  {(i === 0 || shown[i - 1].Matcat !== r.Matcat) && <tr className="bg-sunken/60"><td colSpan={13} className="px-2 py-1 text-xs font-bold"><CatBadge cat={r.Matcat} /> Category {r.Matcat || '—'}</td></tr>}
                   <tr className="border-b border-line/60">
                     <td className={cx(td, 'num')}>{stripZeros(r.Matnr)}</td><td className={td}>{r.Werks}</td><td className={td}><CatBadge cat={r.Matcat} /></td><td className={td}><SourceChip src={r.RateSrc} /></td>
                     <td className={cx(td, 'num text-right')}>{fmtNum(r.DerivedRate, 4)}</td>
                     <td className="min-w-64 px-2 py-1.5 text-2xs"><div className="font-bold">{bu.rule}</div><div className="num text-muted">{bu.steps.map((x) => `${x.k} ${fmtNum(x.v, 3)}`).join(' → ')}</div></td>
                     <td className={cx(td, 'num text-right')}>{r.OverrideRate ? fmtNum(r.OverrideRate, 4) : '—'}</td>
-                    <td className={cx(td, 'num text-right font-extrabold')}>{fmtNum(r.LandedRate, 4)}</td><td className={td}><StatusBadge status={r.ApprStatus} /></td>
+                    <td className={cx(td, 'num text-right')}>{fmtNum(r.FrtTotal, 4)}</td><td className={cx(td, 'num text-right font-extrabold')}>{fmtNum(r.LandedRate, 4)} {r.LandedCurr}</td><td className={td}><StatusBadge status={r.ApprStatus} /></td>
                     <td className={td}>{r.SubmittedBy ? `${r.SubmittedBy} ${showDate(r.SubmittedOn)}` : '—'}</td><td className={td}>{r.ApprovedBy ? `${r.ApprovedBy} ${showDate(r.ApprovedOn)}` : '—'}</td>
                     <td className={td}>{r.RejectedBy ? `${r.RejectedBy}${r.RejectionRsn ? ` — ${r.RejectionRsn}` : ''}` : '—'}</td>
                   </tr></Fragment>); })}</tbody>
