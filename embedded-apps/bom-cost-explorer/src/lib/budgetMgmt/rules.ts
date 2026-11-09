@@ -189,3 +189,19 @@ export function rateBreakup(r: BudRateRow, prio: readonly string[] = DEFAULT_B_P
   steps.push({ k: 'Landed', v: r.LandedRate });
   return { rule: `${base}: ${how}`, steps };
 }
+
+/** Rule and breakup of a History material before any rate exists (from its rate sources, per category), shown as the draft rate is derived: A selected (latest) source with the market rate beside it, B first source of the priority list, C C-Map. */
+export function historyBreakup(cat: string, rows: BudRateSrcRow[], prio: readonly string[] = DEFAULT_B_PRIORITY): RateBreakup {
+  const latest = (code?: string) => { let b: BudRateSrcRow | null = null; for (const r of rows) if (r.RatePc > 0 && (!code || srcCode(r.RateSrc) === code) && (!b || r.ValidFrom > b.ValidFrom)) b = r; return b; };
+  const step = (k: string, r: BudRateSrcRow | null) => ({ k, v: r ? r.RatePc : 0 });
+  if (cat === 'A') {
+    const s = latest(); const m = marketRate(rows);
+    return { rule: 'Category A: selected rate (latest source); manual or % / amount adjustment in Rates & Edit', steps: [step(`Selected${s ? ` (${s.RateSrc})` : ''}`, s), ...(m ? [step('Market rate', m)] : [])] };
+  }
+  if (cat === 'B') {
+    for (const p of prio) { const b = latest(srcCode(p)); if (b) return { rule: `Category B: priority ${prio.map(srcCode).join(' › ')} — first valid is ${srcCode(p)}`, steps: [step(`${srcCode(p)}`, b)] }; }
+    return { rule: `Category B: priority ${prio.map(srcCode).join(' › ')} — no source has a rate`, steps: [] };
+  }
+  if (cat === 'C') { const b = latest('MBEW'); return { rule: 'Category C: C-Map is the default source (no freight)', steps: b ? [step('C-Map', b)] : [] }; }
+  return { rule: '—', steps: [] };
+}
