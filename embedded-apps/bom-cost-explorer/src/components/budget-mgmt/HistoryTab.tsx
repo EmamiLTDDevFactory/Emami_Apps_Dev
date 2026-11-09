@@ -4,8 +4,8 @@ import { ChevronDown, ChevronRight, Search } from 'lucide-react';
 import { Wand2 } from 'lucide-react';
 import { Button, Card, Field, Spinner, cx, inputCls } from '../ui';
 import { CatBadge, ErrorBox, NO_RECORDS, OkBox, SkeletonRows, SourceChip, errorText, td, th } from './shared';
-import { fetchHistory, fetchRateSources, postGenerate } from '@/lib/budgetMgmt/api';
-import { COUNTRIES, MATERIAL_TYPES, type BudHistRow, type BudRateSrcRow, type HistoryFilter } from '@/lib/budgetMgmt/types';
+import { fetchHistory, fetchRateSources, fetchRates, postGenerate } from '@/lib/budgetMgmt/api';
+import { COUNTRIES, MATERIAL_TYPES, type BudHistRow, type BudRateRow, type BudRateSrcRow, type HistoryFilter } from '@/lib/budgetMgmt/types';
 import { defaultHistWindow, filterHistory, groupHistory, historyBreakup, latestSourceRate, projectedValue, readBPriority, showDate, sortByCountryTotal, stripZeros, validateHistory, type Errors } from '@/lib/budgetMgmt/rules';
 import { fmtNum } from '@/lib/format';
 
@@ -23,6 +23,8 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
   const [plantOpen, setPlantOpen] = useState('');
   const [q, setQ] = useState('');
   const [cats, setCats] = useState<string[]>([]);
+  // Freight and landed rate exist only on saved rates (Generate Draft Rates): read once per load and matched by material.
+  const [saved, setSaved] = useState<Record<string, BudRateRow[]>>({});
   const [sources, setSources] = useState<Record<string, { rows?: BudRateSrcRow[]; error?: string; loading?: boolean }>>({});
 
   // The shared fiscal year pre-fills this tab (and moves the history window with it).
@@ -33,9 +35,10 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
     const e = validateHistory(f);
     setErrs(e);
     if (Object.keys(e).length) return;
-    setLoading(true); setError(''); setOpen(''); setPlantOpen(''); setSources({}); setRows(null);
+    setLoading(true); setError(''); setOpen(''); setPlantOpen(''); setSources({}); setRows(null); setSaved({});
     try { setRows(await fetchHistory(f)); } catch (x) { setError(errorText(x)); }
     setLoading(false);
+    try { const rr = await fetchRates({ gjahr: f.gjahr, land1: f.land1, status: '' }); const m: Record<string, BudRateRow[]> = {}; for (const r of rr) (m[r.Matnr] ??= []).push(r); setSaved(m); } catch { /* freight and landed stay blank */ }
   }
 
   const [genBusy, setGenBusy] = useState(false);
@@ -142,9 +145,9 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
             <table className="w-full border-collapse">
               <thead className="sticky top-0 z-10 bg-sunken">
                 <tr><th className={th} /><th className={th}>Material</th><th className={th}>Description</th><th className={th}>UOM</th>
-                  <th className={cx(th, 'text-right')}>Net Qty</th><th className={cx(th, 'text-right')}>Net Value (Lakhs)</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Avg Rate</th><th className={cx(th, 'text-right')}>Country Total</th><th className={cx(th, 'text-right')}>Proj Rate</th><th className={cx(th, 'text-right')}>Proj Value (Lakhs)</th><th className={th}>Cat</th><th className={cx(th, 'text-right')}>Derived Rate</th><th className={th}>Rule &amp; breakup</th></tr>
+                  <th className={cx(th, 'text-right')}>Net Qty</th><th className={cx(th, 'text-right')}>Net Value (Lakhs)</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Avg Rate</th><th className={cx(th, 'text-right')}>Country Total</th><th className={cx(th, 'text-right')}>Proj Rate</th><th className={cx(th, 'text-right')}>Proj Value (Lakhs)</th><th className={th}>Cat</th><th className={cx(th, 'text-right')}>Derived Rate</th><th className={cx(th, 'text-right')}>Freight</th><th className={cx(th, 'text-right')}>Landed Rate</th><th className={th}>Rule &amp; breakup</th></tr>
               </thead>
-              {loading ? <SkeletonRows cols={14} /> : (
+              {loading ? <SkeletonRows cols={16} /> : (
                 <tbody>
                   {shown.map((g) => {
                     const isOpen = open === g.key;
@@ -159,15 +162,20 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
                             : <><td className={cx(td, 'text-right text-faint')}>…</td><td className={cx(td, 'text-right text-faint')}>…</td></>; })()}
                           <td className={td}><CatBadge cat={g.Matcat} /></td>
                           {(() => {
-                            if (!proj[g.key]) return <><td className={cx(td, 'text-right text-faint')}>…</td><td className={td}><span className="text-faint">…</span></td></>;
+                            if (!proj[g.key]) return <><td className={cx(td, 'text-right text-faint')}>…</td><td className={td} /><td className={td} /><td className={td}><span className="text-faint">…</span></td></>;
                             const bu = historyBreakup(g.Matcat, g.plants.flatMap((p) => sources[plantKey(g.key, p)]?.rows ?? []), prio);
-                            return <><td className={cx(td, 'num text-right font-extrabold')}>{bu.derived == null ? '—' : fmtNum(bu.derived, 3)}</td>
+                            return <><td className={cx(td, 'num text-right font-extrabold')}>{bu.derived == null ? '—' : fmtNum(bu.derived, 3)}</td>{(() => {
+                              const sv = saved[g.Matnr] ?? [];
+                              const one = (f: (r: BudRateRow) => number) => { const v = Array.from(new Set(sv.map(f))); return v.length === 0 ? '—' : v.length === 1 ? fmtNum(v[0], 3) : `${fmtNum(Math.min(...v), 3)} – ${fmtNum(Math.max(...v), 3)}`; };
+                              const t = sv.length ? undefined : 'No saved rate yet — Generate Draft Rates';
+                              return <><td className={cx(td, 'num text-right')} title={t}>{one((r) => r.FrtTotal)}</td><td className={cx(td, 'num text-right font-extrabold')} title={t}>{one((r) => r.LandedRate)}</td></>;
+                            })()}
                               <td className="min-w-64 px-2 py-1.5 text-2xs"><div className="font-bold">{bu.rule}</div><div className="num text-muted">{bu.steps.map((x) => `${x.k} ${fmtNum(x.v, 3)}`).join(' · ')}</div></td></>;
                           })()}
                         </tr>
                         {isOpen && (
                           <tr className="border-b border-line bg-bg">
-                            <td colSpan={14} className="px-4 py-3">
+                            <td colSpan={16} className="px-4 py-3">
                               <p className="mb-2 text-xs font-bold">{stripZeros(g.Matnr)} — {g.Maktx} — by plant <span className="font-normal text-muted">(click a plant for its rate sources)</span></p>
                               <table className="w-full max-w-4xl border-collapse">
                                 <thead><tr><th className={th}>Plant</th><th className={th}>UOM</th><th className={cx(th, 'text-right')}>Net Qty</th><th className={cx(th, 'text-right')}>Net Value (Lakhs)</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Avg Rate</th></tr></thead>
@@ -210,7 +218,7 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
                       </Fragment>
                     );
                   })}
-                  {!shown.length && <tr><td colSpan={14} className="px-3 py-8 text-center text-sm text-muted">No materials match the filter</td></tr>}
+                  {!shown.length && <tr><td colSpan={16} className="px-3 py-8 text-center text-sm text-muted">No materials match the filter</td></tr>}
                 </tbody>
               )}
             </table>
