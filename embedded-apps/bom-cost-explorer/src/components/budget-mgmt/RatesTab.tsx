@@ -2,7 +2,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Pencil, Save, Search, X } from 'lucide-react';
 import { Button, Card, Field, Pill, Spinner, cx, inputCls } from '../ui';
-import { CatBadge, ErrorBox, NO_RECORDS, SkeletonRows, SourceChip, StatusBadge, errorText, td, th } from './shared';
+import { CatBadge, ErrorBox, NO_RECORDS, OkBox, SkeletonRows, SourceChip, StatusBadge, errorText, td, th } from './shared';
 import RateEditPanel from './RateEditPanel';
 import SourcePriorityEditor from '../rates/SourcePriorityEditor';
 import { fetchRates, patchRate } from '@/lib/budgetMgmt/api';
@@ -14,9 +14,9 @@ const PRIO_KEY = 'bud-mgmt-b-priority';
 const keyOf = (r: BudRateRow) => `${r.Gjahr}|${r.Land1}|${r.Matnr}|${r.Werks}|${r.ValidFrom}`;
 const ADJ: { v: AdjType; label: string }[] = [{ v: 'N', label: 'None' }, { v: 'P', label: 'Percent (%)' }, { v: 'A', label: 'Amount' }];
 
-export default function RatesTab({ gjahr }: { gjahr: string }) {
-  const [land1, setLand1] = useState('IN');
-  const [year, setYear] = useState(gjahr);
+export default function RatesTab({ gjahr, generated }: { gjahr: string; generated?: { land1: string; gjahr: string; message: string } | null }) {
+  const [land1, setLand1] = useState(generated?.land1 ?? 'IN');
+  const [year, setYear] = useState(generated?.gjahr ?? gjahr);
   const [status, setStatus] = useState('D');
   const [rows, setRows] = useState<BudRateRow[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -32,7 +32,7 @@ export default function RatesTab({ gjahr }: { gjahr: string }) {
   const [prio, setPrioState] = useState<string[]>([...DEFAULT_B_PRIORITY]);
   useEffect(() => { try { const v = JSON.parse(localStorage.getItem(PRIO_KEY) ?? 'null'); if (Array.isArray(v) && v.length) setPrioState(v.map(String)); } catch { /* default */ } }, []);
   const setPrio = (v: string[]) => { setPrioState(v); try { localStorage.setItem(PRIO_KEY, JSON.stringify(v)); } catch { /* not kept */ } };
-  const [yearShown, setYearShown] = useState(gjahr);
+  const [yearShown, setYearShown] = useState(generated?.gjahr ?? gjahr);
   // Shared FY changed from the page header: pre-fill (the user's own edit of the field is kept until the header changes again).
   if (yearShown !== gjahr) { setYearShown(gjahr); setYear(gjahr); }
 
@@ -42,6 +42,9 @@ export default function RatesTab({ gjahr }: { gjahr: string }) {
     try { setRows(await fetchRates({ gjahr: y, land1: l, status: s })); } catch (x) { setRows(null); setError(errorText(x)); }
     setLoading(false);
   }
+
+  // Opened by Generate Draft Rates: load the drafts of what was just generated.
+  useEffect(() => { if (generated) void load(generated.gjahr, generated.land1, 'D'); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   function startEdit(r: BudRateRow) {
     setEditing(keyOf(r)); setFErr({}); setSaveErr('');
@@ -75,6 +78,7 @@ export default function RatesTab({ gjahr }: { gjahr: string }) {
         <div className="mt-2 max-w-sm"><SourcePriorityEditor value={prio} onChange={setPrio} compact /></div>
       </details>
 
+      {generated && <OkBox>✅ {generated.message}</OkBox>}
       {error && <ErrorBox>{error}</ErrorBox>}
       {rows && rows.length === 0 && !error && <Card><p className="py-6 text-center text-sm text-muted">{NO_RECORDS}</p></Card>}
 

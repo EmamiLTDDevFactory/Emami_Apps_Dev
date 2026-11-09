@@ -93,3 +93,20 @@ export async function postAction(p: ActionPayload, opts: SapGetOptions = {}): Pr
   const d = ((r.body as { d?: Record<string, unknown> } | null)?.d ?? r.body ?? {}) as Record<string, unknown>;
   return { RowsActed: num(d.RowsActed), Message: str(d.Message) };
 }
+
+/**
+ * Generate Draft Rates: SAP loads the history, classifies, derives the basic rate, attaches freight and saves a draft (status D) row per material
+ * into ZBOM_BUD_RATE. The history window and the A / B limits go with the action (Edm.DateTime as /Date(ms)/, decimals as strings).
+ */
+const msDate = (iso: string) => `/Date(${Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)))})/`;
+export function generateBody(f: HistoryFilter, email: string) {
+  return {
+    Action: 'GENERATE', Gjahr: f.gjahr, Land1: f.land1, MatnrCsv: '', WerksCsv: '', Reason: '', Email: email.trim().toLowerCase(),
+    HistFrom: msDate(f.histFrom), HistTo: msDate(f.histTo), CatAFrom: String(amount(f.catAFrom)), CatBFrom: String(amount(f.catBFrom)), MtartCsv: (f.mtart ?? []).join(','),
+  };
+}
+export async function postGenerate(f: HistoryFilter, email: string, opts: SapGetOptions = {}): Promise<ActionResult> {
+  const r = await sapWrite('POST', BUD_MGMT_SET.ACTION, generateBody(f, email), { timeoutMs: SAP_MAX_TIMEOUT_MS, ...opts });
+  const d = ((r.body as { d?: Record<string, unknown> } | null)?.d ?? r.body ?? {}) as Record<string, unknown>;
+  return { RowsActed: num(d.RowsActed), Message: str(d.Message) };
+}

@@ -16,6 +16,8 @@ export default function MgmtScreen() {
   const hub = useHubSession();
   const [tab, setTabState] = useState<Tab>('history');
   const [fy, setFy] = useState(fiscalYear());
+  // Draft rates just generated on History: Rates & Edit opens on them and loads the drafts.
+  const [gen, setGen] = useState<{ land1: string; gjahr: string; message: string } | null>(null);
   // Tab in the URL (?tab=): the browser Back button moves between the tabs.
   useEffect(() => {
     setTabState(readTab());
@@ -36,8 +38,8 @@ export default function MgmtScreen() {
         </label>
       </div>
       <Tabs label="Budget rate management" tabs={TABS} value={tab} onChange={setTab} />
-      {tab === 'history' && <HistoryTab gjahr={fy} />}
-      {tab === 'rates' && <RatesTab gjahr={fy} />}
+      {tab === 'history' && <HistoryTab gjahr={fy} email={email} onGenerated={(g) => { setGen(g); setTab('rates'); }} />}
+      {tab === 'rates' && <RatesTab gjahr={fy} generated={gen} />}
       {tab === 'review' && <ReviewTab gjahr={fy} email={email} />}
     </PlanFrame>
   );

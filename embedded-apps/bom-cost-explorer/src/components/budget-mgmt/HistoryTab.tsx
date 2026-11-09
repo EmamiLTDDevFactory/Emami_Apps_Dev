@@ -1,9 +1,10 @@
 'use client';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, Search } from 'lucide-react';
+import { Wand2 } from 'lucide-react';
 import { Button, Card, Field, Spinner, cx, inputCls } from '../ui';
-import { CatBadge, ErrorBox, NO_RECORDS, SkeletonRows, SourceChip, errorText, td, th } from './shared';
-import { fetchHistory, fetchRateSources } from '@/lib/budgetMgmt/api';
+import { CatBadge, ErrorBox, NO_RECORDS, OkBox, SkeletonRows, SourceChip, errorText, td, th } from './shared';
+import { fetchHistory, fetchRateSources, postGenerate } from '@/lib/budgetMgmt/api';
 import { COUNTRIES, MATERIAL_TYPES, type BudHistRow, type BudRateSrcRow, type HistoryFilter } from '@/lib/budgetMgmt/types';
 import { defaultHistWindow, filterHistory, groupHistory, latestSourceRate, projectedValue, showDate, sortByCountryTotal, stripZeros, validateHistory, type Errors } from '@/lib/budgetMgmt/rules';
 import { fmtNum } from '@/lib/format';
@@ -12,7 +13,7 @@ import { fmtNum } from '@/lib/format';
 const lakh = (v: number) => v / 100000;
 const plantKey = (g: string, r: BudHistRow) => `${g}|${r.Bukrs}|${r.Werks}`;
 
-export default function HistoryTab({ gjahr }: { gjahr: string }) {
+export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: string; email: string; onGenerated: (g: { land1: string; gjahr: string; message: string }) => void }) {
   const [f, setF] = useState<HistoryFilter>(() => { const w = defaultHistWindow(gjahr); return { land1: 'IN', gjahr, histFrom: w.from, histTo: w.to, catAFrom: '8,000,000', catBFrom: '4,000,000', mtart: [] }; });
   const [errs, setErrs] = useState<Errors<keyof HistoryFilter>>({});
   const [rows, setRows] = useState<BudHistRow[] | null>(null);
@@ -35,6 +36,17 @@ export default function HistoryTab({ gjahr }: { gjahr: string }) {
     setLoading(true); setError(''); setOpen(''); setPlantOpen(''); setSources({}); setRows(null);
     try { setRows(await fetchHistory(f)); } catch (x) { setError(errorText(x)); }
     setLoading(false);
+  }
+
+  const [genBusy, setGenBusy] = useState(false);
+  const [genErr, setGenErr] = useState('');
+  async function generate() {
+    if (!email) return setGenErr('Your sign-in email is not available yet - please retry in a moment');
+    if (!window.confirm(`Generate draft rates for ${f.land1} ${f.gjahr} from this history? SAP classifies every material (A / B / C), derives the basic rate and freight and saves a draft row for each.`)) return;
+    setGenBusy(true); setGenErr('');
+    try { const r = await postGenerate(f, email); onGenerated({ land1: f.land1, gjahr: f.gjahr, message: `${r.RowsActed} draft rates generated${r.Message ? ` — ${r.Message}` : ''}` }); }
+    catch (x) { setGenErr(errorText(x)); }
+    setGenBusy(false);
   }
 
   async function togglePlant(r: BudHistRow, k: string) {
@@ -94,6 +106,13 @@ export default function HistoryTab({ gjahr }: { gjahr: string }) {
       </Card>
 
       {error && <ErrorBox>{error}</ErrorBox>}
+      {genErr && <ErrorBox>{genErr}</ErrorBox>}
+      {rows && rows.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-panel px-3 py-2 shadow-card">
+          <Button variant="primary" onClick={() => void generate()} disabled={genBusy}>{genBusy ? <Spinner /> : <Wand2 size={14} />} Generate Draft Rates</Button>
+          <span className="text-xs text-muted">Saves a draft rate (status D) for every material of this history; you edit and submit them in Rates & Edit.</span>
+        </div>
+      )}
       {rows && rows.length > 0 && <p className="text-sm font-semibold text-ink">Loaded {groups.length} materials ({rows.length} plant rows) — Cat A: {counts.A} · Cat B: {counts.B} · Cat C: {counts.C}</p>}
       {rows && rows.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-panel px-3 py-2 shadow-card">

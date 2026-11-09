@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { actionBody, historyFilter, patchBody, rateFilter, rateKeyPath, sourceFilter } from '@/lib/budgetMgmt/api';
+import { actionBody, generateBody, historyFilter, patchBody, rateFilter, rateKeyPath, sourceFilter } from '@/lib/budgetMgmt/api';
 import { csvList, dateText, defaultHistWindow, fiscalYear, isEditable, padMatnr, showDate, stripZeros, toSapDate, validateAction, validateEdit, validateHistory, groupHistory, filterHistory, latestSourceRate, projectedValue, sortByCountryTotal, adjustRate, budgetedBasic, landedRate, validateEdit as validateEdit2, srcCode, freightApplies, pickByPriority, marketRate, DEFAULT_B_PRIORITY } from '@/lib/budgetMgmt/rules';
 
 const hist = { land1: 'IN', gjahr: '2026', histFrom: '2025-04-01', histTo: '2026-03-31', catAFrom: '8,000,000', catBFrom: '4,000,000' };
@@ -138,5 +138,14 @@ describe('rate derivation preview', () => {
     expect(pickByPriority([s('CONT', 0), s('INFO', 108), s('MBEW', 103)], DEFAULT_B_PRIORITY)?.source).toBe('INFOREC');
     expect(pickByPriority([], DEFAULT_B_PRIORITY)).toBeNull();
     expect(marketRate([s('MARKT', 110, '20250101'), s('MARKT', 112, '20260101')])?.RatePc).toBe(112);
+  });
+});
+
+describe('generate draft rates', () => {
+  it('posts GENERATE with the history window and limits', () => {
+    expect(generateBody({ ...hist, mtart: ['ROH'] }, ' A@B.com ')).toEqual({
+      Action: 'GENERATE', Gjahr: '2026', Land1: 'IN', MatnrCsv: '', WerksCsv: '', Reason: '', Email: 'a@b.com',
+      HistFrom: '/Date(1743465600000)/', HistTo: '/Date(1774915200000)/', CatAFrom: '8000000', CatBFrom: '4000000', MtartCsv: 'ROH',
+    });
   });
 });
