@@ -82,7 +82,7 @@ const RAW_APPS: AppItem[] = [
   { id: 'samadhan', name: 'Samadhan', desc: 'Emami service desk for every issue: SAP and primary sales, secondary sales apps (Arteria today, Salescode.AI next), digital apps and IT infrastructure - one mailbox, self-service portal, WhatsApp, SLAs, AI insights and dashboards.', cat: 'IT', icon: LifeBuoy, uses: 0, stage: 'IAT' },
   { id: 'cascade-pricing', name: 'Cascade Pricing', desc: 'Export price cascade from RRP to CIF by market and customer — rate upload, pricing simulation, approval, SAP condition creation and pricing KPIs.', cat: 'IBD', icon: Layers, uses: 0, stage: 'WIP' },
   { id: 'mm-mdm', name: 'Material Master', desc: 'Request, review and approve material master records — key data, tabs, validation by SAP, workflow with send back and approval.', cat: 'Supply Chain', icon: PackageSearch, uses: 0, stage: 'WIP' },
-  { id: 'auditee-response', name: 'Auditee Response', desc: 'Answer the internal audit and MIS observations assigned to you and submit your response to the reviewer, with attachments.', cat: 'Cross-Function', icon: MessageSquareReply, uses: 0, stage: 'WIP' },
+  { id: 'auditee-response', name: 'Auditee Response', desc: 'Answer the internal audit and MIS observations assigned to you and submit your response to the reviewer, with attachments.', cat: 'MSD', icon: MessageSquareReply, uses: 0, stage: 'WIP' },
 ];
 
 export const APPS: AppItem[] = RAW_APPS.map((app) => ({
