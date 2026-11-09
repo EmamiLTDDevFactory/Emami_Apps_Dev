@@ -1,10 +1,10 @@
 'use client';
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { Check, RotateCcw, Search, Send, ThumbsDown } from 'lucide-react';
 import { Button, Card, Field, Pill, Spinner, cx, inputCls } from '../ui';
 import { CatBadge, ErrorBox, NO_RECORDS, OkBox, SkeletonRows, SourceChip, StatusBadge, errorText, td, th } from './shared';
 import { fetchRates, postAction } from '@/lib/budgetMgmt/api';
-import { ACTION_FROM, csvList, showDate, stripZeros, validateAction } from '@/lib/budgetMgmt/rules';
+import { ACTION_FROM, csvList, rateBreakup, readBPriority, showDate, stripZeros, validateAction } from '@/lib/budgetMgmt/rules';
 import { COUNTRIES, STATUS_LABEL, type BudRateRow, type RateAction } from '@/lib/budgetMgmt/types';
 import { fmtNum } from '@/lib/format';
 
@@ -56,7 +56,8 @@ export default function ReviewTab({ gjahr, email }: { gjahr: string; email: stri
     { a: 'SUBMIT', label: 'Submit', hint: 'D→S', icon: Send }, { a: 'APPROVE', label: 'Approve', hint: 'S→A', icon: Check },
     { a: 'REJECT', label: 'Reject', hint: 'S→R', icon: ThumbsDown }, { a: 'REVISE', label: 'Revise', hint: 'R→V', icon: RotateCcw },
   ];
-  const shown = useMemo(() => rows ?? [], [rows]);
+  const [prio] = useState<string[]>(readBPriority);
+  const shown = useMemo(() => [...(rows ?? [])].sort((a, b) => (a.Matcat || 'Z').localeCompare(b.Matcat || 'Z')), [rows]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -99,18 +100,22 @@ export default function ReviewTab({ gjahr, email }: { gjahr: string; email: stri
             <div className="px-3 py-2"><Pill tone="accent">{shown.length} rows</Pill></div>
             <table className="w-full border-collapse">
               <thead className="sticky top-0 z-10 bg-sunken">
-                <tr><th className={th}>Material</th><th className={th}>Plant</th><th className={th}>Cat</th><th className={th}>Source</th><th className={cx(th, 'text-right')}>Derived</th><th className={cx(th, 'text-right')}>Override</th><th className={cx(th, 'text-right')}>Landed</th><th className={th}>Status</th>
+                <tr><th className={th}>Material</th><th className={th}>Plant</th><th className={th}>Cat</th><th className={th}>Source</th><th className={cx(th, 'text-right')}>Derived</th><th className={th}>Rule &amp; breakup</th><th className={cx(th, 'text-right')}>Override</th><th className={cx(th, 'text-right')}>Landed</th><th className={th}>Status</th>
                   <th className={th}>Submitted by / on</th><th className={th}>Approved by / on</th><th className={th}>Rejected by / reason</th></tr>
               </thead>
-              {loading ? <SkeletonRows cols={11} /> : (
-                <tbody>{shown.map((r) => (
-                  <tr key={`${r.Matnr}|${r.Werks}|${r.ValidFrom}`} className="border-b border-line/60">
+              {loading ? <SkeletonRows cols={12} /> : (
+                <tbody>{shown.map((r, i) => { const bu = rateBreakup(r, prio); return (
+                  <Fragment key={`${r.Matnr}|${r.Werks}|${r.ValidFrom}`}>
+                  {(i === 0 || shown[i - 1].Matcat !== r.Matcat) && <tr className="bg-sunken/60"><td colSpan={12} className="px-2 py-1 text-xs font-bold"><CatBadge cat={r.Matcat} /> Category {r.Matcat || '—'}</td></tr>}
+                  <tr className="border-b border-line/60">
                     <td className={cx(td, 'num')}>{stripZeros(r.Matnr)}</td><td className={td}>{r.Werks}</td><td className={td}><CatBadge cat={r.Matcat} /></td><td className={td}><SourceChip src={r.RateSrc} /></td>
-                    <td className={cx(td, 'num text-right')}>{fmtNum(r.DerivedRate, 4)}</td><td className={cx(td, 'num text-right')}>{r.OverrideRate ? fmtNum(r.OverrideRate, 4) : '—'}</td>
+                    <td className={cx(td, 'num text-right')}>{fmtNum(r.DerivedRate, 4)}</td>
+                    <td className="min-w-64 px-2 py-1.5 text-2xs"><div className="font-bold">{bu.rule}</div><div className="num text-muted">{bu.steps.map((x) => `${x.k} ${fmtNum(x.v, 3)}`).join(' → ')}</div></td>
+                    <td className={cx(td, 'num text-right')}>{r.OverrideRate ? fmtNum(r.OverrideRate, 4) : '—'}</td>
                     <td className={cx(td, 'num text-right font-extrabold')}>{fmtNum(r.LandedRate, 4)}</td><td className={td}><StatusBadge status={r.ApprStatus} /></td>
                     <td className={td}>{r.SubmittedBy ? `${r.SubmittedBy} ${showDate(r.SubmittedOn)}` : '—'}</td><td className={td}>{r.ApprovedBy ? `${r.ApprovedBy} ${showDate(r.ApprovedOn)}` : '—'}</td>
                     <td className={td}>{r.RejectedBy ? `${r.RejectedBy}${r.RejectionRsn ? ` — ${r.RejectionRsn}` : ''}` : '—'}</td>
-                  </tr>))}</tbody>
+                  </tr></Fragment>); })}</tbody>
               )}
             </table>
           </div>

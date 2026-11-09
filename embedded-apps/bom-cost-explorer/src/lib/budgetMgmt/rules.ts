@@ -191,17 +191,23 @@ export function rateBreakup(r: BudRateRow, prio: readonly string[] = DEFAULT_B_P
 }
 
 /** Rule and breakup of a History material before any rate exists (from its rate sources, per category), shown as the draft rate is derived: A selected (latest) source with the market rate beside it, B first source of the priority list, C C-Map. */
-export function historyBreakup(cat: string, rows: BudRateSrcRow[], prio: readonly string[] = DEFAULT_B_PRIORITY): RateBreakup {
+export function historyBreakup(cat: string, rows: BudRateSrcRow[], prio: readonly string[] = DEFAULT_B_PRIORITY): RateBreakup & { derived: number | null } {
   const latest = (code?: string) => { let b: BudRateSrcRow | null = null; for (const r of rows) if (r.RatePc > 0 && (!code || srcCode(r.RateSrc) === code) && (!b || r.ValidFrom > b.ValidFrom)) b = r; return b; };
   const step = (k: string, r: BudRateSrcRow | null) => ({ k, v: r ? r.RatePc : 0 });
   if (cat === 'A') {
     const s = latest(); const m = marketRate(rows);
-    return { rule: 'Category A: selected rate (latest source); manual or % / amount adjustment in Rates & Edit', steps: [step(`Selected${s ? ` (${s.RateSrc})` : ''}`, s), ...(m ? [step('Market rate', m)] : [])] };
+    return { derived: s ? s.RatePc : null, rule: 'Category A: selected rate (latest source); manual or % / amount adjustment in Rates & Edit', steps: [step(`Selected${s ? ` (${s.RateSrc})` : ''}`, s), ...(m ? [step('Market rate', m)] : [])] };
   }
   if (cat === 'B') {
-    for (const p of prio) { const b = latest(srcCode(p)); if (b) return { rule: `Category B: priority ${prio.map(srcCode).join(' › ')} — first valid is ${srcCode(p)}`, steps: [step(`${srcCode(p)}`, b)] }; }
-    return { rule: `Category B: priority ${prio.map(srcCode).join(' › ')} — no source has a rate`, steps: [] };
+    for (const p of prio) { const b = latest(srcCode(p)); if (b) return { derived: b.RatePc, rule: `Category B: priority ${prio.map(srcCode).join(' › ')} — first valid is ${srcCode(p)}`, steps: [step(`${srcCode(p)}`, b)] }; }
+    return { derived: null, rule: `Category B: priority ${prio.map(srcCode).join(' › ')} — no source has a rate`, steps: [] };
   }
-  if (cat === 'C') { const b = latest('MBEW'); return { rule: 'Category C: C-Map is the default source (no freight)', steps: b ? [step('C-Map', b)] : [] }; }
-  return { rule: '—', steps: [] };
+  if (cat === 'C') { const b = latest('MBEW'); return { derived: b ? b.RatePc : null, rule: 'Category C: C-Map is the default source (no freight)', steps: b ? [step('C-Map', b)] : [] }; }
+  return { derived: null, rule: '—', steps: [] };
+}
+
+/** Category B source priority as set in Rates & Edit (kept in this browser); the default when none is saved. */
+export function readBPriority(): string[] {
+  try { const v = JSON.parse(localStorage.getItem('bud-mgmt-b-priority') ?? 'null'); if (Array.isArray(v) && v.length) return v.map(String); } catch { /* default */ }
+  return [...DEFAULT_B_PRIORITY];
 }
