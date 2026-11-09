@@ -7,7 +7,7 @@ import RateEditPanel from './RateEditPanel';
 import SourcePriorityEditor from '../rates/SourcePriorityEditor';
 import { fetchRates, patchRate } from '@/lib/budgetMgmt/api';
 import { COUNTRIES, STATUS_LABEL, type AdjType, type BudRateRow, type RateEdit } from '@/lib/budgetMgmt/types';
-import { DEFAULT_B_PRIORITY, isEditable, stripZeros, validateEdit, type Errors } from '@/lib/budgetMgmt/rules';
+import { DEFAULT_B_PRIORITY, isEditable, rateBreakup, stripZeros, validateEdit, type Errors } from '@/lib/budgetMgmt/rules';
 import { fmtNum } from '@/lib/format';
 
 const PRIO_KEY = 'bud-mgmt-b-priority';
@@ -60,7 +60,7 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
     setSaving(false);
   }
 
-  const shown = useMemo(() => { const n = q.trim().toLowerCase(); return (rows ?? []).filter((r) => !n || stripZeros(r.Matnr).toLowerCase().includes(n) || r.Matnr.toLowerCase().includes(n)); }, [rows, q]);
+  const shown = useMemo(() => { const n = q.trim().toLowerCase(); return (rows ?? []).filter((r) => !n || stripZeros(r.Matnr).toLowerCase().includes(n) || r.Matnr.toLowerCase().includes(n)).sort((a, b) => (a.Matcat || 'Z').localeCompare(b.Matcat || 'Z')); }, [rows, q]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -91,19 +91,22 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
           <div className="max-h-[65vh] overflow-auto">
             <table className="w-full border-collapse">
               <thead className="sticky top-0 z-10 bg-sunken">
-                <tr><th className={th}>Material</th><th className={th}>Plant</th><th className={th}>Valid from</th><th className={th}>Cat</th><th className={th}>Source</th><th className={cx(th, 'text-right')}>Src rate</th><th className={cx(th, 'text-right')}>Derived</th>
+                <tr><th className={th}>Material</th><th className={th}>Plant</th><th className={th}>Valid from</th><th className={th}>Cat</th><th className={th}>Source</th><th className={cx(th, 'text-right')}>Src rate</th><th className={cx(th, 'text-right')}>Derived</th><th className={th}>Rule &amp; breakup</th>
                   <th className={th}>Adj</th><th className={cx(th, 'text-right')}>Override</th><th className={cx(th, 'text-right')}>Freight</th><th className={cx(th, 'text-right')}>Landed rate</th><th className={th}>Status</th><th className={th} /></tr>
               </thead>
-              {loading ? <SkeletonRows cols={13} /> : (
+              {loading ? <SkeletonRows cols={14} /> : (
                 <tbody>
-                  {shown.map((r) => {
+                  {shown.map((r, i) => {
                     const k = keyOf(r); const isEd = editing === k;
+                    const bu = rateBreakup(r, prio);
                     return (
                       <Fragment key={k}>
+                        {(i === 0 || shown[i - 1].Matcat !== r.Matcat) && <tr className="bg-sunken/60"><td colSpan={14} className="px-2 py-1 text-xs font-bold"><CatBadge cat={r.Matcat} /> Category {r.Matcat || '—'}</td></tr>}
                         <tr className={cx('border-b border-line/60', isEd && 'bg-accent/5')}>
                           <td className={cx(td, 'num')}>{stripZeros(r.Matnr)}</td><td className={td}>{r.Werks}</td><td className={td}>{r.ValidFrom.length === 8 ? `${r.ValidFrom.slice(6)}.${r.ValidFrom.slice(4, 6)}.${r.ValidFrom.slice(0, 4)}` : r.ValidFrom}</td>
                           <td className={td}><CatBadge cat={r.Matcat} /></td><td className={td}><SourceChip src={r.RateSrc} /></td>
                           <td className={cx(td, 'num text-right')}>{fmtNum(r.SrcRate, 4)}</td><td className={cx(td, 'num text-right')}>{fmtNum(r.DerivedRate, 4)} {r.DerivedCurr}</td>
+                          <td className="min-w-64 px-2 py-1.5 text-2xs"><div className="font-bold">{bu.rule}</div><div className="num text-muted">{bu.steps.map((s) => `${s.k} ${fmtNum(s.v, 3)}`).join(' → ')}</div></td>
                           <td className={cx(td, 'num')}>{r.AdjType && r.AdjType !== 'N' ? `${r.AdjType} ${fmtNum(r.AdjValue, 2)}` : '—'}</td>
                           <td className={cx(td, 'num text-right')} title={r.OverrideRsn}>{r.OverrideRate ? fmtNum(r.OverrideRate, 4) : '—'}</td>
                           <td className={cx(td, 'num text-right')}>{fmtNum(r.FrtTotal, 4)}</td><td className={cx(td, 'num text-right font-extrabold')}>{fmtNum(r.LandedRate, 4)} {r.LandedCurr}</td>
@@ -112,7 +115,7 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
                         </tr>
                         {isEd && (
                           <tr className="border-b border-line bg-accent/5">
-                            <td colSpan={13} className="px-4 py-3">
+                            <td colSpan={14} className="px-4 py-3">
                               <RateEditPanel r={r} form={form} setForm={setForm} errs={fErr} prio={prio} />
                               <div className="mt-3 flex flex-wrap items-center gap-2">
                                 <Button variant="primary" size="sm" disabled={saving} onClick={() => void save(r)}>{saving ? <Spinner /> : <Save size={13} />} Save changes</Button>

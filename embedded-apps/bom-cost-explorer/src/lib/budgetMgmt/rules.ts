@@ -1,6 +1,6 @@
 /** Pure rules of the budget rate management screens: dates, material numbers, filters and the frontend validation. */
 import Decimal from 'decimal.js';
-import type { ActionPayload, AdjType, BudHistGroup, BudHistRow, BudRateSrcRow, HistoryFilter, RateEdit, RateAction } from './types';
+import type { ActionPayload, AdjType, BudHistGroup, BudHistRow, BudRateRow, BudRateSrcRow, HistoryFilter, RateEdit, RateAction } from './types';
 
 /** YYYYMMDD -> DD.MM.YYYY (anything else is shown as it is). */
 export const showDate = (v: string) => (/^\d{8}$/.test(v) ? `${v.slice(6)}.${v.slice(4, 6)}.${v.slice(0, 4)}` : v);
@@ -170,3 +170,22 @@ export function marketRate(rows: BudRateSrcRow[]): BudRateSrcRow | null {
 }
 /** Default priority of Category B (spec 7.2): Contract, Info record, C-Map. */
 export const DEFAULT_B_PRIORITY = ['CONTRACT', 'INFOREC', 'MBEW'] as const;
+
+/** Rule and breakup of a rate row by category (spec 7-10): which rule gave the derived rate, and the steps from source rate to landed rate. */
+export interface RateBreakup { rule: string; steps: { k: string; v: number; curr?: string }[] }
+export function rateBreakup(r: BudRateRow, prio: readonly string[] = DEFAULT_B_PRIORITY): RateBreakup {
+  const src = r.RateSrc || '—';
+  const overriding = r.OverrideRate > 0;
+  const adj = r.AdjType === 'P' || r.AdjType === 'A';
+  const sign = (v: number) => (v < 0 ? '−' : '+');
+  const adjText = r.AdjType === 'P' ? `${sign(r.AdjValue)}${Math.abs(r.AdjValue)}%` : `${sign(r.AdjValue)}${Math.abs(r.AdjValue)}`;
+  const base = r.Matcat === 'A' ? 'Category A' : r.Matcat === 'B' ? `Category B (priority ${prio.map(srcCode).join(' › ')})` : r.Matcat === 'C' ? 'Category C (C-Map default)' : 'Category';
+  const how = overriding ? (r.Matcat === 'A' ? 'manual rate' : 'override rate') : adj ? (r.AdjType === 'P' ? `percentage adjustment ${adjText}` : `absolute adjustment ${adjText}`) : r.Matcat === 'A' ? 'selected rate' : `source rate (${src})`;
+  const steps: RateBreakup['steps'] = [{ k: `Source rate (${src})`, v: r.SrcRate }];
+  if (overriding) steps.push({ k: 'Override', v: r.OverrideRate });
+  else if (adj) steps.push({ k: `Adjustment ${adjText}`, v: adjustRate(r.SrcRate, r.AdjType, r.AdjValue) });
+  steps.push({ k: 'Derived basic', v: r.DerivedRate });
+  if (freightApplies(r.RateSrc) || overriding) steps.push({ k: 'Freight', v: r.FrtTotal });
+  steps.push({ k: 'Landed', v: r.LandedRate });
+  return { rule: `${base}: ${how}`, steps };
+}
