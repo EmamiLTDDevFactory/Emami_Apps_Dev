@@ -7,7 +7,7 @@ import RateEditPanel from './RateEditPanel';
 import SourcePriorityEditor from '../rates/SourcePriorityEditor';
 import { fetchRateSources, fetchRates, patchRate } from '@/lib/budgetMgmt/api';
 import { COUNTRIES, STATUS_LABEL, type AdjType, type BudRateRow, type BudRateSrcRow, type RateEdit } from '@/lib/budgetMgmt/types';
-import { DEFAULT_B_PRIORITY, isEditable, freightApplies, historyBreakup, landedRate, rateBreakup, stripZeros, validateEdit, type Errors } from '@/lib/budgetMgmt/rules';
+import { DEFAULT_B_PRIORITY, adjustRate, amount, budgetedBasic, isEditable, freightApplies, historyBreakup, landedRate, rateBreakup, stripZeros, validateEdit, type Errors } from '@/lib/budgetMgmt/rules';
 import { fmtNum } from '@/lib/format';
 
 const PRIO_KEY = 'bud-mgmt-b-priority';
@@ -43,6 +43,19 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
     for (let i = 0; i < 3; i++) void worker();
     return () => { live = false; };
   }, [rows]);
+  // Simulation (nothing is saved): one global adjustment (optionally by category) and per-row simulations set with Enter in the edit panel.
+  const [gType, setGType] = useState<'P' | 'A'>('P');
+  const [gValue, setGValue] = useState('');
+  const [gCats, setGCats] = useState<string[]>([]);
+  const [gSim, setGSim] = useState<{ type: 'P' | 'A'; value: number; cats: string[] } | null>(null);
+  const [gErr, setGErr] = useState('');
+  const [rowSim, setRowSim] = useState<Record<string, RateEdit>>({});
+  function runGlobal() {
+    const v = amount(gValue);
+    if (gValue.trim() === '' || !Number.isFinite(v)) return setGErr('Enter the adjustment value');
+    if (gType === 'P' && (v < -99 || v > 999)) return setGErr('Percent must be between -99 and 999');
+    setGErr(''); setGSim({ type: gType, value: v, cats: gCats });
+  }
   const [yearShown, setYearShown] = useState(generated?.gjahr ?? gjahr);
   // Shared FY changed from the page header: pre-fill (the user's own edit of the field is kept until the header changes again).
   if (yearShown !== gjahr) { setYearShown(gjahr); setYear(gjahr); }
@@ -62,16 +75,26 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
     setForm({ adjType: (r.AdjType === 'P' || r.AdjType === 'A' ? r.AdjType : 'N') as AdjType, adjValue: r.AdjValue ? String(r.AdjValue) : '', overrideRate: r.OverrideRate ? String(r.OverrideRate) : '', overrideRsn: r.OverrideRsn });
   }
 
+  function simulateRow(r: BudRateRow, base: number | undefined) {
+    const e = validateEdit(form, base);
+    setFErr(e);
+    if (Object.keys(e).length) return;
+    setRowSim((x) => ({ ...x, [keyOf(r)]: { ...form } }));
+  }
+
   async function save(r: BudRateRow) {
     const e = validateEdit(form, r.SrcRate > 0 ? r.SrcRate : undefined);
     setFErr(e);
     if (Object.keys(e).length) return;
     setSaving(true); setSaveErr('');
-    try { await patchRate(r, form); setEditing(''); await load(); } catch (x) { setSaveErr(errorText(x)); }
+    try { await patchRate(r, form); setEditing(''); setRowSim((x) => { const { [keyOf(r)]: _, ...rest } = x; return rest; }); await load(); } catch (x) { setSaveErr(errorText(x)); }
     setSaving(false);
   }
 
   const shown = useMemo(() => { const n = q.trim().toLowerCase(); return (rows ?? []).filter((r) => !n || stripZeros(r.Matnr).toLowerCase().includes(n) || r.Matnr.toLowerCase().includes(n)).sort((a, b) => (a.Matcat || 'Z').localeCompare(b.Matcat || 'Z')); }, [rows, q]);
+
+  const simOn = !!gSim || Object.keys(rowSim).length > 0;
+  const COLS = simOn ? 17 : 14;
 
   return (
     <div className="flex flex-col gap-3">
@@ -83,6 +106,20 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
           <div className="flex items-end"><Button type="submit" variant="primary" disabled={loading}>{loading ? <Spinner /> : <Search size={14} />} Load</Button></div>
         </form>
       </Card>
+
+      {rows && rows.length > 0 && (
+        <Card title="Global adjustment simulation" actions={(gSim || Object.keys(rowSim).length > 0) && <Button size="sm" onClick={() => { setGSim(null); setRowSim({}); setGValue(''); setGErr(''); }}><X size={13} /> Clear simulation</Button>}>
+          <form className="flex flex-wrap items-end gap-3" onSubmit={(e) => { e.preventDefault(); runGlobal(); }}>
+            <Field label="Adjustment">{(id) => <select id={id} className={inputCls} value={gType} onChange={(e) => setGType(e.target.value as 'P' | 'A')}><option value="P">Percent (%)</option><option value="A">Amount</option></select>}</Field>
+            <Field label={gType === 'P' ? 'Value (%, + or −)' : 'Value (+ or −)'} error={gErr}>{(id) => <input id={id} className={cx(inputCls, 'w-36', gErr && 'border-bad')} inputMode="decimal" value={gValue} onChange={(e) => setGValue(e.target.value)} placeholder="Press Enter" />}</Field>
+            <fieldset><legend className="mb-1 text-xs font-semibold">Categories <span className="font-normal text-muted">(none = all)</span></legend>
+              <div className="flex gap-1.5">{(['A', 'B', 'C'] as const).map((c) => <button key={c} type="button" aria-pressed={gCats.includes(c)} onClick={() => setGCats((x) => (x.includes(c) ? x.filter((y) => y !== c) : [...x, c]))} className={cx('rounded-full px-3 py-1 text-xs font-bold ring-1', gCats.includes(c) ? 'bg-accent text-white ring-accent' : 'bg-panel text-ink ring-line')}>{c}</button>)}</div>
+            </fieldset>
+            <Button type="submit" variant="primary">Simulate</Button>
+          </form>
+          <p className="mt-2 text-2xs text-muted">Applies the adjustment to the rate of every row in the table (its source rate, plus freight) and shows the simulated basic and landed rate. Nothing is saved; a rate simulated in a row's edit panel (Enter) takes priority for that row.</p>
+        </Card>
+      )}
 
       <details className="rounded-2xl border border-line bg-panel px-4 py-2 shadow-card">
         <summary className="cursor-pointer text-sm font-bold">Category B rate source priority <span className="font-normal text-muted">(first source with a valid rate is used)</span></summary>
@@ -103,17 +140,25 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
             <table className="w-full border-collapse">
               <thead className="sticky top-0 z-10 bg-sunken">
                 <tr><th className={th}>Material</th><th className={th}>Plant</th><th className={th}>Valid from</th><th className={th}>Cat</th><th className={th}>Source</th><th className={cx(th, 'text-right')}>Src rate</th><th className={cx(th, 'text-right')}>Derived</th><th className={th}>Rule &amp; breakup</th>
-                  <th className={th}>Adj</th><th className={cx(th, 'text-right')}>Override</th><th className={cx(th, 'text-right')}>Freight</th><th className={cx(th, 'text-right')}>Landed rate</th><th className={th}>Status</th><th className={th} /></tr>
+                  <th className={th}>Adj</th><th className={cx(th, 'text-right')}>Override</th><th className={cx(th, 'text-right')}>Freight</th><th className={cx(th, 'text-right')}>Landed rate</th>{simOn && <><th className={cx(th, 'text-right')}>Sim. basic</th><th className={cx(th, 'text-right')}>Sim. landed</th><th className={cx(th, 'text-right')}>Δ landed</th></>}<th className={th}>Status</th><th className={th} /></tr>
               </thead>
-              {loading ? <SkeletonRows cols={14} /> : (
+              {loading ? <SkeletonRows cols={COLS} /> : (
                 <tbody>
                   {shown.map((r, i) => {
                     const k = keyOf(r); const isEd = editing === k;
                     const fl = fill[k]; const hb = !r.RateSrc && !(r.SrcRate > 0) && fl ? historyBreakup(r.Matcat, fl, prio) : null;
                     const bu = hb ?? rateBreakup(r, prio);
+                    // Simulation: the row's own (Enter in the edit panel) else the global adjustment, on the effective source rate; freight as shown.
+                    const base = hb?.pick ? hb.pick.RatePc : r.SrcRate > 0 ? r.SrcRate : r.DerivedRate;
+                    const applies = hb?.pick ? freightApplies(hb.pick.RateSrc) : freightApplies(r.RateSrc);
+                    const frt = hb?.pick ? (applies ? hb.pick.FrtTotal : 0) : r.FrtTotal;
+                    const curLanded = hb?.pick ? landedRate(hb.pick.RatePc, frt, applies) : r.LandedRate;
+                    const rs = rowSim[k];
+                    const simBasic = base > 0 || (rs && rs.overrideRate.trim() !== '') ? (rs ? budgetedBasic(base, rs) : gSim && (!gSim.cats.length || gSim.cats.includes(r.Matcat)) ? adjustRate(base, gSim.type, gSim.value) : null) : null;
+                    const simLanded = simBasic == null ? null : landedRate(simBasic, frt, applies || (!!rs && rs.overrideRate.trim() !== ''));
                     return (
                       <Fragment key={k}>
-                        {(i === 0 || shown[i - 1].Matcat !== r.Matcat) && <tr className="bg-sunken/60"><td colSpan={14} className="px-2 py-1 text-xs font-bold"><CatBadge cat={r.Matcat} /> Category {r.Matcat || '—'}</td></tr>}
+                        {(i === 0 || shown[i - 1].Matcat !== r.Matcat) && <tr className="bg-sunken/60"><td colSpan={COLS} className="px-2 py-1 text-xs font-bold"><CatBadge cat={r.Matcat} /> Category {r.Matcat || '—'}</td></tr>}
                         <tr className={cx('border-b border-line/60', isEd && 'bg-accent/5')}>
                           <td className={cx(td, 'num')}>{stripZeros(r.Matnr)}</td><td className={td}>{r.Werks}</td><td className={td}>{r.ValidFrom.length === 8 ? `${r.ValidFrom.slice(6)}.${r.ValidFrom.slice(4, 6)}.${r.ValidFrom.slice(0, 4)}` : r.ValidFrom}</td>
                           <td className={td}><CatBadge cat={r.Matcat} /></td><td className={td}><SourceChip src={hb?.pick ? `${hb.pick.RateSrc}*` : r.RateSrc} /></td>
@@ -122,13 +167,18 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
                           <td className={cx(td, 'num')}>{r.AdjType && r.AdjType !== 'N' ? `${r.AdjType} ${fmtNum(r.AdjValue, 2)}` : '—'}</td>
                           <td className={cx(td, 'num text-right')} title={r.OverrideRsn}>{r.OverrideRate ? fmtNum(r.OverrideRate, 4) : '—'}</td>
                           <td className={cx(td, 'num text-right')}>{hb?.pick ? `${fmtNum(freightApplies(hb.pick.RateSrc) ? hb.pick.FrtTotal : 0, 4)}*` : fmtNum(r.FrtTotal, 4)}</td><td className={cx(td, 'num text-right font-extrabold')}>{hb?.pick ? `${fmtNum(landedRate(hb.pick.RatePc, hb.pick.FrtTotal, freightApplies(hb.pick.RateSrc)), 4)}*` : `${fmtNum(r.LandedRate, 4)} ${r.LandedCurr}`}</td>
+                          {simOn && <>
+                            <td className={cx(td, 'num text-right font-bold text-accent')}>{simBasic == null ? '—' : <span title={rs ? 'Simulated in the edit panel' : 'Global simulation'} className={simBasic <= 0 ? 'text-bad' : undefined}>{fmtNum(simBasic, 4)}{rs && ' ✎'}</span>}</td>
+                            <td className={cx(td, 'num text-right font-extrabold text-accent')}>{simLanded == null ? '—' : fmtNum(simLanded, 4)}</td>
+                            <td className={cx(td, 'num text-right')}>{simLanded == null || !(curLanded > 0) ? '—' : `${simLanded >= curLanded ? '+' : '−'}${fmtNum(Math.abs(simLanded - curLanded), 4)} (${fmtNum(((simLanded - curLanded) / curLanded) * 100, 2)}%)`}</td>
+                          </>}
                           <td className={td}><StatusBadge status={r.ApprStatus} /></td>
                           <td className={td}>{isEditable(r.ApprStatus) && !isEd && <Button size="sm" onClick={() => startEdit(r)}><Pencil size={12} /> Edit</Button>}</td>
                         </tr>
                         {isEd && (
                           <tr className="border-b border-line bg-accent/5">
-                            <td colSpan={14} className="px-4 py-3">
-                              <RateEditPanel r={r} form={form} setForm={setForm} errs={fErr} prio={prio} />
+                            <td colSpan={COLS} className="px-4 py-3">
+                              <RateEditPanel r={r} form={form} setForm={setForm} errs={fErr} prio={prio} onEnter={() => simulateRow(r, base > 0 ? base : undefined)} />
                               <div className="mt-3 flex flex-wrap items-center gap-2">
                                 <Button variant="primary" size="sm" disabled={saving} onClick={() => void save(r)}>{saving ? <Spinner /> : <Save size={13} />} Save changes</Button>
                                 <Button size="sm" disabled={saving} onClick={() => setEditing('')}><X size={13} /> Cancel</Button>

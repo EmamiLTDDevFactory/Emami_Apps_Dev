@@ -22,7 +22,7 @@ const Line = ({ k, v, strong }: { k: string; v: React.ReactNode; strong?: boolea
   <div className="flex items-baseline justify-between gap-4 text-xs"><span className="text-muted">{k}</span><span className={cx('num', strong && 'text-sm font-extrabold')}>{v}</span></div>
 );
 
-export default function RateEditPanel({ r, form, setForm, errs, prio }: { r: BudRateRow; form: RateEdit; setForm: (f: RateEdit) => void; errs: Errors<keyof RateEdit>; prio: readonly string[] }) {
+export default function RateEditPanel({ r, form, setForm, errs, prio, onEnter }: { r: BudRateRow; form: RateEdit; setForm: (f: RateEdit) => void; errs: Errors<keyof RateEdit>; prio: readonly string[]; onEnter?: () => void }) {
   const [src, setSrc] = useState<{ rows?: BudRateSrcRow[]; error?: string }>({});
   // Rate sources of the material (market rate, priority pick): the same BudRateSrcSet read as the History drill-down.
   useEffect(() => {
@@ -54,7 +54,7 @@ export default function RateEditPanel({ r, form, setForm, errs, prio }: { r: Bud
   );
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[1fr_20rem]">
+    <div className="grid gap-4 lg:grid-cols-[1fr_20rem]" onKeyDown={(e) => { if (e.key === 'Enter' && onEnter && (e.target as HTMLElement).tagName === 'INPUT' && (e.target as HTMLInputElement).type !== 'radio') { e.preventDefault(); onEnter(); } }}>
       <div>
         {cat === 'A' ? (
           <>
@@ -99,6 +99,7 @@ export default function RateEditPanel({ r, form, setForm, errs, prio }: { r: Bud
           <Line k={frtOn ? 'Freight / delivery' : 'Freight / delivery (not applicable)'} v={frtOn ? fmtNum(frt, 3) : '—'} />
           <Line k={`Landed rate ${r.LandedCurr}`} v={fmtNum(landed, 3)} strong />
         </div>
+        {onEnter && <p className="mt-1.5 text-2xs text-accent">Press Enter in a field to simulate this rate in the table.</p>}
         <p className="mt-1.5 text-2xs text-faint">Preview only — SAP recalculates when you save. The original source rate is kept.</p>
       </div>
     </div>
