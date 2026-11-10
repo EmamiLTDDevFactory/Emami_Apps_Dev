@@ -5,9 +5,9 @@ import { Button, Card, Field, Pill, Spinner, cx, inputCls } from '../ui';
 import { CatBadge, ErrorBox, NO_RECORDS, OkBox, SkeletonRows, SourceChip, StatusBadge, errorText, td, th } from './shared';
 import RateEditPanel from './RateEditPanel';
 import SourcePriorityEditor from '../rates/SourcePriorityEditor';
-import { fetchRates, patchRate } from '@/lib/budgetMgmt/api';
-import { COUNTRIES, STATUS_LABEL, type AdjType, type BudRateRow, type RateEdit } from '@/lib/budgetMgmt/types';
-import { DEFAULT_B_PRIORITY, isEditable, rateBreakup, stripZeros, validateEdit, type Errors } from '@/lib/budgetMgmt/rules';
+import { fetchRateSources, fetchRates, patchRate } from '@/lib/budgetMgmt/api';
+import { COUNTRIES, STATUS_LABEL, type AdjType, type BudRateRow, type BudRateSrcRow, type RateEdit } from '@/lib/budgetMgmt/types';
+import { DEFAULT_B_PRIORITY, isEditable, historyBreakup, rateBreakup, stripZeros, validateEdit, type Errors } from '@/lib/budgetMgmt/rules';
 import { fmtNum } from '@/lib/format';
 
 const PRIO_KEY = 'bud-mgmt-b-priority';
@@ -32,6 +32,17 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
   const [prio, setPrioState] = useState<string[]>([...DEFAULT_B_PRIORITY]);
   useEffect(() => { try { const v = JSON.parse(localStorage.getItem(PRIO_KEY) ?? 'null'); if (Array.isArray(v) && v.length) setPrioState(v.map(String)); } catch { /* default */ } }, []);
   const setPrio = (v: string[]) => { setPrioState(v); try { localStorage.setItem(PRIO_KEY, JSON.stringify(v)); } catch { /* not kept */ } };
+  // Saved rows SAP left without a rate source: the sources are read for them here so the table can show what the rule gives (not saved).
+  const [fill, setFill] = useState<Record<string, BudRateSrcRow[] | null>>({});
+  useEffect(() => {
+    setFill({});
+    const todo = (rows ?? []).filter((r) => !r.RateSrc && !(r.SrcRate > 0));
+    if (!todo.length) return;
+    let live = true; let next = 0;
+    const worker = async () => { while (live && next < todo.length) { const r = todo[next++]; try { const list = await fetchRateSources(r.Matnr, r.Bukrs, r.Werks, r.Land1); if (live) setFill((x) => ({ ...x, [keyOf(r)]: list })); } catch { if (live) setFill((x) => ({ ...x, [keyOf(r)]: null })); } } };
+    for (let i = 0; i < 3; i++) void worker();
+    return () => { live = false; };
+  }, [rows]);
   const [yearShown, setYearShown] = useState(generated?.gjahr ?? gjahr);
   // Shared FY changed from the page header: pre-fill (the user's own edit of the field is kept until the header changes again).
   if (yearShown !== gjahr) { setYearShown(gjahr); setYear(gjahr); }
@@ -98,15 +109,16 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
                 <tbody>
                   {shown.map((r, i) => {
                     const k = keyOf(r); const isEd = editing === k;
-                    const bu = rateBreakup(r, prio);
+                    const fl = fill[k]; const hb = !r.RateSrc && !(r.SrcRate > 0) && fl ? historyBreakup(r.Matcat, fl, prio) : null;
+                    const bu = hb ?? rateBreakup(r, prio);
                     return (
                       <Fragment key={k}>
                         {(i === 0 || shown[i - 1].Matcat !== r.Matcat) && <tr className="bg-sunken/60"><td colSpan={14} className="px-2 py-1 text-xs font-bold"><CatBadge cat={r.Matcat} /> Category {r.Matcat || '—'}</td></tr>}
                         <tr className={cx('border-b border-line/60', isEd && 'bg-accent/5')}>
                           <td className={cx(td, 'num')}>{stripZeros(r.Matnr)}</td><td className={td}>{r.Werks}</td><td className={td}>{r.ValidFrom.length === 8 ? `${r.ValidFrom.slice(6)}.${r.ValidFrom.slice(4, 6)}.${r.ValidFrom.slice(0, 4)}` : r.ValidFrom}</td>
                           <td className={td}><CatBadge cat={r.Matcat} /></td><td className={td}><SourceChip src={r.RateSrc} /></td>
-                          <td className={cx(td, 'num text-right')}>{fmtNum(r.SrcRate, 4)}</td><td className={cx(td, 'num text-right')}>{fmtNum(r.DerivedRate, 4)} {r.DerivedCurr}</td>
-                          <td className="min-w-64 px-2 py-1.5 text-2xs"><div className="font-bold">{bu.rule}</div><div className="num text-muted">{bu.steps.map((s) => `${s.k} ${fmtNum(s.v, 3)}`).join(' → ')}</div></td>
+                          <td className={cx(td, 'num text-right')}>{fmtNum(r.SrcRate, 4)}</td><td className={cx(td, 'num text-right')}>{hb ? (hb.derived == null ? '—' : <span title="From the rate sources — SAP saved no rate for this row">{fmtNum(hb.derived, 4)}*</span>) : <>{fmtNum(r.DerivedRate, 4)} {r.DerivedCurr}</>}</td>
+                          <td className="min-w-64 px-2 py-1.5 text-2xs"><div className="font-bold">{bu.rule}{hb && <span className="font-normal text-warn"> — from sources, not saved</span>}</div><div className="num text-muted">{bu.steps.map((s) => `${s.k} ${fmtNum(s.v, 3)}`).join(' → ')}</div></td>
                           <td className={cx(td, 'num')}>{r.AdjType && r.AdjType !== 'N' ? `${r.AdjType} ${fmtNum(r.AdjValue, 2)}` : '—'}</td>
                           <td className={cx(td, 'num text-right')} title={r.OverrideRsn}>{r.OverrideRate ? fmtNum(r.OverrideRate, 4) : '—'}</td>
                           <td className={cx(td, 'num text-right')}>{fmtNum(r.FrtTotal, 4)}</td><td className={cx(td, 'num text-right font-extrabold')}>{fmtNum(r.LandedRate, 4)} {r.LandedCurr}</td>
