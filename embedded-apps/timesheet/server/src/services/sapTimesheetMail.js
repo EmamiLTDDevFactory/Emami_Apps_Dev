@@ -75,6 +75,9 @@ function buildDayRows(monthStartDate, entries, taskNames, overrides) {
     if (offDay || dayEntries.length === 0) return { ...row, Status: offDay ? 'Off' : '' }
 
     const totalHours = dayEntries.reduce((sum, e) => sum + (Number(e.hours) || 0), 0)
+    // SAP rejects the whole call when several tasks are joined into Task/TaskDesc, so send only
+    // the day's first task (and its own description).
+    const firstTask = dayEntries.find((e) => e.task_id) || dayEntries[0]
     return {
       ...row,
       InTime: toEdmTime(dayEntries[0].in_time),
@@ -82,8 +85,8 @@ function buildDayRows(monthStartDate, entries, taskNames, overrides) {
       OutTime: toEdmTime(dayEntries[0].out_time),
       OutLocation: dayEntries.find((e) => e.out_location)?.out_location || '',
       WorkHours: totalHours.toFixed(2),
-      Task: dayEntries.map((e) => taskNames[e.task_id]).filter(Boolean).join('; '),
-      TaskDesc: dayEntries.map((e) => e.note).filter(Boolean).join('; '),
+      Task: taskNames[firstTask.task_id] || '',
+      TaskDesc: firstTask.note || '',
       Status: 'Present',
     }
   })
