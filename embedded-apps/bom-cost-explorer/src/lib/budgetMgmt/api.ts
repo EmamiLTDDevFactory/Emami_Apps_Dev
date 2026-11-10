@@ -38,8 +38,10 @@ export function rateFilter(f: RateFilter): string {
   ].filter(Boolean).join(' and ');
 }
 
+/** BudRateSet rows carry no company code but BudRateSrcSet requires one ("Matnr and Bukrs filters are required"): the History rows' company code, 1000, when none is known. */
+export const DEFAULT_BUKRS = '1000';
 export const sourceFilter = (matnr: string, bukrs: string, werks: string, land1: string) =>
-  [`Matnr eq ${odataString(padMatnr(matnr))}`, bukrs ? `Bukrs eq ${odataString(bukrs)}` : null, werks ? `Werks eq ${odataString(werks)}` : null, `Land1 eq ${odataString(land1)}`].filter(Boolean).join(' and ');
+  [`Matnr eq ${odataString(padMatnr(matnr))}`, `Bukrs eq ${odataString(bukrs || DEFAULT_BUKRS)}`, werks ? `Werks eq ${odataString(werks)}` : null, `Land1 eq ${odataString(land1)}`].filter(Boolean).join(' and ');
 
 const hist = (r: Record<string, unknown>): BudHistRow => ({
   Rowid: str(r.Rowid), Matnr: str(r.Matnr), Maktx: str(r.Maktx), Land1: str(r.Land1), Werks: str(r.Werks), Bukrs: str(r.Bukrs), Mtart: str(r.Mtart), BaseUom: str(r.BaseUom),
