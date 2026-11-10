@@ -56,6 +56,26 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
     if (gType === 'P' && (v < -99 || v > 999)) return setGErr('Percent must be between -99 and 999');
     setGErr(''); setGSim({ type: gType, value: v, cats: gCats });
   }
+  // Apply to all: saves the simulated adjustment on every editable row in scope. Rows with an override (it would win), no source rate or a non-positive result are skipped.
+  const [applying, setApplying] = useState(false);
+  const [applyMsg, setApplyMsg] = useState('');
+  async function applyAll() {
+    if (!gSim) return;
+    const adj: RateEdit = { adjType: gSim.type, adjValue: String(gSim.value), overrideRate: '', overrideRsn: '' };
+    const inScope = shown.filter((r) => isEditable(r.ApprStatus) && (!gSim.cats.length || gSim.cats.includes(r.Matcat)));
+    const todo = inScope.filter((r) => !(r.OverrideRate > 0) && r.SrcRate > 0 && Object.keys(validateEdit(adj, r.SrcRate)).length === 0);
+    const skipped = inScope.length - todo.length;
+    if (!todo.length) return setApplyMsg(`Nothing to apply: ${inScope.length} editable rows in scope, all skipped (override set, no saved source rate, or the rate would be zero or negative).`);
+    const label = `${gSim.type === 'P' ? `${gSim.value}%` : gSim.value}`;
+    if (!window.confirm(`Save a ${label} ${gSim.type === 'P' ? 'percent' : 'amount'} adjustment on ${todo.length} rates (${gSim.cats.length ? `category ${gSim.cats.join(', ')}` : 'all categories'})?${skipped ? `\n${skipped} rows will be skipped (override set, no saved source rate, or a non-positive result).` : ''}\nThis replaces any adjustment those rows already have.`)) return;
+    setApplying(true); setApplyMsg('');
+    let done = 0; const failed: string[] = []; let next = 0;
+    const worker = async () => { while (next < todo.length) { const r = todo[next++]; try { await patchRate(r, adj); done++; } catch (x) { failed.push(`${stripZeros(r.Matnr)}: ${errorText(x)}`); } } };
+    await Promise.all([worker(), worker(), worker()]);
+    setApplying(false); setGSim(null); setRowSim({}); setGValue('');
+    setApplyMsg(`${done} of ${todo.length} rates adjusted${skipped ? `, ${skipped} skipped` : ''}${failed.length ? `. Failed: ${failed.slice(0, 3).join('; ')}${failed.length > 3 ? ` (+${failed.length - 3} more)` : ''}` : ''}.`);
+    await load();
+  }
   const [yearShown, setYearShown] = useState(generated?.gjahr ?? gjahr);
   // Shared FY changed from the page header: pre-fill (the user's own edit of the field is kept until the header changes again).
   if (yearShown !== gjahr) { setYearShown(gjahr); setYear(gjahr); }
@@ -115,9 +135,11 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
             <fieldset><legend className="mb-1 text-xs font-semibold">Categories <span className="font-normal text-muted">(none = all)</span></legend>
               <div className="flex gap-1.5">{(['A', 'B', 'C'] as const).map((c) => <button key={c} type="button" aria-pressed={gCats.includes(c)} onClick={() => setGCats((x) => (x.includes(c) ? x.filter((y) => y !== c) : [...x, c]))} className={cx('rounded-full px-3 py-1 text-xs font-bold ring-1', gCats.includes(c) ? 'bg-accent text-white ring-accent' : 'bg-panel text-ink ring-line')}>{c}</button>)}</div>
             </fieldset>
-            <Button type="submit" variant="primary">Simulate</Button>
+            <Button type="submit" variant="primary" disabled={applying}>Simulate</Button>
+            <Button type="button" variant="danger" disabled={!gSim || applying} onClick={() => void applyAll()}>{applying ? <Spinner /> : <Save size={14} />} Apply to all</Button>
           </form>
-          <p className="mt-2 text-2xs text-muted">Applies the adjustment to the rate of every row in the table (its source rate, plus freight) and shows the simulated basic and landed rate. Nothing is saved; a rate simulated in a row's edit panel (Enter) takes priority for that row.</p>
+          {applyMsg && <p role="status" className="mt-2 text-sm font-semibold">{applyMsg}</p>}
+          <p className="mt-2 text-2xs text-muted">Applies the adjustment to the rate of every row in the table (its source rate, plus freight) and shows the simulated basic and landed rate. Nothing is saved until you click Apply to all (it saves this adjustment on every editable Draft / Revised row in scope; rows with an override or no saved source rate are skipped); a rate simulated in a row's edit panel (Enter) takes priority for that row.</p>
         </Card>
       )}
 
