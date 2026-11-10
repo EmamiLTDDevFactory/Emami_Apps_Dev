@@ -22,7 +22,7 @@ const Line = ({ k, v, strong }: { k: string; v: React.ReactNode; strong?: boolea
   <div className="flex items-baseline justify-between gap-4 text-xs"><span className="text-muted">{k}</span><span className={cx('num', strong && 'text-sm font-extrabold')}>{v}</span></div>
 );
 
-export default function RateEditPanel({ r, form, setForm, errs, prio, onEnter }: { r: BudRateRow; form: RateEdit; setForm: (f: RateEdit) => void; errs: Errors<keyof RateEdit>; prio: readonly string[]; onEnter?: () => void }) {
+export default function RateEditPanel({ r, form, setForm, errs, prio, onEnter, fallback }: { r: BudRateRow; form: RateEdit; setForm: (f: RateEdit) => void; errs: Errors<keyof RateEdit>; prio: readonly string[]; onEnter?: () => void; fallback?: { source: string; rate: number; freight: number } }) {
   const [src, setSrc] = useState<{ rows?: BudRateSrcRow[]; error?: string }>({});
   // Rate sources of the material (market rate, priority pick): the same BudRateSrcSet read as the History drill-down.
   useEffect(() => {
@@ -33,12 +33,15 @@ export default function RateEditPanel({ r, form, setForm, errs, prio, onEnter }:
   }, [r.Matnr, r.Bukrs, r.Werks, r.Land1]);
 
   const cat = r.Matcat;
-  const base = r.SrcRate;
+  // A row SAP saved with no rate: the rate source the rule picked stands in (the table marks those *).
+  const useFb = !r.RateSrc && !(r.SrcRate > 0) && !!fallback;
+  const base = useFb ? fallback!.rate : r.SrcRate;
+  const srcName = useFb ? fallback!.source : r.RateSrc;
   const basic = budgetedBasic(base, form);
   const overriding = form.overrideRate.trim() !== '';
   // Freight follows the source: none for C-Map; a manual or overriding rate is a rate that carries freight.
-  const frtOn = overriding || freightApplies(r.RateSrc);
-  const frt = frtOn ? r.FrtTotal : 0;
+  const frtOn = overriding || freightApplies(srcName);
+  const frt = frtOn ? (useFb ? fallback!.freight : r.FrtTotal) : 0;
   const landed = landedRate(basic, frt, frtOn);
   const mkt = useMemo(() => (src.rows ? marketRate(src.rows) : null), [src.rows]);
   const pick = useMemo(() => (src.rows && cat === 'B' ? pickByPriority(src.rows, prio) : null), [src.rows, cat, prio]);
@@ -93,8 +96,8 @@ export default function RateEditPanel({ r, form, setForm, errs, prio, onEnter }:
       <div className="rounded-xl border border-line bg-panel px-3 py-2">
         <p className="mb-1 text-xs font-bold">Budgeted rate preview</p>
         <div className="flex flex-col gap-0.5">
-          <Line k={`Source rate (${sourceLabel(r.RateSrc) || '—'})`} v={fmtNum(base, 2)} />
-          {cat === 'A' && <Line k="Market rate" v={!src.rows && !src.error ? '…' : mkt ? fmtNum(mkt.RatePc, 2) : '—'} />}
+          <Line k={`Source rate (${sourceLabel(srcName) || '—'})${useFb ? ' *' : ''}`} v={fmtNum(base, 2)} />
+          <Line k="Market rate" v={!src.rows && !src.error ? '…' : src.error ? 'unavailable' : mkt ? fmtNum(mkt.RatePc, 2) : 'none found'} />
           <Line k="Budgeted basic rate" v={fmtNum(basic, 2)} strong />
           <Line k={frtOn ? 'Freight / delivery' : 'Freight / delivery (not applicable)'} v={frtOn ? fmtNum(frt, 2) : '—'} />
           <Line k={`Landed rate ${r.LandedCurr}`} v={fmtNum(landed, 2)} strong />

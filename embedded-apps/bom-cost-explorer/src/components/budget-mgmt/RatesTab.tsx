@@ -213,7 +213,7 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
                         {isEd && (
                           <tr className="border-b border-line bg-accent/5">
                             <td colSpan={COLS} className="px-4 py-3">
-                              <RateEditPanel r={r} form={form} setForm={setForm} errs={fErr} prio={prio} onEnter={() => simulateRow(r, base > 0 ? base : undefined)} />
+                              <RateEditPanel r={r} form={form} setForm={setForm} errs={fErr} prio={prio} fallback={hb?.pick ? { source: hb.pick.RateSrc, rate: hb.pick.RatePc, freight: hb.pick.FrtTotal } : undefined} onEnter={() => simulateRow(r, base > 0 ? base : undefined)} />
                               <div className="mt-3 flex flex-wrap items-center gap-2">
                                 <Button variant="primary" size="sm" disabled={saving} onClick={() => void save(r)}>{saving ? <Spinner /> : <Save size={13} />} Save changes</Button>
                                 <Button size="sm" disabled={saving} onClick={() => setEditing('')}><X size={13} /> Cancel</Button>
