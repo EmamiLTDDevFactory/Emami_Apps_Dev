@@ -168,6 +168,8 @@ export function marketRate(rows: BudRateSrcRow[]): BudRateSrcRow | null {
   for (const r of rows) if (srcCode(r.RateSrc) === 'MARKT' && r.RatePc > 0 && (!best || r.ValidFrom > best.ValidFrom)) best = r;
   return best;
 }
+/** Category C: the latest Info record first, then C-Map (MBEW). */
+export const C_PRIORITY = ['INFOREC', 'MBEW'] as const;
 /** Default priority of Category B (spec 7.2): Contract, Info record, C-Map. */
 export const DEFAULT_B_PRIORITY = ['CONTRACT', 'INFOREC', 'MBEW'] as const;
 
@@ -179,7 +181,7 @@ export function rateBreakup(r: BudRateRow, prio: readonly string[] = DEFAULT_B_P
   const adj = r.AdjType === 'P' || r.AdjType === 'A';
   const sign = (v: number) => (v < 0 ? '−' : '+');
   const adjText = r.AdjType === 'P' ? `${sign(r.AdjValue)}${Math.abs(r.AdjValue)}%` : `${sign(r.AdjValue)}${Math.abs(r.AdjValue)}`;
-  const base = r.Matcat === 'A' ? 'Category A' : r.Matcat === 'B' ? `Category B (priority ${prio.map(srcCode).join(' › ')})` : r.Matcat === 'C' ? 'Category C (C-Map default)' : 'Category';
+  const base = r.Matcat === 'A' ? 'Category A' : r.Matcat === 'B' ? `Category B (priority ${prio.map(srcCode).join(' › ')})` : r.Matcat === 'C' ? `Category C (priority ${C_PRIORITY.map(srcCode).join(' › ')})` : 'Category';
   const how = overriding ? (r.Matcat === 'A' ? 'manual rate' : 'override rate') : adj ? (r.AdjType === 'P' ? `percentage adjustment ${adjText}` : `absolute adjustment ${adjText}`) : r.Matcat === 'A' ? 'selected rate' : `source rate (${src})`;
   const steps: RateBreakup['steps'] = [{ k: `Source rate (${src})`, v: r.SrcRate }];
   if (overriding) steps.push({ k: 'Override', v: r.OverrideRate });
@@ -202,7 +204,10 @@ export function historyBreakup(cat: string, rows: BudRateSrcRow[], prio: readonl
     for (const p of prio) { const b = latest(srcCode(p)); if (b) return { derived: b.RatePc, rule: `Category B: priority ${prio.map(srcCode).join(' › ')} — first valid is ${srcCode(p)}`, steps: [step(`${srcCode(p)}`, b)] }; }
     return { derived: null, rule: `Category B: priority ${prio.map(srcCode).join(' › ')} — no source has a rate`, steps: [] };
   }
-  if (cat === 'C') { const b = latest('MBEW'); return { derived: b ? b.RatePc : null, rule: 'Category C: C-Map is the default source (no freight)', steps: b ? [step('C-Map', b)] : [] }; }
+  if (cat === 'C') {
+    for (const p of C_PRIORITY) { const b = latest(p); if (b) return { derived: b.RatePc, rule: `Category C: latest ${C_PRIORITY.map(srcCode).join(' › ')} — first valid is ${p}${p === 'MBEW' ? ' (no freight)' : ''}`, steps: [step(p, b)] }; }
+    return { derived: null, rule: `Category C: latest ${C_PRIORITY.map(srcCode).join(' › ')} — no source has a rate`, steps: [] };
+  }
   return { derived: null, rule: '—', steps: [] };
 }
 

@@ -86,7 +86,7 @@ export default function RateEditPanel({ r, form, setForm, errs, prio }: { r: Bud
             ) : <p className="mt-1 text-muted">No source in the priority list has a rate.</p>}
           </div>
         )}
-        {cat === 'C' && <p className="mt-3 text-xs text-muted">Category C: C-Map is the default source; percent or amount adjustment, or an override rate. No freight or delivery conditions on a C-Map rate.</p>}
+        {cat === 'C' && <p className="mt-3 text-xs text-muted">Category C: the latest Info record first, then C-Map; percent or amount adjustment, or an override rate. No freight or delivery conditions on a C-Map rate.</p>}
         {src.error && cat === 'A' && <div className="mt-3"><ErrorBox>Market rate unavailable: {src.error}</ErrorBox></div>}
       </div>
 
