@@ -30,7 +30,26 @@ export function getMicrosoftSignOutUrl(email: string): string {
   return `${AUTH_API_URL}/hub-auth/saml/logout?email=${encodeURIComponent(email)}`;
 }
 
-export async function verifySsoToken(token: string): Promise<{ ok: boolean; email?: string; error?: string }> {
+// Retries a backend check a couple of times on a cold-start/transient blip (Lambda cold start,
+// sleepy Postgres connection) instead of failing the whole sign-in on the spot — this is what used
+// to make Microsoft sign-in silently require a second click: Microsoft itself had already
+// succeeded, but one of these two follow-up checks hiccuped once and bounced the user back to the
+// login screen. A well-formed rejection (real "not authorized"/"invalid token") is NOT retried.
+const RETRY_DELAYS_MS = [300, 700];
+
+async function withRetries<T extends { kind: string }>(attempt: () => Promise<T>): Promise<T> {
+  let result = await attempt();
+  for (const delay of RETRY_DELAYS_MS) {
+    if (result.kind !== 'transient') return result;
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    result = await attempt();
+  }
+  return result;
+}
+
+type SessionVerifyAttempt = { kind: 'ok'; email: string } | { kind: 'denied'; error: string } | { kind: 'transient' };
+
+async function attemptSessionVerify(token: string): Promise<SessionVerifyAttempt> {
   try {
     const res = await fetch(`${AUTH_API_URL}/hub-auth/session/verify`, {
       method: 'POST',
@@ -38,17 +57,28 @@ export async function verifySsoToken(token: string): Promise<{ ok: boolean; emai
       body: JSON.stringify({ token }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data?.success) return { ok: false, error: data?.error || 'Sign-in could not be verified.' };
-    // The Lambda above verifies the JWT's signature/expiry, but its own isAuthorized() check
-    // can't reach Postgres (no VPC route) and is currently a no-op — so this re-checks Manage
-    // Access for real against the Postgres-reachable backend before trusting the SSO login.
-    if (!(await checkStillAuthorized(data.email))) {
-      return { ok: false, error: 'This email-id is not registered. Contact your admin for access.' };
-    }
-    return { ok: true, email: data.email };
+    if (res.ok && data?.success) return { kind: 'ok', email: data.email };
+    // A cold Lambda/API Gateway blip (5xx, empty/malformed body) looks like a rejection here but
+    // isn't one — only a clean, well-formed failure counts as a real "denied".
+    if (res.status >= 500 || !data || Object.keys(data).length === 0) return { kind: 'transient' };
+    return { kind: 'denied', error: data?.error || 'Sign-in could not be verified.' };
   } catch {
-    return { ok: false, error: 'Could not reach the sign-in server. Please try again.' };
+    return { kind: 'transient' };
   }
+}
+
+export async function verifySsoToken(token: string): Promise<{ ok: boolean; email?: string; error?: string }> {
+  const sessionResult = await withRetries(() => attemptSessionVerify(token));
+  if (sessionResult.kind === 'transient') return { ok: false, error: 'Could not reach the sign-in server. Please try again.' };
+  if (sessionResult.kind === 'denied') return { ok: false, error: sessionResult.error };
+
+  // The Lambda above verifies the JWT's signature/expiry, but its own isAuthorized() check
+  // can't reach Postgres (no VPC route) and is currently a no-op — so this re-checks Manage
+  // Access for real against the Postgres-reachable backend before trusting the SSO login.
+  if (!(await checkStillAuthorized(sessionResult.email))) {
+    return { ok: false, error: 'This email-id is not registered. Contact your admin for access.' };
+  }
+  return { ok: true, email: sessionResult.email };
 }
 
 /** Re-checks Manage Access status for an email — used both right after Microsoft SSO login
@@ -56,14 +86,22 @@ export async function verifySsoToken(token: string): Promise<{ ok: boolean; emai
  * (AuthContext's initial load), since that would otherwise trust local storage forever with no
  * server round-trip. Fails closed (an unreachable check counts as "not authorized"), matching
  * backend/authorizedUsers.js's isAuthorized() convention. */
-export async function checkStillAuthorized(email: string): Promise<boolean> {
+type AuthorizedAttempt = { kind: 'ok'; authorized: boolean } | { kind: 'transient' };
+
+async function attemptCheckStillAuthorized(email: string): Promise<AuthorizedAttempt> {
   try {
     const res = await fetch(`${ACCESS_API_URL}/access/authorized/${encodeURIComponent(email)}`);
     const data = await res.json().catch(() => ({}));
-    return !!(res.ok && data?.success && data.authorized);
+    if (res.ok && data?.success) return { kind: 'ok', authorized: !!data.authorized };
+    return { kind: 'transient' };
   } catch {
-    return false;
+    return { kind: 'transient' };
   }
+}
+
+export async function checkStillAuthorized(email: string): Promise<boolean> {
+  const result = await withRetries(() => attemptCheckStillAuthorized(email));
+  return result.kind === 'ok' ? result.authorized : false;
 }
 
 /** Direct email login — no Microsoft redirect. Succeeds only if the email is active in Manage Access. */
