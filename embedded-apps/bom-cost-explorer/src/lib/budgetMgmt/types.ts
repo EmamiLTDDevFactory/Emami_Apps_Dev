@@ -20,7 +20,7 @@ export interface BudRateRow {
 
 export interface BudRateSrcRow {
   RateSrc: string; CondType: string; Vendor: string; Vendname: string; Rate: number; Currency: string; PriceUnit: number;
-  ValidFrom: string; ValidTo: string; RatePc: number; LocalCurr: string; RateLocal: number;
+  ValidFrom: string; ValidTo: string; RatePc: number; LocalCurr: string; RateLocal: number; FrtTotal: number; LandedRate: number;
 }
 
 /** mtart: material types to read (BudHistSet Mtart); none = every type, nothing sent. */

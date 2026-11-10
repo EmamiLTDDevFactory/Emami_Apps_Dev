@@ -193,22 +193,22 @@ export function rateBreakup(r: BudRateRow, prio: readonly string[] = DEFAULT_B_P
 }
 
 /** Rule and breakup of a History material before any rate exists (from its rate sources, per category), shown as the draft rate is derived: A selected (latest) source with the market rate beside it, B first source of the priority list, C C-Map. */
-export function historyBreakup(cat: string, rows: BudRateSrcRow[], prio: readonly string[] = DEFAULT_B_PRIORITY): RateBreakup & { derived: number | null } {
+export function historyBreakup(cat: string, rows: BudRateSrcRow[], prio: readonly string[] = DEFAULT_B_PRIORITY): RateBreakup & { derived: number | null; pick: BudRateSrcRow | null } {
   const latest = (code?: string) => { let b: BudRateSrcRow | null = null; for (const r of rows) if (r.RatePc > 0 && (!code || srcCode(r.RateSrc) === code) && (!b || r.ValidFrom > b.ValidFrom)) b = r; return b; };
   const step = (k: string, r: BudRateSrcRow | null) => ({ k, v: r ? r.RatePc : 0 });
   if (cat === 'A') {
     const s = latest(); const m = marketRate(rows);
-    return { derived: s ? s.RatePc : null, rule: 'Category A: selected rate (latest source); manual or % / amount adjustment in Rates & Edit', steps: [step(`Selected${s ? ` (${s.RateSrc})` : ''}`, s), ...(m ? [step('Market rate', m)] : [])] };
+    return { pick: s, derived: s ? s.RatePc : null, rule: 'Category A: selected rate (latest source); manual or % / amount adjustment in Rates & Edit', steps: [step(`Selected${s ? ` (${s.RateSrc})` : ''}`, s), ...(m ? [step('Market rate', m)] : [])] };
   }
   if (cat === 'B') {
-    for (const p of prio) { const b = latest(srcCode(p)); if (b) return { derived: b.RatePc, rule: `Category B: priority ${prio.map(srcCode).join(' › ')} — first valid is ${srcCode(p)}`, steps: [step(`${srcCode(p)}`, b)] }; }
-    return { derived: null, rule: `Category B: priority ${prio.map(srcCode).join(' › ')} — no source has a rate`, steps: [] };
+    for (const p of prio) { const b = latest(srcCode(p)); if (b) return { pick: b, derived: b.RatePc, rule: `Category B: priority ${prio.map(srcCode).join(' › ')} — first valid is ${srcCode(p)}`, steps: [step(`${srcCode(p)}`, b)] }; }
+    return { pick: null, derived: null, rule: `Category B: priority ${prio.map(srcCode).join(' › ')} — no source has a rate`, steps: [] };
   }
   if (cat === 'C') {
-    for (const p of C_PRIORITY) { const b = latest(p); if (b) return { derived: b.RatePc, rule: `Category C: latest ${C_PRIORITY.map(srcCode).join(' › ')} — first valid is ${p}${p === 'MBEW' ? ' (no freight)' : ''}`, steps: [step(p, b)] }; }
-    return { derived: null, rule: `Category C: latest ${C_PRIORITY.map(srcCode).join(' › ')} — no source has a rate`, steps: [] };
+    for (const p of C_PRIORITY) { const b = latest(p); if (b) return { pick: b, derived: b.RatePc, rule: `Category C: latest ${C_PRIORITY.map(srcCode).join(' › ')} — first valid is ${p}${p === 'MBEW' ? ' (no freight)' : ''}`, steps: [step(p, b)] }; }
+    return { pick: null, derived: null, rule: `Category C: latest ${C_PRIORITY.map(srcCode).join(' › ')} — no source has a rate`, steps: [] };
   }
-  return { derived: null, rule: '—', steps: [] };
+  return { pick: null, derived: null, rule: '—', steps: [] };
 }
 
 /** Category B source priority as set in Rates & Edit (kept in this browser); the default when none is saved. */

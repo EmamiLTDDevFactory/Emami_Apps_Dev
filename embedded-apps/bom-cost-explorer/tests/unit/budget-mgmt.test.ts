@@ -101,7 +101,7 @@ describe('history filter on material and category', () => {
 
 
 describe('projected rate and value', () => {
-  const s = (RatePc: number, ValidFrom: string) => ({ RateSrc: 'P', CondType: '', Vendor: '', Vendname: '', Rate: RatePc, Currency: 'INR', PriceUnit: 1, ValidFrom, ValidTo: '99991231', RatePc, LocalCurr: 'INR', RateLocal: RatePc });
+  const s = (RatePc: number, ValidFrom: string) => ({ RateSrc: 'P', CondType: '', Vendor: '', Vendname: '', Rate: RatePc, Currency: 'INR', PriceUnit: 1, ValidFrom, ValidTo: '99991231', RatePc, LocalCurr: 'INR', RateLocal: RatePc, FrtTotal: 0, LandedRate: RatePc });
   it('takes the rate with the latest ValidFrom, ignoring zero rates', () => {
     expect(latestSourceRate([s(10, '20250401'), s(12, '20260401'), s(0, '20270101')])).toBe(12);
     expect(latestSourceRate([])).toBeNull();
@@ -115,7 +115,7 @@ describe('projected rate and value', () => {
 
 describe('rate derivation preview', () => {
   const e = (adjType: 'N' | 'P' | 'A', adjValue = '', overrideRate = ''): never => ({ adjType, adjValue, overrideRate, overrideRsn: 'r' }) as never;
-  const s = (RateSrc: string, RatePc: number, ValidFrom = '20260101') => ({ RateSrc, CondType: '', Vendor: '', Vendname: '', Rate: RatePc, Currency: 'INR', PriceUnit: 1, ValidFrom, ValidTo: '99991231', RatePc, LocalCurr: 'INR', RateLocal: RatePc });
+  const s = (RateSrc: string, RatePc: number, ValidFrom = '20260101') => ({ RateSrc, CondType: '', Vendor: '', Vendname: '', Rate: RatePc, Currency: 'INR', PriceUnit: 1, ValidFrom, ValidTo: '99991231', RatePc, LocalCurr: 'INR', RateLocal: RatePc, FrtTotal: 0, LandedRate: RatePc });
   it('percent and amount adjustments, positive and negative (spec 8)', () => {
     expect(adjustRate(100, 'P', 5)).toBe(105); expect(adjustRate(100, 'P', -5)).toBe(95); expect(adjustRate(105, 'P', 5)).toBe(110.25);
     expect(adjustRate(100, 'A', 5)).toBe(105); expect(adjustRate(100, 'A', -5)).toBe(95);

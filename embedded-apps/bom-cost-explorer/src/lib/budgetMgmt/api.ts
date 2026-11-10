@@ -56,7 +56,7 @@ const rate = (r: Record<string, unknown>): BudRateRow => ({
 });
 const src = (r: Record<string, unknown>): BudRateSrcRow => ({
   RateSrc: str(r.RateSrc), CondType: str(r.CondType), Vendor: str(r.Vendor), Vendname: str(r.Vendname), Rate: num(r.Rate), Currency: str(r.Currency), PriceUnit: num(r.PriceUnit),
-  ValidFrom: dateText(r.ValidFrom), ValidTo: dateText(r.ValidTo), RatePc: num(r.RatePc), LocalCurr: str(r.LocalCurr), RateLocal: num(r.RateLocal),
+  ValidFrom: dateText(r.ValidFrom), ValidTo: dateText(r.ValidTo), RatePc: num(r.RatePc), LocalCurr: str(r.LocalCurr), RateLocal: num(r.RateLocal), FrtTotal: num(r.FrtTotal), LandedRate: num(r.LandedRate),
 });
 
 const read = async <T,>(set: string, filter: string, map: (r: Record<string, unknown>) => T, opts: SapGetOptions): Promise<T[]> =>
