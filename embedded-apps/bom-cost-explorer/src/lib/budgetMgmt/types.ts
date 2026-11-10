@@ -14,7 +14,7 @@ export interface BudHistRow {
 export interface BudRateRow {
   Gjahr: string; Land1: string; Matnr: string; Werks: string; Bukrs: string; ValidFrom: string; Matcat: string; RateSrc: string;
   SrcRate: number; DerivedRate: number; DerivedCurr: string; AdjType: string; AdjValue: number; OverrideRate: number; OverrideRsn: string;
-  FrtTotal: number; LandedRate: number; LandedCurr: string; ApprStatus: string;
+  FrtTotal: number; LandedRate: number; LandedCurr: string; BaseUom: string; ApprStatus: string;
   SubmittedBy: string; SubmittedOn: string; ApprovedBy: string; ApprovedOn: string; RejectedBy: string; RejectionRsn: string;
 }
 

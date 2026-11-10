@@ -12,6 +12,10 @@ import { fmtNum } from '@/lib/format';
 
 const PRIO_KEY = 'bud-mgmt-b-priority';
 const keyOf = (r: BudRateRow) => `${r.Gjahr}|${r.Land1}|${r.Matnr}|${r.Werks}|${r.ValidFrom}`;
+/** Columns frozen up to Derived (md and wider): width and left offset of each. */
+const FROZEN = [88, 56, 88, 44, 48, 84, 84, 104];
+const LEFT = FROZEN.map((_, i) => FROZEN.slice(0, i).reduce((a, b) => a + b, 0));
+const frozen = (i: number, head = false) => ({ className: cx('md:sticky', head ? 'md:z-30 bg-sunken' : 'md:z-10 bg-panel'), style: { left: LEFT[i], width: FROZEN[i], minWidth: FROZEN[i], maxWidth: FROZEN[i] } });
 const ADJ: { v: AdjType; label: string }[] = [{ v: 'N', label: 'None' }, { v: 'P', label: 'Percent (%)' }, { v: 'A', label: 'Amount' }];
 
 export default function RatesTab({ gjahr, generated }: { gjahr: string; generated?: { land1: string; gjahr: string; message: string } | null }) {
@@ -161,8 +165,10 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
           <div className="max-h-[65vh] overflow-auto">
             <table className="w-full border-collapse">
               <thead className="sticky top-0 z-10 bg-sunken">
-                <tr><th className={th}>Material</th><th className={th}>Plant</th><th className={th}>Valid from</th><th className={th}>Cat</th><th className={th}>Source</th><th className={cx(th, 'text-right')}>Src rate</th><th className={cx(th, 'text-right')}>Derived</th><th className={th}>Rule &amp; breakup</th>
-                  <th className={th}>Adj</th><th className={cx(th, 'text-right')}>Override</th><th className={cx(th, 'text-right')}>Freight</th><th className={cx(th, 'text-right')}>Landed rate</th>{simOn && <><th className={cx(th, 'text-right')}>Sim. basic</th><th className={cx(th, 'text-right')}>Sim. landed</th><th className={cx(th, 'text-right')}>Δ landed</th></>}<th className={th}>Status</th><th className={th} /></tr>
+                <tr>
+                  {(['Material', 'Plant', 'Valid from', 'Cat', 'UOM', 'Source', 'Src rate', 'Derived'] as const).map((h, i) => { const f = frozen(i, true); return <th key={h} className={cx(th, f.className, i >= 6 && 'text-right', i === FROZEN.length - 1 && 'border-r border-line')} style={f.style}>{h}</th>; })}
+                  <th className={th}>Rule &amp; breakup</th><th className={th}>Adj</th><th className={cx(th, 'text-right')}>Freight</th><th className={cx(th, 'text-right')}>Landed rate</th>
+                  {simOn && <><th className={cx(th, 'text-right')}>Sim. basic</th><th className={cx(th, 'text-right')}>Sim. landed</th><th className={cx(th, 'text-right')}>Δ landed</th></>}<th className={th}>Status</th><th className={th} /></tr>
               </thead>
               {loading ? <SkeletonRows cols={COLS} /> : (
                 <tbody>
@@ -182,17 +188,24 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
                       <Fragment key={k}>
                         {(i === 0 || shown[i - 1].Matcat !== r.Matcat) && <tr className="bg-sunken/60"><td colSpan={COLS} className="px-2 py-1 text-xs font-bold"><CatBadge cat={r.Matcat} /> Category {r.Matcat || '—'}</td></tr>}
                         <tr className={cx('border-b border-line/60', isEd && 'bg-accent/5')}>
-                          <td className={cx(td, 'num')}>{stripZeros(r.Matnr)}</td><td className={td}>{r.Werks}</td><td className={td}>{r.ValidFrom.length === 8 ? `${r.ValidFrom.slice(6)}.${r.ValidFrom.slice(4, 6)}.${r.ValidFrom.slice(0, 4)}` : r.ValidFrom}</td>
-                          <td className={td}><CatBadge cat={r.Matcat} /></td><td className={td}><SourceChip src={hb?.pick ? `${hb.pick.RateSrc}*` : r.RateSrc} /></td>
-                          <td className={cx(td, 'num text-right')}>{hb?.pick ? `${fmtNum(hb.pick.RatePc, 4)}*` : fmtNum(r.SrcRate, 4)}</td><td className={cx(td, 'num text-right')}>{hb ? (hb.derived == null ? '—' : <span title="From the rate sources — SAP saved no rate for this row">{fmtNum(hb.derived, 4)}*</span>) : <>{fmtNum(r.DerivedRate, 4)} {r.DerivedCurr}</>}</td>
-                          <td className="min-w-64 px-2 py-1.5 text-2xs"><div className="font-bold">{bu.rule}{hb && <span className="font-normal text-warn"> — from sources, not saved</span>}</div><div className="num text-muted">{bu.steps.map((s) => `${s.k} ${fmtNum(s.v, 3)}`).join(' → ')}</div></td>
-                          <td className={cx(td, 'num')}>{r.AdjType && r.AdjType !== 'N' ? `${r.AdjType} ${fmtNum(r.AdjValue, 2)}` : '—'}</td>
-                          <td className={cx(td, 'num text-right')} title={r.OverrideRsn}>{r.OverrideRate ? fmtNum(r.OverrideRate, 4) : '—'}</td>
-                          <td className={cx(td, 'num text-right')}>{hb?.pick ? `${fmtNum(freightApplies(hb.pick.RateSrc) ? hb.pick.FrtTotal : 0, 4)}*` : fmtNum(r.FrtTotal, 4)}</td><td className={cx(td, 'num text-right font-extrabold')}>{hb?.pick ? `${fmtNum(landedRate(hb.pick.RatePc, hb.pick.FrtTotal, freightApplies(hb.pick.RateSrc)), 4)}*` : `${fmtNum(r.LandedRate, 4)} ${r.LandedCurr}`}</td>
+                          {(() => {
+                            const date = r.ValidFrom.length === 8 ? `${r.ValidFrom.slice(6)}.${r.ValidFrom.slice(4, 6)}.${r.ValidFrom.slice(0, 4)}` : r.ValidFrom;
+                            const f = (i: number) => frozen(i);
+                            return <>
+                              <td className={cx(td, 'num', f(0).className)} style={f(0).style}>{stripZeros(r.Matnr)}</td><td className={cx(td, f(1).className)} style={f(1).style}>{r.Werks}</td><td className={cx(td, f(2).className)} style={f(2).style}>{date}</td>
+                              <td className={cx(td, f(3).className)} style={f(3).style}><CatBadge cat={r.Matcat} /></td><td className={cx(td, f(4).className)} style={f(4).style}>{r.BaseUom || '—'}</td>
+                              <td className={cx(td, f(5).className)} style={f(5).style}><SourceChip src={hb?.pick ? `${hb.pick.RateSrc}*` : r.RateSrc} /></td>
+                              <td className={cx(td, 'num text-right', f(6).className)} style={f(6).style}>{hb?.pick ? `${fmtNum(hb.pick.RatePc, 2)}*` : fmtNum(r.SrcRate, 2)}</td>
+                              <td className={cx(td, 'num text-right border-r border-line', f(7).className)} style={f(7).style}>{hb ? (hb.derived == null ? '—' : <span title="From the rate sources — SAP saved no rate for this row">{fmtNum(hb.derived, 2)}*</span>) : <>{fmtNum(r.DerivedRate, 2)} {r.DerivedCurr}</>}</td>
+                            </>;
+                          })()}
+                          <td className="min-w-64 px-2 py-1.5 text-2xs"><div className="font-bold">{bu.rule}{hb && <span className="font-normal text-warn"> — from sources, not saved</span>}</div><div className="num text-muted">{bu.steps.map((x) => `${x.k} ${fmtNum(x.v, 2)}`).join(' → ')}</div></td>
+                          <td className={cx(td, 'num')} title={r.OverrideRate > 0 ? r.OverrideRsn : undefined}>{r.OverrideRate > 0 ? `Override ${fmtNum(r.OverrideRate, 2)}` : r.AdjType === 'P' ? `${r.AdjValue < 0 ? '−' : '+'}${fmtNum(Math.abs(r.AdjValue), 2)}%` : r.AdjType === 'A' ? `${r.AdjValue < 0 ? '−' : '+'}${fmtNum(Math.abs(r.AdjValue), 2)}` : '—'}</td>
+                          <td className={cx(td, 'num text-right')}>{hb?.pick ? `${fmtNum(freightApplies(hb.pick.RateSrc) ? hb.pick.FrtTotal : 0, 2)}*` : fmtNum(r.FrtTotal, 2)}</td><td className={cx(td, 'num text-right font-extrabold')}>{hb?.pick ? `${fmtNum(landedRate(hb.pick.RatePc, hb.pick.FrtTotal, freightApplies(hb.pick.RateSrc)), 2)}*` : `${fmtNum(r.LandedRate, 2)} ${r.LandedCurr}`}</td>
                           {simOn && <>
-                            <td className={cx(td, 'num text-right font-bold text-accent')}>{simBasic == null ? '—' : <span title={rs ? 'Simulated in the edit panel' : 'Global simulation'} className={simBasic <= 0 ? 'text-bad' : undefined}>{fmtNum(simBasic, 4)}{rs && ' ✎'}</span>}</td>
-                            <td className={cx(td, 'num text-right font-extrabold text-accent')}>{simLanded == null ? '—' : fmtNum(simLanded, 4)}</td>
-                            <td className={cx(td, 'num text-right')}>{simLanded == null || !(curLanded > 0) ? '—' : `${simLanded >= curLanded ? '+' : '−'}${fmtNum(Math.abs(simLanded - curLanded), 4)} (${fmtNum(((simLanded - curLanded) / curLanded) * 100, 2)}%)`}</td>
+                            <td className={cx(td, 'num text-right font-bold text-accent')}>{simBasic == null ? '—' : <span title={rs ? 'Simulated in the edit panel' : 'Global simulation'} className={simBasic <= 0 ? 'text-bad' : undefined}>{fmtNum(simBasic, 2)}{rs && ' ✎'}</span>}</td>
+                            <td className={cx(td, 'num text-right font-extrabold text-accent')}>{simLanded == null ? '—' : fmtNum(simLanded, 2)}</td>
+                            <td className={cx(td, 'num text-right')}>{simLanded == null || !(curLanded > 0) ? '—' : `${simLanded >= curLanded ? '+' : '−'}${fmtNum(Math.abs(simLanded - curLanded), 2)} (${fmtNum(((simLanded - curLanded) / curLanded) * 100, 2)}%)`}</td>
                           </>}
                           <td className={td}><StatusBadge status={r.ApprStatus} /></td>
                           <td className={td}>{isEditable(r.ApprStatus) && !isEd && <Button size="sm" onClick={() => startEdit(r)}><Pencil size={12} /> Edit</Button>}</td>

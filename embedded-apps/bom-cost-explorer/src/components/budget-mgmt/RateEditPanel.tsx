@@ -80,8 +80,8 @@ export default function RateEditPanel({ r, form, setForm, errs, prio, onEnter }:
           <div className="mt-3 rounded-xl border border-line bg-panel px-3 py-2 text-xs">
             <p className="font-bold">Rate source priority: {prio.map(sourceLabel).join(' › ')}</p>
             {!src.rows && !src.error ? <Spinner /> : src.error ? <p className="text-muted">Rate sources could not be read ({src.error})</p> : pick ? (
-              <p className="mt-1">First valid source: <SourceChip src={sourceLabel(pick.source)} /> <span className="num font-bold">{fmtNum(pick.rate, 3)}</span>
-                {srcCode(r.RateSrc) !== pick.source && <span className="text-warn"> — SAP selected {sourceLabel(r.RateSrc)} ({fmtNum(base, 3)}).</span>}
+              <p className="mt-1">First valid source: <SourceChip src={sourceLabel(pick.source)} /> <span className="num font-bold">{fmtNum(pick.rate, 2)}</span>
+                {srcCode(r.RateSrc) !== pick.source && <span className="text-warn"> — SAP selected {sourceLabel(r.RateSrc)} ({fmtNum(base, 2)}).</span>}
                 {' '}<button type="button" className="font-semibold text-accent underline" onClick={() => setForm({ adjType: 'N', adjValue: '', overrideRate: String(pick.rate), overrideRsn: `Rate source priority: ${sourceLabel(pick.source)}` })}>Use as override rate</button></p>
             ) : <p className="mt-1 text-muted">No source in the priority list has a rate.</p>}
           </div>
@@ -93,11 +93,11 @@ export default function RateEditPanel({ r, form, setForm, errs, prio, onEnter }:
       <div className="rounded-xl border border-line bg-panel px-3 py-2">
         <p className="mb-1 text-xs font-bold">Budgeted rate preview</p>
         <div className="flex flex-col gap-0.5">
-          <Line k={`Source rate (${sourceLabel(r.RateSrc) || '—'})`} v={fmtNum(base, 3)} />
-          {cat === 'A' && <Line k="Market rate" v={!src.rows && !src.error ? '…' : mkt ? fmtNum(mkt.RatePc, 3) : '—'} />}
-          <Line k="Budgeted basic rate" v={fmtNum(basic, 3)} strong />
-          <Line k={frtOn ? 'Freight / delivery' : 'Freight / delivery (not applicable)'} v={frtOn ? fmtNum(frt, 3) : '—'} />
-          <Line k={`Landed rate ${r.LandedCurr}`} v={fmtNum(landed, 3)} strong />
+          <Line k={`Source rate (${sourceLabel(r.RateSrc) || '—'})`} v={fmtNum(base, 2)} />
+          {cat === 'A' && <Line k="Market rate" v={!src.rows && !src.error ? '…' : mkt ? fmtNum(mkt.RatePc, 2) : '—'} />}
+          <Line k="Budgeted basic rate" v={fmtNum(basic, 2)} strong />
+          <Line k={frtOn ? 'Freight / delivery' : 'Freight / delivery (not applicable)'} v={frtOn ? fmtNum(frt, 2) : '—'} />
+          <Line k={`Landed rate ${r.LandedCurr}`} v={fmtNum(landed, 2)} strong />
         </div>
         {onEnter && <p className="mt-1.5 text-2xs text-accent">Press Enter in a field to simulate this rate in the table.</p>}
         <p className="mt-1.5 text-2xs text-faint">Preview only — SAP recalculates when you save. The original source rate is kept.</p>

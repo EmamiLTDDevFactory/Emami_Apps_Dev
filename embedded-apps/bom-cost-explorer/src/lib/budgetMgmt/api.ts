@@ -50,7 +50,7 @@ const hist = (r: Record<string, unknown>): BudHistRow => ({
 const rate = (r: Record<string, unknown>): BudRateRow => ({
   Gjahr: str(r.Gjahr), Land1: str(r.Land1), Matnr: str(r.Matnr), Werks: str(r.Werks), Bukrs: str(r.Bukrs), ValidFrom: dateText(r.ValidFrom), Matcat: str(r.Matcat), RateSrc: str(r.RateSrc),
   SrcRate: num(r.SrcRate), DerivedRate: num(r.DerivedRate), DerivedCurr: str(r.DerivedCurr), AdjType: str(r.AdjType), AdjValue: num(r.AdjValue),
-  OverrideRate: num(r.OverrideRate), OverrideRsn: str(r.OverrideRsn), FrtTotal: num(r.FrtTotal), LandedRate: num(r.LandedRate), LandedCurr: str(r.LandedCurr),
+  OverrideRate: num(r.OverrideRate), OverrideRsn: str(r.OverrideRsn), FrtTotal: num(r.FrtTotal), LandedRate: num(r.LandedRate), LandedCurr: str(r.LandedCurr), BaseUom: str(r.BaseUom),
   ApprStatus: str(r.ApprStatus), SubmittedBy: str(r.SubmittedBy), SubmittedOn: dateText(r.SubmittedOn), ApprovedBy: str(r.ApprovedBy), ApprovedOn: dateText(r.ApprovedOn),
   RejectedBy: str(r.RejectedBy), RejectionRsn: str(r.RejectionRsn),
 });
