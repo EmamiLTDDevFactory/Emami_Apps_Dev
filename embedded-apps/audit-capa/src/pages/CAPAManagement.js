@@ -30,6 +30,7 @@ import {
     notifyCapaSet,
     SAP_FLAG,
 } from "../utils/sapNotify";
+import { getAuditors } from "../api/userApi";
 import {
     saveCAPAs,
     updateAudit,
@@ -226,6 +227,25 @@ export default function CAPAManagement() {
 
     const currentAudit =
         audits?.find((a) => String(a.id) === String(auditId));
+
+    // Active CQA auditors (name + email): SAP flag E mails the audit's auditor.
+    const [auditors, setAuditors] =
+        useState([]);
+
+    useEffect(() => {
+        getAuditors()
+            .then(setAuditors)
+            .catch((error) =>
+                console.error("Unable to load auditors:", error));
+    }, []);
+
+    // The audit's auditor's email (audits.auditor holds the auditor's name).
+    const getAuditorEmail = (id) => {
+        const auditorName =
+            audits?.find((a) => String(a.id) === String(id))?.auditor;
+
+        return auditors.find((a) => a.name === auditorName)?.email ?? "";
+    };
 
     const formatAuditDate = formatDate;
 
@@ -491,7 +511,8 @@ export default function CAPAManagement() {
             totalCapa: countActiveCAPAs(updatedCAPA),
             capaSubm: countActiveCAPAs(updatedCAPA) - openAfterClose,
             capaOpen: openAfterClose,
-            email: currentUser?.email ?? "",
+            // Email is filled in by the backend: the audit's depot user (sapNotifyController.js).
+            auditId,
         });
 
     };
@@ -917,7 +938,8 @@ export default function CAPAManagement() {
                 // SAP's UsrId is capped at 12 chars — send just the depot name
                 // ("Bangalore" not "Bangalore Depot") so it never needs truncating.
                 usrId: currentUser?.depot?.replace(/\s*Depot$/i, "") ?? "",
-                email: currentUser?.email ?? "",
+                // SAP mails the audit's auditor.
+                email: getAuditorEmail(item.auditId),
             });
 
         } catch (error) {
@@ -1153,7 +1175,8 @@ export default function CAPAManagement() {
             totalCapa: countActiveCAPAs(updatedCAPA),
             capaSubm: countActiveCAPAs(updatedCAPA) - openAfterSendBack,
             capaOpen: openAfterSendBack,
-            email: currentUser?.email ?? "",
+            // Email is filled in by the backend: the audit's depot user (sapNotifyController.js).
+            auditId: selected.auditId,
         });
 
         showMessage(
