@@ -14,8 +14,6 @@ import {
 import emamiLogo from '../assets/emami-logo.jpg';
 import { useEffect, useState } from "react";
 
-// Fixed depot codes: only used for the 4-char plant code in the SAP audit flag.
-import depotCodes from "../data/depots";
 import { getAuditors, getDepots } from "../api/userApi";
 import { generateAuditNumber } from "../utils/auditGenerator";
 
@@ -36,10 +34,6 @@ import {
 } from "../utils/sapNotify";
 
 export default function CreateAudit() {
-    const currentUser = JSON.parse(
-        localStorage.getItem("currentUser")
-    );
-
     const [auditCategory, setAuditCategory] =
         useState("Depot");
 
@@ -164,11 +158,6 @@ export default function CreateAudit() {
             return;
         }
 
-        const selectedDepot =
-            depotCodes.find(
-                (d) => d.name === depot
-            );
-
         // const generatedNo =
         //     generateAuditNumber(
         //         auditType,
@@ -248,9 +237,12 @@ export default function CreateAudit() {
                     auditType === "Desktop"
                         ? SAP_FLAG.DESKTOP_AUDIT_ASSIGNED
                         : SAP_FLAG.ONSITE_AUDIT_SCHEDULED,
-                depot: selectedDepot?.code || depot,
+                // Full depot name as chosen in the dropdown, e.g. "Ambala Depot".
+                depot,
                 dueDate: dueDate.toDate(),
-                email: currentUser?.email ?? "",
+                // SAP mails the auditor chosen in the Auditor dropdown (matched by name).
+                email:
+                    auditors.find((a) => a.name === auditor)?.email ?? "",
             });
 
             showMessage("Audit created successfully.", "success");

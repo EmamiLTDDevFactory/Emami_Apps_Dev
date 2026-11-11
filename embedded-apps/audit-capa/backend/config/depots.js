@@ -4,8 +4,8 @@
  * login in the Emami Apps hub's Manage Access, since audits.depot and users.depot
  * are matched by name (depot users' audit list and notifications).
  *
- * Location and SAP ID are for reference only; the SAP audit flag still sends the
- * 4-character plant code from the frontend's src/data/depots.js.
+ * Location and SAP ID are for reference only; the SAP audit flags (A / B) send the
+ * depot name itself (e.g. "Ambala Depot") in the Depot field.
  */
 const DEPOTS = [
     { name: "Kolkata Depot", location: "Kolkata", sapId: "SUK_COM" },
