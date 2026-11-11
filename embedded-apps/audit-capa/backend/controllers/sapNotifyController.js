@@ -1,4 +1,5 @@
 const { sendSapFlag } = require("../services/sapNgdService");
+const { getDepotEmailForAudit } = require("../models/userModel");
 
 // Fire-and-forget bridge to SAP's ZQM_CAPA_AUDIT_SRV OData service. SAP owns the
 // actual email; this endpoint just relays the entitySet + flagged payload.
@@ -13,8 +14,14 @@ const { sendSapFlag } = require("../services/sapNgdService");
 // (notifyAuditTypesSet / notifyCapaSet). Add new ones here when the frontend starts using them.
 const ALLOWED_ENTITY_SETS = new Set(["AuditTypesSet", "CapaSet"]);
 
+// CapaSet flags whose Email is the depot's (CAPA accepted & closed, CAPA sent back). The
+// browser has no depot users' emails, so it sends the audit id and the email is looked up
+// here: the audit's depot user granted access first (models/userModel.js).
+const DEPOT_EMAIL_FLAGS = new Set(["F", "G"]);
+
 const notifySap = async (req, res) => {
-  const { entitySet, payload } = req.body || {};
+  const { entitySet, auditId } = req.body || {};
+  let { payload } = req.body || {};
 
   if (!entitySet || !payload || !payload.Flag) {
     return res.status(400).json({
@@ -26,6 +33,24 @@ const notifySap = async (req, res) => {
     return res.status(400).json({
       message: "Unsupported entitySet",
     });
+  }
+
+  if (entitySet === "CapaSet" && DEPOT_EMAIL_FLAGS.has(payload.Flag)) {
+    let email = null;
+
+    try {
+      email = auditId ? await getDepotEmailForAudit(auditId) : null;
+    } catch (error) {
+      console.error(`SAP notify (Flag ${payload.Flag}): depot email lookup failed:`, error);
+    }
+
+    if (!email) {
+      console.warn(
+        `SAP notify (Flag ${payload.Flag}, audit ${auditId || "?"}): no active Depot user for the audit's depot - Email sent empty`
+      );
+    }
+
+    payload = { ...payload, Email: email || "" };
   }
 
   const result = await sendSapFlag(entitySet, payload);

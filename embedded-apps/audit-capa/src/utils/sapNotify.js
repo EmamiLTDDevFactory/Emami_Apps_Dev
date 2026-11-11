@@ -15,9 +15,11 @@ export const SAP_FLAG = {
 };
 
 // Never let a SAP/NGD failure break the calling action — log and move on.
-const notifySap = async (entitySet, payload) => {
+// auditId travels beside the payload (not to SAP): the backend uses it to look up the
+// depot's email for CapaSet flags F / G.
+const notifySap = async (entitySet, payload, auditId) => {
   try {
-    return await apiPost("/sap-notify", { entitySet, payload });
+    return await apiPost("/sap-notify", { entitySet, payload, auditId });
   } catch (error) {
     console.error(`SAP notify (${entitySet}, Flag ${payload?.Flag}) failed:`, error);
     return null;
@@ -70,6 +72,7 @@ export const notifyCapaSet = ({
   capaOpen = "",
   usrId = "",
   email = "",
+  auditId,
 }) =>
   notifySap("CapaSet", {
     Flag: flag,
@@ -83,4 +86,4 @@ export const notifyCapaSet = ({
     // SAP's UsrId field is capped at 12 characters.
     UsrId: (usrId || "").slice(0, 12),
     Email: email || "",
-  });
+  }, auditId);

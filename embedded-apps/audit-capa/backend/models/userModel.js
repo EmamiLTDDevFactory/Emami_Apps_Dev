@@ -113,7 +113,29 @@ const getDepots = async () => {
     return [...DEPOTS, ...extra];
 };
 
+/** Email SAP mails for CAPA flags F / G: the active Depot user of the audit's depot
+ * who was granted access first (lowest id). null when the depot has no active user. */
+const getDepotEmailForAudit = async (auditId) => {
+    const result = await pool.query(
+        `
+        SELECT u.email
+        FROM audit_capa.audits a
+        JOIN audit_capa.users u
+            ON u.role = 'Depot'
+            AND u.is_active = TRUE
+            AND u.depot = a.depot
+        WHERE a.id = $1
+        ORDER BY u.id
+        LIMIT 1
+        `,
+        [auditId]
+    );
+
+    return result.rows[0]?.email ?? null;
+};
+
 module.exports = {
+    getDepotEmailForAudit,
     getAuditors,
     getDepots,
     findUserByEmail,
