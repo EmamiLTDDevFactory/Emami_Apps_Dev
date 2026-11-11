@@ -53,9 +53,8 @@ const toSapTime = (value) => {
 export const notifyAuditTypesSet = ({ flag, depot, dueDate, time = "", email = "" }) =>
   notifySap("AuditTypesSet", {
     Flag: flag,
-    // SAP's Depot field is a 4-char Plant code, not the depot's full name —
-    // never send anything longer than that, even if a caller passes one in.
-    Depot: (depot || "").slice(0, 4),
+    // Full depot name as chosen on Create Audit, e.g. "Ambala Depot".
+    Depot: depot || "",
     DueDate: toSapDate(dueDate),
     Time: toSapTime(time),
     Email: email || "",
