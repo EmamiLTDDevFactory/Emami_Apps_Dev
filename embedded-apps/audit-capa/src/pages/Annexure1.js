@@ -3664,6 +3664,18 @@ export default function Annexure1() {
                                     },
                                 });
 
+                                // Notify SAP (NGD): flag C so it emails the depot that CAPAs
+                                // are assigned; the backend fills Email with the depot's email.
+                                notifyCapaSet({
+                                    flag: SAP_FLAG.CAPA_ASSIGNED,
+                                    auditNo: selectedAudit?.auditNo,
+                                    totalCapa: capaRecordsWithAuditId.length,
+                                    capaSubm: 0,
+                                    capaOpen: capaRecordsWithAuditId.length,
+                                    auditId: Number(id),
+                                    emailTo: "depot",
+                                });
+
 
                                 // saveCAPAs(capaRecords);
 

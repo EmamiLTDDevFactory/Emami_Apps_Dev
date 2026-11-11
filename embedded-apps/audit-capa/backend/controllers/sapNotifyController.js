@@ -19,8 +19,14 @@ const ALLOWED_ENTITY_SETS = new Set(["AuditTypesSet", "CapaSet"]);
 // here: the audit's depot user granted access first (models/userModel.js).
 const DEPOT_EMAIL_FLAGS = new Set(["F", "G"]);
 
+// Flag C is also sent on Generate CAPA (CAPA assigned to the depot), marked with
+// emailTo: "depot" so it gets the depot's email; the self-assessment-submitted C keeps
+// the email the browser sends.
+const wantsDepotEmail = (flag, emailTo) =>
+  DEPOT_EMAIL_FLAGS.has(flag) || (flag === "C" && emailTo === "depot");
+
 const notifySap = async (req, res) => {
-  const { entitySet, auditId } = req.body || {};
+  const { entitySet, auditId, emailTo } = req.body || {};
   let { payload } = req.body || {};
 
   if (!entitySet || !payload || !payload.Flag) {
@@ -35,7 +41,7 @@ const notifySap = async (req, res) => {
     });
   }
 
-  if (entitySet === "CapaSet" && DEPOT_EMAIL_FLAGS.has(payload.Flag)) {
+  if (entitySet === "CapaSet" && wantsDepotEmail(payload.Flag, emailTo)) {
     let email = null;
 
     try {
