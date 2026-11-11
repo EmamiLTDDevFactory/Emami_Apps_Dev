@@ -8,6 +8,7 @@ export const SAP_FLAG = {
   DESKTOP_AUDIT_ASSIGNED: "A", // AuditTypesSet
   ONSITE_AUDIT_SCHEDULED: "B", // AuditTypesSet
   SELF_ASSESSMENT_SUBMITTED: "C", // CapaSet
+  CAPA_ASSIGNED: "C", // CapaSet - same flag, sent on Generate CAPA to the depot (emailTo "depot")
   SELF_ASSESSMENT_ACCEPTED: "D", // CapaSet
   CAPA_SUBMITTED: "E", // CapaSet
   CAPA_ACCEPTED_CLOSED: "F", // CapaSet
@@ -15,11 +16,11 @@ export const SAP_FLAG = {
 };
 
 // Never let a SAP/NGD failure break the calling action — log and move on.
-// auditId travels beside the payload (not to SAP): the backend uses it to look up the
-// depot's email for CapaSet flags F / G.
-const notifySap = async (entitySet, payload, auditId) => {
+// auditId and emailTo travel beside the payload (not to SAP): the backend uses them to
+// look up the depot's email for CapaSet flags F / G, and for C when emailTo is "depot".
+const notifySap = async (entitySet, payload, auditId, emailTo) => {
   try {
-    return await apiPost("/sap-notify", { entitySet, payload, auditId });
+    return await apiPost("/sap-notify", { entitySet, payload, auditId, emailTo });
   } catch (error) {
     console.error(`SAP notify (${entitySet}, Flag ${payload?.Flag}) failed:`, error);
     return null;
@@ -73,6 +74,7 @@ export const notifyCapaSet = ({
   usrId = "",
   email = "",
   auditId,
+  emailTo,
 }) =>
   notifySap("CapaSet", {
     Flag: flag,
@@ -86,4 +88,4 @@ export const notifyCapaSet = ({
     // SAP's UsrId field is capped at 12 characters.
     UsrId: (usrId || "").slice(0, 12),
     Email: email || "",
-  }, auditId);
+  }, auditId, emailTo);
