@@ -384,7 +384,8 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
       perDay[e.date] = (perDay[e.date] || 0) + e.hours;
       month += e.hours;
       if (e.taskId) perTask[e.taskId] = (perTask[e.taskId] || 0) + e.hours;
-      if (e.leaveType) leaveDays += 1;
+      // A Public Holiday is not leave, so it isn't counted in "Total Leave".
+      if (e.leaveType && e.leaveType !== 'Public Holiday') leaveDays += 1;
     });
     return { perDay, perTask, month, leaveDays };
     // eslint-disable-next-line react-hooks/exhaustive-deps
