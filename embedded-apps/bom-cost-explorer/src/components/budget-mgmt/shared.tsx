@@ -1,5 +1,5 @@
 'use client';
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { cx } from '../ui';
 import { STATUS_LABEL } from '@/lib/budgetMgmt/types';
 import { SapError } from '@/lib/sap/client';
@@ -39,3 +39,17 @@ export function SkeletonRows({ cols }: { cols: number }) {
 export const NO_RECORDS = 'No records found for the selection';
 export const th = 'whitespace-nowrap border-b border-line px-2 py-1.5 text-left text-xs font-bold';
 export const td = 'whitespace-nowrap px-2 py-1.5 text-xs';
+
+/** The filter row of a table head: one small input per column (text contains; numbers also > < >= <= = and a..b; `blank`; `a|b` for any). */
+export function FilterRow({ cols, filters, setFilters }: { cols: { key: string; className?: string; style?: CSSProperties; off?: boolean }[]; filters: Record<string, string>; setFilters: (f: Record<string, string>) => void }) {
+  return (
+    <tr>
+      {cols.map((c) => (
+        <th key={c.key} className={cx('border-b border-line bg-sunken px-1 py-1 font-normal', c.className)} style={c.style}>
+          {!c.off && <input aria-label={`Filter ${c.key}`} placeholder="filter" title="Text contains. Numbers: >10  <=5  =3  10..20.  blank / !blank.  a|b = any of" value={filters[c.key] ?? ''}
+            onChange={(e) => setFilters({ ...filters, [c.key]: e.target.value })} className="w-full min-w-12 rounded border border-line bg-panel px-1.5 py-0.5 text-2xs font-normal" />}
+        </th>
+      ))}
+    </tr>
+  );
+}

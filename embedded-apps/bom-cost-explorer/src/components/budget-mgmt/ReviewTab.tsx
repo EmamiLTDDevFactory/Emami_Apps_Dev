@@ -2,9 +2,9 @@
 import { Fragment, useMemo, useState } from 'react';
 import { Check, RotateCcw, Search, Send, ThumbsDown } from 'lucide-react';
 import { Button, Card, Field, Pill, Spinner, cx, inputCls } from '../ui';
-import { CatBadge, ErrorBox, NO_RECORDS, OkBox, SkeletonRows, SourceChip, StatusBadge, errorText, td, th } from './shared';
+import { CatBadge, ErrorBox, FilterRow, NO_RECORDS, OkBox, SkeletonRows, SourceChip, StatusBadge, errorText, td, th } from './shared';
 import { fetchRates, postAction } from '@/lib/budgetMgmt/api';
-import { ACTION_FROM, csvList, rateBreakup, readBPriority, showDate, stripZeros, validateAction } from '@/lib/budgetMgmt/rules';
+import { ACTION_FROM, csvList, rateBreakup, readBPriority, rowMatches, type ColFilters, showDate, stripZeros, validateAction } from '@/lib/budgetMgmt/rules';
 import { COUNTRIES, STATUS_LABEL, type BudRateRow, type RateAction } from '@/lib/budgetMgmt/types';
 import { fmtNum } from '@/lib/format';
 
@@ -57,7 +57,16 @@ export default function ReviewTab({ gjahr, email }: { gjahr: string; email: stri
     { a: 'REJECT', label: 'Reject', hint: 'S→R', icon: ThumbsDown }, { a: 'REVISE', label: 'Revise', hint: 'R→V', icon: RotateCcw },
   ];
   const [prio] = useState<string[]>(readBPriority);
-  const shown = useMemo(() => [...(rows ?? [])].sort((a, b) => (a.Matcat || 'Z').localeCompare(b.Matcat || 'Z')), [rows]);
+  const sorted = useMemo(() => [...(rows ?? [])].sort((a, b) => (a.Matcat || 'Z').localeCompare(b.Matcat || 'Z')), [rows]);
+  const [colF, setColF] = useState<ColFilters>({});
+  const filtering = Object.values(colF).some((v) => v.trim());
+  const shown = filtering ? sorted.filter((r) => {
+    const bu = rateBreakup(r, prio);
+    return rowMatches({
+      material: stripZeros(r.Matnr), plant: r.Werks, cat: r.Matcat, source: r.RateSrc, derived: r.DerivedRate, rule: `${bu.rule} ${bu.steps.map((x) => x.k).join(' ')}`, override: r.OverrideRate, freight: r.FrtTotal, landed: r.LandedRate,
+      status: `${r.ApprStatus} ${STATUS_LABEL[r.ApprStatus as keyof typeof STATUS_LABEL] ?? ''}`, submitted: `${r.SubmittedBy} ${showDate(r.SubmittedOn)}`, approved: `${r.ApprovedBy} ${showDate(r.ApprovedOn)}`, rejected: `${r.RejectedBy} ${r.RejectionRsn}`,
+    }, colF);
+  }) : sorted;
 
   return (
     <div className="flex flex-col gap-3">
@@ -95,13 +104,14 @@ export default function ReviewTab({ gjahr, email }: { gjahr: string; email: stri
       } bodyClass="p-0">
         {loadErr && <div className="p-3"><ErrorBox>{loadErr}</ErrorBox></div>}
         {rows && rows.length === 0 && !loadErr && <p className="py-6 text-center text-sm text-muted">{NO_RECORDS}</p>}
-        {(loading || shown.length > 0) && (
+        {(loading || sorted.length > 0) && (
           <div className="max-h-[60vh] overflow-auto">
-            <div className="px-3 py-2"><Pill tone="accent">{shown.length} rows</Pill></div>
+            <div className="flex items-center gap-3 px-3 py-2"><Pill tone="accent">{filtering ? `${shown.length} of ${sorted.length} rows` : `${shown.length} rows`}</Pill>{filtering && <button type="button" className="text-xs font-semibold text-accent underline" onClick={() => setColF({})}>Clear filters</button>}</div>
             <table className="w-full border-collapse">
               <thead className="sticky top-0 z-10 bg-sunken">
                 <tr><th className={th}>Material</th><th className={th}>Plant</th><th className={th}>Cat</th><th className={th}>Source</th><th className={cx(th, 'text-right')}>Derived</th><th className={th}>Rule &amp; breakup</th><th className={cx(th, 'text-right')}>Override</th><th className={cx(th, 'text-right')}>Freight</th><th className={cx(th, 'text-right')}>Landed Rate</th><th className={th}>Status</th>
                   <th className={th}>Submitted by / on</th><th className={th}>Approved by / on</th><th className={th}>Rejected by / reason</th></tr>
+                <FilterRow filters={colF} setFilters={setColF} cols={['material', 'plant', 'cat', 'source', 'derived', 'rule', 'override', 'freight', 'landed', 'status', 'submitted', 'approved', 'rejected'].map((key) => ({ key }))} />
               </thead>
               {loading ? <SkeletonRows cols={13} /> : (
                 <tbody>{shown.map((r, i) => { const bu = rateBreakup(r, prio); return (

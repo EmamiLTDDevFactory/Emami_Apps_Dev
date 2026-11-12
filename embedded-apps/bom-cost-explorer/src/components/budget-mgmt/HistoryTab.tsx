@@ -3,10 +3,10 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, Search } from 'lucide-react';
 import { Wand2 } from 'lucide-react';
 import { Button, Card, Field, Spinner, cx, inputCls } from '../ui';
-import { CatBadge, ErrorBox, NO_RECORDS, OkBox, SkeletonRows, SourceChip, errorText, td, th } from './shared';
+import { CatBadge, ErrorBox, FilterRow, NO_RECORDS, OkBox, SkeletonRows, SourceChip, errorText, td, th } from './shared';
 import { fetchHistory, fetchRateSrcDtl, fetchRates, postGenerate } from '@/lib/budgetMgmt/api';
 import { COUNTRIES, MATERIAL_TYPES, type BudHistRow, type BudRateRow, type BudRateSrcDtlRow, LAST_PRICE_MODES, type LastPriceMode, type HistoryFilter } from '@/lib/budgetMgmt/types';
-import { BASIS_KEY, LASTP_KEY, RATE_BASES, avgBasePrice, lastPrice, type RateBasis, defaultHistWindow, filterHistory, groupHistory, historyBreakup, projectedValue, readBPriority, showDate, sortByCountryTotal, stripZeros, validateHistory, type Errors } from '@/lib/budgetMgmt/rules';
+import { BASIS_KEY, LASTP_KEY, rowMatches, type ColFilters, RATE_BASES, avgBasePrice, lastPrice, type RateBasis, defaultHistWindow, filterHistory, groupHistory, historyBreakup, projectedValue, readBPriority, showDate, sortByCountryTotal, stripZeros, validateHistory, type Errors } from '@/lib/budgetMgmt/rules';
 import { fmtNum } from '@/lib/format';
 
 /** Rupees as lakhs (1 lakh = 100,000). */
@@ -76,7 +76,25 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
 
   const dtlFailed = Object.values(dtl).filter((v) => !Array.isArray(v)).length;
   const dtlDone = Object.keys(dtl).length;
-  const shown = useMemo(() => filterHistory(groups, q, cats), [groups, q, cats]);
+  const searched = useMemo(() => filterHistory(groups, q, cats), [groups, q, cats]);
+  // Column filters: one expression per column, on the same values the table shows.
+  const [colF, setColF] = useState<ColFilters>({});
+  const filtering = Object.values(colF).some((v) => v.trim());
+  const shown = filtering ? searched.filter((g) => {
+    const dd = dtl[dKey(g)]; const rows2 = Array.isArray(dd) ? dd : null;
+    const sel = rowSel[g.key]; const effBasis = sel?.basis ?? basis; const effMode = sel?.mode ?? lpMode;
+    const ab = rows2 ? avgBasePrice(rows2) : null; const lp = rows2 ? lastPrice(rows2, effMode) : null;
+    const rate = effBasis === 'AVG' ? (ab ? ab.RatePc : null) : (lp ? lp.row.RatePc : null);
+    const bu = rows2 ? historyBreakup(g.Matcat, rows2, prio, effMode) : null;
+    const sv = saved[g.Matnr] ?? [];
+    const spread = (f: (r: BudRateRow) => number) => (sv.length ? Math.max(...sv.map(f)) : null);
+    return rowMatches({
+      material: stripZeros(g.Matnr), description: g.Maktx, uom: g.BaseUom, netQty: g.NetQty, netValue: lakh(g.NetValue), curr: g.Currency, avgRate: g.AvgRate, ctryValue: g.CtryValue,
+      avgBase: ab ? ab.RatePc : null, lastPrice: lp ? lp.row.RatePc : null, lastSrc: lp ? lp.row.RateSrc : '', basis: sel ? (sel.basis === 'AVG' ? 'Avg base price' : `Last ${sel.mode}`) : 'Global',
+      projRate: rate, projValue: rate == null ? null : lakh(projectedValue(g.NetQty, rate)), cat: g.Matcat, derived: bu ? bu.derived : null, freight: spread((r) => r.FrtTotal), landed: spread((r) => r.LandedRate),
+      rule: bu ? `${bu.rule} ${bu.steps.map((x) => x.k).join(' ')}` : '',
+    }, colF);
+  }) : searched;
   const counts = useMemo(() => { const c = { A: 0, B: 0, C: 0 }; for (const g of groups) if (g.Matcat in c) c[g.Matcat as 'A']++; return c; }, [groups]);
   const num = (k: keyof HistoryFilter) => (v: string) => set(k, v);
 
@@ -131,7 +149,7 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
                 className={cx('rounded-full px-3 py-1 text-xs font-bold ring-1', cats.includes(c) ? 'bg-accent text-white ring-accent' : 'bg-panel text-ink ring-line')}>{c} ({counts[c]})</button>
             ))}
           </div>
-          <span className="text-xs text-muted">{shown.length} of {groups.length} materials</span>
+          <span className="text-xs text-muted">{shown.length} of {groups.length} materials</span>{filtering && <button type="button" className="text-xs font-semibold text-accent underline" onClick={() => setColF({})}>Clear column filters</button>}
           {dtlDone === groups.length && dtlFailed > 0 && <span className="text-xs font-semibold text-bad" title={dtlError?.error}>{dtlFailed} price reads failed: {dtlError?.error} <button type="button" className="underline" onClick={() => setRetry((n) => n + 1)}>Retry</button></span>}
           {dtlDone < groups.length && <span className="text-xs text-muted">Reading prices: {dtlDone} / {groups.length}</span>}
           {(q || cats.length > 0) && <button type="button" className="text-xs font-semibold text-accent underline" onClick={() => { setQ(''); setCats([]); }}>Clear filters</button>}
@@ -146,6 +164,7 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
               <thead className="sticky top-0 z-10 bg-sunken">
                 <tr><th className={th} /><th className={th}>Material</th><th className={th}>Description</th><th className={th}>UOM</th>
                   <th className={cx(th, 'text-right')}>Net Qty</th><th className={cx(th, 'text-right')}>Net Value (Lakhs)</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Avg Rate</th><th className={cx(th, 'text-right')}>Country Total</th><th className={cx(th, 'text-right')}>Avg Base Price</th><th className={th}>Last Price</th><th className={th}>Rate basis</th><th className={cx(th, 'text-right')}>Proj Rate</th><th className={cx(th, 'text-right')}>Proj Value (Lakhs)</th><th className={th}>Cat</th><th className={cx(th, 'text-right')}>Derived Rate</th><th className={cx(th, 'text-right')}>Freight</th><th className={cx(th, 'text-right')}>Landed Rate</th><th className={th}>Rule &amp; breakup</th></tr>
+                <FilterRow filters={colF} setFilters={setColF} cols={[{ key: 'x0', off: true }, ...['material', 'description', 'uom', 'netQty', 'netValue', 'curr', 'avgRate', 'ctryValue', 'avgBase', 'lastPrice'].map((key) => ({ key })), { key: 'basis' }, ...['projRate', 'projValue', 'cat', 'derived', 'freight', 'landed', 'rule'].map((key) => ({ key }))]} />
               </thead>
               {loading ? <SkeletonRows cols={19} /> : (
                 <tbody>

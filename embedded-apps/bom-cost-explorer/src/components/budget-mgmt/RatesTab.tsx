@@ -2,12 +2,12 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Pencil, Save, Search, X } from 'lucide-react';
 import { Button, Card, Field, Pill, Spinner, cx, inputCls } from '../ui';
-import { CatBadge, ErrorBox, NO_RECORDS, OkBox, SkeletonRows, SourceChip, StatusBadge, errorText, td, th } from './shared';
+import { CatBadge, ErrorBox, FilterRow, NO_RECORDS, OkBox, SkeletonRows, SourceChip, StatusBadge, errorText, td, th } from './shared';
 import RateEditPanel from './RateEditPanel';
 import SourcePriorityEditor from '../rates/SourcePriorityEditor';
 import { fetchRateSrcDtl, fetchRates, patchRate } from '@/lib/budgetMgmt/api';
 import { COUNTRIES, STATUS_LABEL, type AdjType, type BudRateRow, type BudRateSrcDtlRow, type LastPriceMode, LAST_PRICE_MODES, type RateEdit } from '@/lib/budgetMgmt/types';
-import { LASTP_KEY, showDate, DEFAULT_B_PRIORITY, adjustRate, avgBasePrice, lastPrice, amount, budgetedBasic, isEditable, freightApplies, historyBreakup, landedRate, rateBreakup, stripZeros, validateEdit, type Errors } from '@/lib/budgetMgmt/rules';
+import { LASTP_KEY, rowMatches, type ColFilters, showDate, DEFAULT_B_PRIORITY, adjustRate, avgBasePrice, lastPrice, amount, budgetedBasic, isEditable, freightApplies, historyBreakup, landedRate, rateBreakup, stripZeros, validateEdit, type Errors } from '@/lib/budgetMgmt/rules';
 import { fmtNum } from '@/lib/format';
 
 const PRIO_KEY = 'bud-mgmt-b-priority';
@@ -126,6 +126,34 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
 
   const shown = useMemo(() => { const n = q.trim().toLowerCase(); return (rows ?? []).filter((r) => !n || stripZeros(r.Matnr).toLowerCase().includes(n) || r.Matnr.toLowerCase().includes(n)).sort((a, b) => (a.Matcat || 'Z').localeCompare(b.Matcat || 'Z')); }, [rows, q]);
 
+  // One place for what a row shows (the table and the column filters read the same values).
+  const [colF, setColF] = useState<ColFilters>({});
+  function calc(r: BudRateRow, k: string) {
+    const dd0 = dtl[dtlKey(r)]; const hb = !r.RateSrc && !(r.SrcRate > 0) && Array.isArray(dd0) ? historyBreakup(r.Matcat, dd0, prio, lpRow[k] ?? lpGlobal) : null;
+    const bu = hb ?? rateBreakup(r, prio);
+    // Simulation: the row's own (Enter in the edit panel) else the global adjustment, on the effective source rate; freight as shown.
+    const base = hb?.pick ? hb.pick.RatePc : r.SrcRate > 0 ? r.SrcRate : r.DerivedRate;
+    const applies = hb?.pick ? true : freightApplies(r.RateSrc);
+    const frt = hb?.pick ? 0 : r.FrtTotal; // sources carry no freight
+    const curLanded = hb?.pick ? hb.pick.RatePc : r.LandedRate;
+    const rs = rowSim[k];
+    const simBasic = base > 0 || (rs && rs.overrideRate.trim() !== '') ? (rs ? budgetedBasic(base, rs) : gSim && (!gSim.cats.length || gSim.cats.includes(r.Matcat)) ? adjustRate(base, gSim.type, gSim.value) : null) : null;
+    const simLanded = simBasic == null ? null : landedRate(simBasic, frt, applies || (!!rs && rs.overrideRate.trim() !== ''));
+    return { hb, bu, base, curLanded, rs, simBasic, simLanded };
+  }
+  function filterValues(r: BudRateRow): Record<string, string | number | null> {
+    const k = keyOf(r); const c = calc(r, k); const dd = dtl[dtlKey(r)]; const rows2 = Array.isArray(dd) ? dd : null;
+    const ab = rows2 ? avgBasePrice(rows2) : null; const lp = rows2 ? lastPrice(rows2, lpRow[k] ?? lpGlobal) : null;
+    return {
+      material: stripZeros(r.Matnr), plant: r.Werks, validFrom: showDate(r.ValidFrom), cat: r.Matcat, uom: r.BaseUom, source: c.hb?.pick ? c.hb.pick.RateSrc : r.RateSrc,
+      srcRate: c.hb?.pick ? c.hb.pick.RatePc : r.SrcRate, derived: c.hb ? c.hb.derived : r.DerivedRate, avgBase: ab ? ab.RatePc : null, lastPrice: lp ? lp.row.RatePc : null,
+      rule: `${c.bu.rule} ${c.bu.steps.map((x) => x.k).join(' ')}`, adj: r.OverrideRate > 0 ? `Override ${r.OverrideRate}` : r.AdjType === 'P' ? `${r.AdjValue}%` : r.AdjType === 'A' ? String(r.AdjValue) : '',
+      freight: c.hb?.pick ? null : r.FrtTotal, landed: c.hb?.pick ? c.hb.pick.RatePc : r.LandedRate, simBasic: c.simBasic, simLanded: c.simLanded,
+      delta: c.simLanded == null || !(c.curLanded > 0) ? null : c.simLanded - c.curLanded, status: `${r.ApprStatus} ${STATUS_LABEL[r.ApprStatus as keyof typeof STATUS_LABEL] ?? ''}`,
+    };
+  }
+  const visible = Object.values(colF).some((v) => v.trim()) ? shown.filter((r) => rowMatches(filterValues(r), colF)) : shown;
+
   const simOn = !!gSim || Object.keys(rowSim).length > 0;
   const COLS = simOn ? 19 : 16;
 
@@ -177,8 +205,8 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
 
       {(loading || (rows && rows.length > 0)) && (
         <Card
-          title={<span className="flex items-center gap-2">Rates {rows && <Pill tone="accent">{shown.length} rows</Pill>}</span>}
-          actions={<input className={cx(inputCls, 'w-48')} placeholder="Filter: material" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Filter by material" />}
+          title={<span className="flex items-center gap-2">Rates {rows && <Pill tone="accent">{visible.length === (rows?.length ?? 0) ? `${visible.length} rows` : `${visible.length} of ${rows?.length ?? 0} rows`}</Pill>}</span>}
+          actions={<>{Object.values(colF).some((v) => v.trim()) && <Button size="sm" onClick={() => setColF({})}><X size={13} /> Clear filters</Button>}<input className={cx(inputCls, 'w-48')} placeholder="Filter: material" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Filter by material" /></>}
           bodyClass="p-0"
         >
           <div className="max-h-[65vh] overflow-auto">
@@ -188,24 +216,20 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
                   {(['Material', 'Plant', 'Valid from', 'Cat', 'UOM', 'Source', 'Src rate', 'Derived'] as const).map((h, i) => { const f = frozen(i, true); return <th key={h} className={cx(th, f.className, i >= 6 && 'text-right', i === FROZEN.length - 1 && 'border-r border-line')} style={f.style}>{h}</th>; })}
                   <th className={cx(th, 'text-right')}>Avg base price</th><th className={th}>Last price</th><th className={th}>Rule &amp; breakup</th><th className={th}>Adj</th><th className={cx(th, 'text-right')}>Freight</th><th className={cx(th, 'text-right')}>Landed rate</th>
                   {simOn && <><th className={cx(th, 'text-right')}>Sim. basic</th><th className={cx(th, 'text-right')}>Sim. landed</th><th className={cx(th, 'text-right')}>Δ landed</th></>}<th className={th}>Status</th><th className={th} /></tr>
+                <FilterRow filters={colF} setFilters={setColF} cols={[
+                  ...(['material', 'plant', 'validFrom', 'cat', 'uom', 'source', 'srcRate', 'derived'] as const).map((key, i) => ({ key, className: frozen(i, true).className, style: frozen(i, true).style })),
+                  { key: 'avgBase' }, { key: 'lastPrice' }, { key: 'rule' }, { key: 'adj' }, { key: 'freight' }, { key: 'landed' },
+                  ...(simOn ? [{ key: 'simBasic' }, { key: 'simLanded' }, { key: 'delta' }] : []), { key: 'status' }, { key: 'x', off: true },
+                ]} />
               </thead>
               {loading ? <SkeletonRows cols={COLS} /> : (
                 <tbody>
-                  {shown.map((r, i) => {
+                  {visible.map((r, i) => {
                     const k = keyOf(r); const isEd = editing === k;
-                    const dd0 = dtl[dtlKey(r)]; const hb = !r.RateSrc && !(r.SrcRate > 0) && Array.isArray(dd0) ? historyBreakup(r.Matcat, dd0, prio, lpRow[k] ?? lpGlobal) : null;
-                    const bu = hb ?? rateBreakup(r, prio);
-                    // Simulation: the row's own (Enter in the edit panel) else the global adjustment, on the effective source rate; freight as shown.
-                    const base = hb?.pick ? hb.pick.RatePc : r.SrcRate > 0 ? r.SrcRate : r.DerivedRate;
-                    const applies = hb?.pick ? true : freightApplies(r.RateSrc);
-                    const frt = hb?.pick ? 0 : r.FrtTotal; // sources carry no freight
-                    const curLanded = hb?.pick ? hb.pick.RatePc : r.LandedRate;
-                    const rs = rowSim[k];
-                    const simBasic = base > 0 || (rs && rs.overrideRate.trim() !== '') ? (rs ? budgetedBasic(base, rs) : gSim && (!gSim.cats.length || gSim.cats.includes(r.Matcat)) ? adjustRate(base, gSim.type, gSim.value) : null) : null;
-                    const simLanded = simBasic == null ? null : landedRate(simBasic, frt, applies || (!!rs && rs.overrideRate.trim() !== ''));
+                    const { hb, bu, base, curLanded, rs, simBasic, simLanded } = calc(r, k);
                     return (
                       <Fragment key={k}>
-                        {(i === 0 || shown[i - 1].Matcat !== r.Matcat) && <tr className="bg-sunken/60"><td colSpan={COLS} className="px-2 py-1 text-xs font-bold"><CatBadge cat={r.Matcat} /> Category {r.Matcat || '—'}</td></tr>}
+                        {(i === 0 || visible[i - 1].Matcat !== r.Matcat) && <tr className="bg-sunken/60"><td colSpan={COLS} className="px-2 py-1 text-xs font-bold"><CatBadge cat={r.Matcat} /> Category {r.Matcat || '—'}</td></tr>}
                         <tr className={cx('border-b border-line/60', isEd && 'bg-accent/5')}>
                           {(() => {
                             const date = r.ValidFrom.length === 8 ? `${r.ValidFrom.slice(6)}.${r.ValidFrom.slice(4, 6)}.${r.ValidFrom.slice(0, 4)}` : r.ValidFrom;

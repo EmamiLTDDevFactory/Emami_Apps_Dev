@@ -194,3 +194,23 @@ describe('rule per category from BudRateSrcDtlSet (no BudRateSrcSet)', () => {
     expect(historyBreakup('C', []).derived).toBeNull();
   });
 });
+
+describe('column filter expressions', () => {
+  it('text contains, numbers compare, ranges, blank and any-of', async () => {
+    const { matchExpr, rowMatches } = await import('@/lib/budgetMgmt/rules');
+    expect(matchExpr('Glycol RM', 'glyc')).toBe(true);
+    expect(matchExpr('Glycol RM', 'xyz')).toBe(false);
+    expect(matchExpr(122.5, '>100')).toBe(true);
+    expect(matchExpr(122.5, '<=100')).toBe(false);
+    expect(matchExpr(122.5, '100..130')).toBe(true);
+    expect(matchExpr(122.5, '=122.5')).toBe(true);
+    expect(matchExpr(122.5, '122.5')).toBe(true);
+    expect(matchExpr(null, 'blank')).toBe(true);
+    expect(matchExpr(5, '!blank')).toBe(true);
+    expect(matchExpr(null, '>1')).toBe(false);
+    expect(matchExpr('B', 'a|b')).toBe(true);
+    expect(matchExpr(1234.5, '1,234')).toBe(true);
+    expect(rowMatches({ cat: 'A', rate: 10 }, { cat: 'a', rate: '>5' })).toBe(true);
+    expect(rowMatches({ cat: 'A', rate: 10 }, { cat: 'b' })).toBe(false);
+  });
+});

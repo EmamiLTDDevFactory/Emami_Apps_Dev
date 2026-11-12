@@ -250,3 +250,33 @@ export const BASIS_KEY = 'bud-mgmt-hist-basis';
 /** Rate basis of the History projection: the average base price or the last price (Info record / Contract). */
 export type RateBasis = 'AVG' | 'LAST';
 export const RATE_BASES: { v: RateBasis; label: string }[] = [{ v: 'AVG', label: 'Avg base price' }, { v: 'LAST', label: 'Last purchase price' }];
+
+/* ---- Column filters (every column of the tables): one expression per column ---- */
+export type ColFilters = Record<string, string>;
+/**
+ * Does a cell match the filter expression? Text: contains, any case. Numbers also take `>10`, `>=10`, `<10`, `<=10`, `=10`, `!=10` and ranges `10..20`.
+ * `blank` matches an empty cell, `!blank` a filled one. Several expressions separated by `|` match any (a, b).
+ */
+export function matchExpr(value: string | number | null | undefined, expr: string): boolean {
+  const e = expr.trim();
+  if (!e) return true;
+  if (e.includes('|')) return e.split('|').some((x) => matchExpr(value, x));
+  const empty = value === null || value === undefined || value === '' || (typeof value === 'number' && Number.isNaN(value));
+  const low = e.toLowerCase();
+  if (low === 'blank') return empty;
+  if (low === '!blank') return !empty;
+  if (empty) return false;
+  const num = typeof value === 'number' ? value : null;
+  const n = (t: string) => Number(t.replace(/,/g, ''));
+  if (num !== null) {
+    const op = /^(>=|<=|!=|>|<|=)\s*(-?[\d.,]+)$/.exec(e);
+    if (op) { const x = n(op[2]); if (Number.isFinite(x)) return op[1] === '>' ? num > x : op[1] === '>=' ? num >= x : op[1] === '<' ? num < x : op[1] === '<=' ? num <= x : op[1] === '=' ? Math.abs(num - x) < 1e-9 : Math.abs(num - x) >= 1e-9; }
+    const rg = /^(-?[\d.,]+)\s*\.\.\s*(-?[\d.,]+)$/.exec(e);
+    if (rg) { const a = n(rg[1]), b = n(rg[2]); if (Number.isFinite(a) && Number.isFinite(b)) return num >= Math.min(a, b) && num <= Math.max(a, b); }
+    return [String(num), num.toFixed(2), num.toFixed(3), num.toLocaleString('en-IN')].some((t) => t.toLowerCase().includes(low));
+  }
+  return String(value).toLowerCase().includes(low);
+}
+/** True when every column filter matches the row's values. */
+export const rowMatches = (vals: Record<string, string | number | null | undefined>, filters: ColFilters): boolean =>
+  Object.entries(filters).every(([k, e]) => !e.trim() || matchExpr(vals[k], e));
