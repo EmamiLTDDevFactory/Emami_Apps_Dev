@@ -21,7 +21,7 @@ const Line = ({ k, v, strong }: { k: string; v: React.ReactNode; strong?: boolea
   <div className="flex items-baseline justify-between gap-4 text-xs"><span className="text-muted">{k}</span><span className={cx('num', strong && 'text-sm font-extrabold')}>{v}</span></div>
 );
 
-export default function RateEditPanel({ r, form, setForm, errs, prio, onEnter, fallback, dtl, lpMode, setLpMode }: { r: BudRateRow; form: RateEdit; setForm: (f: RateEdit) => void; errs: Errors<keyof RateEdit>; prio: readonly string[]; onEnter?: () => void; fallback?: { source: string; rate: number; freight: number }; dtl?: BudRateSrcDtlRow[]; lpMode?: LastPriceMode; setLpMode?: (m: LastPriceMode) => void }) {
+export default function RateEditPanel({ r, form, setForm, errs, prio, onEnter, fallback, dtl, lpMode, setLpMode, frtLines }: { r: BudRateRow; form: RateEdit; setForm: (f: RateEdit) => void; errs: Errors<keyof RateEdit>; prio: readonly string[]; onEnter?: () => void; fallback?: { source: string; rate: number; freight: number }; dtl?: BudRateSrcDtlRow[]; lpMode?: LastPriceMode; setLpMode?: (m: LastPriceMode) => void; frtLines?: { cond: string; rate: number }[] }) {
   const cat = r.Matcat;
   // A row SAP saved with no rate: the rate source the rule picked stands in (the table marks those *).
   const useFb = !r.RateSrc && !(r.SrcRate > 0) && !!fallback;
@@ -104,6 +104,7 @@ export default function RateEditPanel({ r, form, setForm, errs, prio, onEnter, f
           <Line k="Avg base price" v={!dtl ? '…' : abp ? fmtNum(abp.RatePc, 2) : '—'} />
           <Line k="Budgeted basic rate" v={fmtNum(basic, 2)} strong />
           <Line k={frtOn ? 'Freight / delivery' : 'Freight / delivery (not applicable)'} v={frtOn ? fmtNum(frt, 2) : '—'} />
+          {frtOn && (frtLines ?? []).map((l, i) => <div key={i} className="flex items-baseline justify-between gap-4 pl-3 text-2xs text-muted"><span>{l.cond || '—'}</span><span className="num">{fmtNum(l.rate, 2)}</span></div>)}
           <Line k={`Landed rate ${r.LandedCurr}`} v={fmtNum(landed, 2)} strong />
         </div>
         {onEnter && <p className="mt-1.5 text-2xs text-accent">Press Enter in a field to simulate this rate in the table.</p>}

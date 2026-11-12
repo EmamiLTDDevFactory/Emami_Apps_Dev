@@ -7,7 +7,7 @@ import RateEditPanel from './RateEditPanel';
 import SourcePriorityEditor from '../rates/SourcePriorityEditor';
 import { fetchRateSrcDtl, fetchRates, patchRate } from '@/lib/budgetMgmt/api';
 import { COUNTRIES, STATUS_LABEL, type AdjType, type BudRateRow, type BudRateSrcDtlRow, type LastPriceMode, LAST_PRICE_MODES, type RateEdit } from '@/lib/budgetMgmt/types';
-import { LASTP_KEY, rowMatches, type ColFilters, showDate, DEFAULT_B_PRIORITY, adjustRate, avgBasePrice, lastPrice, amount, budgetedBasic, isEditable, freightApplies, historyBreakup, landedRate, rateBreakup, stripZeros, validateEdit, type Errors } from '@/lib/budgetMgmt/rules';
+import { LASTP_KEY, rowMatches, type ColFilters, freightText, showDate, DEFAULT_B_PRIORITY, adjustRate, avgBasePrice, lastPrice, amount, budgetedBasic, isEditable, freightApplies, historyBreakup, landedRate, rateBreakup, stripZeros, validateEdit, type Errors } from '@/lib/budgetMgmt/rules';
 import { fmtNum } from '@/lib/format';
 
 const PRIO_KEY = 'bud-mgmt-b-priority';
@@ -134,8 +134,8 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
     // Simulation: the row's own (Enter in the edit panel) else the global adjustment, on the effective source rate; freight as shown.
     const base = hb?.pick ? hb.pick.RatePc : r.SrcRate > 0 ? r.SrcRate : r.DerivedRate;
     const applies = hb?.pick ? true : freightApplies(r.RateSrc);
-    const frt = hb?.pick ? 0 : r.FrtTotal; // sources carry no freight
-    const curLanded = hb?.pick ? hb.pick.RatePc : r.LandedRate;
+    const frt = hb?.pick ? hb.pick.FrtTotal : r.FrtTotal; // a row SAP saved without a rate: the picked source's freight
+    const curLanded = hb?.pick ? landedRate(hb.pick.RatePc, hb.pick.FrtTotal, true) : r.LandedRate;
     const rs = rowSim[k];
     const simBasic = base > 0 || (rs && rs.overrideRate.trim() !== '') ? (rs ? budgetedBasic(base, rs) : gSim && (!gSim.cats.length || gSim.cats.includes(r.Matcat)) ? adjustRate(base, gSim.type, gSim.value) : null) : null;
     const simLanded = simBasic == null ? null : landedRate(simBasic, frt, applies || (!!rs && rs.overrideRate.trim() !== ''));
@@ -148,7 +148,7 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
       material: stripZeros(r.Matnr), plant: r.Werks, validFrom: showDate(r.ValidFrom), cat: r.Matcat, uom: r.BaseUom, source: c.hb?.pick ? c.hb.pick.RateSrc : r.RateSrc,
       srcRate: c.hb?.pick ? c.hb.pick.RatePc : r.SrcRate, derived: c.hb ? c.hb.derived : r.DerivedRate, avgBase: ab ? ab.RatePc : null, lastPrice: lp ? lp.row.RatePc : null,
       rule: `${c.bu.rule} ${c.bu.steps.map((x) => x.k).join(' ')}`, adj: r.OverrideRate > 0 ? `Override ${r.OverrideRate}` : r.AdjType === 'P' ? `${r.AdjValue}%` : r.AdjType === 'A' ? String(r.AdjValue) : '',
-      freight: c.hb?.pick ? null : r.FrtTotal, landed: c.hb?.pick ? c.hb.pick.RatePc : r.LandedRate, simBasic: c.simBasic, simLanded: c.simLanded,
+      freight: c.hb?.pick ? c.hb.pick.FrtTotal : r.FrtTotal, landed: c.curLanded, simBasic: c.simBasic, simLanded: c.simLanded,
       delta: c.simLanded == null || !(c.curLanded > 0) ? null : c.simLanded - c.curLanded, status: `${r.ApprStatus} ${STATUS_LABEL[r.ApprStatus as keyof typeof STATUS_LABEL] ?? ''}`,
     };
   }
@@ -249,14 +249,14 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
                             const ab = avgBasePrice(dd); const mode = lpRow[k] ?? lpGlobal; const lp = lastPrice(dd, mode);
                             return <>
                               <td className={cx(td, 'num text-right')} title={ab ? `Weighted average base price (material + country), valid from ${showDate(ab.ValidFrom)}` : 'No average base price'}>{ab ? fmtNum(ab.RatePc, 2) : '—'}</td>
-                              <td className={td}><div className="flex items-center gap-1.5"><span className="num font-bold" title={lp ? `${lp.row.Vendor ? `${lp.row.Vendor} ${lp.row.Vendname} — ` : ''}valid from ${showDate(lp.row.ValidFrom)}` : 'No price from the chosen source'}>{lp ? fmtNum(lp.row.RatePc, 2) : '—'}</span>{lp && <SourceChip src={lp.row.RateSrc} />}
+                              <td className={td}><div className="flex items-center gap-1.5"><span className="num font-bold" title={lp ? `${lp.row.Vendor ? `${lp.row.Vendor} ${lp.row.Vendname} — ` : ''}valid from ${showDate(lp.row.ValidFrom)}${lp.row.FrtTotal ? ` — freight ${fmtNum(lp.row.FrtTotal, 2)}, landed ${fmtNum(lp.row.LandedRate, 2)}` : ''}` : 'No price from the chosen source'}>{lp ? fmtNum(lp.row.RatePc, 2) : '—'}</span>{lp && <SourceChip src={lp.row.RateSrc} />}
                                 <select aria-label="Last price priority of this row" className="rounded border border-line bg-panel px-1 py-0.5 text-2xs" value={lpRow[k] ?? ''} onChange={(e) => setLpRow((x) => { const { [k]: _, ...rest } = x; return e.target.value ? { ...rest, [k]: e.target.value as LastPriceMode } : rest; })}>
                                   <option value="">Global</option>{LAST_PRICE_MODES.map((m) => <option key={m.v} value={m.v}>{m.label}</option>)}</select></div></td>
                             </>;
                           })()}
                           <td className="min-w-64 px-2 py-1.5 text-2xs"><div className="font-bold">{bu.rule}{hb && <span className="font-normal text-warn"> — from sources, not saved</span>}</div><div className="num text-muted">{bu.steps.map((x) => `${x.k} ${fmtNum(x.v, 2)}`).join(' → ')}</div></td>
                           <td className={cx(td, 'num')} title={r.OverrideRate > 0 ? r.OverrideRsn : undefined}>{r.OverrideRate > 0 ? `Override ${fmtNum(r.OverrideRate, 2)}` : r.AdjType === 'P' ? `${r.AdjValue < 0 ? '−' : '+'}${fmtNum(Math.abs(r.AdjValue), 2)}%` : r.AdjType === 'A' ? `${r.AdjValue < 0 ? '−' : '+'}${fmtNum(Math.abs(r.AdjValue), 2)}` : '—'}</td>
-                          <td className={cx(td, 'num text-right')}>{hb?.pick ? <span title="Freight is not available from the rate sources — it comes with the saved rate">—*</span> : fmtNum(r.FrtTotal, 2)}</td><td className={cx(td, 'num text-right font-extrabold')}>{hb?.pick ? `${fmtNum(hb.pick.RatePc, 2)}*` : `${fmtNum(r.LandedRate, 2)} ${r.LandedCurr}`}</td>
+                          <td className={cx(td, 'num text-right')}>{(() => { const lines = hb?.pick ? hb.pick.FrtLines : r.FrtLines; const t = lines.length ? `Freight line items: ${freightText(lines)}` : undefined; return hb?.pick ? <span title={t ?? 'No freight on this source'}>{fmtNum(hb.pick.FrtTotal, 2)}*</span> : <span title={t}>{fmtNum(r.FrtTotal, 2)}</span>; })()}</td><td className={cx(td, 'num text-right font-extrabold')}>{hb?.pick ? `${fmtNum(curLanded, 2)}*` : `${fmtNum(r.LandedRate, 2)} ${r.LandedCurr}`}</td>
                           {simOn && <>
                             <td className={cx(td, 'num text-right font-bold text-accent')}>{simBasic == null ? '—' : <span title={rs ? 'Simulated in the edit panel' : 'Global simulation'} className={simBasic <= 0 ? 'text-bad' : undefined}>{fmtNum(simBasic, 2)}{rs && ' ✎'}</span>}</td>
                             <td className={cx(td, 'num text-right font-extrabold text-accent')}>{simLanded == null ? '—' : fmtNum(simLanded, 2)}</td>
@@ -268,7 +268,7 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
                         {isEd && (
                           <tr className="border-b border-line bg-accent/5">
                             <td colSpan={COLS} className="px-4 py-3">
-                              <RateEditPanel r={r} form={form} setForm={setForm} errs={fErr} prio={prio} dtl={Array.isArray(dtl[dtlKey(r)]) ? (dtl[dtlKey(r)] as BudRateSrcDtlRow[]) : undefined} lpMode={lpRow[k] ?? lpGlobal} setLpMode={(m) => setLpRow((x) => ({ ...x, [k]: m }))} fallback={hb?.pick ? { source: hb.pick.RateSrc, rate: hb.pick.RatePc, freight: 0 } : undefined} onEnter={() => simulateRow(r, base > 0 ? base : undefined)} />
+                              <RateEditPanel r={r} form={form} setForm={setForm} errs={fErr} prio={prio} dtl={Array.isArray(dtl[dtlKey(r)]) ? (dtl[dtlKey(r)] as BudRateSrcDtlRow[]) : undefined} lpMode={lpRow[k] ?? lpGlobal} setLpMode={(m) => setLpRow((x) => ({ ...x, [k]: m }))} fallback={hb?.pick ? { source: hb.pick.RateSrc, rate: hb.pick.RatePc, freight: hb.pick.FrtTotal } : undefined} frtLines={hb?.pick ? hb.pick.FrtLines : r.FrtLines} onEnter={() => simulateRow(r, base > 0 ? base : undefined)} />
                               <div className="mt-3 flex flex-wrap items-center gap-2">
                                 <Button variant="primary" size="sm" disabled={saving} onClick={() => void save(r)}>{saving ? <Spinner /> : <Save size={13} />} Save changes</Button>
                                 <Button size="sm" disabled={saving} onClick={() => setEditing('')}><X size={13} /> Cancel</Button>

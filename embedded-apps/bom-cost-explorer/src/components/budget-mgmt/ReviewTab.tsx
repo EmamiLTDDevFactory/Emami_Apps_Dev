@@ -4,7 +4,7 @@ import { Check, RotateCcw, Search, Send, ThumbsDown } from 'lucide-react';
 import { Button, Card, Field, Pill, Spinner, cx, inputCls } from '../ui';
 import { CatBadge, ErrorBox, FilterRow, NO_RECORDS, OkBox, SkeletonRows, SourceChip, StatusBadge, errorText, td, th } from './shared';
 import { fetchRates, postAction } from '@/lib/budgetMgmt/api';
-import { ACTION_FROM, csvList, rateBreakup, readBPriority, rowMatches, type ColFilters, showDate, stripZeros, validateAction } from '@/lib/budgetMgmt/rules';
+import { ACTION_FROM, csvList, rateBreakup, readBPriority, rowMatches, type ColFilters, freightText, showDate, stripZeros, validateAction } from '@/lib/budgetMgmt/rules';
 import { COUNTRIES, STATUS_LABEL, type BudRateRow, type RateAction } from '@/lib/budgetMgmt/types';
 import { fmtNum } from '@/lib/format';
 
@@ -122,7 +122,7 @@ export default function ReviewTab({ gjahr, email }: { gjahr: string; email: stri
                     <td className={cx(td, 'num text-right')}>{fmtNum(r.DerivedRate, 4)}</td>
                     <td className="min-w-64 px-2 py-1.5 text-2xs"><div className="font-bold">{bu.rule}</div><div className="num text-muted">{bu.steps.map((x) => `${x.k} ${fmtNum(x.v, 3)}`).join(' → ')}</div></td>
                     <td className={cx(td, 'num text-right')}>{r.OverrideRate ? fmtNum(r.OverrideRate, 4) : '—'}</td>
-                    <td className={cx(td, 'num text-right')}>{fmtNum(r.FrtTotal, 4)}</td><td className={cx(td, 'num text-right font-extrabold')}>{fmtNum(r.LandedRate, 4)} {r.LandedCurr}</td><td className={td}><StatusBadge status={r.ApprStatus} /></td>
+                    <td className={cx(td, 'num text-right')} title={r.FrtLines.length ? `Freight line items: ${freightText(r.FrtLines)}` : undefined}>{fmtNum(r.FrtTotal, 4)}</td><td className={cx(td, 'num text-right font-extrabold')}>{fmtNum(r.LandedRate, 4)} {r.LandedCurr}</td><td className={td}><StatusBadge status={r.ApprStatus} /></td>
                     <td className={td}>{r.SubmittedBy ? `${r.SubmittedBy} ${showDate(r.SubmittedOn)}` : '—'}</td><td className={td}>{r.ApprovedBy ? `${r.ApprovedBy} ${showDate(r.ApprovedOn)}` : '—'}</td>
                     <td className={td}>{r.RejectedBy ? `${r.RejectedBy}${r.RejectionRsn ? ` — ${r.RejectionRsn}` : ''}` : '—'}</td>
                   </tr></Fragment>); })}</tbody>

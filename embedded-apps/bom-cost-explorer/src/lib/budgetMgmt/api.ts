@@ -5,13 +5,15 @@
  */
 import { sapGetCollection, sapWrite, SAP_MAX_TIMEOUT_MS, type SapGetOptions } from '../sap/client';
 import { odataDate, odataString } from '../sap/filter';
-import type { BudRateSrcDtlRow, ActionPayload, ActionResult, BudHistRow, BudRateRow, HistoryFilter, RateEdit, RateFilter } from './types';
+import type { BudRateSrcDtlRow, FreightLine, ActionPayload, ActionResult, BudHistRow, BudRateRow, HistoryFilter, RateEdit, RateFilter } from './types';
 import { amount, dateText, padMatnr } from './rules';
 
 export const BUD_MGMT_SET = { HIST: 'BudHistSet', RATE: 'BudRateSet', SRCDTL: 'BudRateSrcDtlSet', ACTION: 'BudRateActionSet' } as const;
 
 const num = (v: unknown) => Number(v) || 0;
 const str = (v: unknown) => String(v ?? '');
+/** Freight line items of a row: FrtCond1-4 with FrtRate1-4, the empty ones left out. */
+const frtLines = (r: Record<string, unknown>): FreightLine[] => [1, 2, 3, 4].map((i) => ({ cond: str(r[`FrtCond${i}`]).trim(), rate: num(r[`FrtRate${i}`]) })).filter((l) => l.cond || l.rate !== 0);
 const or = (field: string, values: string[]) => {
   const u = Array.from(new Set(values.filter(Boolean)));
   if (!u.length) return null;
@@ -48,7 +50,7 @@ const hist = (r: Record<string, unknown>): BudHistRow => ({
 const rate = (r: Record<string, unknown>): BudRateRow => ({
   Gjahr: str(r.Gjahr), Land1: str(r.Land1), Matnr: str(r.Matnr), Werks: str(r.Werks), Bukrs: str(r.Bukrs), ValidFrom: dateText(r.ValidFrom), Matcat: str(r.Matcat), RateSrc: str(r.RateSrc),
   SrcRate: num(r.SrcRate), DerivedRate: num(r.DerivedRate), DerivedCurr: str(r.DerivedCurr), AdjType: str(r.AdjType), AdjValue: num(r.AdjValue),
-  OverrideRate: num(r.OverrideRate), OverrideRsn: str(r.OverrideRsn), FrtTotal: num(r.FrtTotal), LandedRate: num(r.LandedRate), LandedCurr: str(r.LandedCurr), BaseUom: str(r.BaseUom),
+  OverrideRate: num(r.OverrideRate), OverrideRsn: str(r.OverrideRsn), FrtTotal: num(r.FrtTotal), FrtLines: frtLines(r), LandedRate: num(r.LandedRate), LandedCurr: str(r.LandedCurr), BaseUom: str(r.BaseUom),
   ApprStatus: str(r.ApprStatus), SubmittedBy: str(r.SubmittedBy), SubmittedOn: dateText(r.SubmittedOn), ApprovedBy: str(r.ApprovedBy), ApprovedOn: dateText(r.ApprovedOn),
   RejectedBy: str(r.RejectedBy), RejectionRsn: str(r.RejectionRsn),
 });
@@ -56,6 +58,7 @@ const rate = (r: Record<string, unknown>): BudRateRow => ({
 const srcDtl = (r: Record<string, unknown>): BudRateSrcDtlRow => ({
   RateSrc: str(r.RateSrc), CondType: str(r.CondType), Vendor: str(r.Vendor), Vendname: str(r.Vendname), Rate: num(r.Rate), Currency: str(r.Currency), PriceUnit: num(r.PriceUnit), CondUnit: str(r.CondUnit),
   ValidFrom: dateText(r.ValidFrom), ValidTo: dateText(r.ValidTo), RatePc: num(r.RatePc),
+  FrtLines: frtLines(r), FrtTotal: num(r.FrtTotal), FrtCurr: str(r.FrtCurr), LandedRate: num(r.LandedRate), LandedCurr: str(r.LandedCurr),
 });
 export const srcDtlFilter = (matnr: string, bukrs: string, land1: string) => [`Matnr eq ${odataString(padMatnr(matnr))}`, `Bukrs eq ${odataString(bukrs || DEFAULT_BUKRS)}`, `Land1 eq ${odataString(land1)}`].join(' and ');
 

@@ -149,7 +149,7 @@ describe('generate draft rates', () => {
 });
 
 describe('BudRateSrcDtlSet: average base price and last price', () => {
-  const d = (RateSrc: string, RatePc: number, ValidFrom = '20260101') => ({ RateSrc, CondType: '', Vendor: '', Vendname: '', Rate: RatePc, Currency: 'INR', PriceUnit: 1, CondUnit: 'KG', ValidFrom, ValidTo: '99991231', RatePc });
+  const d = (RateSrc: string, RatePc: number, ValidFrom = '20260101') => ({ RateSrc, CondType: '', Vendor: '', Vendname: '', Rate: RatePc, Currency: 'INR', PriceUnit: 1, CondUnit: 'KG', ValidFrom, ValidTo: '99991231', RatePc, FrtLines: [], FrtTotal: 0, FrtCurr: '', LandedRate: RatePc, LandedCurr: 'INR' });
   // material 100000014 on NGQ: CONT 122, INFO 10, BASE 10.317884
   const rows = [d('CONT', 122, '20250911'), d('INFO', 10, '20261011'), d('BASE', 10.317884, '20250401')];
   it('filters on material, company code and country; company code defaults to 1000', async () => {
@@ -173,7 +173,7 @@ describe('BudRateSrcDtlSet: average base price and last price', () => {
 });
 
 describe('rule per category from BudRateSrcDtlSet (no BudRateSrcSet)', () => {
-  const d = (RateSrc: string, RatePc: number, ValidFrom = '20260101') => ({ RateSrc, CondType: '', Vendor: '', Vendname: '', Rate: RatePc, Currency: 'INR', PriceUnit: 1, CondUnit: 'KG', ValidFrom, ValidTo: '99991231', RatePc });
+  const d = (RateSrc: string, RatePc: number, ValidFrom = '20260101') => ({ RateSrc, CondType: '', Vendor: '', Vendname: '', Rate: RatePc, Currency: 'INR', PriceUnit: 1, CondUnit: 'KG', ValidFrom, ValidTo: '99991231', RatePc, FrtLines: [], FrtTotal: 0, FrtCurr: '', LandedRate: RatePc, LandedCurr: 'INR' });
   const rows = [d('CONT', 122), d('INFO', 10), d('BASE', 10.32)];
   it('A: last purchase price in the chosen order, else avg base price', async () => {
     const { historyBreakup } = await import('@/lib/budgetMgmt/rules');
@@ -212,5 +212,13 @@ describe('column filter expressions', () => {
     expect(matchExpr(1234.5, '1,234')).toBe(true);
     expect(rowMatches({ cat: 'A', rate: 10 }, { cat: 'a', rate: '>5' })).toBe(true);
     expect(rowMatches({ cat: 'A', rate: 10 }, { cat: 'b' })).toBe(false);
+  });
+});
+
+describe('freight line items', () => {
+  it('reads as cond + cond and is empty without lines', async () => {
+    const { freightText } = await import('@/lib/budgetMgmt/rules');
+    expect(freightText([{ cond: 'ZFR4', rate: 9.781875 }, { cond: 'ZOTC', rate: 17.313415 }])).toBe('ZFR4 9.78 + ZOTC 17.31');
+    expect(freightText([])).toBe('');
   });
 });

@@ -14,7 +14,7 @@ export interface BudHistRow {
 export interface BudRateRow {
   Gjahr: string; Land1: string; Matnr: string; Werks: string; Bukrs: string; ValidFrom: string; Matcat: string; RateSrc: string;
   SrcRate: number; DerivedRate: number; DerivedCurr: string; AdjType: string; AdjValue: number; OverrideRate: number; OverrideRsn: string;
-  FrtTotal: number; LandedRate: number; LandedCurr: string; BaseUom: string; ApprStatus: string;
+  FrtTotal: number; FrtLines: FreightLine[]; LandedRate: number; LandedCurr: string; BaseUom: string; ApprStatus: string;
   SubmittedBy: string; SubmittedOn: string; ApprovedBy: string; ApprovedOn: string; RejectedBy: string; RejectionRsn: string;
 }
 
@@ -41,7 +41,10 @@ export interface BudHistGroup {
  *  INFO / CONT = the last Info record / Contract price (material + company code level). */
 export interface BudRateSrcDtlRow {
   RateSrc: string; CondType: string; Vendor: string; Vendname: string; Rate: number; Currency: string; PriceUnit: number; CondUnit: string; ValidFrom: string; ValidTo: string; RatePc: number;
+  /** Freight line items (FrtCond1-4 / FrtRate1-4), the total and the landed rate (price + freight) of this source. */
+  FrtLines: FreightLine[]; FrtTotal: number; FrtCurr: string; LandedRate: number; LandedCurr: string;
 }
+export interface FreightLine { cond: string; rate: number }
 /** How the Last Price is chosen: Info record first then Contract, Contract first then Info record, or one source only. */
 export type LastPriceMode = 'IR_C' | 'C_IR' | 'IR' | 'C';
 export const LAST_PRICE_MODES: { v: LastPriceMode; label: string }[] = [

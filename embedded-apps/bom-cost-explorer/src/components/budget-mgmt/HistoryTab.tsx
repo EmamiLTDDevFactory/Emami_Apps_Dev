@@ -6,7 +6,7 @@ import { Button, Card, Field, Spinner, cx, inputCls } from '../ui';
 import { CatBadge, ErrorBox, FilterRow, NO_RECORDS, OkBox, SkeletonRows, SourceChip, errorText, td, th } from './shared';
 import { fetchHistory, fetchRateSrcDtl, fetchRates, postGenerate } from '@/lib/budgetMgmt/api';
 import { COUNTRIES, MATERIAL_TYPES, type BudHistRow, type BudRateRow, type BudRateSrcDtlRow, LAST_PRICE_MODES, type LastPriceMode, type HistoryFilter } from '@/lib/budgetMgmt/types';
-import { BASIS_KEY, LASTP_KEY, rowMatches, type ColFilters, RATE_BASES, avgBasePrice, lastPrice, type RateBasis, defaultHistWindow, filterHistory, groupHistory, historyBreakup, projectedValue, readBPriority, showDate, sortByCountryTotal, stripZeros, validateHistory, type Errors } from '@/lib/budgetMgmt/rules';
+import { BASIS_KEY, LASTP_KEY, landedRate, rowMatches, type ColFilters, freightText, RATE_BASES, avgBasePrice, lastPrice, type RateBasis, defaultHistWindow, filterHistory, groupHistory, historyBreakup, projectedValue, readBPriority, showDate, sortByCountryTotal, stripZeros, validateHistory, type Errors } from '@/lib/budgetMgmt/rules';
 import { fmtNum } from '@/lib/format';
 
 /** Rupees as lakhs (1 lakh = 100,000). */
@@ -91,7 +91,7 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
     return rowMatches({
       material: stripZeros(g.Matnr), description: g.Maktx, uom: g.BaseUom, netQty: g.NetQty, netValue: lakh(g.NetValue), curr: g.Currency, avgRate: g.AvgRate, ctryValue: g.CtryValue,
       avgBase: ab ? ab.RatePc : null, lastPrice: lp ? lp.row.RatePc : null, lastSrc: lp ? lp.row.RateSrc : '', basis: sel ? (sel.basis === 'AVG' ? 'Avg base price' : `Last ${sel.mode}`) : 'Global',
-      projRate: rate, projValue: rate == null ? null : lakh(projectedValue(g.NetQty, rate)), cat: g.Matcat, derived: bu ? bu.derived : null, freight: spread((r) => r.FrtTotal), landed: spread((r) => r.LandedRate),
+      projRate: rate, projValue: rate == null ? null : lakh(projectedValue(g.NetQty, rate)), cat: g.Matcat, derived: bu ? bu.derived : null, freight: sv.length ? spread((r) => r.FrtTotal) : bu?.pick ? bu.pick.FrtTotal : null, landed: sv.length ? spread((r) => r.LandedRate) : bu?.pick ? landedRate(bu.pick.RatePc, bu.pick.FrtTotal, true) : null,
       rule: bu ? `${bu.rule} ${bu.steps.map((x) => x.k).join(' ')}` : '',
     }, colF);
   }) : searched;
@@ -176,7 +176,7 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
                           <td className={td}>{isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
                           <td className={cx(td, 'num')}>{stripZeros(g.Matnr)}</td><td className={td}>{g.Maktx}</td><td className={td}>{g.BaseUom || '—'}</td>
                           <td className={cx(td, 'num text-right')}>{fmtNum(g.NetQty, 3)}</td><td className={cx(td, 'num text-right')}>{fmtNum(lakh(g.NetValue), 3)}</td><td className={td}>{g.Currency || '—'}</td>
-                          <td className={cx(td, 'num text-right')}>{fmtNum(g.AvgRate, 6)}</td><td className={cx(td, 'num text-right')}>{fmtNum(g.CtryValue, 2)}</td>{(() => {
+                          <td className={cx(td, 'num text-right')}>{fmtNum(g.AvgRate, 3)}</td><td className={cx(td, 'num text-right')}>{fmtNum(g.CtryValue, 2)}</td>{(() => {
                             const dd = dtl[dKey(g)]; const rows2 = Array.isArray(dd) ? dd : null;
                             const sel = rowSel[g.key]; const effBasis = sel?.basis ?? basis; const effMode = sel?.mode ?? lpMode;
                             const ab = rows2 ? avgBasePrice(rows2) : null; const lp = rows2 ? lastPrice(rows2, effMode) : null;
@@ -201,8 +201,10 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
                             return <><td className={cx(td, 'num text-right font-extrabold')}>{bu.derived == null ? '—' : fmtNum(bu.derived, 3)}</td>{(() => {
                               const sv = saved[g.Matnr] ?? [];
                               const one = (f: (r: BudRateRow) => number) => { const v = Array.from(new Set(sv.map(f))); return v.length === 0 ? '—' : v.length === 1 ? fmtNum(v[0], 3) : `${fmtNum(Math.min(...v), 3)} – ${fmtNum(Math.max(...v), 3)}`; };
-                              const t = sv.length ? undefined : 'No saved rate yet — Generate Draft Rates';
-                              return <><td className={cx(td, 'num text-right')} title={t}>{one((r) => r.FrtTotal)}</td><td className={cx(td, 'num text-right font-extrabold')} title={t}>{one((r) => r.LandedRate)}</td></>;
+                              if (sv.length) { const lines = sv.flatMap((r) => r.FrtLines); const t = lines.length ? `Freight line items: ${freightText(sv[0].FrtLines)}` : undefined; return <><td className={cx(td, 'num text-right')} title={t}>{one((r) => r.FrtTotal)}</td><td className={cx(td, 'num text-right font-extrabold')}>{one((r) => r.LandedRate)}</td></>; }
+                              // No saved rate yet: the freight of the source the rule picked (marked *).
+                              const pk = bu.pick; const t = pk ? (pk.FrtLines.length ? `From ${pk.RateSrc}: ${freightText(pk.FrtLines)}` : `From ${pk.RateSrc}: no freight`) : undefined;
+                              return <><td className={cx(td, 'num text-right')} title={t}>{pk ? `${fmtNum(pk.FrtTotal, 3)}*` : '—'}</td><td className={cx(td, 'num text-right font-extrabold')} title={t}>{pk ? `${fmtNum(landedRate(pk.RatePc, pk.FrtTotal, true), 3)}*` : '—'}</td></>;
                             })()}
                               <td className="min-w-64 px-2 py-1.5 text-2xs"><div className="font-bold">{bu.rule}</div><div className="num text-muted">{bu.steps.map((x) => `${x.k} ${fmtNum(x.v, 3)}`).join(' · ')}</div></td></>;
                           })()}
@@ -217,7 +219,7 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
                                   {g.plants.map((p) => (
                                     <tr key={plantKey(g.key, p)} className="border-b border-line/60">
                                       <td className={td}>{p.Werks}</td><td className={td}>{p.BaseUom}</td>
-                                      <td className={cx(td, 'num text-right')}>{fmtNum(p.NetQty, 3)}</td><td className={cx(td, 'num text-right')}>{fmtNum(lakh(p.NetValue), 3)}</td><td className={td}>{p.Currency}</td><td className={cx(td, 'num text-right')}>{fmtNum(p.AvgRate, 6)}</td>
+                                      <td className={cx(td, 'num text-right')}>{fmtNum(p.NetQty, 3)}</td><td className={cx(td, 'num text-right')}>{fmtNum(lakh(p.NetValue), 3)}</td><td className={td}>{p.Currency}</td><td className={cx(td, 'num text-right')}>{fmtNum(p.AvgRate, 3)}</td>
                                     </tr>
                                   ))}
                                 </tbody>
@@ -229,13 +231,14 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
                                 if (!dd.length) return <p className="text-xs text-muted">{NO_RECORDS}</p>;
                                 return (
                                   <table className="w-full max-w-4xl border-collapse">
-                                    <thead><tr><th className={th}>Source</th><th className={th}>Cond</th><th className={th}>Vendor</th><th className={cx(th, 'text-right')}>Rate</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Per</th><th className={th}>Valid</th><th className={cx(th, 'text-right')}>Rate/Pc</th></tr></thead>
+                                    <thead><tr><th className={th}>Source</th><th className={th}>Cond</th><th className={th}>Vendor</th><th className={cx(th, 'text-right')}>Rate</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Per</th><th className={th}>Valid</th><th className={cx(th, 'text-right')}>Rate/Pc</th><th className={th}>Freight line items</th><th className={cx(th, 'text-right')}>Freight</th><th className={cx(th, 'text-right')}>Landed</th></tr></thead>
                                     <tbody>{dd.map((x, j) => (
                                       <tr key={j} className="border-b border-line/60">
                                         <td className={td}><SourceChip src={x.RateSrc} /></td><td className={td}>{x.CondType || '—'}</td><td className={td}>{x.Vendor ? `${x.Vendor} ${x.Vendname}` : '—'}</td>
                                         <td className={cx(td, 'num text-right')}>{fmtNum(x.Rate, 2)}</td><td className={td}>{x.Currency}</td><td className={cx(td, 'num text-right')}>{x.PriceUnit || '—'} {x.CondUnit}</td>
                                         <td className={td}>{x.ValidFrom ? `${showDate(x.ValidFrom)} – ${showDate(x.ValidTo)}` : '—'}</td>
                                         <td className={cx(td, 'num text-right font-extrabold text-accent')}>{fmtNum(x.RatePc, 2)}</td>
+                                        <td className={cx(td, 'num')}>{x.FrtLines.length ? freightText(x.FrtLines) : '—'}</td><td className={cx(td, 'num text-right')}>{fmtNum(x.FrtTotal, 2)}</td><td className={cx(td, 'num text-right font-extrabold')}>{fmtNum(x.LandedRate > 0 ? x.LandedRate : x.RatePc + x.FrtTotal, 2)} {x.LandedCurr}</td>
                                       </tr>))}</tbody>
                                   </table>
                                 ); })()}

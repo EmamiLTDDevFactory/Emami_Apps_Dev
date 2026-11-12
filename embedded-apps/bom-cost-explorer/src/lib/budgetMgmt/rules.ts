@@ -196,7 +196,7 @@ export function rateBreakup(r: BudRateRow, prio: readonly string[] = DEFAULT_B_P
  * Rule and breakup of a material before any rate is saved, from its BudRateSrcDtlSet rows (BASE = average base price, INFO / CONT = last Info record / Contract price).
  * The set carries no consumption, C-Map or market rows, so: A = the last purchase price (Info record / Contract in the chosen order) else the average base price;
  * B = the priority list (Contract / Info record) else the average base price; C = the latest Info record else the average base price.
- * No freight comes with these rows (freight exists only on saved rates).
+ * Each row also carries its freight line items, total and landed rate.
  */
 export function historyBreakup(cat: string, rows: BudRateSrcDtlRow[], prio: readonly string[] = DEFAULT_B_PRIORITY, mode: LastPriceMode = 'IR_C'): RateBreakup & { derived: number | null; pick: BudRateSrcDtlRow | null } {
   const latest = (code: string) => { let b: BudRateSrcDtlRow | null = null; for (const r of rows) if (r.RatePc > 0 && srcCode(r.RateSrc) === code && (!b || r.ValidFrom > b.ValidFrom)) b = r; return b; };
@@ -280,3 +280,6 @@ export function matchExpr(value: string | number | null | undefined, expr: strin
 /** True when every column filter matches the row's values. */
 export const rowMatches = (vals: Record<string, string | number | null | undefined>, filters: ColFilters): boolean =>
   Object.entries(filters).every(([k, e]) => !e.trim() || matchExpr(vals[k], e));
+
+/** Freight line items as text: `ZFR4 9.78 + ZOTC 17.31`; empty when there are none. */
+export const freightText = (lines: { cond: string; rate: number }[]): string => lines.map((l) => `${l.cond || '—'} ${l.rate.toFixed(2)}`).join(' + ');
