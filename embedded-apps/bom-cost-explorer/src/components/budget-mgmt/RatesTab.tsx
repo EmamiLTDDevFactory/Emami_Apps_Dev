@@ -5,12 +5,14 @@ import { Button, Card, Field, Pill, Spinner, cx, inputCls } from '../ui';
 import { CatBadge, ErrorBox, NO_RECORDS, OkBox, SkeletonRows, SourceChip, StatusBadge, errorText, td, th } from './shared';
 import RateEditPanel from './RateEditPanel';
 import SourcePriorityEditor from '../rates/SourcePriorityEditor';
-import { fetchRateSources, fetchRates, patchRate } from '@/lib/budgetMgmt/api';
-import { COUNTRIES, STATUS_LABEL, type AdjType, type BudRateRow, type BudRateSrcRow, type RateEdit } from '@/lib/budgetMgmt/types';
-import { DEFAULT_B_PRIORITY, adjustRate, amount, budgetedBasic, isEditable, freightApplies, historyBreakup, landedRate, rateBreakup, stripZeros, validateEdit, type Errors } from '@/lib/budgetMgmt/rules';
+import { fetchRateSources, fetchRateSrcDtl, fetchRates, patchRate } from '@/lib/budgetMgmt/api';
+import { COUNTRIES, STATUS_LABEL, type AdjType, type BudRateRow, type BudRateSrcDtlRow, type BudRateSrcRow, type LastPriceMode, LAST_PRICE_MODES, type RateEdit } from '@/lib/budgetMgmt/types';
+import { showDate, DEFAULT_B_PRIORITY, adjustRate, avgBasePrice, lastPrice, amount, budgetedBasic, isEditable, freightApplies, historyBreakup, landedRate, rateBreakup, stripZeros, validateEdit, type Errors } from '@/lib/budgetMgmt/rules';
 import { fmtNum } from '@/lib/format';
 
 const PRIO_KEY = 'bud-mgmt-b-priority';
+const LASTP_KEY = 'bud-mgmt-lastprice-mode';
+const dtlKey = (r: BudRateRow) => `${r.Matnr}|${r.Bukrs || '1000'}|${r.Land1}`;
 const keyOf = (r: BudRateRow) => `${r.Gjahr}|${r.Land1}|${r.Matnr}|${r.Werks}|${r.ValidFrom}`;
 /** Columns frozen up to Derived (md and wider): width and left offset of each. */
 const FROZEN = [88, 56, 88, 44, 48, 84, 84, 104];
@@ -47,6 +49,25 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
     for (let i = 0; i < 3; i++) void worker();
     return () => { live = false; };
   }, [rows]);
+  // Avg Base Price and Last Price (BudRateSrcDtlSet): read once per material; the Last Price priority is global (kept in this browser) with a per-row choice.
+  const [dtl, setDtl] = useState<Record<string, BudRateSrcDtlRow[] | { error: string }>>({});
+  const [lpGlobal, setLpGlobalState] = useState<LastPriceMode>('IR_C');
+  const [lpRow, setLpRow] = useState<Record<string, LastPriceMode>>({});
+  useEffect(() => { try { const v = localStorage.getItem(LASTP_KEY); if (LAST_PRICE_MODES.some((m) => m.v === v)) setLpGlobalState(v as LastPriceMode); } catch { /* default */ } }, []);
+  const setLpGlobal = (v: LastPriceMode) => { setLpGlobalState(v); try { localStorage.setItem(LASTP_KEY, v); } catch { /* not kept */ } };
+  useEffect(() => {
+    setDtl({}); setLpRow({});
+    const seen = new Map<string, BudRateRow>();
+    for (const r of rows ?? []) if (!seen.has(dtlKey(r))) seen.set(dtlKey(r), r);
+    const todo = Array.from(seen);
+    if (!todo.length) return;
+    let live = true; let next = 0;
+    const worker = async () => { while (live && next < todo.length) { const [k, r] = todo[next++]; try { const list = await fetchRateSrcDtl(r.Matnr, r.Bukrs, r.Land1); if (live) setDtl((x) => ({ ...x, [k]: list })); } catch (x) { if (live) setDtl((y) => ({ ...y, [k]: { error: errorText(x) } })); } } };
+    for (let i = 0; i < 3; i++) void worker();
+    return () => { live = false; };
+  }, [rows]);
+  const dtlError = Object.values(dtl).find((v): v is { error: string } => !Array.isArray(v));
+
   // Simulation (nothing is saved): one global adjustment (optionally by category) and per-row simulations set with Enter in the edit panel.
   const [gType, setGType] = useState<'P' | 'A'>('P');
   const [gValue, setGValue] = useState('');
@@ -118,7 +139,7 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
   const shown = useMemo(() => { const n = q.trim().toLowerCase(); return (rows ?? []).filter((r) => !n || stripZeros(r.Matnr).toLowerCase().includes(n) || r.Matnr.toLowerCase().includes(n)).sort((a, b) => (a.Matcat || 'Z').localeCompare(b.Matcat || 'Z')); }, [rows, q]);
 
   const simOn = !!gSim || Object.keys(rowSim).length > 0;
-  const COLS = simOn ? 17 : 14;
+  const COLS = simOn ? 19 : 16;
 
   return (
     <div className="flex flex-col gap-3">
@@ -147,6 +168,16 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
         </Card>
       )}
 
+      {rows && rows.length > 0 && (
+        <Card title="Last price priority (global)">
+          <div className="flex flex-wrap items-end gap-3">
+            <Field label="Last price from">{(id) => <select id={id} className={inputCls} value={lpGlobal} onChange={(e) => setLpGlobal(e.target.value as LastPriceMode)}>{LAST_PRICE_MODES.map((m) => <option key={m.v} value={m.v}>{m.label}</option>)}</select>}</Field>
+            <p className="max-w-xl pb-2 text-2xs text-muted">Last price is the latest Info record or Contract price of the material (company code level); the first source of the chosen order that has one is used. Avg base price is SAP's weighted average (material + country). Each row can override the global choice in its Last price cell or in its edit panel.</p>
+          </div>
+          {dtlError && <p className="mt-2 text-xs text-warn">Avg base / last price could not be read: {dtlError.error}</p>}
+        </Card>
+      )}
+
       <details className="rounded-2xl border border-line bg-panel px-4 py-2 shadow-card">
         <summary className="cursor-pointer text-sm font-bold">Category B rate source priority <span className="font-normal text-muted">(first source with a valid rate is used)</span></summary>
         <div className="mt-2 max-w-sm"><SourcePriorityEditor value={prio} onChange={setPrio} compact /></div>
@@ -167,7 +198,7 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
               <thead className="sticky top-0 z-10 bg-sunken">
                 <tr>
                   {(['Material', 'Plant', 'Valid from', 'Cat', 'UOM', 'Source', 'Src rate', 'Derived'] as const).map((h, i) => { const f = frozen(i, true); return <th key={h} className={cx(th, f.className, i >= 6 && 'text-right', i === FROZEN.length - 1 && 'border-r border-line')} style={f.style}>{h}</th>; })}
-                  <th className={th}>Rule &amp; breakup</th><th className={th}>Adj</th><th className={cx(th, 'text-right')}>Freight</th><th className={cx(th, 'text-right')}>Landed rate</th>
+                  <th className={cx(th, 'text-right')}>Avg base price</th><th className={th}>Last price</th><th className={th}>Rule &amp; breakup</th><th className={th}>Adj</th><th className={cx(th, 'text-right')}>Freight</th><th className={cx(th, 'text-right')}>Landed rate</th>
                   {simOn && <><th className={cx(th, 'text-right')}>Sim. basic</th><th className={cx(th, 'text-right')}>Sim. landed</th><th className={cx(th, 'text-right')}>Δ landed</th></>}<th className={th}>Status</th><th className={th} /></tr>
               </thead>
               {loading ? <SkeletonRows cols={COLS} /> : (
@@ -199,6 +230,18 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
                               <td className={cx(td, 'num text-right border-r border-line', f(7).className)} style={f(7).style}>{hb ? (hb.derived == null ? '—' : <span title="From the rate sources — SAP saved no rate for this row">{fmtNum(hb.derived, 2)}*</span>) : <>{fmtNum(r.DerivedRate, 2)} {r.DerivedCurr}</>}</td>
                             </>;
                           })()}
+                          {(() => {
+                            const dd = dtl[dtlKey(r)];
+                            if (!dd) return <><td className={cx(td, 'text-right text-faint')}>…</td><td className={cx(td, 'text-faint')}>…</td></>;
+                            if (!Array.isArray(dd)) return <><td className={cx(td, 'text-right text-faint')} title={dd.error}>n/a</td><td className={cx(td, 'text-faint')} title={dd.error}>n/a</td></>;
+                            const ab = avgBasePrice(dd); const mode = lpRow[k] ?? lpGlobal; const lp = lastPrice(dd, mode);
+                            return <>
+                              <td className={cx(td, 'num text-right')} title={ab ? `Weighted average base price (material + country), valid from ${showDate(ab.ValidFrom)}` : 'No average base price'}>{ab ? fmtNum(ab.RatePc, 2) : '—'}</td>
+                              <td className={td}><div className="flex items-center gap-1.5"><span className="num font-bold" title={lp ? `${lp.row.Vendor ? `${lp.row.Vendor} ${lp.row.Vendname} — ` : ''}valid from ${showDate(lp.row.ValidFrom)}` : 'No price from the chosen source'}>{lp ? fmtNum(lp.row.RatePc, 2) : '—'}</span>{lp && <SourceChip src={lp.row.RateSrc} />}
+                                <select aria-label="Last price priority of this row" className="rounded border border-line bg-panel px-1 py-0.5 text-2xs" value={lpRow[k] ?? ''} onChange={(e) => setLpRow((x) => { const { [k]: _, ...rest } = x; return e.target.value ? { ...rest, [k]: e.target.value as LastPriceMode } : rest; })}>
+                                  <option value="">Global</option>{LAST_PRICE_MODES.map((m) => <option key={m.v} value={m.v}>{m.label}</option>)}</select></div></td>
+                            </>;
+                          })()}
                           <td className="min-w-64 px-2 py-1.5 text-2xs"><div className="font-bold">{bu.rule}{hb && <span className="font-normal text-warn"> — from sources, not saved</span>}</div><div className="num text-muted">{bu.steps.map((x) => `${x.k} ${fmtNum(x.v, 2)}`).join(' → ')}</div></td>
                           <td className={cx(td, 'num')} title={r.OverrideRate > 0 ? r.OverrideRsn : undefined}>{r.OverrideRate > 0 ? `Override ${fmtNum(r.OverrideRate, 2)}` : r.AdjType === 'P' ? `${r.AdjValue < 0 ? '−' : '+'}${fmtNum(Math.abs(r.AdjValue), 2)}%` : r.AdjType === 'A' ? `${r.AdjValue < 0 ? '−' : '+'}${fmtNum(Math.abs(r.AdjValue), 2)}` : '—'}</td>
                           <td className={cx(td, 'num text-right')}>{hb?.pick ? `${fmtNum(freightApplies(hb.pick.RateSrc) ? hb.pick.FrtTotal : 0, 2)}*` : fmtNum(r.FrtTotal, 2)}</td><td className={cx(td, 'num text-right font-extrabold')}>{hb?.pick ? `${fmtNum(landedRate(hb.pick.RatePc, hb.pick.FrtTotal, freightApplies(hb.pick.RateSrc)), 2)}*` : `${fmtNum(r.LandedRate, 2)} ${r.LandedCurr}`}</td>
@@ -213,7 +256,7 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
                         {isEd && (
                           <tr className="border-b border-line bg-accent/5">
                             <td colSpan={COLS} className="px-4 py-3">
-                              <RateEditPanel r={r} form={form} setForm={setForm} errs={fErr} prio={prio} fallback={hb?.pick ? { source: hb.pick.RateSrc, rate: hb.pick.RatePc, freight: hb.pick.FrtTotal } : undefined} onEnter={() => simulateRow(r, base > 0 ? base : undefined)} />
+                              <RateEditPanel r={r} form={form} setForm={setForm} errs={fErr} prio={prio} dtl={Array.isArray(dtl[dtlKey(r)]) ? (dtl[dtlKey(r)] as BudRateSrcDtlRow[]) : undefined} lpMode={lpRow[k] ?? lpGlobal} setLpMode={(m) => setLpRow((x) => ({ ...x, [k]: m }))} fallback={hb?.pick ? { source: hb.pick.RateSrc, rate: hb.pick.RatePc, freight: hb.pick.FrtTotal } : undefined} onEnter={() => simulateRow(r, base > 0 ? base : undefined)} />
                               <div className="mt-3 flex flex-wrap items-center gap-2">
                                 <Button variant="primary" size="sm" disabled={saving} onClick={() => void save(r)}>{saving ? <Spinner /> : <Save size={13} />} Save changes</Button>
                                 <Button size="sm" disabled={saving} onClick={() => setEditing('')}><X size={13} /> Cancel</Button>

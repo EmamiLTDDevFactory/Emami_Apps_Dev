@@ -149,3 +149,27 @@ describe('generate draft rates', () => {
     });
   });
 });
+
+describe('BudRateSrcDtlSet: average base price and last price', () => {
+  const d = (RateSrc: string, RatePc: number, ValidFrom = '20260101') => ({ RateSrc, CondType: '', Vendor: '', Vendname: '', Rate: RatePc, Currency: 'INR', PriceUnit: 1, CondUnit: 'KG', ValidFrom, ValidTo: '99991231', RatePc });
+  // material 100000014 on NGQ: CONT 122, INFO 10, BASE 10.317884
+  const rows = [d('CONT', 122, '20250911'), d('INFO', 10, '20261011'), d('BASE', 10.317884, '20250401')];
+  it('filters on material, company code and country; company code defaults to 1000', async () => {
+    const { srcDtlFilter } = await import('@/lib/budgetMgmt/api');
+    expect(srcDtlFilter('100000014', '1000', 'IN')).toBe("Matnr eq '000000000100000014' and Bukrs eq '1000' and Land1 eq 'IN'");
+    expect(srcDtlFilter('100000014', '', 'IN')).toContain("Bukrs eq '1000'");
+  });
+  it('average base price is the BASE row', async () => {
+    const { avgBasePrice } = await import('@/lib/budgetMgmt/rules');
+    expect(avgBasePrice(rows)?.RatePc).toBe(10.317884);
+    expect(avgBasePrice([d('INFO', 5)])).toBeNull();
+  });
+  it('last price follows the chosen priority and falls back to the other source', async () => {
+    const { lastPrice } = await import('@/lib/budgetMgmt/rules');
+    expect(lastPrice(rows, 'IR_C')?.row.RatePc).toBe(10);
+    expect(lastPrice(rows, 'C_IR')?.row.RatePc).toBe(122);
+    expect(lastPrice(rows, 'IR')?.source).toBe('INFOREC');
+    expect(lastPrice([d('CONT', 7), d('BASE', 3)], 'IR_C')?.source).toBe('CONTRACT');
+    expect(lastPrice([d('CONT', 7)], 'IR')).toBeNull();
+  });
+});

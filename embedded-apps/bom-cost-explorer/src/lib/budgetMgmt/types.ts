@@ -36,3 +36,14 @@ export interface BudHistGroup {
   key: string; Matnr: string; Maktx: string; Land1: string; Mtart: string; BaseUom: string; Currency: string;
   NetQty: number; NetValue: number; AvgRate: number; CtryValue: number; Matcat: string; plants: BudHistRow[];
 }
+
+/** BudRateSrcDtlSet (filters Matnr + Land1 + Bukrs, all required): one row per source of a material. BASE = weighted average base price (material + country level),
+ *  INFO / CONT = the last Info record / Contract price (material + company code level). */
+export interface BudRateSrcDtlRow {
+  RateSrc: string; CondType: string; Vendor: string; Vendname: string; Rate: number; Currency: string; PriceUnit: number; CondUnit: string; ValidFrom: string; ValidTo: string; RatePc: number;
+}
+/** How the Last Price is chosen: Info record first then Contract, Contract first then Info record, or one source only. */
+export type LastPriceMode = 'IR_C' | 'C_IR' | 'IR' | 'C';
+export const LAST_PRICE_MODES: { v: LastPriceMode; label: string }[] = [
+  { v: 'IR_C', label: 'Info record › Contract' }, { v: 'C_IR', label: 'Contract › Info record' }, { v: 'IR', label: 'Info record only' }, { v: 'C', label: 'Contract only' },
+];

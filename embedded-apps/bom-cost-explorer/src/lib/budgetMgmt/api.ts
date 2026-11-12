@@ -5,10 +5,10 @@
  */
 import { sapGetCollection, sapWrite, SAP_MAX_TIMEOUT_MS, type SapGetOptions } from '../sap/client';
 import { odataDate, odataString } from '../sap/filter';
-import type { ActionPayload, ActionResult, BudHistRow, BudRateRow, BudRateSrcRow, HistoryFilter, RateEdit, RateFilter } from './types';
+import type { BudRateSrcDtlRow, ActionPayload, ActionResult, BudHistRow, BudRateRow, BudRateSrcRow, HistoryFilter, RateEdit, RateFilter } from './types';
 import { amount, dateText, padMatnr } from './rules';
 
-export const BUD_MGMT_SET = { HIST: 'BudHistSet', RATE: 'BudRateSet', SRC: 'BudRateSrcSet', ACTION: 'BudRateActionSet' } as const;
+export const BUD_MGMT_SET = { HIST: 'BudHistSet', RATE: 'BudRateSet', SRC: 'BudRateSrcSet', SRCDTL: 'BudRateSrcDtlSet', ACTION: 'BudRateActionSet' } as const;
 
 const num = (v: unknown) => Number(v) || 0;
 const str = (v: unknown) => String(v ?? '');
@@ -59,12 +59,20 @@ const src = (r: Record<string, unknown>): BudRateSrcRow => ({
   ValidFrom: dateText(r.ValidFrom), ValidTo: dateText(r.ValidTo), RatePc: num(r.RatePc), LocalCurr: str(r.LocalCurr), RateLocal: num(r.RateLocal), FrtTotal: num(r.FrtTotal), LandedRate: num(r.LandedRate),
 });
 
+const srcDtl = (r: Record<string, unknown>): BudRateSrcDtlRow => ({
+  RateSrc: str(r.RateSrc), CondType: str(r.CondType), Vendor: str(r.Vendor), Vendname: str(r.Vendname), Rate: num(r.Rate), Currency: str(r.Currency), PriceUnit: num(r.PriceUnit), CondUnit: str(r.CondUnit),
+  ValidFrom: dateText(r.ValidFrom), ValidTo: dateText(r.ValidTo), RatePc: num(r.RatePc),
+});
+export const srcDtlFilter = (matnr: string, bukrs: string, land1: string) => [`Matnr eq ${odataString(padMatnr(matnr))}`, `Bukrs eq ${odataString(bukrs || DEFAULT_BUKRS)}`, `Land1 eq ${odataString(land1)}`].join(' and ');
+
 const read = async <T,>(set: string, filter: string, map: (r: Record<string, unknown>) => T, opts: SapGetOptions): Promise<T[]> =>
   (await sapGetCollection(set, { $filter: filter }, { timeoutMs: SAP_MAX_TIMEOUT_MS, ...opts })).rows.map((r) => map(r as Record<string, unknown>));
 
 export const fetchHistory = (f: HistoryFilter, opts: SapGetOptions = {}) => read(BUD_MGMT_SET.HIST, historyFilter(f), hist, opts);
 export const fetchRates = (f: RateFilter, opts: SapGetOptions = {}) => read(BUD_MGMT_SET.RATE, rateFilter(f), rate, opts);
 export const fetchRateSources = (matnr: string, bukrs: string, werks: string, land1: string, opts: SapGetOptions = {}) => read(BUD_MGMT_SET.SRC, sourceFilter(matnr, bukrs, werks, land1), src, opts);
+
+export const fetchRateSrcDtl = (matnr: string, bukrs: string, land1: string, opts: SapGetOptions = {}) => read(BUD_MGMT_SET.SRCDTL, srcDtlFilter(matnr, bukrs, land1), srcDtl, opts);
 
 export const rateKeyPath = (r: Pick<BudRateRow, 'Gjahr' | 'Land1' | 'Matnr' | 'Werks' | 'ValidFrom'>) =>
   `${BUD_MGMT_SET.RATE}(Gjahr=${odataString(r.Gjahr)},Land1=${odataString(r.Land1)},Matnr=${odataString(padMatnr(r.Matnr))},Werks=${odataString(r.Werks)},ValidFrom=${odataString(r.ValidFrom)})`;

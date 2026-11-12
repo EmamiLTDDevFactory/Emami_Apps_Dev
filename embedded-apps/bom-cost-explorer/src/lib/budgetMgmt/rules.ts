@@ -1,6 +1,6 @@
 /** Pure rules of the budget rate management screens: dates, material numbers, filters and the frontend validation. */
 import Decimal from 'decimal.js';
-import type { ActionPayload, AdjType, BudHistGroup, BudHistRow, BudRateRow, BudRateSrcRow, HistoryFilter, RateEdit, RateAction } from './types';
+import type { BudRateSrcDtlRow, LastPriceMode, ActionPayload, AdjType, BudHistGroup, BudHistRow, BudRateRow, BudRateSrcRow, HistoryFilter, RateEdit, RateAction } from './types';
 
 /** YYYYMMDD -> DD.MM.YYYY (anything else is shown as it is). */
 export const showDate = (v: string) => (/^\d{8}$/.test(v) ? `${v.slice(6)}.${v.slice(4, 6)}.${v.slice(0, 4)}` : v);
@@ -215,4 +215,22 @@ export function historyBreakup(cat: string, rows: BudRateSrcRow[], prio: readonl
 export function readBPriority(): string[] {
   try { const v = JSON.parse(localStorage.getItem('bud-mgmt-b-priority') ?? 'null'); if (Array.isArray(v) && v.length) return v.map(String); } catch { /* default */ }
   return [...DEFAULT_B_PRIORITY];
+}
+
+
+/** Average base price of BudRateSrcDtlSet (source BASE, weighted average, material + country level); null when the material has none. */
+export function avgBasePrice(rows: BudRateSrcDtlRow[]): BudRateSrcDtlRow | null {
+  let b: BudRateSrcDtlRow | null = null;
+  for (const r of rows) if (r.RateSrc.trim().toUpperCase() === 'BASE' && r.RatePc > 0 && (!b || r.ValidFrom > b.ValidFrom)) b = r;
+  return b;
+}
+const LAST_ORDER: Record<LastPriceMode, readonly string[]> = { IR_C: ['INFOREC', 'CONTRACT'], C_IR: ['CONTRACT', 'INFOREC'], IR: ['INFOREC'], C: ['CONTRACT'] };
+/** Last price: the first source of the chosen priority (Info record / Contract) that has a price, its latest one (material + company code level); null when none has. */
+export function lastPrice(rows: BudRateSrcDtlRow[], mode: LastPriceMode): { source: string; row: BudRateSrcDtlRow } | null {
+  for (const code of LAST_ORDER[mode]) {
+    let b: BudRateSrcDtlRow | null = null;
+    for (const r of rows) if (srcCode(r.RateSrc) === code && r.RatePc > 0 && (!b || r.ValidFrom > b.ValidFrom)) b = r;
+    if (b) return { source: code, row: b };
+  }
+  return null;
 }

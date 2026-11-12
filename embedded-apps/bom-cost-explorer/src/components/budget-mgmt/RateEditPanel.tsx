@@ -7,8 +7,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Field, Spinner, cx, inputCls } from '../ui';
 import { ErrorBox, SourceChip, errorText } from './shared';
 import { fetchRateSources } from '@/lib/budgetMgmt/api';
-import type { AdjType, BudRateRow, BudRateSrcRow, RateEdit } from '@/lib/budgetMgmt/types';
-import { budgetedBasic, freightApplies, landedRate, marketRate, pickByPriority, srcCode, type Errors } from '@/lib/budgetMgmt/rules';
+import { LAST_PRICE_MODES, type AdjType, type BudRateRow, type BudRateSrcDtlRow, type BudRateSrcRow, type LastPriceMode, type RateEdit } from '@/lib/budgetMgmt/types';
+import { avgBasePrice, lastPrice, budgetedBasic, freightApplies, landedRate, marketRate, pickByPriority, srcCode, type Errors } from '@/lib/budgetMgmt/rules';
 import { sourceLabel } from '@/lib/rates/sourceLabel';
 import { fmtNum } from '@/lib/format';
 
@@ -22,7 +22,7 @@ const Line = ({ k, v, strong }: { k: string; v: React.ReactNode; strong?: boolea
   <div className="flex items-baseline justify-between gap-4 text-xs"><span className="text-muted">{k}</span><span className={cx('num', strong && 'text-sm font-extrabold')}>{v}</span></div>
 );
 
-export default function RateEditPanel({ r, form, setForm, errs, prio, onEnter, fallback }: { r: BudRateRow; form: RateEdit; setForm: (f: RateEdit) => void; errs: Errors<keyof RateEdit>; prio: readonly string[]; onEnter?: () => void; fallback?: { source: string; rate: number; freight: number } }) {
+export default function RateEditPanel({ r, form, setForm, errs, prio, onEnter, fallback, dtl, lpMode, setLpMode }: { r: BudRateRow; form: RateEdit; setForm: (f: RateEdit) => void; errs: Errors<keyof RateEdit>; prio: readonly string[]; onEnter?: () => void; fallback?: { source: string; rate: number; freight: number }; dtl?: BudRateSrcDtlRow[]; lpMode?: LastPriceMode; setLpMode?: (m: LastPriceMode) => void }) {
   const [src, setSrc] = useState<{ rows?: BudRateSrcRow[]; error?: string }>({});
   // Rate sources of the material (market rate, priority pick): the same BudRateSrcSet read as the History drill-down.
   useEffect(() => {
@@ -89,6 +89,20 @@ export default function RateEditPanel({ r, form, setForm, errs, prio, onEnter, f
             ) : <p className="mt-1 text-muted">No source in the priority list has a rate.</p>}
           </div>
         )}
+        {dtl && lpMode && (() => {
+          const ab = avgBasePrice(dtl); const lp = lastPrice(dtl, lpMode);
+          const useAs = (rate: number, why: string) => setForm({ adjType: 'N', adjValue: '', overrideRate: String(rate), overrideRsn: why });
+          return (
+            <div className="mt-3 rounded-xl border border-line bg-panel px-3 py-2 text-xs">
+              <div className="flex flex-wrap items-center gap-3">
+                <p className="font-bold">Avg base price / last price</p>
+                {setLpMode && <label className="flex items-center gap-1.5">Last price from <select className="rounded border border-line bg-panel px-1 py-0.5" value={lpMode} onChange={(e) => setLpMode(e.target.value as LastPriceMode)}>{LAST_PRICE_MODES.map((m) => <option key={m.v} value={m.v}>{m.label}</option>)}</select></label>}
+              </div>
+              <p className="mt-1">Avg base price: <span className="num font-bold">{ab ? fmtNum(ab.RatePc, 2) : '—'}</span>{ab && <> <button type="button" className="font-semibold text-accent underline" onClick={() => useAs(ab.RatePc, 'Average base price')}>Use as override rate</button></>}</p>
+              <p className="mt-0.5">Last price: <span className="num font-bold">{lp ? fmtNum(lp.row.RatePc, 2) : '—'}</span>{lp && <> <SourceChip src={lp.row.RateSrc} /> {lp.row.Vendor && <span className="text-muted">{lp.row.Vendor} {lp.row.Vendname}</span>} <button type="button" className="font-semibold text-accent underline" onClick={() => useAs(lp.row.RatePc, `Last price: ${sourceLabel(lp.source)}`)}>Use as override rate</button></>}</p>
+            </div>
+          );
+        })()}
         {cat === 'C' && <p className="mt-3 text-xs text-muted">Category C: the latest Info record first, then C-Map; percent or amount adjustment, or an override rate. No freight or delivery conditions on a C-Map rate.</p>}
         {src.error && cat === 'A' && <div className="mt-3"><ErrorBox>Market rate unavailable: {src.error}</ErrorBox></div>}
       </div>
