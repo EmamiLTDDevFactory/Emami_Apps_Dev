@@ -7,7 +7,7 @@ import { Button, Card, Field, Spinner, cx, inputCls } from '../ui';
 import { CatBadge, ErrorBox, FilterRow, NO_RECORDS, OkBox, SkeletonRows, SourceChip, errorText, td, th } from './shared';
 import { fetchHistory, fetchRateSrcDtl, fetchRates, postGenerate } from '@/lib/budgetMgmt/api';
 import { COUNTRIES, MATERIAL_TYPES, type BudHistRow, type BudRateRow, type BudRateSrcDtlRow, LAST_PRICE_MODES, type LastPriceMode, type HistoryFilter } from '@/lib/budgetMgmt/types';
-import { BASIS_KEY, LASTP_KEY, landedRate, rowMatches, type ColFilters, freightText, RATE_BASES, avgBasePrice, lastPrice, type RateBasis, defaultHistWindow, filterHistory, groupHistory, historyBreakup, projectedValue, readBPriority, showDate, sortByCountryTotal, stripZeros, validateHistory, type Errors } from '@/lib/budgetMgmt/rules';
+import { csvList, BASIS_KEY, LASTP_KEY, landedRate, rowMatches, type ColFilters, freightText, RATE_BASES, avgBasePrice, lastPrice, type RateBasis, defaultHistWindow, filterHistory, groupHistory, historyBreakup, projectedValue, readBPriority, showDate, sortByCountryTotal, stripZeros, validateHistory, type Errors } from '@/lib/budgetMgmt/rules';
 import { fmtNum } from '@/lib/format';
 
 /** Rupees as lakhs (1 lakh = 100,000). */
@@ -34,7 +34,7 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
     const e = validateHistory(f);
     setErrs(e);
     if (Object.keys(e).length) return;
-    setLoading(true); setError(''); setOpen(''); setRows(null); setSaved({});
+    setLoading(true); setError(''); setOpen(''); setPicked([]); setPasteMsg(''); setRows(null); setSaved({});
     try { setRows(await fetchHistory(f)); } catch (x) { setError(errorText(x)); }
     setLoading(false);
     try { const rr = await fetchRates({ gjahr: f.gjahr, land1: f.land1, status: '' }); const m: Record<string, BudRateRow[]> = {}; for (const r of rr) (m[r.Matnr] ??= []).push(r); setSaved(m); } catch { /* freight and landed stay blank */ }
@@ -42,11 +42,16 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
 
   const [genBusy, setGenBusy] = useState(false);
   const [genErr, setGenErr] = useState('');
-  async function generate() {
+  // Materials ticked in the table (single or several): Generate Draft Rates can run for just those.
+  const [picked, setPicked] = useState<string[]>([]);
+  const [pasteList, setPasteList] = useState('');
+  const [pasteMsg, setPasteMsg] = useState('');
+  async function generate(only: string[] = []) {
     if (!email) return setGenErr('Your sign-in email is not available yet - please retry in a moment');
-    if (!window.confirm(`Generate draft rates for ${f.land1} ${f.gjahr} from this history? SAP classifies every material (A / B / C), derives the basic rate and freight and saves a draft row for each.`)) return;
+    const what = only.length ? `${only.length} selected material${only.length === 1 ? '' : 's'}` : 'every material of this history';
+    if (!window.confirm(`Generate draft rates for ${what} (${f.land1} ${f.gjahr})? SAP classifies each material (A / B / C), derives the basic rate and freight and saves a draft row for each.`)) return;
     setGenBusy(true); setGenErr('');
-    try { const r = await postGenerate(f, email); onGenerated({ land1: f.land1, gjahr: f.gjahr, message: `${r.RowsActed} draft rates generated${r.Message ? ` — ${r.Message}` : ''}` }); }
+    try { const r = await postGenerate(f, email, only); onGenerated({ land1: f.land1, gjahr: f.gjahr, message: `${r.RowsActed} draft rates generated${r.Message ? ` — ${r.Message}` : ''}` }); }
     catch (x) { setGenErr(errorText(x)); }
     setGenBusy(false);
   }
@@ -126,8 +131,14 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
       {genErr && <ErrorBox>{genErr}</ErrorBox>}
       {rows && rows.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-panel px-3 py-2 shadow-card">
-          <Button variant="primary" onClick={() => void generate()} disabled={genBusy}>{genBusy ? <Spinner /> : <Wand2 size={14} />} Generate Draft Rates</Button>
-          <span className="text-xs text-muted">Saves a draft rate (status D) for every material of this history; you edit and submit them in Rates & Edit.</span>
+          <Button variant="primary" onClick={() => void generate()} disabled={genBusy}>{genBusy ? <Spinner /> : <Wand2 size={14} />} Generate Draft Rates (all)</Button>
+          <Button onClick={() => void generate(picked)} disabled={genBusy || !picked.length}>{genBusy ? <Spinner /> : <Wand2 size={14} />} Generate for selected ({picked.length})</Button>
+          <span className="text-xs text-muted">Saves a draft rate (status D) for every material of this history, or only for the ticked materials; you edit and submit them in Rates & Edit.</span>
+          <form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); const want = csvList(pasteList); const have = new Map(groups.map((g) => [stripZeros(g.Matnr).toUpperCase(), g.Matnr])); const hit = want.map((w) => have.get(stripZeros(w).toUpperCase())).filter((x): x is string => !!x); const miss = want.filter((w) => !have.has(stripZeros(w).toUpperCase())); setPicked(Array.from(new Set([...picked, ...hit]))); setPasteMsg(`${hit.length} selected${miss.length ? `, not in this history: ${miss.join(', ')}` : ''}`); }}>
+            <input aria-label="Select materials by number" className={`${inputCls} w-64`} placeholder="Material numbers (comma / space) — select" value={pasteList} onChange={(e) => setPasteList(e.target.value)} />
+            <Button type="submit" size="sm" disabled={!pasteList.trim()}>Select</Button>
+            {pasteMsg && <span className="text-xs text-muted">{pasteMsg}</span>}
+          </form>
         </div>
       )}
       {rows && rows.length > 0 && (
@@ -164,17 +175,18 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
           <div className="max-h-[65vh] overflow-auto">
             <table className="w-full border-collapse">
               <thead className="sticky top-0 z-10 bg-sunken">
-                <tr><th className={th} /><th className={th}>Material</th><th className={th}>Description</th><th className={th}>UOM</th>
+                <tr><th className={th}><input type="checkbox" aria-label="Select all shown materials" checked={shown.length > 0 && shown.every((g) => picked.includes(g.Matnr))} onChange={(e) => setPicked(e.target.checked ? Array.from(new Set([...picked, ...shown.map((g) => g.Matnr)])) : picked.filter((m) => !shown.some((g) => g.Matnr === m)))} /></th><th className={th} /><th className={th}>Material</th><th className={th}>Description</th><th className={th}>UOM</th>
                   <th className={cx(th, 'text-right')}>Net Qty</th><th className={cx(th, 'text-right')}>Net Value (Lakhs)</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Avg Rate</th><th className={cx(th, 'text-right')}>Country Total</th><th className={cx(th, 'text-right')}>Avg Base Price</th><th className={th}>Last Price</th><th className={th}>Rate basis</th><th className={cx(th, 'text-right')}>Proj Rate</th><th className={cx(th, 'text-right')}>Proj Value (Lakhs)</th><th className={th}>Cat</th><th className={cx(th, 'text-right')}>Derived Rate</th><th className={cx(th, 'text-right')}>Freight</th><th className={cx(th, 'text-right')}>Landed Rate</th><th className={th}>Rule &amp; breakup</th></tr>
-                <FilterRow filters={colF} setFilters={setColF} cols={[{ key: 'x0', off: true }, ...['material', 'description', 'uom', 'netQty', 'netValue', 'curr', 'avgRate', 'ctryValue', 'avgBase', 'lastPrice'].map((key) => ({ key })), { key: 'basis' }, ...['projRate', 'projValue', 'cat', 'derived', 'freight', 'landed', 'rule'].map((key) => ({ key }))]} />
+                <FilterRow filters={colF} setFilters={setColF} cols={[{ key: 'x00', off: true }, { key: 'x0', off: true }, ...['material', 'description', 'uom', 'netQty', 'netValue', 'curr', 'avgRate', 'ctryValue', 'avgBase', 'lastPrice'].map((key) => ({ key })), { key: 'basis' }, ...['projRate', 'projValue', 'cat', 'derived', 'freight', 'landed', 'rule'].map((key) => ({ key }))]} />
               </thead>
-              {loading ? <SkeletonRows cols={19} /> : (
+              {loading ? <SkeletonRows cols={20} /> : (
                 <tbody>
                   {shown.map((g) => {
                     const isOpen = open === g.key;
                     return (
                       <Fragment key={g.key}>
                         <tr className="cursor-pointer border-b border-line/60 hover:bg-sunken/60" onClick={() => setOpen(isOpen ? '' : g.key)} aria-expanded={isOpen}>
+                          <td className={td} onClick={(e) => e.stopPropagation()}><input type="checkbox" aria-label={`Select ${stripZeros(g.Matnr)}`} checked={picked.includes(g.Matnr)} onChange={(e) => setPicked(e.target.checked ? [...picked, g.Matnr] : picked.filter((m) => m !== g.Matnr))} /></td>
                           <td className={td}>{isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
                           <td className={cx(td, 'num')}>{stripZeros(g.Matnr)}</td><td className={td}>{g.Maktx}</td><td className={td}>{g.BaseUom || '—'}</td>
                           <td className={cx(td, 'num text-right')}>{fmtNum(g.NetQty, 3)}</td><td className={cx(td, 'num text-right')}>{fmtNum(lakh(g.NetValue), 3)}</td><td className={td}>{g.Currency || '—'}</td>
@@ -213,7 +225,7 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
                         </tr>
                         {isOpen && (
                           <tr className="border-b border-line bg-bg">
-                            <td colSpan={19} className="px-4 py-3">
+                            <td colSpan={20} className="px-4 py-3">
                               <p className="mb-2 text-xs font-bold">{stripZeros(g.Matnr)} — {g.Maktx} — by plant</p>
                               <table className="w-full max-w-4xl border-collapse">
                                 <thead><tr><th className={th}>Plant</th><th className={th}>UOM</th><th className={cx(th, 'text-right')}>Net Qty</th><th className={cx(th, 'text-right')}>Net Value (Lakhs)</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Avg Rate</th></tr></thead>
@@ -253,7 +265,7 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
                       </Fragment>
                     );
                   })}
-                  {!shown.length && <tr><td colSpan={19} className="px-3 py-8 text-center text-sm text-muted">No materials match the filter</td></tr>}
+                  {!shown.length && <tr><td colSpan={20} className="px-3 py-8 text-center text-sm text-muted">No materials match the filter</td></tr>}
                 </tbody>
               )}
             </table>

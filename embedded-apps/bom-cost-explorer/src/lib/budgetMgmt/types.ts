@@ -24,7 +24,7 @@ export interface BudRateSrcRow {
 }
 
 /** mtart: material types to read (BudHistSet Mtart); none = every type, nothing sent. */
-export const MATERIAL_TYPES = ['ROH', 'PKGN', 'VERP', 'HALB', 'FERT'] as const;
+export const MATERIAL_TYPES = ['ROH', 'PKGN', 'VERP', 'WIP', 'FRT2'] as const;
 export interface HistoryFilter { land1: string; gjahr: string; histFrom: string; histTo: string; catAFrom: string; catBFrom: string; mtart?: string[] }
 export interface RateFilter { gjahr: string; land1: string; status: string; matnr?: string[]; werks?: string[] }
 export interface RateEdit { adjType: AdjType; adjValue: string; overrideRate: string; overrideRsn: string }

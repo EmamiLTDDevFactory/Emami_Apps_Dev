@@ -243,3 +243,16 @@ describe('Avg base price breakup (BasePrcDetSet)', () => {
     expect(basePrcBreakup([]).avg).toBeNull();
   });
 });
+
+describe('History material types and material selection', () => {
+  it('only ROH, PKGN, VERP, WIP and FRT2 are offered', async () => {
+    const { MATERIAL_TYPES } = await import('@/lib/budgetMgmt/types');
+    expect([...MATERIAL_TYPES]).toEqual(['ROH', 'PKGN', 'VERP', 'WIP', 'FRT2']);
+  });
+  it('Generate sends the selected materials as MatnrCsv, none = all', async () => {
+    const { generateBody } = await import('@/lib/budgetMgmt/api');
+    const f = { land1: 'IN', gjahr: '2026', histFrom: '2025-04-01', histTo: '2026-03-31', catAFrom: '8,000,000', catBFrom: '4,000,000', mtart: ['WIP'] };
+    expect(generateBody(f, 'a@b.com', ['100000014', '100004266']).MatnrCsv).toBe('100000014,100004266');
+    expect(generateBody(f, 'a@b.com').MatnrCsv).toBe('');
+  });
+});
