@@ -50,3 +50,10 @@ export type LastPriceMode = 'IR_C' | 'C_IR' | 'IR' | 'C';
 export const LAST_PRICE_MODES: { v: LastPriceMode; label: string }[] = [
   { v: 'IR_C', label: 'Info record › Contract' }, { v: 'C_IR', label: 'Contract › Info record' }, { v: 'IR', label: 'Info record only' }, { v: 'C', label: 'Contract only' },
 ];
+
+/** BasePrcDetSet (filters Matnr + Bukrs required, Land1): the calculation behind the Avg Base Price. Rowtype D = one purchase-order line, S = the summary
+ *  (total quantity, total value, weighted average = value / quantity). */
+export interface BasePrcRow {
+  Rowid: number; Matnr: string; Ebeln: string; Ebelp: string; Podate: string; Vendor: string; Plant: string; Matdesc: string; Baseunit: string; Qtybase: number;
+  Doccurr: string; Valuedoc: number; Localcurr: string; Valuelocal: number; Valuegroup: number; Wtdavglocal: number; Wtdavggroup: number; Rowtype: string;
+}

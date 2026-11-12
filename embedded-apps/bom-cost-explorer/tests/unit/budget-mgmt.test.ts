@@ -222,3 +222,24 @@ describe('freight line items', () => {
     expect(freightText([])).toBe('');
   });
 });
+
+describe('Avg base price breakup (BasePrcDetSet)', () => {
+  const r = (Rowid: number, Ebeln: string, Podate: string, Vendor: string, Qtybase: number, Valuelocal: number, Rowtype = 'D') => ({ Rowid, Matnr: '100004266', Ebeln, Ebelp: '00010', Podate, Vendor, Plant: 'UN08', Matdesc: 'RM', Baseunit: 'KG', Qtybase, Doccurr: 'INR', Valuedoc: Valuelocal, Localcurr: 'INR', Valuelocal, Valuegroup: Valuelocal, Wtdavglocal: 0, Wtdavggroup: 0, Rowtype });
+  it('weighted average = total value / total quantity and agrees with the S row', async () => {
+    const { basePrcBreakup } = await import('@/lib/budgetMgmt/rules');
+    // material 100004266 on NGQ: two POs of 60 KG at 109860 each, SAP summary 1831
+    const rows = [r(1, '6500579520', '20250703', '7036', 60, 109860), r(2, '6500579521', '20250703', '7036', 60, 109860), { ...r(3, '', '', '', 120, 219720, 'S'), Wtdavglocal: 1831 }];
+    const b = basePrcBreakup(rows);
+    expect(b.lines).toHaveLength(2);
+    expect(b.totalQty).toBe(120); expect(b.totalValue).toBe(219720); expect(b.avg).toBe(1831);
+    expect(b.sapAvg).toBe(1831); expect(b.agrees).toBe(true);
+    expect(b.byVendor).toEqual([{ vendor: '7036', qty: 120, value: 219720, avg: 1831, qtyShare: 1 }]);
+    expect(b.byMonth[0].month).toBe('2025-07');
+  });
+  it('a credit line lowers the average; no lines gives no average', async () => {
+    const { basePrcBreakup } = await import('@/lib/budgetMgmt/rules');
+    const b = basePrcBreakup([r(1, 'A', '20260101', 'V1', 10, 1000), r(2, 'B', '20260102', 'V2', 10, -100)]);
+    expect(b.avg).toBe(45); expect(b.sapAvg).toBeNull(); expect(b.agrees).toBe(false);
+    expect(basePrcBreakup([]).avg).toBeNull();
+  });
+});

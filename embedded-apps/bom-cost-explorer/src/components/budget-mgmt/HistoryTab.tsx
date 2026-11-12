@@ -1,7 +1,8 @@
 'use client';
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, Search } from 'lucide-react';
+import { BarChart3, ChevronDown, ChevronRight, Search } from 'lucide-react';
 import { Wand2 } from 'lucide-react';
+import BasePriceBreakup from './BasePriceBreakup';
 import { Button, Card, Field, Spinner, cx, inputCls } from '../ui';
 import { CatBadge, ErrorBox, FilterRow, NO_RECORDS, OkBox, SkeletonRows, SourceChip, errorText, td, th } from './shared';
 import { fetchHistory, fetchRateSrcDtl, fetchRates, postGenerate } from '@/lib/budgetMgmt/api';
@@ -51,6 +52,7 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
   }
 
   const [prio] = useState<string[]>(readBPriority);
+  const [breakup, setBreakup] = useState<{ matnr: string; bukrs: string; land1: string; title: string } | null>(null);
 
   // Rate basis of the projection: Avg base price or Last purchase price (Info record / Contract), globally and per material (BudRateSrcDtlSet).
   const [basis, setBasisState] = useState<RateBasis>('LAST');
@@ -224,7 +226,10 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
                                   ))}
                                 </tbody>
                               </table>
-                              <p className="mb-1 mt-3 text-xs font-bold">Prices — BudRateSrcDtlSet <span className="font-normal text-muted">(avg base price: material + country; Info record / Contract: material + company code)</span></p>
+                              <div className="mb-1 mt-3 flex flex-wrap items-center gap-3">
+                                <p className="text-xs font-bold">Prices — BudRateSrcDtlSet <span className="font-normal text-muted">(avg base price: material + country; Info record / Contract: material + company code)</span></p>
+                                <Button size="sm" onClick={() => setBreakup({ matnr: g.Matnr, bukrs: g.plants[0]?.Bukrs ?? '', land1: g.Land1 || f.land1, title: g.Maktx })}><BarChart3 size={13} /> Avg base price breakup</Button>
+                              </div>
                               {(() => { const dd = dtl[dKey(g)];
                                 if (!dd) return <Spinner />;
                                 if (!Array.isArray(dd)) return <ErrorBox>{dd.error}</ErrorBox>;
@@ -255,6 +260,7 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
           </div>
         </Card>
       )}
+      {breakup && <BasePriceBreakup {...breakup} onClose={() => setBreakup(null)} />}
     </div>
   );
 }

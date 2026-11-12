@@ -1,6 +1,6 @@
 /** Pure rules of the budget rate management screens: dates, material numbers, filters and the frontend validation. */
 import Decimal from 'decimal.js';
-import { LAST_PRICE_MODES, type ActionPayload, type AdjType, type BudHistGroup, type BudHistRow, type BudRateRow, type BudRateSrcDtlRow, type BudRateSrcRow, type HistoryFilter, type LastPriceMode, type RateEdit, type RateAction } from './types';
+import { LAST_PRICE_MODES, type BasePrcRow, type ActionPayload, type AdjType, type BudHistGroup, type BudHistRow, type BudRateRow, type BudRateSrcDtlRow, type BudRateSrcRow, type HistoryFilter, type LastPriceMode, type RateEdit, type RateAction } from './types';
 
 /** YYYYMMDD -> DD.MM.YYYY (anything else is shown as it is). */
 export const showDate = (v: string) => (/^\d{8}$/.test(v) ? `${v.slice(6)}.${v.slice(4, 6)}.${v.slice(0, 4)}` : v);
@@ -283,3 +283,39 @@ export const rowMatches = (vals: Record<string, string | number | null | undefin
 
 /** Freight line items as text: `ZFR4 9.78 + ZOTC 17.31`; empty when there are none. */
 export const freightText = (lines: { cond: string; rate: number }[]): string => lines.map((l) => `${l.cond || '—'} ${l.rate.toFixed(2)}`).join(' + ');
+
+
+/** The calculation behind the Avg Base Price: weighted average = total value / total quantity over the purchase-order lines (BasePrcDetSet rows of type D). */
+export interface BasePrcBreakup {
+  lines: (BasePrcRow & { rate: number | null; qtyShare: number })[];
+  totalQty: number; totalValue: number; avg: number | null;
+  /** SAP's own summary row (type S), when it sent one. */
+  sapAvg: number | null; sapQty: number | null; sapValue: number | null; agrees: boolean;
+  byVendor: { vendor: string; qty: number; value: number; avg: number | null; qtyShare: number }[];
+  byMonth: { month: string; qty: number; value: number; avg: number | null }[];
+  currency: string; uom: string;
+}
+export function basePrcBreakup(rows: BasePrcRow[]): BasePrcBreakup {
+  const det = rows.filter((r) => r.Rowtype !== 'S');
+  const sum = rows.find((r) => r.Rowtype === 'S') ?? null;
+  const qty = det.reduce((a, r) => a.plus(String(r.Qtybase)), new Decimal(0));
+  const val = det.reduce((a, r) => a.plus(String(r.Valuelocal)), new Decimal(0));
+  const rate = (v: Decimal, q: Decimal) => (q.isZero() ? null : v.div(q).toNumber());
+  const lines = [...det].sort((a, b) => b.Podate.localeCompare(a.Podate) || a.Ebeln.localeCompare(b.Ebeln)).map((r) => ({
+    ...r, rate: r.Qtybase === 0 ? null : new Decimal(String(r.Valuelocal)).div(String(r.Qtybase)).toNumber(), qtyShare: qty.isZero() ? 0 : new Decimal(String(r.Qtybase)).div(qty).toNumber(),
+  }));
+  const group = <K extends string>(key: (r: BasePrcRow) => K) => {
+    const m = new Map<K, { q: Decimal; v: Decimal }>();
+    for (const r of det) { const k = key(r); const g = m.get(k) ?? { q: new Decimal(0), v: new Decimal(0) }; g.q = g.q.plus(String(r.Qtybase)); g.v = g.v.plus(String(r.Valuelocal)); m.set(k, g); }
+    return m;
+  };
+  const byVendor = Array.from(group((r) => r.Vendor || '—'), ([vendor, g]) => ({ vendor, qty: g.q.toNumber(), value: g.v.toNumber(), avg: rate(g.v, g.q), qtyShare: qty.isZero() ? 0 : g.q.div(qty).toNumber() })).sort((a, b) => b.value - a.value);
+  const byMonth = Array.from(group((r) => (/^\d{8}$/.test(r.Podate) ? `${r.Podate.slice(0, 4)}-${r.Podate.slice(4, 6)}` : '—')), ([month, g]) => ({ month, qty: g.q.toNumber(), value: g.v.toNumber(), avg: rate(g.v, g.q) })).sort((a, b) => a.month.localeCompare(b.month));
+  const avg = rate(val, qty);
+  const sapAvg = sum ? sum.Wtdavglocal : null;
+  return {
+    lines, totalQty: qty.toNumber(), totalValue: val.toNumber(), avg, sapAvg, sapQty: sum ? sum.Qtybase : null, sapValue: sum ? sum.Valuelocal : null,
+    agrees: avg !== null && sapAvg !== null && Math.abs(avg - sapAvg) < 0.0005, byVendor, byMonth,
+    currency: det.find((r) => r.Localcurr)?.Localcurr ?? '', uom: det.find((r) => r.Baseunit)?.Baseunit ?? '',
+  };
+}
