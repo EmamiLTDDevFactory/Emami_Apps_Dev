@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, radius } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
-import { useData } from '@/contexts/DataContext';
-import { DateRangeRow } from '@/components/FilterBar';
+import { ALL_DEPOTS, useData } from '@/contexts/DataContext';
+import { DateRangeRow, FilterSelect } from '@/components/FilterBar';
 import { isoDate, toDate, todayDate } from '@/lib/format';
 import { goBack, goToEmamiApps } from '@/lib/goBack';
 
@@ -15,7 +15,7 @@ import { goBack, goToEmamiApps } from '@/lib/goBack';
  */
 export function TopBar() {
   const { session, readOnly, signOut } = useAuth();
-  const { dateFilter, runSearch, loading } = useData();
+  const { dateFilter, runSearch, loading, depotFilter, setDepotFilter, depotOptions } = useData();
   const isHq = readOnly;
   const initials = isHq
     ? 'HQ'
@@ -27,6 +27,17 @@ export function TopBar() {
   const [frmDate, setFrmDate] = useState<Date>(() => toDate(dateFilter.frmDate) ?? todayDate());
   const [dateTo, setDateTo] = useState<Date>(() => toDate(dateFilter.toDate) ?? todayDate());
   const searching = !!loading.inv;
+
+  // Depot applies instantly (client-side, no refetch) — unlike the dates, which wait for Go.
+  const depotLabel = (code: string) => {
+    const name = depotOptions.find((d) => d.code === code)?.name;
+    return name ? `${code} · ${name}` : code;
+  };
+  const depotLabels = [ALL_DEPOTS, ...depotOptions.map((d) => depotLabel(d.code))];
+  const onDepotChange = (label: string) => {
+    const match = depotOptions.find((d) => depotLabel(d.code) === label);
+    setDepotFilter(match ? match.code : ALL_DEPOTS);
+  };
 
   return (
     <View>
@@ -70,6 +81,15 @@ export function TopBar() {
       <View style={styles.filterBar}>
         <View style={{ flex: 1 }}>
           <DateRangeRow fromDate={frmDate} toDate={dateTo} onFromDateChange={setFrmDate} onToDateChange={setDateTo} />
+        </View>
+        <View style={styles.depotBlock}>
+          <Text style={styles.depotLabel}>Depot</Text>
+          <FilterSelect
+            value={depotFilter === ALL_DEPOTS ? ALL_DEPOTS : depotLabel(depotFilter)}
+            options={depotLabels}
+            onChange={onDepotChange}
+            minWidth={150}
+          />
         </View>
         <Pressable
           style={[styles.goBtn, searching && styles.goBtnDisabled]}
@@ -131,6 +151,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.g200,
   },
+  depotBlock: { paddingBottom: 8 },
+  depotLabel: { fontSize: 10, fontWeight: '700', color: colors.g500, marginBottom: 4, textTransform: 'uppercase' },
   goBtn: {
     height: 34,
     minWidth: 64,

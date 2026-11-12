@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Portal from './Portal';
 import { DateField } from './Form';
 import { colors, radius } from '@/constants/theme';
@@ -72,6 +72,7 @@ export function FilterSelect({
                 minWidth: coords.width,
               },
             ]}>
+            <ScrollView style={{ maxHeight: 236 }}>
             {options.map((opt) => (
               <Pressable
                 key={opt}
@@ -85,6 +86,7 @@ export function FilterSelect({
                 </Text>
               </Pressable>
             ))}
+            </ScrollView>
           </View>
         </Portal>
       )}
