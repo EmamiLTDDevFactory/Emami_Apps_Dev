@@ -181,7 +181,7 @@ export function rateBreakup(r: BudRateRow, prio: readonly string[] = DEFAULT_B_P
   const adj = r.AdjType === 'P' || r.AdjType === 'A';
   const sign = (v: number) => (v < 0 ? '−' : '+');
   const adjText = r.AdjType === 'P' ? `${sign(r.AdjValue)}${Math.abs(r.AdjValue)}%` : `${sign(r.AdjValue)}${Math.abs(r.AdjValue)}`;
-  const base = r.Matcat === 'A' ? 'Category A' : r.Matcat === 'B' ? `Category B (priority ${prio.map(srcCode).join(' › ')})` : r.Matcat === 'C' ? `Category C (priority ${C_PRIORITY.map(srcCode).join(' › ')})` : 'Category';
+  const base = r.Matcat === 'A' ? 'Category A' : r.Matcat === 'B' ? `Category B (priority ${prio.map(srcCode).join(' › ')})` : r.Matcat === 'C' ? 'Category C (latest Info record, else avg base price)' : 'Category';
   const how = overriding ? (r.Matcat === 'A' ? 'manual rate' : 'override rate') : adj ? (r.AdjType === 'P' ? `percentage adjustment ${adjText}` : `absolute adjustment ${adjText}`) : r.Matcat === 'A' ? 'selected rate' : `source rate (${src})`;
   const steps: RateBreakup['steps'] = [{ k: `Source rate (${src})`, v: r.SrcRate }];
   if (overriding) steps.push({ k: 'Override', v: r.OverrideRate });

@@ -1,8 +1,8 @@
 'use client';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Pencil, Save, Search, X } from 'lucide-react';
-import { Button, Card, Field, Pill, Spinner, cx, inputCls } from '../ui';
-import { CatBadge, ErrorBox, FilterRow, SegmentBadge, SegmentChips, usePerfume, type SegmentFilter, NO_RECORDS, OkBox, SkeletonRows, SourceChip, StatusBadge, errorText, td, th } from './shared';
+import { Button, Field, Pill, Spinner, cx, inputCls } from '../ui';
+import { CatBadge, ErrorBox, Panel, StatTile, bandClass, FilterRow, SegmentBadge, SegmentChips, usePerfume, type SegmentFilter, NO_RECORDS, OkBox, SkeletonRows, SourceChip, StatusBadge, errorText, td, th } from './shared';
 import RateEditPanel from './RateEditPanel';
 import SourcePriorityEditor from '../rates/SourcePriorityEditor';
 import { fetchRateSrcDtl, fetchRates, patchRate } from '@/lib/budgetMgmt/api';
@@ -16,7 +16,7 @@ const keyOf = (r: BudRateRow) => `${r.Gjahr}|${r.Land1}|${r.Matnr}|${r.Werks}|${
 /** Columns frozen up to Derived (md and wider): width and left offset of each. */
 const FROZEN = [88, 56, 88, 44, 48, 84, 84, 104];
 const LEFT = FROZEN.map((_, i) => FROZEN.slice(0, i).reduce((a, b) => a + b, 0));
-const frozen = (i: number, head = false) => ({ className: cx('md:sticky', head ? 'md:z-30 bg-sunken' : 'md:z-10 bg-panel'), style: { left: LEFT[i], width: FROZEN[i], minWidth: FROZEN[i], maxWidth: FROZEN[i] } });
+const frozen = (i: number, head = false) => ({ className: cx('md:sticky', head ? 'md:z-30 bg-[#E9E5FA]' : 'md:z-10 bg-inherit'), style: { left: LEFT[i], width: FROZEN[i], minWidth: FROZEN[i], maxWidth: FROZEN[i] } });
 const ADJ: { v: AdjType; label: string }[] = [{ v: 'N', label: 'None' }, { v: 'P', label: 'Percent (%)' }, { v: 'A', label: 'Amount' }];
 
 export default function RatesTab({ segment, setSegment, gjahr, generated }: { segment: SegmentFilter; setSegment: (v: SegmentFilter) => void; gjahr: string; generated?: { land1: string; gjahr: string; message: string } | null }) {
@@ -165,17 +165,17 @@ export default function RatesTab({ segment, setSegment, gjahr, generated }: { se
 
   return (
     <div className="flex flex-col gap-3">
-      <Card title="Filters">
+      <Panel title="Filters" tone="accent">
         <form className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" onSubmit={(e) => { e.preventDefault(); void load(); }}>
           <Field label="Country">{(id) => <select id={id} className={inputCls} value={land1} onChange={(e) => setLand1(e.target.value)}>{COUNTRIES.map((c) => <option key={c}>{c}</option>)}</select>}</Field>
           <Field label="Year" error={yearErr}>{(id) => <input id={id} className={cx(inputCls, yearErr && 'border-bad')} inputMode="numeric" maxLength={4} value={year} onChange={(e) => setYear(e.target.value)} />}</Field>
           <Field label="Status">{(id) => <select id={id} className={inputCls} value={status} onChange={(e) => setStatus(e.target.value)}><option value="">All</option>{Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{k} - {v}</option>)}</select>}</Field>
           <div className="flex items-end"><Button type="submit" variant="primary" disabled={loading}>{loading ? <Spinner /> : <Search size={14} />} Load</Button></div>
         </form>
-      </Card>
+      </Panel>
 
       {rows && rows.length > 0 && (
-        <Card title="Global adjustment simulation" actions={(gSim || Object.keys(rowSim).length > 0) && <Button size="sm" onClick={() => { setGSim(null); setRowSim({}); setGValue(''); setGErr(''); }}><X size={13} /> Clear simulation</Button>}>
+        <Panel tone="sim" title="Global adjustment simulation" actions={(gSim || Object.keys(rowSim).length > 0) && <Button size="sm" onClick={() => { setGSim(null); setRowSim({}); setGValue(''); setGErr(''); }}><X size={13} /> Clear simulation</Button>}>
           <form className="flex flex-wrap items-end gap-3" onSubmit={(e) => { e.preventDefault(); runGlobal(); }}>
             <Field label="Adjustment">{(id) => <select id={id} className={inputCls} value={gType} onChange={(e) => setGType(e.target.value as 'P' | 'A')}><option value="P">Percent (%)</option><option value="A">Amount</option></select>}</Field>
             <Field label={gType === 'P' ? 'Value (%, + or −)' : 'Value (+ or −)'} error={gErr}>{(id) => <input id={id} className={cx(inputCls, 'w-36', gErr && 'border-bad')} inputMode="decimal" value={gValue} onChange={(e) => setGValue(e.target.value)} placeholder="Press Enter" />}</Field>
@@ -187,11 +187,11 @@ export default function RatesTab({ segment, setSegment, gjahr, generated }: { se
           </form>
           {applyMsg && <p role="status" className="mt-2 text-sm font-semibold">{applyMsg}</p>}
           <p className="mt-2 text-2xs text-muted">Applies the adjustment to the rate of every row in the table (its source rate, plus freight) and shows the simulated basic and landed rate. Nothing is saved until you click Apply to all (it saves this adjustment on every editable Draft / Revised row in scope; rows with an override or no saved source rate are skipped); a rate simulated in a row's edit panel (Enter) takes priority for that row.</p>
-        </Card>
+        </Panel>
       )}
 
       {rows && rows.length > 0 && (
-        <Card title="Last price priority (global)">
+        <Panel tone="good" title="Last price priority (global)">
           <div className="flex flex-wrap items-end gap-3">
             <Field label="Last price from">{(id) => <select id={id} className={inputCls} value={lpGlobal} onChange={(e) => setLpGlobal(e.target.value as LastPriceMode)}>{LAST_PRICE_MODES.map((m) => <option key={m.v} value={m.v}>{m.label}</option>)}</select>}</Field>
             <fieldset><legend className="mb-1 text-xs font-semibold">By category <span className="font-normal text-muted">(overrides the global order)</span></legend>
@@ -204,7 +204,7 @@ export default function RatesTab({ segment, setSegment, gjahr, generated }: { se
             <p className="max-w-xl pb-2 text-2xs text-muted">Last price is the latest Info record or Contract price of the material (company code level); the first source of the chosen order that has one is used. Avg base price is SAP's weighted average (material + country). Each row can override the global choice in its Last price cell or in its edit panel.</p>
           </div>
           {dtlError && <p className="mt-2 text-xs text-warn">Avg base / last price could not be read: {dtlError.error}</p>}
-        </Card>
+        </Panel>
       )}
 
       <details className="rounded-2xl border border-line bg-panel px-4 py-2 shadow-card">
@@ -215,17 +215,17 @@ export default function RatesTab({ segment, setSegment, gjahr, generated }: { se
       {perfume.error && segment !== 'ALL' && <ErrorBox>Segments could not be read ({perfume.error}) — showing every material.</ErrorBox>}
       {generated && <OkBox>✅ {generated.message}</OkBox>}
       {error && <ErrorBox>{error}</ErrorBox>}
-      {rows && rows.length === 0 && !error && <Card><p className="py-6 text-center text-sm text-muted">{NO_RECORDS}</p></Card>}
+      {rows && rows.length === 0 && !error && <Panel><p className="py-6 text-center text-sm text-muted">{NO_RECORDS}</p></Panel>}
 
       {(loading || (rows && rows.length > 0)) && (
-        <Card
+        <Panel
           title={<span className="flex items-center gap-2">Rates {rows && <Pill tone="accent">{visible.length === (rows?.length ?? 0) ? `${visible.length} rows` : `${visible.length} of ${rows?.length ?? 0} rows`}</Pill>}</span>}
           actions={<><SegmentChips value={segment} onChange={setSegment} />{Object.values(colF).some((v) => v.trim()) && <Button size="sm" onClick={() => setColF({})}><X size={13} /> Clear filters</Button>}<input className={cx(inputCls, 'w-48')} placeholder="Filter: material" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Filter by material" /></>}
           bodyClass="p-0"
         >
           <div className="max-h-[65vh] overflow-auto">
             <table className="w-full border-collapse">
-              <thead className="sticky top-0 z-10 bg-sunken">
+              <thead className="bm-thead sticky top-0 z-10">
                 <tr>
                   {(['Material', 'Plant', 'Valid from', 'Cat', 'UOM', 'Source', 'Src rate', 'Derived'] as const).map((h, i) => { const f = frozen(i, true); return <th key={h} className={cx(th, f.className, i >= 6 && 'text-right', i === FROZEN.length - 1 && 'border-r border-line')} style={f.style}>{h}</th>; })}
                   <th className={th}>Segment</th><th className={cx(th, 'text-right')}>Avg base price</th><th className={th}>Last price</th><th className={th}>Rule &amp; breakup</th><th className={th}>Adj</th><th className={cx(th, 'text-right')}>Freight</th><th className={cx(th, 'text-right')}>Landed rate</th>
@@ -243,8 +243,8 @@ export default function RatesTab({ segment, setSegment, gjahr, generated }: { se
                     const { hb, bu, base, curLanded, rs, simBasic, simLanded } = calc(r, k);
                     return (
                       <Fragment key={k}>
-                        {(i === 0 || visible[i - 1].Matcat !== r.Matcat) && <tr className="bg-sunken/60"><td colSpan={COLS} className="px-2 py-1 text-xs font-bold"><CatBadge cat={r.Matcat} /> Category {r.Matcat || '—'}</td></tr>}
-                        <tr className={cx('border-b border-line/60', isEd && 'bg-accent/5')}>
+                        {(i === 0 || visible[i - 1].Matcat !== r.Matcat) && <tr className={bandClass(r.Matcat)}><td colSpan={COLS} className="px-3 py-1.5 text-xs font-extrabold">Category {r.Matcat || '—'} <span className="ml-1 font-semibold opacity-80">· {visible.filter((x) => x.Matcat === r.Matcat).length} rows</span></td></tr>}
+                        <tr className={cx('border-b border-line/60', isEd ? 'bm-row-edit' : 'bm-row')}>
                           {(() => {
                             const date = r.ValidFrom.length === 8 ? `${r.ValidFrom.slice(6)}.${r.ValidFrom.slice(4, 6)}.${r.ValidFrom.slice(0, 4)}` : r.ValidFrom;
                             const f = (i: number) => frozen(i);
@@ -281,7 +281,7 @@ export default function RatesTab({ segment, setSegment, gjahr, generated }: { se
                           <td className={td}>{isEditable(r.ApprStatus) && !isEd && <Button size="sm" onClick={() => startEdit(r)}><Pencil size={12} /> Edit</Button>}</td>
                         </tr>
                         {isEd && (
-                          <tr className="border-b border-line bg-accent/5">
+                          <tr className="bm-row-edit border-b border-line">
                             <td colSpan={COLS} className="px-4 py-3">
                               <RateEditPanel r={r} form={form} setForm={setForm} errs={fErr} prio={prio} dtl={Array.isArray(dtl[dtlKey(r)]) ? (dtl[dtlKey(r)] as BudRateSrcDtlRow[]) : undefined} lpMode={modeFor(r, k)} setLpMode={(m) => setLpRow((x) => ({ ...x, [k]: m }))} fallback={hb?.pick ? { source: hb.pick.RateSrc, rate: hb.pick.RatePc, freight: hb.pick.FrtTotal } : undefined} frtLines={hb?.pick ? hb.pick.FrtLines : r.FrtLines} onEnter={() => simulateRow(r, base > 0 ? base : undefined)} />
                               <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -299,7 +299,7 @@ export default function RatesTab({ segment, setSegment, gjahr, generated }: { se
               )}
             </table>
           </div>
-        </Card>
+        </Panel>
       )}
     </div>
   );

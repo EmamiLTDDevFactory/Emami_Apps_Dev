@@ -1,8 +1,8 @@
 'use client';
 import { Fragment, useMemo, useState } from 'react';
 import { Check, RotateCcw, Search, Send, ThumbsDown } from 'lucide-react';
-import { Button, Card, Field, Pill, Spinner, cx, inputCls } from '../ui';
-import { CatBadge, ErrorBox, FilterRow, SegmentBadge, SegmentChips, usePerfume, type SegmentFilter, NO_RECORDS, OkBox, SkeletonRows, SourceChip, StatusBadge, errorText, td, th } from './shared';
+import { Button, Field, Pill, Spinner, cx, inputCls } from '../ui';
+import { CatBadge, ErrorBox, Panel, StatTile, bandClass, FilterRow, SegmentBadge, SegmentChips, usePerfume, type SegmentFilter, NO_RECORDS, OkBox, SkeletonRows, SourceChip, StatusBadge, errorText, td, th } from './shared';
 import { fetchRates, postAction } from '@/lib/budgetMgmt/api';
 import { ACTION_FROM, csvList, rateBreakup, readBPriority, rowMatches, type ColFilters, freightText, showDate, stripZeros, validateAction } from '@/lib/budgetMgmt/rules';
 import { COUNTRIES, STATUS_LABEL, type BudRateRow, type RateAction } from '@/lib/budgetMgmt/types';
@@ -71,7 +71,7 @@ export default function ReviewTab({ segment, setSegment, gjahr, email }: { segme
 
   return (
     <div className="flex flex-col gap-3">
-      <Card title="Action panel">
+      <Panel tone="warn" title="Action panel">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Country" error={errs.land1}>{(id) => <select id={id} className={inputCls} value={land1} onChange={(e) => setLand1(e.target.value)}>{COUNTRIES.map((c) => <option key={c}>{c}</option>)}</select>}</Field>
           <Field label="Year" error={errs.gjahr}>{(id) => <input id={id} className={cx(inputCls, errs.gjahr && 'border-bad')} inputMode="numeric" maxLength={4} value={year} onChange={(e) => setYear(e.target.value)} />}</Field>
@@ -95,9 +95,9 @@ export default function ReviewTab({ segment, setSegment, gjahr, email }: { segme
         )}
         {ok && <div className="mt-3"><OkBox>✅ {ok}</OkBox></div>}
         {err && <div className="mt-3"><ErrorBox>❌ {err}</ErrorBox></div>}
-      </Card>
+      </Panel>
 
-      <Card title="Rates for review (read-only)" actions={
+      <Panel title="Rates for review (read-only)" actions={
         <>
           <select className={cx(inputCls, 'w-44')} value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status filter">{Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{k} - {v}</option>)}</select>
           <Button size="sm" variant="primary" disabled={loading} onClick={() => void loadReview()}>{loading ? <Spinner /> : <Search size={13} />} Load for review</Button>
@@ -109,7 +109,7 @@ export default function ReviewTab({ segment, setSegment, gjahr, email }: { segme
           <div className="max-h-[60vh] overflow-auto">
             <div className="flex flex-wrap items-center gap-3 px-3 py-2"><SegmentChips value={segment} onChange={setSegment} /><Pill tone="accent">{filtering ? `${shown.length} of ${sorted.length} rows` : `${shown.length} rows`}</Pill>{filtering && <button type="button" className="text-xs font-semibold text-accent underline" onClick={() => setColF({})}>Clear filters</button>}</div>
             <table className="w-full border-collapse">
-              <thead className="sticky top-0 z-10 bg-sunken">
+              <thead className="bm-thead sticky top-0 z-10">
                 <tr><th className={th}>Material</th><th className={th}>Plant</th><th className={th}>Cat</th><th className={th}>Segment</th><th className={th}>Source</th><th className={cx(th, 'text-right')}>Derived</th><th className={th}>Rule &amp; breakup</th><th className={cx(th, 'text-right')}>Override</th><th className={cx(th, 'text-right')}>Freight</th><th className={cx(th, 'text-right')}>Landed Rate</th><th className={th}>Status</th>
                   <th className={th}>Submitted by / on</th><th className={th}>Approved by / on</th><th className={th}>Rejected by / reason</th></tr>
                 <FilterRow filters={colF} setFilters={setColF} cols={['material', 'plant', 'cat', 'segment', 'source', 'derived', 'rule', 'override', 'freight', 'landed', 'status', 'submitted', 'approved', 'rejected'].map((key) => ({ key }))} />
@@ -117,8 +117,8 @@ export default function ReviewTab({ segment, setSegment, gjahr, email }: { segme
               {loading ? <SkeletonRows cols={14} /> : (
                 <tbody>{shown.map((r, i) => { const bu = rateBreakup(r, prio); return (
                   <Fragment key={`${r.Matnr}|${r.Werks}|${r.ValidFrom}`}>
-                  {(i === 0 || shown[i - 1].Matcat !== r.Matcat) && <tr className="bg-sunken/60"><td colSpan={14} className="px-2 py-1 text-xs font-bold"><CatBadge cat={r.Matcat} /> Category {r.Matcat || '—'}</td></tr>}
-                  <tr className="border-b border-line/60">
+                  {(i === 0 || shown[i - 1].Matcat !== r.Matcat) && <tr className={bandClass(r.Matcat)}><td colSpan={14} className="px-3 py-1.5 text-xs font-extrabold">Category {r.Matcat || '—'} <span className="ml-1 font-semibold opacity-80">· {shown.filter((x) => x.Matcat === r.Matcat).length} rows</span></td></tr>}
+                  <tr className="bm-row border-b border-line/60">
                     <td className={cx(td, 'num')}>{stripZeros(r.Matnr)}</td><td className={td}>{r.Werks}</td><td className={td}><CatBadge cat={r.Matcat} /></td><td className={td}><SegmentBadge segment={perfume.segmentOf(r.Matnr)} /></td><td className={td}><SourceChip src={r.RateSrc} /></td>
                     <td className={cx(td, 'num text-right')}>{fmtNum(r.DerivedRate, 4)}</td>
                     <td className="min-w-64 px-2 py-1.5 text-2xs"><div className="font-bold">{bu.rule}</div><div className="num text-muted">{bu.steps.map((x) => `${x.k} ${fmtNum(x.v, 3)}`).join(' → ')}</div></td>
@@ -131,7 +131,7 @@ export default function ReviewTab({ segment, setSegment, gjahr, email }: { segme
             </table>
           </div>
         )}
-      </Card>
+      </Panel>
     </div>
   );
 }

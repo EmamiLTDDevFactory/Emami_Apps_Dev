@@ -78,3 +78,15 @@ thead th, [role="columnheader"] { vertical-align: bottom; }
   .h-screen, [class*="h-[calc"] { height: auto !important; }
   .overflow-clip, .overflow-y-auto { overflow: visible !important; }
 }
+
+/* ---- Raw Material (Budget Rate Preparation): table look ---- */
+.bm-thead, .bm-thead th { background: #E9E5FA; }
+.bm-filterrow th { background: #F4F2FD; }
+.bm-row { background: #ffffff; }
+.bm-row:nth-child(even) { background: #FAF9FE; }
+.bm-row:hover { background: #F0EDFC; }
+.bm-row-edit { background: #ECE8FB; }
+.bm-band-A { background: #E3F4EA; color: #14633C; border-left: 4px solid #1F7A4D; }
+.bm-band-B { background: #FDF1DD; color: #8A4B07; border-left: 4px solid #D9810B; }
+.bm-band-C { background: #FBE6E3; color: #962D22; border-left: 4px solid #C0392B; }
+.bm-band-none { background: #F0F0F5; color: #4B5563; border-left: 4px solid #8B8FA3; }

@@ -39,17 +39,17 @@ export function SkeletonRows({ cols }: { cols: number }) {
 }
 
 export const NO_RECORDS = 'No records found for the selection';
-export const th = 'whitespace-nowrap border-b border-line px-2 py-1.5 text-left text-xs font-bold';
-export const td = 'whitespace-nowrap px-2 py-1.5 text-xs';
+export const th = 'whitespace-nowrap border-b-2 border-accent/30 px-2 py-2 text-left text-2xs font-extrabold uppercase tracking-wide text-accent-deep';
+export const td = 'whitespace-nowrap px-2 py-2 text-xs text-ink';
 
 /** The filter row of a table head: one small input per column (text contains; numbers also > < >= <= = and a..b; `blank`; `a|b` for any). */
 export function FilterRow({ cols, filters, setFilters }: { cols: { key: string; className?: string; style?: CSSProperties; off?: boolean }[]; filters: Record<string, string>; setFilters: (f: Record<string, string>) => void }) {
   return (
-    <tr>
+    <tr className="bm-filterrow">
       {cols.map((c) => (
-        <th key={c.key} className={cx('border-b border-line bg-sunken px-1 py-1 font-normal', c.className)} style={c.style}>
+        <th key={c.key} className={cx('border-b border-line px-1 py-1 font-normal', c.className)} style={c.style}>
           {!c.off && <input aria-label={`Filter ${c.key}`} placeholder="filter" title="Text contains. Numbers: >10  <=5  =3  10..20.  blank / !blank.  a|b = any of" value={filters[c.key] ?? ''}
-            onChange={(e) => setFilters({ ...filters, [c.key]: e.target.value })} className="w-full min-w-12 rounded border border-line bg-panel px-1.5 py-0.5 text-2xs font-normal" />}
+            onChange={(e) => setFilters({ ...filters, [c.key]: e.target.value })} className="w-full min-w-12 rounded-md border border-line bg-white px-1.5 py-0.5 text-2xs font-normal normal-case tracking-normal text-ink placeholder:text-faint focus:border-accent" />}
         </th>
       ))}
     </tr>
@@ -65,12 +65,12 @@ export function SegmentChips({ value, onChange, counts }: { value: SegmentFilter
       <span className="text-xs font-semibold">Segment</span>
       {(['ALL', ...SEGMENTS] as const).map((s) => (
         <button key={s} type="button" aria-pressed={value === s} onClick={() => onChange(s)}
-          className={cx('rounded-full px-3 py-1 text-xs font-bold ring-1', value === s ? 'bg-accent text-white ring-accent' : 'bg-panel text-ink ring-line')}>{s === 'ALL' ? 'All' : s}{counts?.[s] !== undefined && ` (${counts[s]})`}</button>
+          className={cx('rounded-full px-3 py-1 text-xs font-bold ring-1 transition', value === s ? (s === 'Perfume' ? 'bg-sim text-white ring-sim shadow' : 'bg-accent text-white ring-accent shadow') : 'bg-white text-ink ring-line hover:bg-sunken')}>{s === 'ALL' ? 'All' : s}{counts?.[s] !== undefined && ` (${counts[s]})`}</button>
       ))}
     </div>
   );
 }
-export const SegmentBadge = ({ segment }: { segment: string }) => <span className={cx('inline-flex rounded-full px-2 py-0.5 text-2xs font-bold ring-1', segment === 'Perfume' ? 'bg-accent/10 text-accent ring-accent/30' : 'bg-sunken text-muted ring-line')}>{segment}</span>;
+export const SegmentBadge = ({ segment }: { segment: string }) => <span className={cx('inline-flex rounded-full px-2.5 py-0.5 text-2xs font-bold ring-1', segment === 'Perfume' ? 'bg-sim/10 text-sim ring-sim/40' : 'bg-accent/10 text-accent-deep ring-accent/30')}>{segment}</span>;
 
 /**
  * Perfume materials of a country and year, for the tabs whose rows carry no material group (Rates, Review): read once per country and year from BudHistSet
@@ -90,3 +90,39 @@ export function usePerfume(land1: string, gjahr: string) {
   }, [land1, gjahr]);
   return { ready: !!state.set, error: state.error, segmentOf: (matnr: string): Segment => (state.set?.has(stripZeros(matnr)) ? 'Perfume' : 'Raw Material') };
 }
+
+
+/** A card with a coloured header strip: indigo (default), green, amber or pink (simulation). */
+const TONE: Record<string, { bar: string; head: string; title: string }> = {
+  accent: { bar: 'border-l-accent', head: 'from-accent/12 via-accent/5', title: 'text-accent-deep' },
+  good: { bar: 'border-l-good', head: 'from-good/12 via-good/5', title: 'text-good' },
+  warn: { bar: 'border-l-warn', head: 'from-warn/12 via-warn/5', title: 'text-warn' },
+  sim: { bar: 'border-l-sim', head: 'from-sim/12 via-sim/5', title: 'text-sim' },
+};
+export function Panel({ title, actions, children, bodyClass, tone = 'accent' }: { title?: ReactNode; actions?: ReactNode; children: ReactNode; bodyClass?: string; tone?: keyof typeof TONE }) {
+  const t = TONE[tone];
+  return (
+    <section className="overflow-hidden rounded-2xl border border-line bg-panel shadow-card">
+      {(title || actions) && (
+        <header className={cx('flex flex-wrap items-center justify-between gap-2 border-b border-line border-l-4 bg-gradient-to-r to-transparent px-4 py-2.5', t.bar, t.head)}>
+          <h3 className={cx('text-sm font-extrabold', t.title)}>{title}</h3>
+          <div className="flex flex-wrap items-center gap-1.5">{actions}</div>
+        </header>
+      )}
+      <div className={cx('p-3', bodyClass)}>{children}</div>
+    </section>
+  );
+}
+
+/** A figure tile with a coloured top edge. */
+const TILE: Record<string, string> = { accent: 'border-t-accent', good: 'border-t-good', warn: 'border-t-warn', bad: 'border-t-bad', sim: 'border-t-sim', neutral: 'border-t-faint' };
+export const StatTile = ({ label, value, sub, tone = 'accent' }: { label: string; value: ReactNode; sub?: ReactNode; tone?: keyof typeof TILE }) => (
+  <div className={cx('rounded-xl border border-line border-t-4 bg-panel px-3 py-2 shadow-card', TILE[tone])}>
+    <p className="text-2xs font-semibold uppercase tracking-wide text-muted">{label}</p>
+    <p className="num text-xl font-extrabold text-ink">{value}</p>
+    {sub && <p className="text-2xs text-muted">{sub}</p>}
+  </div>
+);
+
+/** Category band row (A green, B amber, C red) over a group of rows. */
+export const bandClass = (cat: string) => `bm-band-${cat === 'A' || cat === 'B' || cat === 'C' ? cat : 'none'}`;

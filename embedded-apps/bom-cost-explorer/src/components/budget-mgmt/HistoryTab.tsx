@@ -3,8 +3,8 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { BarChart3, ChevronDown, ChevronRight, Search } from 'lucide-react';
 import { Wand2 } from 'lucide-react';
 import BasePriceBreakup from './BasePriceBreakup';
-import { Button, Card, Field, Spinner, cx, inputCls } from '../ui';
-import { CatBadge, ErrorBox, FilterRow, SegmentBadge, SegmentChips, type SegmentFilter, NO_RECORDS, OkBox, SkeletonRows, SourceChip, errorText, td, th } from './shared';
+import { Button, Field, Spinner, cx, inputCls } from '../ui';
+import { CatBadge, ErrorBox, Panel, StatTile, bandClass, FilterRow, SegmentBadge, SegmentChips, type SegmentFilter, NO_RECORDS, OkBox, SkeletonRows, SourceChip, errorText, td, th } from './shared';
 import { fetchHistory, fetchRateSrcDtl, fetchRates, postGenerate } from '@/lib/budgetMgmt/api';
 import { COUNTRIES, MATERIAL_TYPES, type BudHistRow, type BudRateRow, type BudRateSrcDtlRow, LAST_PRICE_MODES, type LastPriceMode, type HistoryFilter } from '@/lib/budgetMgmt/types';
 import { csvList, CATBASIS_KEY, BASIS_KEY, LASTP_KEY, landedRate, rowMatches, type ColFilters, freightText, RATE_BASES, avgBasePrice, lastPrice, type RateBasis, defaultHistWindow, filterHistory, groupHistory, historyBreakup, projectedValue, readBPriority, showDate, sortByCountryTotal, stripZeros, validateHistory, type Errors } from '@/lib/budgetMgmt/rules';
@@ -119,7 +119,7 @@ export default function HistoryTab({ segment, setSegment, gjahr, email, onGenera
 
   return (
     <div className="flex flex-col gap-3">
-      <Card title="Filters">
+      <Panel title="Filters" tone="accent">
         <form className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7" onSubmit={(e) => { e.preventDefault(); void load(); }}>
           <Field label="Country" error={errs.land1}>{(id) => <select id={id} className={cx(inputCls, errs.land1 && 'border-bad')} value={f.land1} onChange={(e) => set('land1', e.target.value)}>{COUNTRIES.map((c) => <option key={c}>{c}</option>)}</select>}</Field>
           <Field label="Year" error={errs.gjahr}>{(id) => <input id={id} className={cx(inputCls, errs.gjahr && 'border-bad')} inputMode="numeric" maxLength={4} value={f.gjahr} onChange={(e) => set('gjahr', e.target.value)} />}</Field>
@@ -137,17 +137,17 @@ export default function HistoryTab({ segment, setSegment, gjahr, email, onGenera
           </fieldset>
           <div className="flex items-end"><Button type="submit" variant="primary" disabled={loading}>{loading ? <Spinner /> : <Search size={14} />} Load History</Button></div>
         </form>
-      </Card>
+      </Panel>
 
       {error && <ErrorBox>{error}</ErrorBox>}
       {genErr && <ErrorBox>{genErr}</ErrorBox>}
       {rows && rows.length > 0 && (
-        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-panel px-3 py-2 shadow-card">
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-accent/30 bg-gradient-to-r from-accent/10 via-panel to-sim/10 px-3 py-2 shadow-card">
           <Button variant="primary" onClick={() => void generate()} disabled={genBusy}>{genBusy ? <Spinner /> : <Wand2 size={14} />} Generate Draft Rates (all)</Button>
           <Button onClick={() => void generate(picked)} disabled={genBusy || !picked.length}>{genBusy ? <Spinner /> : <Wand2 size={14} />} Generate for selected ({picked.length})</Button>
           <span className="text-xs text-muted">Saves a draft rate (status D) for every material of this history, or only for the ticked materials; you edit and submit them in Rates & Edit.</span>
           <form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); const want = csvList(pasteList); const have = new Map(groups.map((g) => [stripZeros(g.Matnr).toUpperCase(), g.Matnr])); const hit = want.map((w) => have.get(stripZeros(w).toUpperCase())).filter((x): x is string => !!x); const miss = want.filter((w) => !have.has(stripZeros(w).toUpperCase())); setPicked(Array.from(new Set([...picked, ...hit]))); setPasteMsg(`${hit.length} selected${miss.length ? `, not in this history: ${miss.join(', ')}` : ''}`); }}>
-            <input aria-label="Select materials by number" className={`${inputCls} w-64`} placeholder="Material numbers (comma / space) — select" value={pasteList} onChange={(e) => setPasteList(e.target.value)} />
+            <input aria-label="Select materials by number" className={`${inputCls} w-80`} placeholder="Paste material numbers to select" value={pasteList} onChange={(e) => setPasteList(e.target.value)} />
             <Button type="submit" size="sm" disabled={!pasteList.trim()}>Select</Button>
             {pasteMsg && <span className="text-xs text-muted">{pasteMsg}</span>}
           </form>
@@ -167,7 +167,16 @@ export default function HistoryTab({ segment, setSegment, gjahr, email, onGenera
           <p className="max-w-xl pb-2 text-2xs text-muted">Proj Rate and Proj Value use this basis: SAP's weighted Avg base price (material + country) or the Last purchase price (latest Info record / Contract, in the order chosen; company code level). Each material can use its own basis in its Rate basis cell. The Last purchase price order is shared with Rates &amp; Edit.{dtlError && <span className="text-warn"> Avg base / last price could not be read: {dtlError.error}</span>}</p>
         </div>
       )}
-      {rows && rows.length > 0 && <p className="text-sm font-semibold text-ink">Loaded {groups.length} materials ({rows.length} plant rows) — Cat A: {counts.A} · Cat B: {counts.B} · Cat C: {counts.C}</p>}
+      {rows && rows.length > 0 && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <StatTile label="Materials" value={groups.length} sub={`${rows.length} plant rows`} tone="accent" />
+          <StatTile label="Category A" value={counts.A} sub="top value" tone="good" />
+          <StatTile label="Category B" value={counts.B} sub="mid value" tone="warn" />
+          <StatTile label="Category C" value={counts.C} sub="long tail" tone="bad" />
+          <StatTile label="Raw Material" value={segCounts['Raw Material']} sub="excl. perfume" tone="accent" />
+          <StatTile label="Perfume" value={segCounts.Perfume} sub="ROH · group 106" tone="sim" />
+        </div>
+      )}
       {rows && rows.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-panel px-3 py-2 shadow-card">
           <div className="relative">
@@ -188,13 +197,13 @@ export default function HistoryTab({ segment, setSegment, gjahr, email, onGenera
           {(q || cats.length > 0) && <button type="button" className="text-xs font-semibold text-accent underline" onClick={() => { setQ(''); setCats([]); }}>Clear filters</button>}
         </div>
       )}
-      {rows && rows.length === 0 && !error && <Card><p className="py-6 text-center text-sm text-muted">{NO_RECORDS}</p></Card>}
+      {rows && rows.length === 0 && !error && <Panel><p className="py-6 text-center text-sm text-muted">{NO_RECORDS}</p></Panel>}
 
       {(loading || (rows && rows.length > 0)) && (
-        <Card bodyClass="p-0">
+        <Panel bodyClass="p-0">
           <div className="max-h-[65vh] overflow-auto">
             <table className="w-full border-collapse">
-              <thead className="sticky top-0 z-10 bg-sunken">
+              <thead className="bm-thead sticky top-0 z-10">
                 <tr><th className={th}><input type="checkbox" aria-label="Select all shown materials" checked={shown.length > 0 && shown.every((g) => picked.includes(g.Matnr))} onChange={(e) => setPicked(e.target.checked ? Array.from(new Set([...picked, ...shown.map((g) => g.Matnr)])) : picked.filter((m) => !shown.some((g) => g.Matnr === m)))} /></th><th className={th} /><th className={th}>Material</th><th className={th}>Description</th><th className={th}>UOM</th>
                   <th className={cx(th, 'text-right')}>Net Qty</th><th className={cx(th, 'text-right')}>Net Value (Lakhs)</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Avg Rate</th><th className={cx(th, 'text-right')}>Country Total</th><th className={cx(th, 'text-right')}>Avg Base Price</th><th className={th}>Last Price</th><th className={th}>Rate basis</th><th className={cx(th, 'text-right')}>Proj Rate</th><th className={cx(th, 'text-right')}>Proj Value (Lakhs)</th><th className={th}>Cat</th><th className={th}>Segment</th><th className={cx(th, 'text-right')}>Derived Rate</th><th className={cx(th, 'text-right')}>Freight</th><th className={cx(th, 'text-right')}>Landed Rate</th><th className={th}>Rule &amp; breakup</th></tr>
                 <FilterRow filters={colF} setFilters={setColF} cols={[{ key: 'x00', off: true }, { key: 'x0', off: true }, ...['material', 'description', 'uom', 'netQty', 'netValue', 'curr', 'avgRate', 'ctryValue', 'avgBase', 'lastPrice'].map((key) => ({ key })), { key: 'basis' }, ...['projRate', 'projValue', 'cat', 'segment', 'derived', 'freight', 'landed', 'rule'].map((key) => ({ key }))]} />
@@ -205,7 +214,7 @@ export default function HistoryTab({ segment, setSegment, gjahr, email, onGenera
                     const isOpen = open === g.key;
                     return (
                       <Fragment key={g.key}>
-                        <tr className="cursor-pointer border-b border-line/60 hover:bg-sunken/60" onClick={() => setOpen(isOpen ? '' : g.key)} aria-expanded={isOpen}>
+                        <tr className="bm-row cursor-pointer border-b border-line/60" onClick={() => setOpen(isOpen ? '' : g.key)} aria-expanded={isOpen}>
                           <td className={td} onClick={(e) => e.stopPropagation()}><input type="checkbox" aria-label={`Select ${stripZeros(g.Matnr)}`} checked={picked.includes(g.Matnr)} onChange={(e) => setPicked(e.target.checked ? [...picked, g.Matnr] : picked.filter((m) => m !== g.Matnr))} /></td>
                           <td className={td}>{isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
                           <td className={cx(td, 'num')}>{stripZeros(g.Matnr)}</td><td className={td}>{g.Maktx}</td><td className={td}>{g.BaseUom || '—'}</td>
@@ -290,7 +299,7 @@ export default function HistoryTab({ segment, setSegment, gjahr, email, onGenera
               )}
             </table>
           </div>
-        </Card>
+        </Panel>
       )}
       {breakup && <BasePriceBreakup {...breakup} onClose={() => setBreakup(null)} />}
     </div>
