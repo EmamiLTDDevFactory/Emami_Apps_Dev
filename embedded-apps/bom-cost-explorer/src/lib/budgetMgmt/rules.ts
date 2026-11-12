@@ -234,3 +234,10 @@ export function lastPrice(rows: BudRateSrcDtlRow[], mode: LastPriceMode): { sour
   }
   return null;
 }
+
+/** Browser keys shared by the History and Rates tabs: the global Last Price priority and the History rate basis. */
+export const LASTP_KEY = 'bud-mgmt-lastprice-mode';
+export const BASIS_KEY = 'bud-mgmt-hist-basis';
+/** Rate basis of the History projection: the latest rate source (as before), the average base price, or the last price (Info record / Contract). */
+export type RateBasis = 'LATEST' | 'AVG' | 'LAST';
+export const RATE_BASES: { v: RateBasis; label: string }[] = [{ v: 'LATEST', label: 'Latest source' }, { v: 'AVG', label: 'Avg base price' }, { v: 'LAST', label: 'Last purchase price' }];

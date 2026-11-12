@@ -4,9 +4,9 @@ import { ChevronDown, ChevronRight, Search } from 'lucide-react';
 import { Wand2 } from 'lucide-react';
 import { Button, Card, Field, Spinner, cx, inputCls } from '../ui';
 import { CatBadge, ErrorBox, NO_RECORDS, OkBox, SkeletonRows, SourceChip, errorText, td, th } from './shared';
-import { fetchHistory, fetchRateSources, fetchRates, postGenerate } from '@/lib/budgetMgmt/api';
-import { COUNTRIES, MATERIAL_TYPES, type BudHistRow, type BudRateRow, type BudRateSrcRow, type HistoryFilter } from '@/lib/budgetMgmt/types';
-import { defaultHistWindow, filterHistory, groupHistory, historyBreakup, latestSourceRate, projectedValue, readBPriority, showDate, sortByCountryTotal, stripZeros, validateHistory, type Errors } from '@/lib/budgetMgmt/rules';
+import { fetchHistory, fetchRateSources, fetchRateSrcDtl, fetchRates, postGenerate } from '@/lib/budgetMgmt/api';
+import { COUNTRIES, MATERIAL_TYPES, type BudHistRow, type BudRateRow, type BudRateSrcDtlRow, type BudRateSrcRow, LAST_PRICE_MODES, type LastPriceMode, type HistoryFilter } from '@/lib/budgetMgmt/types';
+import { BASIS_KEY, LASTP_KEY, RATE_BASES, avgBasePrice, lastPrice, type RateBasis, defaultHistWindow, filterHistory, groupHistory, historyBreakup, latestSourceRate, projectedValue, readBPriority, showDate, sortByCountryTotal, stripZeros, validateHistory, type Errors } from '@/lib/budgetMgmt/rules';
 import { fmtNum } from '@/lib/format';
 
 /** Rupees as lakhs (1 lakh = 100,000). */
@@ -61,7 +61,27 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
   }
 
   const [prio] = useState<string[]>(readBPriority);
+
+  // Rate basis of the projection: Latest source (as before), Avg base price or Last purchase price (Info record / Contract), globally and per material (BudRateSrcDtlSet).
+  const [basis, setBasisState] = useState<RateBasis>('LATEST');
+  const [lpMode, setLpModeState] = useState<LastPriceMode>('IR_C');
+  const [rowSel, setRowSel] = useState<Record<string, { basis: RateBasis; mode: LastPriceMode }>>({});
+  const [dtl, setDtl] = useState<Record<string, BudRateSrcDtlRow[] | { error: string }>>({});
+  useEffect(() => { try { const b = localStorage.getItem(BASIS_KEY); if (RATE_BASES.some((x) => x.v === b)) setBasisState(b as RateBasis); const m = localStorage.getItem(LASTP_KEY); if (LAST_PRICE_MODES.some((x) => x.v === m)) setLpModeState(m as LastPriceMode); } catch { /* defaults */ } }, []);
+  const setBasis = (v: RateBasis) => { setBasisState(v); try { localStorage.setItem(BASIS_KEY, v); } catch { /* not kept */ } };
+  const setLpMode = (v: LastPriceMode) => { setLpModeState(v); try { localStorage.setItem(LASTP_KEY, v); } catch { /* not kept */ } };
   const groups = useMemo(() => sortByCountryTotal(groupHistory(rows ?? [])), [rows]);
+  const dKey = (g: (typeof groups)[number]) => `${g.Matnr}|${g.plants[0]?.Bukrs || '1000'}|${g.Land1 || f.land1}`;
+  useEffect(() => {
+    setDtl({}); setRowSel({});
+    if (!groups.length) return;
+    let live = true; let next = 0;
+    const worker = async () => { while (live && next < groups.length) { const g = groups[next++]; try { const list = await fetchRateSrcDtl(g.Matnr, g.plants[0]?.Bukrs ?? '', g.Land1 || f.land1); if (live) setDtl((x) => ({ ...x, [dKey(g)]: list })); } catch (x) { if (live) setDtl((y) => ({ ...y, [dKey(g)]: { error: errorText(x) } })); } } };
+    for (let i = 0; i < 3; i++) void worker();
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groups]);
+  const dtlError = Object.values(dtl).find((v): v is { error: string } => !Array.isArray(v));
 
   // Projected rate: the latest rate source of every material, read in table order (biggest country total first), a few at a time.
   const [proj, setProj] = useState<Record<string, { rate: number | null; failed?: string }>>({});
@@ -117,6 +137,13 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
           <span className="text-xs text-muted">Saves a draft rate (status D) for every material of this history; you edit and submit them in Rates & Edit.</span>
         </div>
       )}
+      {rows && rows.length > 0 && (
+        <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-line bg-panel px-3 py-2 shadow-card">
+          <Field label="Projected rate basis (global)">{(id) => <select id={id} className={inputCls} value={basis} onChange={(e) => setBasis(e.target.value as RateBasis)}>{RATE_BASES.map((b) => <option key={b.v} value={b.v}>{b.label}</option>)}</select>}</Field>
+          <Field label="Last purchase price from">{(id) => <select id={id} className={inputCls} value={lpMode} onChange={(e) => setLpMode(e.target.value as LastPriceMode)}>{LAST_PRICE_MODES.map((m) => <option key={m.v} value={m.v}>{m.label}</option>)}</select>}</Field>
+          <p className="max-w-xl pb-2 text-2xs text-muted">Proj Rate and Proj Value use this basis: the latest rate source (as before), SAP's weighted Avg base price (material + country), or the Last purchase price (latest Info record / Contract, in the order chosen; company code level). Each material can use its own basis in its Rate basis cell. The Last purchase price order is shared with Rates &amp; Edit.{dtlError && <span className="text-warn"> Avg base / last price could not be read: {dtlError.error}</span>}</p>
+        </div>
+      )}
       {rows && rows.length > 0 && <p className="text-sm font-semibold text-ink">Loaded {groups.length} materials ({rows.length} plant rows) — Cat A: {counts.A} · Cat B: {counts.B} · Cat C: {counts.C}</p>}
       {rows && rows.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-panel px-3 py-2 shadow-card">
@@ -145,9 +172,9 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
             <table className="w-full border-collapse">
               <thead className="sticky top-0 z-10 bg-sunken">
                 <tr><th className={th} /><th className={th}>Material</th><th className={th}>Description</th><th className={th}>UOM</th>
-                  <th className={cx(th, 'text-right')}>Net Qty</th><th className={cx(th, 'text-right')}>Net Value (Lakhs)</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Avg Rate</th><th className={cx(th, 'text-right')}>Country Total</th><th className={cx(th, 'text-right')}>Proj Rate</th><th className={cx(th, 'text-right')}>Proj Value (Lakhs)</th><th className={th}>Cat</th><th className={cx(th, 'text-right')}>Derived Rate</th><th className={cx(th, 'text-right')}>Freight</th><th className={cx(th, 'text-right')}>Landed Rate</th><th className={th}>Rule &amp; breakup</th></tr>
+                  <th className={cx(th, 'text-right')}>Net Qty</th><th className={cx(th, 'text-right')}>Net Value (Lakhs)</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Avg Rate</th><th className={cx(th, 'text-right')}>Country Total</th><th className={cx(th, 'text-right')}>Avg Base Price</th><th className={th}>Last Price</th><th className={th}>Rate basis</th><th className={cx(th, 'text-right')}>Proj Rate</th><th className={cx(th, 'text-right')}>Proj Value (Lakhs)</th><th className={th}>Cat</th><th className={cx(th, 'text-right')}>Derived Rate</th><th className={cx(th, 'text-right')}>Freight</th><th className={cx(th, 'text-right')}>Landed Rate</th><th className={th}>Rule &amp; breakup</th></tr>
               </thead>
-              {loading ? <SkeletonRows cols={16} /> : (
+              {loading ? <SkeletonRows cols={19} /> : (
                 <tbody>
                   {shown.map((g) => {
                     const isOpen = open === g.key;
@@ -157,9 +184,25 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
                           <td className={td}>{isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
                           <td className={cx(td, 'num')}>{stripZeros(g.Matnr)}</td><td className={td}>{g.Maktx}</td><td className={td}>{g.BaseUom || '—'}</td>
                           <td className={cx(td, 'num text-right')}>{fmtNum(g.NetQty, 3)}</td><td className={cx(td, 'num text-right')}>{fmtNum(lakh(g.NetValue), 3)}</td><td className={td}>{g.Currency || '—'}</td>
-                          <td className={cx(td, 'num text-right')}>{fmtNum(g.AvgRate, 6)}</td><td className={cx(td, 'num text-right')}>{fmtNum(g.CtryValue, 2)}</td>{(() => { const pr = proj[g.key]; return pr
-                            ? <><td className={cx(td, 'num text-right')} title={pr.failed}>{pr.failed ? 'error' : pr.rate == null ? '—' : fmtNum(pr.rate, 3)}</td><td className={cx(td, 'num text-right')}>{pr.rate == null ? '—' : fmtNum(lakh(projectedValue(g.NetQty, pr.rate)), 3)}</td></>
-                            : <><td className={cx(td, 'text-right text-faint')}>…</td><td className={cx(td, 'text-right text-faint')}>…</td></>; })()}
+                          <td className={cx(td, 'num text-right')}>{fmtNum(g.AvgRate, 6)}</td><td className={cx(td, 'num text-right')}>{fmtNum(g.CtryValue, 2)}</td>{(() => {
+                            const pr = proj[g.key]; const dd = dtl[dKey(g)]; const rows2 = Array.isArray(dd) ? dd : null;
+                            const sel = rowSel[g.key]; const effBasis = sel?.basis ?? basis; const effMode = sel?.mode ?? lpMode;
+                            const ab = rows2 ? avgBasePrice(rows2) : null; const lp = rows2 ? lastPrice(rows2, effMode) : null;
+                            const dash = !dd ? '…' : !rows2 ? 'n/a' : null;
+                            const rate = effBasis === 'AVG' ? (ab ? ab.RatePc : null) : effBasis === 'LAST' ? (lp ? lp.row.RatePc : null) : pr?.rate ?? null;
+                            const ready = effBasis === 'LATEST' ? !!pr : !!dd;
+                            const val = effBasis === 'AVG' ? 'A|IR_C' : effBasis === 'LAST' ? `L|${effMode}` : 'LATEST';
+                            return <>
+                              <td className={cx(td, 'num text-right')} title={!rows2 && dd ? (dd as { error: string }).error : ab ? `Weighted average base price, valid from ${showDate(ab.ValidFrom)}` : undefined}>{dash ?? (ab ? fmtNum(ab.RatePc, 3) : '—')}</td>
+                              <td className={td}>{dash ?? (lp ? <span className="inline-flex items-center gap-1.5" title={`${lp.row.Vendor ? `${lp.row.Vendor} ${lp.row.Vendname} — ` : ''}valid from ${showDate(lp.row.ValidFrom)}`}><span className="num font-bold">{fmtNum(lp.row.RatePc, 3)}</span><SourceChip src={lp.row.RateSrc} /></span> : '—')}</td>
+                              <td className={td} onClick={(e) => e.stopPropagation()}>
+                                <select aria-label="Rate basis of this material" className="rounded border border-line bg-panel px-1 py-0.5 text-2xs" value={sel ? val : ''}
+                                  onChange={(e) => { const v = e.target.value; setRowSel((x) => { const { [g.key]: _, ...rest } = x; if (!v) return rest; if (v === 'LATEST') return { ...rest, [g.key]: { basis: 'LATEST', mode: lpMode } }; const [b, m] = v.split('|'); return { ...rest, [g.key]: { basis: b === 'A' ? 'AVG' : 'LAST', mode: m as LastPriceMode } }; }); }}>
+                                  <option value="">Global</option><option value="LATEST">Latest source</option><option value="A|IR_C">Avg base price</option>
+                                  {LAST_PRICE_MODES.map((m) => <option key={m.v} value={`L|${m.v}`}>Last: {m.label}</option>)}</select></td>
+                              {!ready ? <><td className={cx(td, 'text-right text-faint')}>…</td><td className={cx(td, 'text-right text-faint')}>…</td></>
+                                : <><td className={cx(td, 'num text-right')} title={effBasis === 'LATEST' ? pr?.failed : undefined}>{effBasis === 'LATEST' && pr?.failed ? 'error' : rate == null ? '—' : fmtNum(rate, 3)}</td><td className={cx(td, 'num text-right')}>{rate == null ? '—' : fmtNum(lakh(projectedValue(g.NetQty, rate)), 3)}</td></>}
+                            </>; })()}
                           <td className={td}><CatBadge cat={g.Matcat} /></td>
                           {(() => {
                             if (!proj[g.key]) return <><td className={cx(td, 'text-right text-faint')}>…</td><td className={td} /><td className={td} /><td className={td}><span className="text-faint">…</span></td></>;
@@ -175,7 +218,7 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
                         </tr>
                         {isOpen && (
                           <tr className="border-b border-line bg-bg">
-                            <td colSpan={16} className="px-4 py-3">
+                            <td colSpan={19} className="px-4 py-3">
                               <p className="mb-2 text-xs font-bold">{stripZeros(g.Matnr)} — {g.Maktx} — by plant <span className="font-normal text-muted">(click a plant for its rate sources)</span></p>
                               <table className="w-full max-w-4xl border-collapse">
                                 <thead><tr><th className={th}>Plant</th><th className={th}>UOM</th><th className={cx(th, 'text-right')}>Net Qty</th><th className={cx(th, 'text-right')}>Net Value (Lakhs)</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Avg Rate</th></tr></thead>
@@ -218,7 +261,7 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
                       </Fragment>
                     );
                   })}
-                  {!shown.length && <tr><td colSpan={16} className="px-3 py-8 text-center text-sm text-muted">No materials match the filter</td></tr>}
+                  {!shown.length && <tr><td colSpan={19} className="px-3 py-8 text-center text-sm text-muted">No materials match the filter</td></tr>}
                 </tbody>
               )}
             </table>
