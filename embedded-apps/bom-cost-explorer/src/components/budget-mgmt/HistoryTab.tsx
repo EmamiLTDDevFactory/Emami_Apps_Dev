@@ -4,9 +4,9 @@ import { ChevronDown, ChevronRight, Search } from 'lucide-react';
 import { Wand2 } from 'lucide-react';
 import { Button, Card, Field, Spinner, cx, inputCls } from '../ui';
 import { CatBadge, ErrorBox, NO_RECORDS, OkBox, SkeletonRows, SourceChip, errorText, td, th } from './shared';
-import { fetchHistory, fetchRateSources, fetchRateSrcDtl, fetchRates, postGenerate } from '@/lib/budgetMgmt/api';
-import { COUNTRIES, MATERIAL_TYPES, type BudHistRow, type BudRateRow, type BudRateSrcDtlRow, type BudRateSrcRow, LAST_PRICE_MODES, type LastPriceMode, type HistoryFilter } from '@/lib/budgetMgmt/types';
-import { BASIS_KEY, LASTP_KEY, RATE_BASES, avgBasePrice, lastPrice, type RateBasis, defaultHistWindow, filterHistory, groupHistory, historyBreakup, latestSourceRate, projectedValue, readBPriority, showDate, sortByCountryTotal, stripZeros, validateHistory, type Errors } from '@/lib/budgetMgmt/rules';
+import { fetchHistory, fetchRateSrcDtl, fetchRates, postGenerate } from '@/lib/budgetMgmt/api';
+import { COUNTRIES, MATERIAL_TYPES, type BudHistRow, type BudRateRow, type BudRateSrcDtlRow, LAST_PRICE_MODES, type LastPriceMode, type HistoryFilter } from '@/lib/budgetMgmt/types';
+import { BASIS_KEY, LASTP_KEY, RATE_BASES, avgBasePrice, lastPrice, type RateBasis, defaultHistWindow, filterHistory, groupHistory, historyBreakup, projectedValue, readBPriority, showDate, sortByCountryTotal, stripZeros, validateHistory, type Errors } from '@/lib/budgetMgmt/rules';
 import { fmtNum } from '@/lib/format';
 
 /** Rupees as lakhs (1 lakh = 100,000). */
@@ -20,12 +20,10 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [open, setOpen] = useState('');
-  const [plantOpen, setPlantOpen] = useState('');
   const [q, setQ] = useState('');
   const [cats, setCats] = useState<string[]>([]);
   // Freight and landed rate exist only on saved rates (Generate Draft Rates): read once per load and matched by material.
   const [saved, setSaved] = useState<Record<string, BudRateRow[]>>({});
-  const [sources, setSources] = useState<Record<string, { rows?: BudRateSrcRow[]; error?: string; loading?: boolean }>>({});
 
   // The shared fiscal year pre-fills this tab (and moves the history window with it).
   useEffect(() => { const w = defaultHistWindow(gjahr); setF((x) => ({ ...x, gjahr, histFrom: w.from, histTo: w.to })); }, [gjahr]);
@@ -35,7 +33,7 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
     const e = validateHistory(f);
     setErrs(e);
     if (Object.keys(e).length) return;
-    setLoading(true); setError(''); setOpen(''); setPlantOpen(''); setSources({}); setRows(null); setSaved({});
+    setLoading(true); setError(''); setOpen(''); setRows(null); setSaved({});
     try { setRows(await fetchHistory(f)); } catch (x) { setError(errorText(x)); }
     setLoading(false);
     try { const rr = await fetchRates({ gjahr: f.gjahr, land1: f.land1, status: '' }); const m: Record<string, BudRateRow[]> = {}; for (const r of rr) (m[r.Matnr] ??= []).push(r); setSaved(m); } catch { /* freight and landed stay blank */ }
@@ -52,18 +50,10 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
     setGenBusy(false);
   }
 
-  async function togglePlant(r: BudHistRow, k: string) {
-    if (plantOpen === k) return setPlantOpen('');
-    setPlantOpen(k);
-    if (sources[k]) return;
-    try { setSources((s) => ({ ...s, [k]: { loading: true } })); const list = await fetchRateSources(r.Matnr, r.Bukrs, r.Werks, r.Land1 || f.land1); setSources((s) => ({ ...s, [k]: { rows: list } })); }
-    catch (x) { setSources((s) => ({ ...s, [k]: { error: errorText(x) } })); }
-  }
-
   const [prio] = useState<string[]>(readBPriority);
 
-  // Rate basis of the projection: Latest source (as before), Avg base price or Last purchase price (Info record / Contract), globally and per material (BudRateSrcDtlSet).
-  const [basis, setBasisState] = useState<RateBasis>('LATEST');
+  // Rate basis of the projection: Avg base price or Last purchase price (Info record / Contract), globally and per material (BudRateSrcDtlSet).
+  const [basis, setBasisState] = useState<RateBasis>('LAST');
   const [lpMode, setLpModeState] = useState<LastPriceMode>('IR_C');
   const [rowSel, setRowSel] = useState<Record<string, { basis: RateBasis; mode: LastPriceMode }>>({});
   const [dtl, setDtl] = useState<Record<string, BudRateSrcDtlRow[] | { error: string }>>({});
@@ -72,6 +62,7 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
   const setLpMode = (v: LastPriceMode) => { setLpModeState(v); try { localStorage.setItem(LASTP_KEY, v); } catch { /* not kept */ } };
   const groups = useMemo(() => sortByCountryTotal(groupHistory(rows ?? [])), [rows]);
   const dKey = (g: (typeof groups)[number]) => `${g.Matnr}|${g.plants[0]?.Bukrs || '1000'}|${g.Land1 || f.land1}`;
+  const [retry, setRetry] = useState(0);
   useEffect(() => {
     setDtl({}); setRowSel({});
     if (!groups.length) return;
@@ -80,29 +71,11 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
     for (let i = 0; i < 3; i++) void worker();
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groups]);
+  }, [groups, retry]);
   const dtlError = Object.values(dtl).find((v): v is { error: string } => !Array.isArray(v));
 
-  // Projected rate: the latest rate source of every material, read in table order (biggest country total first), a few at a time.
-  const [proj, setProj] = useState<Record<string, { rate: number | null; failed?: string }>>({});
-  const [retry, setRetry] = useState(0);
-  useEffect(() => {
-    setProj({});
-    if (!groups.length) return;
-    let live = true; let next = 0;
-    const one = async (g: (typeof groups)[number]) => {
-      try {
-        const lists = await Promise.all(g.plants.map(async (p) => { const k = plantKey(g.key, p); const list = await fetchRateSources(p.Matnr, p.Bukrs, p.Werks, p.Land1 || f.land1); if (live) setSources((s) => ({ ...s, [k]: { rows: list } })); return list; }));
-        if (live) setProj((x) => ({ ...x, [g.key]: { rate: latestSourceRate(lists.flat()) } }));
-      } catch (x) { if (live) setProj((y) => ({ ...y, [g.key]: { rate: null, failed: errorText(x) } })); }
-    };
-    const worker = async () => { while (live && next < groups.length) await one(groups[next++]); };
-    for (let i = 0; i < 3; i++) void worker();
-    return () => { live = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groups, retry]);
-  const failed = Object.values(proj).filter((x) => x.failed);
-  const projDone = Object.keys(proj).length;
+  const dtlFailed = Object.values(dtl).filter((v) => !Array.isArray(v)).length;
+  const dtlDone = Object.keys(dtl).length;
   const shown = useMemo(() => filterHistory(groups, q, cats), [groups, q, cats]);
   const counts = useMemo(() => { const c = { A: 0, B: 0, C: 0 }; for (const g of groups) if (g.Matcat in c) c[g.Matcat as 'A']++; return c; }, [groups]);
   const num = (k: keyof HistoryFilter) => (v: string) => set(k, v);
@@ -141,7 +114,7 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
         <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-line bg-panel px-3 py-2 shadow-card">
           <Field label="Projected rate basis (global)">{(id) => <select id={id} className={inputCls} value={basis} onChange={(e) => setBasis(e.target.value as RateBasis)}>{RATE_BASES.map((b) => <option key={b.v} value={b.v}>{b.label}</option>)}</select>}</Field>
           <Field label="Last purchase price from">{(id) => <select id={id} className={inputCls} value={lpMode} onChange={(e) => setLpMode(e.target.value as LastPriceMode)}>{LAST_PRICE_MODES.map((m) => <option key={m.v} value={m.v}>{m.label}</option>)}</select>}</Field>
-          <p className="max-w-xl pb-2 text-2xs text-muted">Proj Rate and Proj Value use this basis: the latest rate source (as before), SAP's weighted Avg base price (material + country), or the Last purchase price (latest Info record / Contract, in the order chosen; company code level). Each material can use its own basis in its Rate basis cell. The Last purchase price order is shared with Rates &amp; Edit.{dtlError && <span className="text-warn"> Avg base / last price could not be read: {dtlError.error}</span>}</p>
+          <p className="max-w-xl pb-2 text-2xs text-muted">Proj Rate and Proj Value use this basis: SAP's weighted Avg base price (material + country) or the Last purchase price (latest Info record / Contract, in the order chosen; company code level). Each material can use its own basis in its Rate basis cell. The Last purchase price order is shared with Rates &amp; Edit.{dtlError && <span className="text-warn"> Avg base / last price could not be read: {dtlError.error}</span>}</p>
         </div>
       )}
       {rows && rows.length > 0 && <p className="text-sm font-semibold text-ink">Loaded {groups.length} materials ({rows.length} plant rows) — Cat A: {counts.A} · Cat B: {counts.B} · Cat C: {counts.C}</p>}
@@ -159,8 +132,8 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
             ))}
           </div>
           <span className="text-xs text-muted">{shown.length} of {groups.length} materials</span>
-          {projDone === groups.length && failed.length > 0 && <span className="text-xs font-semibold text-bad" title={failed[0].failed}>{failed.length} rate reads failed: {failed[0].failed} <button type="button" className="underline" onClick={() => setRetry((n) => n + 1)}>Retry</button></span>}
-          {projDone < groups.length && <span className="text-xs text-muted">Reading latest rates: {projDone} / {groups.length}</span>}
+          {dtlDone === groups.length && dtlFailed > 0 && <span className="text-xs font-semibold text-bad" title={dtlError?.error}>{dtlFailed} price reads failed: {dtlError?.error} <button type="button" className="underline" onClick={() => setRetry((n) => n + 1)}>Retry</button></span>}
+          {dtlDone < groups.length && <span className="text-xs text-muted">Reading prices: {dtlDone} / {groups.length}</span>}
           {(q || cats.length > 0) && <button type="button" className="text-xs font-semibold text-accent underline" onClick={() => { setQ(''); setCats([]); }}>Clear filters</button>}
         </div>
       )}
@@ -185,28 +158,27 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
                           <td className={cx(td, 'num')}>{stripZeros(g.Matnr)}</td><td className={td}>{g.Maktx}</td><td className={td}>{g.BaseUom || '—'}</td>
                           <td className={cx(td, 'num text-right')}>{fmtNum(g.NetQty, 3)}</td><td className={cx(td, 'num text-right')}>{fmtNum(lakh(g.NetValue), 3)}</td><td className={td}>{g.Currency || '—'}</td>
                           <td className={cx(td, 'num text-right')}>{fmtNum(g.AvgRate, 6)}</td><td className={cx(td, 'num text-right')}>{fmtNum(g.CtryValue, 2)}</td>{(() => {
-                            const pr = proj[g.key]; const dd = dtl[dKey(g)]; const rows2 = Array.isArray(dd) ? dd : null;
+                            const dd = dtl[dKey(g)]; const rows2 = Array.isArray(dd) ? dd : null;
                             const sel = rowSel[g.key]; const effBasis = sel?.basis ?? basis; const effMode = sel?.mode ?? lpMode;
                             const ab = rows2 ? avgBasePrice(rows2) : null; const lp = rows2 ? lastPrice(rows2, effMode) : null;
                             const dash = !dd ? '…' : !rows2 ? 'n/a' : null;
-                            const rate = effBasis === 'AVG' ? (ab ? ab.RatePc : null) : effBasis === 'LAST' ? (lp ? lp.row.RatePc : null) : pr?.rate ?? null;
-                            const ready = effBasis === 'LATEST' ? !!pr : !!dd;
-                            const val = effBasis === 'AVG' ? 'A|IR_C' : effBasis === 'LAST' ? `L|${effMode}` : 'LATEST';
+                            const rate = effBasis === 'AVG' ? (ab ? ab.RatePc : null) : (lp ? lp.row.RatePc : null);
+                            const val = effBasis === 'AVG' ? 'AVG' : `L|${effMode}`;
                             return <>
                               <td className={cx(td, 'num text-right')} title={!rows2 && dd ? (dd as { error: string }).error : ab ? `Weighted average base price, valid from ${showDate(ab.ValidFrom)}` : undefined}>{dash ?? (ab ? fmtNum(ab.RatePc, 3) : '—')}</td>
                               <td className={td}>{dash ?? (lp ? <span className="inline-flex items-center gap-1.5" title={`${lp.row.Vendor ? `${lp.row.Vendor} ${lp.row.Vendname} — ` : ''}valid from ${showDate(lp.row.ValidFrom)}`}><span className="num font-bold">{fmtNum(lp.row.RatePc, 3)}</span><SourceChip src={lp.row.RateSrc} /></span> : '—')}</td>
                               <td className={td} onClick={(e) => e.stopPropagation()}>
                                 <select aria-label="Rate basis of this material" className="rounded border border-line bg-panel px-1 py-0.5 text-2xs" value={sel ? val : ''}
-                                  onChange={(e) => { const v = e.target.value; setRowSel((x) => { const { [g.key]: _, ...rest } = x; if (!v) return rest; if (v === 'LATEST') return { ...rest, [g.key]: { basis: 'LATEST', mode: lpMode } }; const [b, m] = v.split('|'); return { ...rest, [g.key]: { basis: b === 'A' ? 'AVG' : 'LAST', mode: m as LastPriceMode } }; }); }}>
-                                  <option value="">Global</option><option value="LATEST">Latest source</option><option value="A|IR_C">Avg base price</option>
+                                  onChange={(e) => { const v = e.target.value; setRowSel((x) => { const { [g.key]: _, ...rest } = x; if (!v) return rest; if (v === 'AVG') return { ...rest, [g.key]: { basis: 'AVG', mode: lpMode } }; return { ...rest, [g.key]: { basis: 'LAST', mode: v.split('|')[1] as LastPriceMode } }; }); }}>
+                                  <option value="">Global</option><option value="AVG">Avg base price</option>
                                   {LAST_PRICE_MODES.map((m) => <option key={m.v} value={`L|${m.v}`}>Last: {m.label}</option>)}</select></td>
-                              {!ready ? <><td className={cx(td, 'text-right text-faint')}>…</td><td className={cx(td, 'text-right text-faint')}>…</td></>
-                                : <><td className={cx(td, 'num text-right')} title={effBasis === 'LATEST' ? pr?.failed : undefined}>{effBasis === 'LATEST' && pr?.failed ? 'error' : rate == null ? '—' : fmtNum(rate, 3)}</td><td className={cx(td, 'num text-right')}>{rate == null ? '—' : fmtNum(lakh(projectedValue(g.NetQty, rate)), 3)}</td></>}
+                              {!dd ? <><td className={cx(td, 'text-right text-faint')}>…</td><td className={cx(td, 'text-right text-faint')}>…</td></>
+                                : <><td className={cx(td, 'num text-right')}>{rate == null ? '—' : fmtNum(rate, 3)}</td><td className={cx(td, 'num text-right')}>{rate == null ? '—' : fmtNum(lakh(projectedValue(g.NetQty, rate)), 3)}</td></>}
                             </>; })()}
                           <td className={td}><CatBadge cat={g.Matcat} /></td>
                           {(() => {
-                            if (!proj[g.key]) return <><td className={cx(td, 'text-right text-faint')}>…</td><td className={td} /><td className={td} /><td className={td}><span className="text-faint">…</span></td></>;
-                            const bu = historyBreakup(g.Matcat, g.plants.flatMap((p) => sources[plantKey(g.key, p)]?.rows ?? []), prio);
+                            if (!Array.isArray(dtl[dKey(g)])) return <><td className={cx(td, 'text-right text-faint')}>…</td><td className={td} /><td className={td} /><td className={td}><span className="text-faint">…</span></td></>;
+                            const bu = historyBreakup(g.Matcat, dtl[dKey(g)] as BudRateSrcDtlRow[], prio, rowSel[g.key]?.mode ?? lpMode);
                             return <><td className={cx(td, 'num text-right font-extrabold')}>{bu.derived == null ? '—' : fmtNum(bu.derived, 3)}</td>{(() => {
                               const sv = saved[g.Matnr] ?? [];
                               const one = (f: (r: BudRateRow) => number) => { const v = Array.from(new Set(sv.map(f))); return v.length === 0 ? '—' : v.length === 1 ? fmtNum(v[0], 3) : `${fmtNum(Math.min(...v), 3)} – ${fmtNum(Math.max(...v), 3)}`; };
@@ -219,42 +191,35 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
                         {isOpen && (
                           <tr className="border-b border-line bg-bg">
                             <td colSpan={19} className="px-4 py-3">
-                              <p className="mb-2 text-xs font-bold">{stripZeros(g.Matnr)} — {g.Maktx} — by plant <span className="font-normal text-muted">(click a plant for its rate sources)</span></p>
+                              <p className="mb-2 text-xs font-bold">{stripZeros(g.Matnr)} — {g.Maktx} — by plant</p>
                               <table className="w-full max-w-4xl border-collapse">
                                 <thead><tr><th className={th}>Plant</th><th className={th}>UOM</th><th className={cx(th, 'text-right')}>Net Qty</th><th className={cx(th, 'text-right')}>Net Value (Lakhs)</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Avg Rate</th></tr></thead>
                                 <tbody>
-                                  {g.plants.map((p) => {
-                                    const k = plantKey(g.key, p); const pOpen = plantOpen === k; const s = sources[k];
-                                    return (
-                                      <Fragment key={k}>
-                                        <tr className="cursor-pointer border-b border-line/60 hover:bg-sunken/60" onClick={() => void togglePlant(p, k)} aria-expanded={pOpen}>
-                                          <td className={td}><span className="inline-flex items-center gap-1">{pOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}{p.Werks}</span></td><td className={td}>{p.BaseUom}</td>
-                                          <td className={cx(td, 'num text-right')}>{fmtNum(p.NetQty, 3)}</td><td className={cx(td, 'num text-right')}>{fmtNum(lakh(p.NetValue), 3)}</td><td className={td}>{p.Currency}</td><td className={cx(td, 'num text-right')}>{fmtNum(p.AvgRate, 6)}</td>
-                                        </tr>
-                                        {pOpen && (
-                                          <tr className="border-b border-line">
-                                            <td colSpan={6} className="px-3 py-2">
-                                              <p className="mb-1 text-xs font-bold">Rate sources — plant {p.Werks}</p>
-                                              {!s || s.loading ? <Spinner /> : s.error ? <ErrorBox>{s.error}</ErrorBox> : s.rows!.length === 0 ? <p className="text-xs text-muted">{NO_RECORDS}</p> : (
-                                                <table className="w-full border-collapse">
-                                                  <thead><tr><th className={th}>Source</th><th className={th}>Cond</th><th className={th}>Vendor</th><th className={cx(th, 'text-right')}>Rate</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Per</th><th className={th}>Valid</th><th className={cx(th, 'text-right')}>Rate/Pc (INR)</th></tr></thead>
-                                                  <tbody>{s.rows!.map((x, j) => (
-                                                    <tr key={j} className="border-b border-line/60">
-                                                      <td className={td}><SourceChip src={x.RateSrc} /></td><td className={td}>{x.CondType || '—'}</td><td className={td}>{x.Vendor ? `${x.Vendor} ${x.Vendname}` : '—'}</td>
-                                                      <td className={cx(td, 'num text-right')}>{fmtNum(x.Rate, 2)}</td><td className={td}>{x.Currency}</td><td className={cx(td, 'num text-right')}>{x.PriceUnit || '—'}</td>
-                                                      <td className={td}>{x.ValidFrom ? `${showDate(x.ValidFrom)} – ${showDate(x.ValidTo)}` : '—'}</td>
-                                                      <td className={cx(td, 'num text-right font-extrabold text-accent')}>{fmtNum(x.RatePc, 2)}</td>
-                                                    </tr>))}</tbody>
-                                                </table>
-                                              )}
-                                            </td>
-                                          </tr>
-                                        )}
-                                      </Fragment>
-                                    );
-                                  })}
+                                  {g.plants.map((p) => (
+                                    <tr key={plantKey(g.key, p)} className="border-b border-line/60">
+                                      <td className={td}>{p.Werks}</td><td className={td}>{p.BaseUom}</td>
+                                      <td className={cx(td, 'num text-right')}>{fmtNum(p.NetQty, 3)}</td><td className={cx(td, 'num text-right')}>{fmtNum(lakh(p.NetValue), 3)}</td><td className={td}>{p.Currency}</td><td className={cx(td, 'num text-right')}>{fmtNum(p.AvgRate, 6)}</td>
+                                    </tr>
+                                  ))}
                                 </tbody>
                               </table>
+                              <p className="mb-1 mt-3 text-xs font-bold">Prices — BudRateSrcDtlSet <span className="font-normal text-muted">(avg base price: material + country; Info record / Contract: material + company code)</span></p>
+                              {(() => { const dd = dtl[dKey(g)];
+                                if (!dd) return <Spinner />;
+                                if (!Array.isArray(dd)) return <ErrorBox>{dd.error}</ErrorBox>;
+                                if (!dd.length) return <p className="text-xs text-muted">{NO_RECORDS}</p>;
+                                return (
+                                  <table className="w-full max-w-4xl border-collapse">
+                                    <thead><tr><th className={th}>Source</th><th className={th}>Cond</th><th className={th}>Vendor</th><th className={cx(th, 'text-right')}>Rate</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Per</th><th className={th}>Valid</th><th className={cx(th, 'text-right')}>Rate/Pc</th></tr></thead>
+                                    <tbody>{dd.map((x, j) => (
+                                      <tr key={j} className="border-b border-line/60">
+                                        <td className={td}><SourceChip src={x.RateSrc} /></td><td className={td}>{x.CondType || '—'}</td><td className={td}>{x.Vendor ? `${x.Vendor} ${x.Vendname}` : '—'}</td>
+                                        <td className={cx(td, 'num text-right')}>{fmtNum(x.Rate, 2)}</td><td className={td}>{x.Currency}</td><td className={cx(td, 'num text-right')}>{x.PriceUnit || '—'} {x.CondUnit}</td>
+                                        <td className={td}>{x.ValidFrom ? `${showDate(x.ValidFrom)} – ${showDate(x.ValidTo)}` : '—'}</td>
+                                        <td className={cx(td, 'num text-right font-extrabold text-accent')}>{fmtNum(x.RatePc, 2)}</td>
+                                      </tr>))}</tbody>
+                                  </table>
+                                ); })()}
                             </td>
                           </tr>
                         )}

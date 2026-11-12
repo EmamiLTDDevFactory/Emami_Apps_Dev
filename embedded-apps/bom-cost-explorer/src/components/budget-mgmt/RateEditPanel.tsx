@@ -6,9 +6,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Field, Spinner, cx, inputCls } from '../ui';
 import { ErrorBox, SourceChip, errorText } from './shared';
-import { fetchRateSources } from '@/lib/budgetMgmt/api';
-import { LAST_PRICE_MODES, type AdjType, type BudRateRow, type BudRateSrcDtlRow, type BudRateSrcRow, type LastPriceMode, type RateEdit } from '@/lib/budgetMgmt/types';
-import { avgBasePrice, lastPrice, budgetedBasic, freightApplies, landedRate, marketRate, pickByPriority, srcCode, type Errors } from '@/lib/budgetMgmt/rules';
+import { LAST_PRICE_MODES, type AdjType, type BudRateRow, type BudRateSrcDtlRow, type LastPriceMode, type RateEdit } from '@/lib/budgetMgmt/types';
+import { avgBasePrice, lastPrice, budgetedBasic, freightApplies, landedRate, pickByPriority, srcCode, type Errors } from '@/lib/budgetMgmt/rules';
 import { sourceLabel } from '@/lib/rates/sourceLabel';
 import { fmtNum } from '@/lib/format';
 
@@ -23,15 +22,6 @@ const Line = ({ k, v, strong }: { k: string; v: React.ReactNode; strong?: boolea
 );
 
 export default function RateEditPanel({ r, form, setForm, errs, prio, onEnter, fallback, dtl, lpMode, setLpMode }: { r: BudRateRow; form: RateEdit; setForm: (f: RateEdit) => void; errs: Errors<keyof RateEdit>; prio: readonly string[]; onEnter?: () => void; fallback?: { source: string; rate: number; freight: number }; dtl?: BudRateSrcDtlRow[]; lpMode?: LastPriceMode; setLpMode?: (m: LastPriceMode) => void }) {
-  const [src, setSrc] = useState<{ rows?: BudRateSrcRow[]; error?: string }>({});
-  // Rate sources of the material (market rate, priority pick): the same BudRateSrcSet read as the History drill-down.
-  useEffect(() => {
-    let live = true;
-    setSrc({});
-    fetchRateSources(r.Matnr, r.Bukrs, r.Werks, r.Land1).then((rows) => live && setSrc({ rows }), (x) => live && setSrc({ error: errorText(x) }));
-    return () => { live = false; };
-  }, [r.Matnr, r.Bukrs, r.Werks, r.Land1]);
-
   const cat = r.Matcat;
   // A row SAP saved with no rate: the rate source the rule picked stands in (the table marks those *).
   const useFb = !r.RateSrc && !(r.SrcRate > 0) && !!fallback;
@@ -43,8 +33,9 @@ export default function RateEditPanel({ r, form, setForm, errs, prio, onEnter, f
   const frtOn = overriding || freightApplies(srcName);
   const frt = frtOn ? (useFb ? fallback!.freight : r.FrtTotal) : 0;
   const landed = landedRate(basic, frt, frtOn);
-  const mkt = useMemo(() => (src.rows ? marketRate(src.rows) : null), [src.rows]);
-  const pick = useMemo(() => (src.rows && cat === 'B' ? pickByPriority(src.rows, prio) : null), [src.rows, cat, prio]);
+  // Category B priority pick over the BudRateSrcDtlSet rows (Contract / Info record).
+  const pick = useMemo(() => (dtl && cat === 'B' ? pickByPriority(dtl, prio.filter((c) => ['CONTRACT', 'INFOREC'].includes(srcCode(c)))) : null), [dtl, cat, prio]);
+  const abp = useMemo(() => (dtl ? avgBasePrice(dtl) : null), [dtl]);
   const reasonMissing = overriding && !form.overrideRsn.trim();
   const aMode = modeOf(form);
   const setMode = (m: AMode) => setForm(m === 'S' ? { adjType: 'N', adjValue: '', overrideRate: '', overrideRsn: '' } : m === 'M' ? { adjType: 'N', adjValue: '', overrideRate: form.overrideRate, overrideRsn: form.overrideRsn } : { adjType: m, adjValue: '', overrideRate: '', overrideRsn: '' });
@@ -82,11 +73,11 @@ export default function RateEditPanel({ r, form, setForm, errs, prio, onEnter, f
         {cat === 'B' && (
           <div className="mt-3 rounded-xl border border-line bg-panel px-3 py-2 text-xs">
             <p className="font-bold">Rate source priority: {prio.map(sourceLabel).join(' › ')}</p>
-            {!src.rows && !src.error ? <Spinner /> : src.error ? <p className="text-muted">Rate sources could not be read ({src.error})</p> : pick ? (
+            {!dtl ? <Spinner /> : pick ? (
               <p className="mt-1">First valid source: <SourceChip src={sourceLabel(pick.source)} /> <span className="num font-bold">{fmtNum(pick.rate, 2)}</span>
                 {srcCode(r.RateSrc) !== pick.source && <span className="text-warn"> — SAP selected {sourceLabel(r.RateSrc)} ({fmtNum(base, 2)}).</span>}
                 {' '}<button type="button" className="font-semibold text-accent underline" onClick={() => setForm({ adjType: 'N', adjValue: '', overrideRate: String(pick.rate), overrideRsn: `Rate source priority: ${sourceLabel(pick.source)}` })}>Use as override rate</button></p>
-            ) : <p className="mt-1 text-muted">No source in the priority list has a rate.</p>}
+            ) : <p className="mt-1 text-muted">Neither Contract nor Info record has a price{abp ? ' — the avg base price is used as the fallback' : ''}.</p>}
           </div>
         )}
         {dtl && lpMode && (() => {
@@ -103,15 +94,14 @@ export default function RateEditPanel({ r, form, setForm, errs, prio, onEnter, f
             </div>
           );
         })()}
-        {cat === 'C' && <p className="mt-3 text-xs text-muted">Category C: the latest Info record first, then C-Map; percent or amount adjustment, or an override rate. No freight or delivery conditions on a C-Map rate.</p>}
-        {src.error && cat === 'A' && <div className="mt-3"><ErrorBox>Market rate unavailable: {src.error}</ErrorBox></div>}
+        {cat === 'C' && <p className="mt-3 text-xs text-muted">Category C: the latest Info record, else the avg base price; percent or amount adjustment, or an override rate.</p>}
       </div>
 
       <div className="rounded-xl border border-line bg-panel px-3 py-2">
         <p className="mb-1 text-xs font-bold">Budgeted rate preview</p>
         <div className="flex flex-col gap-0.5">
           <Line k={`Source rate (${sourceLabel(srcName) || '—'})${useFb ? ' *' : ''}`} v={fmtNum(base, 2)} />
-          <Line k="Market rate" v={!src.rows && !src.error ? '…' : src.error ? 'unavailable' : mkt ? fmtNum(mkt.RatePc, 2) : 'none found'} />
+          <Line k="Avg base price" v={!dtl ? '…' : abp ? fmtNum(abp.RatePc, 2) : '—'} />
           <Line k="Budgeted basic rate" v={fmtNum(basic, 2)} strong />
           <Line k={frtOn ? 'Freight / delivery' : 'Freight / delivery (not applicable)'} v={frtOn ? fmtNum(frt, 2) : '—'} />
           <Line k={`Landed rate ${r.LandedCurr}`} v={fmtNum(landed, 2)} strong />

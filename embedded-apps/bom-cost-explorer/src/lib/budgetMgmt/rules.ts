@@ -1,6 +1,6 @@
 /** Pure rules of the budget rate management screens: dates, material numbers, filters and the frontend validation. */
 import Decimal from 'decimal.js';
-import type { BudRateSrcDtlRow, LastPriceMode, ActionPayload, AdjType, BudHistGroup, BudHistRow, BudRateRow, BudRateSrcRow, HistoryFilter, RateEdit, RateAction } from './types';
+import { LAST_PRICE_MODES, type ActionPayload, type AdjType, type BudHistGroup, type BudHistRow, type BudRateRow, type BudRateSrcDtlRow, type BudRateSrcRow, type HistoryFilter, type LastPriceMode, type RateEdit, type RateAction } from './types';
 
 /** YYYYMMDD -> DD.MM.YYYY (anything else is shown as it is). */
 export const showDate = (v: string) => (/^\d{8}$/.test(v) ? `${v.slice(6)}.${v.slice(4, 6)}.${v.slice(0, 4)}` : v);
@@ -153,10 +153,10 @@ export function budgetedBasic(base: number, e: RateEdit): number {
 export const landedRate = (basic: number, freight: number, applies: boolean): number => (applies ? new Decimal(String(basic)).plus(String(freight)).toNumber() : basic);
 
 /** First source of the priority list that has a rate, with its latest rate (greatest ValidFrom); null when none has. Spec 7.2. */
-export function pickByPriority(rows: BudRateSrcRow[], prio: readonly string[]): { source: string; rate: number; row: BudRateSrcRow } | null {
+export function pickByPriority<T extends { RateSrc: string; RatePc: number; ValidFrom: string }>(rows: T[], prio: readonly string[]): { source: string; rate: number; row: T } | null {
   for (const p of prio) {
     const code = srcCode(p);
-    let best: BudRateSrcRow | null = null;
+    let best: T | null = null;
     for (const r of rows) if (srcCode(r.RateSrc) === code && r.RatePc > 0 && (!best || r.ValidFrom > best.ValidFrom)) best = r;
     if (best) return { source: code, rate: best.RatePc, row: best };
   }
@@ -192,23 +192,32 @@ export function rateBreakup(r: BudRateRow, prio: readonly string[] = DEFAULT_B_P
   return { rule: `${base}: ${how}`, steps };
 }
 
-/** Rule and breakup of a History material before any rate exists (from its rate sources, per category), shown as the draft rate is derived: A selected (latest) source with the market rate beside it, B first source of the priority list, C C-Map. */
-export function historyBreakup(cat: string, rows: BudRateSrcRow[], prio: readonly string[] = DEFAULT_B_PRIORITY): RateBreakup & { derived: number | null; pick: BudRateSrcRow | null } {
-  const latest = (code?: string) => { let b: BudRateSrcRow | null = null; for (const r of rows) if (r.RatePc > 0 && (!code || srcCode(r.RateSrc) === code) && (!b || r.ValidFrom > b.ValidFrom)) b = r; return b; };
-  const step = (k: string, r: BudRateSrcRow | null) => ({ k, v: r ? r.RatePc : 0 });
+/**
+ * Rule and breakup of a material before any rate is saved, from its BudRateSrcDtlSet rows (BASE = average base price, INFO / CONT = last Info record / Contract price).
+ * The set carries no consumption, C-Map or market rows, so: A = the last purchase price (Info record / Contract in the chosen order) else the average base price;
+ * B = the priority list (Contract / Info record) else the average base price; C = the latest Info record else the average base price.
+ * No freight comes with these rows (freight exists only on saved rates).
+ */
+export function historyBreakup(cat: string, rows: BudRateSrcDtlRow[], prio: readonly string[] = DEFAULT_B_PRIORITY, mode: LastPriceMode = 'IR_C'): RateBreakup & { derived: number | null; pick: BudRateSrcDtlRow | null } {
+  const latest = (code: string) => { let b: BudRateSrcDtlRow | null = null; for (const r of rows) if (r.RatePc > 0 && srcCode(r.RateSrc) === code && (!b || r.ValidFrom > b.ValidFrom)) b = r; return b; };
+  const step = (k: string, r: BudRateSrcDtlRow | null) => ({ k, v: r ? r.RatePc : 0 });
+  const out = (pick: BudRateSrcDtlRow | null, rule: string) => ({ pick, derived: pick ? pick.RatePc : null, rule, steps: pick ? [step(`${pick.RateSrc}`, pick)] : [] });
+  const base = latest('BASE');
   if (cat === 'A') {
-    const s = latest(); const m = marketRate(rows);
-    return { pick: s, derived: s ? s.RatePc : null, rule: 'Category A: selected rate (latest source); manual or % / amount adjustment in Rates & Edit', steps: [step(`Selected${s ? ` (${s.RateSrc})` : ''}`, s), ...(m ? [step('Market rate', m)] : [])] };
+    const lp = lastPrice(rows, mode);
+    return lp ? out(lp.row, `Category A: last purchase price (${LAST_PRICE_MODES.find((m) => m.v === mode)?.label}) — ${srcCode(lp.row.RateSrc)}`) : out(base, `Category A: no Info record / Contract price${base ? ' — avg base price' : ''}`);
   }
   if (cat === 'B') {
-    for (const p of prio) { const b = latest(srcCode(p)); if (b) return { pick: b, derived: b.RatePc, rule: `Category B: priority ${prio.map(srcCode).join(' › ')} — first valid is ${srcCode(p)}`, steps: [step(`${srcCode(p)}`, b)] }; }
-    return { pick: null, derived: null, rule: `Category B: priority ${prio.map(srcCode).join(' › ')} — no source has a rate`, steps: [] };
+    const order = prio.map(srcCode).filter((c) => c === 'CONTRACT' || c === 'INFOREC');
+    const list = order.length ? order : ['CONTRACT', 'INFOREC'];
+    for (const c of list) { const b = latest(c); if (b) return out(b, `Category B: priority ${list.join(' › ')} — first valid is ${c}`); }
+    return out(base, `Category B: priority ${list.join(' › ')} — none has a price${base ? ', avg base price' : ''}`);
   }
   if (cat === 'C') {
-    for (const p of C_PRIORITY) { const b = latest(p); if (b) return { pick: b, derived: b.RatePc, rule: `Category C: latest ${C_PRIORITY.map(srcCode).join(' › ')} — first valid is ${p}${p === 'MBEW' ? ' (no freight)' : ''}`, steps: [step(p, b)] }; }
-    return { pick: null, derived: null, rule: `Category C: latest ${C_PRIORITY.map(srcCode).join(' › ')} — no source has a rate`, steps: [] };
+    const b = latest('INFOREC');
+    return b ? out(b, 'Category C: latest Info record') : out(base, `Category C: no Info record${base ? ' — avg base price' : ''}`);
   }
-  return { pick: null, derived: null, rule: '—', steps: [] };
+  return out(null, '—');
 }
 
 /** Category B source priority as set in Rates & Edit (kept in this browser); the default when none is saved. */
@@ -238,6 +247,6 @@ export function lastPrice(rows: BudRateSrcDtlRow[], mode: LastPriceMode): { sour
 /** Browser keys shared by the History and Rates tabs: the global Last Price priority and the History rate basis. */
 export const LASTP_KEY = 'bud-mgmt-lastprice-mode';
 export const BASIS_KEY = 'bud-mgmt-hist-basis';
-/** Rate basis of the History projection: the latest rate source (as before), the average base price, or the last price (Info record / Contract). */
-export type RateBasis = 'LATEST' | 'AVG' | 'LAST';
-export const RATE_BASES: { v: RateBasis; label: string }[] = [{ v: 'LATEST', label: 'Latest source' }, { v: 'AVG', label: 'Avg base price' }, { v: 'LAST', label: 'Last purchase price' }];
+/** Rate basis of the History projection: the average base price or the last price (Info record / Contract). */
+export type RateBasis = 'AVG' | 'LAST';
+export const RATE_BASES: { v: RateBasis; label: string }[] = [{ v: 'AVG', label: 'Avg base price' }, { v: 'LAST', label: 'Last purchase price' }];

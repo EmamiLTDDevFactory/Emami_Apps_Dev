@@ -1,14 +1,14 @@
 /**
  * Budget rate management, browser -> SAP gateway (static export: no API routes; the gateway does the CSRF handshake for the writes, as for the
- * budget and plan uploads). Reads: BudHistSet, BudRateSet, BudRateSrcSet. Writes: PATCH of one BudRateSet row, POST of BudRateActionSet.
+ * budget and plan uploads). Reads: BudHistSet, BudRateSet, BudRateSrcDtlSet. Writes: PATCH of one BudRateSet row, POST of BudRateActionSet.
  * The approval rights live in SAP (ZBOM_BUD_AUTH), which decides by the email sent; the screen always sends the hub session email.
  */
 import { sapGetCollection, sapWrite, SAP_MAX_TIMEOUT_MS, type SapGetOptions } from '../sap/client';
 import { odataDate, odataString } from '../sap/filter';
-import type { BudRateSrcDtlRow, ActionPayload, ActionResult, BudHistRow, BudRateRow, BudRateSrcRow, HistoryFilter, RateEdit, RateFilter } from './types';
+import type { BudRateSrcDtlRow, ActionPayload, ActionResult, BudHistRow, BudRateRow, HistoryFilter, RateEdit, RateFilter } from './types';
 import { amount, dateText, padMatnr } from './rules';
 
-export const BUD_MGMT_SET = { HIST: 'BudHistSet', RATE: 'BudRateSet', SRC: 'BudRateSrcSet', SRCDTL: 'BudRateSrcDtlSet', ACTION: 'BudRateActionSet' } as const;
+export const BUD_MGMT_SET = { HIST: 'BudHistSet', RATE: 'BudRateSet', SRCDTL: 'BudRateSrcDtlSet', ACTION: 'BudRateActionSet' } as const;
 
 const num = (v: unknown) => Number(v) || 0;
 const str = (v: unknown) => String(v ?? '');
@@ -38,10 +38,8 @@ export function rateFilter(f: RateFilter): string {
   ].filter(Boolean).join(' and ');
 }
 
-/** BudRateSet rows carry no company code but BudRateSrcSet requires one ("Matnr and Bukrs filters are required"): the History rows' company code, 1000, when none is known. */
+/** BudRateSet rows carry no company code but BudRateSrcDtlSet requires one ("Matnr and Bukrs filters are required"): the History rows' company code, 1000, when none is known. */
 export const DEFAULT_BUKRS = '1000';
-export const sourceFilter = (matnr: string, bukrs: string, werks: string, land1: string) =>
-  [`Matnr eq ${odataString(padMatnr(matnr))}`, `Bukrs eq ${odataString(bukrs || DEFAULT_BUKRS)}`, werks ? `Werks eq ${odataString(werks)}` : null, `Land1 eq ${odataString(land1)}`].filter(Boolean).join(' and ');
 
 const hist = (r: Record<string, unknown>): BudHistRow => ({
   Rowid: str(r.Rowid), Matnr: str(r.Matnr), Maktx: str(r.Maktx), Land1: str(r.Land1), Werks: str(r.Werks), Bukrs: str(r.Bukrs), Mtart: str(r.Mtart), BaseUom: str(r.BaseUom),
@@ -53,10 +51,6 @@ const rate = (r: Record<string, unknown>): BudRateRow => ({
   OverrideRate: num(r.OverrideRate), OverrideRsn: str(r.OverrideRsn), FrtTotal: num(r.FrtTotal), LandedRate: num(r.LandedRate), LandedCurr: str(r.LandedCurr), BaseUom: str(r.BaseUom),
   ApprStatus: str(r.ApprStatus), SubmittedBy: str(r.SubmittedBy), SubmittedOn: dateText(r.SubmittedOn), ApprovedBy: str(r.ApprovedBy), ApprovedOn: dateText(r.ApprovedOn),
   RejectedBy: str(r.RejectedBy), RejectionRsn: str(r.RejectionRsn),
-});
-const src = (r: Record<string, unknown>): BudRateSrcRow => ({
-  RateSrc: str(r.RateSrc), CondType: str(r.CondType), Vendor: str(r.Vendor), Vendname: str(r.Vendname), Rate: num(r.Rate), Currency: str(r.Currency), PriceUnit: num(r.PriceUnit),
-  ValidFrom: dateText(r.ValidFrom), ValidTo: dateText(r.ValidTo), RatePc: num(r.RatePc), LocalCurr: str(r.LocalCurr), RateLocal: num(r.RateLocal), FrtTotal: num(r.FrtTotal), LandedRate: num(r.LandedRate),
 });
 
 const srcDtl = (r: Record<string, unknown>): BudRateSrcDtlRow => ({
@@ -70,7 +64,6 @@ const read = async <T,>(set: string, filter: string, map: (r: Record<string, unk
 
 export const fetchHistory = (f: HistoryFilter, opts: SapGetOptions = {}) => read(BUD_MGMT_SET.HIST, historyFilter(f), hist, opts);
 export const fetchRates = (f: RateFilter, opts: SapGetOptions = {}) => read(BUD_MGMT_SET.RATE, rateFilter(f), rate, opts);
-export const fetchRateSources = (matnr: string, bukrs: string, werks: string, land1: string, opts: SapGetOptions = {}) => read(BUD_MGMT_SET.SRC, sourceFilter(matnr, bukrs, werks, land1), src, opts);
 
 export const fetchRateSrcDtl = (matnr: string, bukrs: string, land1: string, opts: SapGetOptions = {}) => read(BUD_MGMT_SET.SRCDTL, srcDtlFilter(matnr, bukrs, land1), srcDtl, opts);
 

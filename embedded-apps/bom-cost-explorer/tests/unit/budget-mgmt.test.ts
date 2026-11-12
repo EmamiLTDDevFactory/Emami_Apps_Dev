@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { actionBody, generateBody, historyFilter, patchBody, rateFilter, rateKeyPath, sourceFilter } from '@/lib/budgetMgmt/api';
+import { actionBody, generateBody, historyFilter, patchBody, rateFilter, rateKeyPath } from '@/lib/budgetMgmt/api';
 import { csvList, dateText, defaultHistWindow, fiscalYear, isEditable, padMatnr, showDate, stripZeros, toSapDate, validateAction, validateEdit, validateHistory, groupHistory, filterHistory, latestSourceRate, projectedValue, sortByCountryTotal, adjustRate, budgetedBasic, landedRate, validateEdit as validateEdit2, srcCode, freightApplies, pickByPriority, marketRate, DEFAULT_B_PRIORITY } from '@/lib/budgetMgmt/rules';
 
 const hist = { land1: 'IN', gjahr: '2026', histFrom: '2025-04-01', histTo: '2026-03-31', catAFrom: '8,000,000', catBFrom: '4,000,000' };
@@ -26,8 +26,6 @@ describe('budget rate management rules', () => {
     expect(historyFilter({ ...hist, mtart: [] })).toBe(historyFilter(hist));
     expect(rateFilter({ gjahr: '2026', land1: 'IN', status: 'D' })).toBe("Gjahr eq '2026' and Land1 eq 'IN' and ApprStatus eq 'D'");
     expect(rateFilter({ gjahr: '2026', land1: 'IN', status: '', matnr: ['1', '2'], werks: ['1000'] })).toBe("Gjahr eq '2026' and Land1 eq 'IN' and (Matnr eq '000000000000000001' or Matnr eq '000000000000000002') and Werks eq '1000'");
-    expect(sourceFilter('10000001', 'UN10', '1000', 'IN')).toBe("Matnr eq '000000000010000001' and Bukrs eq 'UN10' and Werks eq '1000' and Land1 eq 'IN'");
-    expect(sourceFilter('10000001', 'UN10', '', 'IN')).toBe("Matnr eq '000000000010000001' and Bukrs eq 'UN10' and Land1 eq 'IN'");
   });
   it('validates the history filter', () => {
     expect(validateHistory(hist)).toEqual({});
@@ -171,5 +169,28 @@ describe('BudRateSrcDtlSet: average base price and last price', () => {
     expect(lastPrice(rows, 'IR')?.source).toBe('INFOREC');
     expect(lastPrice([d('CONT', 7), d('BASE', 3)], 'IR_C')?.source).toBe('CONTRACT');
     expect(lastPrice([d('CONT', 7)], 'IR')).toBeNull();
+  });
+});
+
+describe('rule per category from BudRateSrcDtlSet (no BudRateSrcSet)', () => {
+  const d = (RateSrc: string, RatePc: number, ValidFrom = '20260101') => ({ RateSrc, CondType: '', Vendor: '', Vendname: '', Rate: RatePc, Currency: 'INR', PriceUnit: 1, CondUnit: 'KG', ValidFrom, ValidTo: '99991231', RatePc });
+  const rows = [d('CONT', 122), d('INFO', 10), d('BASE', 10.32)];
+  it('A: last purchase price in the chosen order, else avg base price', async () => {
+    const { historyBreakup } = await import('@/lib/budgetMgmt/rules');
+    expect(historyBreakup('A', rows, undefined, 'IR_C').derived).toBe(10);
+    expect(historyBreakup('A', rows, undefined, 'C_IR').derived).toBe(122);
+    expect(historyBreakup('A', [d('BASE', 7)]).derived).toBe(7);
+  });
+  it('B: priority Contract / Info record, else avg base price', async () => {
+    const { historyBreakup } = await import('@/lib/budgetMgmt/rules');
+    expect(historyBreakup('B', rows, ['CONTRACT', 'INFOREC']).derived).toBe(122);
+    expect(historyBreakup('B', rows, ['INFOREC', 'CONTRACT']).derived).toBe(10);
+    expect(historyBreakup('B', [d('BASE', 3)], ['CONTRACT']).derived).toBe(3);
+  });
+  it('C: latest Info record, else avg base price; nothing when there is no price', async () => {
+    const { historyBreakup } = await import('@/lib/budgetMgmt/rules');
+    expect(historyBreakup('C', rows).derived).toBe(10);
+    expect(historyBreakup('C', [d('CONT', 9), d('BASE', 4)]).derived).toBe(4);
+    expect(historyBreakup('C', []).derived).toBeNull();
   });
 });

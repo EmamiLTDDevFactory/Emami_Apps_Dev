@@ -5,8 +5,8 @@ import { Button, Card, Field, Pill, Spinner, cx, inputCls } from '../ui';
 import { CatBadge, ErrorBox, NO_RECORDS, OkBox, SkeletonRows, SourceChip, StatusBadge, errorText, td, th } from './shared';
 import RateEditPanel from './RateEditPanel';
 import SourcePriorityEditor from '../rates/SourcePriorityEditor';
-import { fetchRateSources, fetchRateSrcDtl, fetchRates, patchRate } from '@/lib/budgetMgmt/api';
-import { COUNTRIES, STATUS_LABEL, type AdjType, type BudRateRow, type BudRateSrcDtlRow, type BudRateSrcRow, type LastPriceMode, LAST_PRICE_MODES, type RateEdit } from '@/lib/budgetMgmt/types';
+import { fetchRateSrcDtl, fetchRates, patchRate } from '@/lib/budgetMgmt/api';
+import { COUNTRIES, STATUS_LABEL, type AdjType, type BudRateRow, type BudRateSrcDtlRow, type LastPriceMode, LAST_PRICE_MODES, type RateEdit } from '@/lib/budgetMgmt/types';
 import { LASTP_KEY, showDate, DEFAULT_B_PRIORITY, adjustRate, avgBasePrice, lastPrice, amount, budgetedBasic, isEditable, freightApplies, historyBreakup, landedRate, rateBreakup, stripZeros, validateEdit, type Errors } from '@/lib/budgetMgmt/rules';
 import { fmtNum } from '@/lib/format';
 
@@ -37,17 +37,6 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
   const [prio, setPrioState] = useState<string[]>([...DEFAULT_B_PRIORITY]);
   useEffect(() => { try { const v = JSON.parse(localStorage.getItem(PRIO_KEY) ?? 'null'); if (Array.isArray(v) && v.length) setPrioState(v.map(String)); } catch { /* default */ } }, []);
   const setPrio = (v: string[]) => { setPrioState(v); try { localStorage.setItem(PRIO_KEY, JSON.stringify(v)); } catch { /* not kept */ } };
-  // Saved rows SAP left without a rate source: the sources are read for them here so the table can show what the rule gives (not saved).
-  const [fill, setFill] = useState<Record<string, BudRateSrcRow[] | null>>({});
-  useEffect(() => {
-    setFill({});
-    const todo = (rows ?? []).filter((r) => !r.RateSrc && !(r.SrcRate > 0));
-    if (!todo.length) return;
-    let live = true; let next = 0;
-    const worker = async () => { while (live && next < todo.length) { const r = todo[next++]; try { const list = await fetchRateSources(r.Matnr, r.Bukrs, r.Werks, r.Land1); if (live) setFill((x) => ({ ...x, [keyOf(r)]: list })); } catch { if (live) setFill((x) => ({ ...x, [keyOf(r)]: null })); } } };
-    for (let i = 0; i < 3; i++) void worker();
-    return () => { live = false; };
-  }, [rows]);
   // Avg Base Price and Last Price (BudRateSrcDtlSet): read once per material; the Last Price priority is global (kept in this browser) with a per-row choice.
   const [dtl, setDtl] = useState<Record<string, BudRateSrcDtlRow[] | { error: string }>>({});
   const [lpGlobal, setLpGlobalState] = useState<LastPriceMode>('IR_C');
@@ -204,13 +193,13 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
                 <tbody>
                   {shown.map((r, i) => {
                     const k = keyOf(r); const isEd = editing === k;
-                    const fl = fill[k]; const hb = !r.RateSrc && !(r.SrcRate > 0) && fl ? historyBreakup(r.Matcat, fl, prio) : null;
+                    const dd0 = dtl[dtlKey(r)]; const hb = !r.RateSrc && !(r.SrcRate > 0) && Array.isArray(dd0) ? historyBreakup(r.Matcat, dd0, prio, lpRow[k] ?? lpGlobal) : null;
                     const bu = hb ?? rateBreakup(r, prio);
                     // Simulation: the row's own (Enter in the edit panel) else the global adjustment, on the effective source rate; freight as shown.
                     const base = hb?.pick ? hb.pick.RatePc : r.SrcRate > 0 ? r.SrcRate : r.DerivedRate;
-                    const applies = hb?.pick ? freightApplies(hb.pick.RateSrc) : freightApplies(r.RateSrc);
-                    const frt = hb?.pick ? (applies ? hb.pick.FrtTotal : 0) : r.FrtTotal;
-                    const curLanded = hb?.pick ? landedRate(hb.pick.RatePc, frt, applies) : r.LandedRate;
+                    const applies = hb?.pick ? true : freightApplies(r.RateSrc);
+                    const frt = hb?.pick ? 0 : r.FrtTotal; // sources carry no freight
+                    const curLanded = hb?.pick ? hb.pick.RatePc : r.LandedRate;
                     const rs = rowSim[k];
                     const simBasic = base > 0 || (rs && rs.overrideRate.trim() !== '') ? (rs ? budgetedBasic(base, rs) : gSim && (!gSim.cats.length || gSim.cats.includes(r.Matcat)) ? adjustRate(base, gSim.type, gSim.value) : null) : null;
                     const simLanded = simBasic == null ? null : landedRate(simBasic, frt, applies || (!!rs && rs.overrideRate.trim() !== ''));
@@ -243,7 +232,7 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
                           })()}
                           <td className="min-w-64 px-2 py-1.5 text-2xs"><div className="font-bold">{bu.rule}{hb && <span className="font-normal text-warn"> — from sources, not saved</span>}</div><div className="num text-muted">{bu.steps.map((x) => `${x.k} ${fmtNum(x.v, 2)}`).join(' → ')}</div></td>
                           <td className={cx(td, 'num')} title={r.OverrideRate > 0 ? r.OverrideRsn : undefined}>{r.OverrideRate > 0 ? `Override ${fmtNum(r.OverrideRate, 2)}` : r.AdjType === 'P' ? `${r.AdjValue < 0 ? '−' : '+'}${fmtNum(Math.abs(r.AdjValue), 2)}%` : r.AdjType === 'A' ? `${r.AdjValue < 0 ? '−' : '+'}${fmtNum(Math.abs(r.AdjValue), 2)}` : '—'}</td>
-                          <td className={cx(td, 'num text-right')}>{hb?.pick ? `${fmtNum(freightApplies(hb.pick.RateSrc) ? hb.pick.FrtTotal : 0, 2)}*` : fmtNum(r.FrtTotal, 2)}</td><td className={cx(td, 'num text-right font-extrabold')}>{hb?.pick ? `${fmtNum(landedRate(hb.pick.RatePc, hb.pick.FrtTotal, freightApplies(hb.pick.RateSrc)), 2)}*` : `${fmtNum(r.LandedRate, 2)} ${r.LandedCurr}`}</td>
+                          <td className={cx(td, 'num text-right')}>{hb?.pick ? <span title="Freight is not available from the rate sources — it comes with the saved rate">—*</span> : fmtNum(r.FrtTotal, 2)}</td><td className={cx(td, 'num text-right font-extrabold')}>{hb?.pick ? `${fmtNum(hb.pick.RatePc, 2)}*` : `${fmtNum(r.LandedRate, 2)} ${r.LandedCurr}`}</td>
                           {simOn && <>
                             <td className={cx(td, 'num text-right font-bold text-accent')}>{simBasic == null ? '—' : <span title={rs ? 'Simulated in the edit panel' : 'Global simulation'} className={simBasic <= 0 ? 'text-bad' : undefined}>{fmtNum(simBasic, 2)}{rs && ' ✎'}</span>}</td>
                             <td className={cx(td, 'num text-right font-extrabold text-accent')}>{simLanded == null ? '—' : fmtNum(simLanded, 2)}</td>
@@ -255,7 +244,7 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
                         {isEd && (
                           <tr className="border-b border-line bg-accent/5">
                             <td colSpan={COLS} className="px-4 py-3">
-                              <RateEditPanel r={r} form={form} setForm={setForm} errs={fErr} prio={prio} dtl={Array.isArray(dtl[dtlKey(r)]) ? (dtl[dtlKey(r)] as BudRateSrcDtlRow[]) : undefined} lpMode={lpRow[k] ?? lpGlobal} setLpMode={(m) => setLpRow((x) => ({ ...x, [k]: m }))} fallback={hb?.pick ? { source: hb.pick.RateSrc, rate: hb.pick.RatePc, freight: hb.pick.FrtTotal } : undefined} onEnter={() => simulateRow(r, base > 0 ? base : undefined)} />
+                              <RateEditPanel r={r} form={form} setForm={setForm} errs={fErr} prio={prio} dtl={Array.isArray(dtl[dtlKey(r)]) ? (dtl[dtlKey(r)] as BudRateSrcDtlRow[]) : undefined} lpMode={lpRow[k] ?? lpGlobal} setLpMode={(m) => setLpRow((x) => ({ ...x, [k]: m }))} fallback={hb?.pick ? { source: hb.pick.RateSrc, rate: hb.pick.RatePc, freight: 0 } : undefined} onEnter={() => simulateRow(r, base > 0 ? base : undefined)} />
                               <div className="mt-3 flex flex-wrap items-center gap-2">
                                 <Button variant="primary" size="sm" disabled={saving} onClick={() => void save(r)}>{saving ? <Spinner /> : <Save size={13} />} Save changes</Button>
                                 <Button size="sm" disabled={saving} onClick={() => setEditing('')}><X size={13} /> Cancel</Button>
