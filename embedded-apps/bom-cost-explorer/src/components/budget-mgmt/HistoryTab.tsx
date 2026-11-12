@@ -4,17 +4,17 @@ import { BarChart3, ChevronDown, ChevronRight, Search } from 'lucide-react';
 import { Wand2 } from 'lucide-react';
 import BasePriceBreakup from './BasePriceBreakup';
 import { Button, Card, Field, Spinner, cx, inputCls } from '../ui';
-import { CatBadge, ErrorBox, FilterRow, NO_RECORDS, OkBox, SkeletonRows, SourceChip, errorText, td, th } from './shared';
+import { CatBadge, ErrorBox, FilterRow, SegmentBadge, SegmentChips, type SegmentFilter, NO_RECORDS, OkBox, SkeletonRows, SourceChip, errorText, td, th } from './shared';
 import { fetchHistory, fetchRateSrcDtl, fetchRates, postGenerate } from '@/lib/budgetMgmt/api';
 import { COUNTRIES, MATERIAL_TYPES, type BudHistRow, type BudRateRow, type BudRateSrcDtlRow, LAST_PRICE_MODES, type LastPriceMode, type HistoryFilter } from '@/lib/budgetMgmt/types';
-import { csvList, BASIS_KEY, LASTP_KEY, landedRate, rowMatches, type ColFilters, freightText, RATE_BASES, avgBasePrice, lastPrice, type RateBasis, defaultHistWindow, filterHistory, groupHistory, historyBreakup, projectedValue, readBPriority, showDate, sortByCountryTotal, stripZeros, validateHistory, type Errors } from '@/lib/budgetMgmt/rules';
+import { csvList, CATBASIS_KEY, BASIS_KEY, LASTP_KEY, landedRate, rowMatches, type ColFilters, freightText, RATE_BASES, avgBasePrice, lastPrice, type RateBasis, defaultHistWindow, filterHistory, groupHistory, historyBreakup, projectedValue, readBPriority, showDate, sortByCountryTotal, stripZeros, validateHistory, type Errors } from '@/lib/budgetMgmt/rules';
 import { fmtNum } from '@/lib/format';
 
 /** Rupees as lakhs (1 lakh = 100,000). */
 const lakh = (v: number) => v / 100000;
 const plantKey = (g: string, r: BudHistRow) => `${g}|${r.Bukrs}|${r.Werks}`;
 
-export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: string; email: string; onGenerated: (g: { land1: string; gjahr: string; message: string }) => void }) {
+export default function HistoryTab({ segment, setSegment, gjahr, email, onGenerated }: { segment: SegmentFilter; setSegment: (v: SegmentFilter) => void; gjahr: string; email: string; onGenerated: (g: { land1: string; gjahr: string; message: string }) => void }) {
   const [f, setF] = useState<HistoryFilter>(() => { const w = defaultHistWindow(gjahr); return { land1: 'IN', gjahr, histFrom: w.from, histTo: w.to, catAFrom: '8,000,000', catBFrom: '4,000,000', mtart: [] }; });
   const [errs, setErrs] = useState<Errors<keyof HistoryFilter>>({});
   const [rows, setRows] = useState<BudHistRow[] | null>(null);
@@ -67,6 +67,17 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
   useEffect(() => { try { const b = localStorage.getItem(BASIS_KEY); if (RATE_BASES.some((x) => x.v === b)) setBasisState(b as RateBasis); const m = localStorage.getItem(LASTP_KEY); if (LAST_PRICE_MODES.some((x) => x.v === m)) setLpModeState(m as LastPriceMode); } catch { /* defaults */ } }, []);
   const setBasis = (v: RateBasis) => { setBasisState(v); try { localStorage.setItem(BASIS_KEY, v); } catch { /* not kept */ } };
   const setLpMode = (v: LastPriceMode) => { setLpModeState(v); try { localStorage.setItem(LASTP_KEY, v); } catch { /* not kept */ } };
+  // Category-wise global rate basis: A, B and C can each have their own ('' = the global one). Order of precedence: the material's own choice, its category's, the global one.
+  const [catSel, setCatSelState] = useState<Record<string, string>>({});
+  useEffect(() => { try { const v = JSON.parse(localStorage.getItem(CATBASIS_KEY) ?? 'null'); if (v && typeof v === 'object') setCatSelState(v); } catch { /* none */ } }, []);
+  const setCatSel = (cat: string, v: string) => setCatSelState((x) => { const n = { ...x, [cat]: v }; try { localStorage.setItem(CATBASIS_KEY, JSON.stringify(n)); } catch { /* not kept */ } return n; });
+  const effOf = (g: { key: string; Matcat: string }): { basis: RateBasis; mode: LastPriceMode } => {
+    const own = rowSel[g.key]; if (own) return { basis: own.basis, mode: own.mode };
+    const c = catSel[g.Matcat] ?? '';
+    if (c === 'AVG') return { basis: 'AVG', mode: lpMode };
+    if (c.startsWith('L|') && LAST_PRICE_MODES.some((m) => m.v === c.slice(2))) return { basis: 'LAST', mode: c.slice(2) as LastPriceMode };
+    return { basis, mode: lpMode };
+  };
   const groups = useMemo(() => sortByCountryTotal(groupHistory(rows ?? [])), [rows]);
   const dKey = (g: (typeof groups)[number]) => `${g.Matnr}|${g.plants[0]?.Bukrs || '1000'}|${g.Land1 || f.land1}`;
   const [retry, setRetry] = useState(0);
@@ -83,13 +94,14 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
 
   const dtlFailed = Object.values(dtl).filter((v) => !Array.isArray(v)).length;
   const dtlDone = Object.keys(dtl).length;
-  const searched = useMemo(() => filterHistory(groups, q, cats), [groups, q, cats]);
+  const searched = useMemo(() => filterHistory(groups, q, cats).filter((g) => segment === 'ALL' || g.Segment === segment), [groups, q, cats, segment]);
+  const segCounts = useMemo(() => ({ ALL: groups.length, 'Raw Material': groups.filter((g) => g.Segment === 'Raw Material').length, Perfume: groups.filter((g) => g.Segment === 'Perfume').length }), [groups]);
   // Column filters: one expression per column, on the same values the table shows.
   const [colF, setColF] = useState<ColFilters>({});
   const filtering = Object.values(colF).some((v) => v.trim());
   const shown = filtering ? searched.filter((g) => {
     const dd = dtl[dKey(g)]; const rows2 = Array.isArray(dd) ? dd : null;
-    const sel = rowSel[g.key]; const effBasis = sel?.basis ?? basis; const effMode = sel?.mode ?? lpMode;
+    const sel = rowSel[g.key]; const { basis: effBasis, mode: effMode } = effOf(g);
     const ab = rows2 ? avgBasePrice(rows2) : null; const lp = rows2 ? lastPrice(rows2, effMode) : null;
     const rate = effBasis === 'AVG' ? (ab ? ab.RatePc : null) : (lp ? lp.row.RatePc : null);
     const bu = rows2 ? historyBreakup(g.Matcat, rows2, prio, effMode) : null;
@@ -98,7 +110,7 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
     return rowMatches({
       material: stripZeros(g.Matnr), description: g.Maktx, uom: g.BaseUom, netQty: g.NetQty, netValue: lakh(g.NetValue), curr: g.Currency, avgRate: g.AvgRate, ctryValue: g.CtryValue,
       avgBase: ab ? ab.RatePc : null, lastPrice: lp ? lp.row.RatePc : null, lastSrc: lp ? lp.row.RateSrc : '', basis: sel ? (sel.basis === 'AVG' ? 'Avg base price' : `Last ${sel.mode}`) : 'Global',
-      projRate: rate, projValue: rate == null ? null : lakh(projectedValue(g.NetQty, rate)), cat: g.Matcat, derived: bu ? bu.derived : null, freight: sv.length ? spread((r) => r.FrtTotal) : bu?.pick ? bu.pick.FrtTotal : null, landed: sv.length ? spread((r) => r.LandedRate) : bu?.pick ? landedRate(bu.pick.RatePc, bu.pick.FrtTotal, true) : null,
+      projRate: rate, projValue: rate == null ? null : lakh(projectedValue(g.NetQty, rate)), cat: g.Matcat, segment: g.Segment, derived: bu ? bu.derived : null, freight: sv.length ? spread((r) => r.FrtTotal) : bu?.pick ? bu.pick.FrtTotal : null, landed: sv.length ? spread((r) => r.LandedRate) : bu?.pick ? landedRate(bu.pick.RatePc, bu.pick.FrtTotal, true) : null,
       rule: bu ? `${bu.rule} ${bu.steps.map((x) => x.k).join(' ')}` : '',
     }, colF);
   }) : searched;
@@ -145,6 +157,13 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
         <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-line bg-panel px-3 py-2 shadow-card">
           <Field label="Projected rate basis (global)">{(id) => <select id={id} className={inputCls} value={basis} onChange={(e) => setBasis(e.target.value as RateBasis)}>{RATE_BASES.map((b) => <option key={b.v} value={b.v}>{b.label}</option>)}</select>}</Field>
           <Field label="Last purchase price from">{(id) => <select id={id} className={inputCls} value={lpMode} onChange={(e) => setLpMode(e.target.value as LastPriceMode)}>{LAST_PRICE_MODES.map((m) => <option key={m.v} value={m.v}>{m.label}</option>)}</select>}</Field>
+          <fieldset className="pb-0.5"><legend className="mb-1 text-xs font-semibold">By category <span className="font-normal text-muted">(overrides the global basis)</span></legend>
+            <div className="flex gap-2">{(['A', 'B', 'C'] as const).map((c) => (
+              <label key={c} className="flex items-center gap-1 text-xs font-bold"><CatBadge cat={c} />
+                <select aria-label={`Rate basis of category ${c}`} className="h-9 rounded-xl border border-line bg-panel px-2 text-xs font-normal" value={catSel[c] ?? ''} onChange={(e) => setCatSel(c, e.target.value)}>
+                  <option value="">Global</option><option value="AVG">Avg base price</option>{LAST_PRICE_MODES.map((m) => <option key={m.v} value={`L|${m.v}`}>Last: {m.label}</option>)}</select></label>
+            ))}</div>
+          </fieldset>
           <p className="max-w-xl pb-2 text-2xs text-muted">Proj Rate and Proj Value use this basis: SAP's weighted Avg base price (material + country) or the Last purchase price (latest Info record / Contract, in the order chosen; company code level). Each material can use its own basis in its Rate basis cell. The Last purchase price order is shared with Rates &amp; Edit.{dtlError && <span className="text-warn"> Avg base / last price could not be read: {dtlError.error}</span>}</p>
         </div>
       )}
@@ -155,6 +174,7 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
             <Search size={14} className="pointer-events-none absolute left-2.5 top-2.5 text-faint" />
             <input aria-label="Filter by material" className={`${inputCls} w-72 pl-8`} placeholder="Material no. or description (comma for several)" value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
+          <SegmentChips value={segment} onChange={setSegment} counts={segCounts} />
           <div className="flex items-center gap-1.5" role="group" aria-label="Filter by category">
             <span className="text-xs font-semibold">Category</span>
             {(['A', 'B', 'C'] as const).map((c) => (
@@ -176,10 +196,10 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
             <table className="w-full border-collapse">
               <thead className="sticky top-0 z-10 bg-sunken">
                 <tr><th className={th}><input type="checkbox" aria-label="Select all shown materials" checked={shown.length > 0 && shown.every((g) => picked.includes(g.Matnr))} onChange={(e) => setPicked(e.target.checked ? Array.from(new Set([...picked, ...shown.map((g) => g.Matnr)])) : picked.filter((m) => !shown.some((g) => g.Matnr === m)))} /></th><th className={th} /><th className={th}>Material</th><th className={th}>Description</th><th className={th}>UOM</th>
-                  <th className={cx(th, 'text-right')}>Net Qty</th><th className={cx(th, 'text-right')}>Net Value (Lakhs)</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Avg Rate</th><th className={cx(th, 'text-right')}>Country Total</th><th className={cx(th, 'text-right')}>Avg Base Price</th><th className={th}>Last Price</th><th className={th}>Rate basis</th><th className={cx(th, 'text-right')}>Proj Rate</th><th className={cx(th, 'text-right')}>Proj Value (Lakhs)</th><th className={th}>Cat</th><th className={cx(th, 'text-right')}>Derived Rate</th><th className={cx(th, 'text-right')}>Freight</th><th className={cx(th, 'text-right')}>Landed Rate</th><th className={th}>Rule &amp; breakup</th></tr>
-                <FilterRow filters={colF} setFilters={setColF} cols={[{ key: 'x00', off: true }, { key: 'x0', off: true }, ...['material', 'description', 'uom', 'netQty', 'netValue', 'curr', 'avgRate', 'ctryValue', 'avgBase', 'lastPrice'].map((key) => ({ key })), { key: 'basis' }, ...['projRate', 'projValue', 'cat', 'derived', 'freight', 'landed', 'rule'].map((key) => ({ key }))]} />
+                  <th className={cx(th, 'text-right')}>Net Qty</th><th className={cx(th, 'text-right')}>Net Value (Lakhs)</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Avg Rate</th><th className={cx(th, 'text-right')}>Country Total</th><th className={cx(th, 'text-right')}>Avg Base Price</th><th className={th}>Last Price</th><th className={th}>Rate basis</th><th className={cx(th, 'text-right')}>Proj Rate</th><th className={cx(th, 'text-right')}>Proj Value (Lakhs)</th><th className={th}>Cat</th><th className={th}>Segment</th><th className={cx(th, 'text-right')}>Derived Rate</th><th className={cx(th, 'text-right')}>Freight</th><th className={cx(th, 'text-right')}>Landed Rate</th><th className={th}>Rule &amp; breakup</th></tr>
+                <FilterRow filters={colF} setFilters={setColF} cols={[{ key: 'x00', off: true }, { key: 'x0', off: true }, ...['material', 'description', 'uom', 'netQty', 'netValue', 'curr', 'avgRate', 'ctryValue', 'avgBase', 'lastPrice'].map((key) => ({ key })), { key: 'basis' }, ...['projRate', 'projValue', 'cat', 'segment', 'derived', 'freight', 'landed', 'rule'].map((key) => ({ key }))]} />
               </thead>
-              {loading ? <SkeletonRows cols={20} /> : (
+              {loading ? <SkeletonRows cols={21} /> : (
                 <tbody>
                   {shown.map((g) => {
                     const isOpen = open === g.key;
@@ -192,7 +212,7 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
                           <td className={cx(td, 'num text-right')}>{fmtNum(g.NetQty, 3)}</td><td className={cx(td, 'num text-right')}>{fmtNum(lakh(g.NetValue), 3)}</td><td className={td}>{g.Currency || '—'}</td>
                           <td className={cx(td, 'num text-right')}>{fmtNum(g.AvgRate, 3)}</td><td className={cx(td, 'num text-right')}>{fmtNum(g.CtryValue, 2)}</td>{(() => {
                             const dd = dtl[dKey(g)]; const rows2 = Array.isArray(dd) ? dd : null;
-                            const sel = rowSel[g.key]; const effBasis = sel?.basis ?? basis; const effMode = sel?.mode ?? lpMode;
+                            const sel = rowSel[g.key]; const { basis: effBasis, mode: effMode } = effOf(g);
                             const ab = rows2 ? avgBasePrice(rows2) : null; const lp = rows2 ? lastPrice(rows2, effMode) : null;
                             const dash = !dd ? '…' : !rows2 ? 'n/a' : null;
                             const rate = effBasis === 'AVG' ? (ab ? ab.RatePc : null) : (lp ? lp.row.RatePc : null);
@@ -208,10 +228,10 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
                               {!dd ? <><td className={cx(td, 'text-right text-faint')}>…</td><td className={cx(td, 'text-right text-faint')}>…</td></>
                                 : <><td className={cx(td, 'num text-right')}>{rate == null ? '—' : fmtNum(rate, 3)}</td><td className={cx(td, 'num text-right')}>{rate == null ? '—' : fmtNum(lakh(projectedValue(g.NetQty, rate)), 3)}</td></>}
                             </>; })()}
-                          <td className={td}><CatBadge cat={g.Matcat} /></td>
+                          <td className={td}><CatBadge cat={g.Matcat} /></td><td className={td}><SegmentBadge segment={g.Segment} /></td>
                           {(() => {
                             if (!Array.isArray(dtl[dKey(g)])) return <><td className={cx(td, 'text-right text-faint')}>…</td><td className={td} /><td className={td} /><td className={td}><span className="text-faint">…</span></td></>;
-                            const bu = historyBreakup(g.Matcat, dtl[dKey(g)] as BudRateSrcDtlRow[], prio, rowSel[g.key]?.mode ?? lpMode);
+                            const bu = historyBreakup(g.Matcat, dtl[dKey(g)] as BudRateSrcDtlRow[], prio, effOf(g).mode);
                             return <><td className={cx(td, 'num text-right font-extrabold')}>{bu.derived == null ? '—' : fmtNum(bu.derived, 3)}</td>{(() => {
                               const sv = saved[g.Matnr] ?? [];
                               const one = (f: (r: BudRateRow) => number) => { const v = Array.from(new Set(sv.map(f))); return v.length === 0 ? '—' : v.length === 1 ? fmtNum(v[0], 3) : `${fmtNum(Math.min(...v), 3)} – ${fmtNum(Math.max(...v), 3)}`; };
@@ -225,7 +245,7 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
                         </tr>
                         {isOpen && (
                           <tr className="border-b border-line bg-bg">
-                            <td colSpan={20} className="px-4 py-3">
+                            <td colSpan={21} className="px-4 py-3">
                               <p className="mb-2 text-xs font-bold">{stripZeros(g.Matnr)} — {g.Maktx} — by plant</p>
                               <table className="w-full max-w-4xl border-collapse">
                                 <thead><tr><th className={th}>Plant</th><th className={th}>UOM</th><th className={cx(th, 'text-right')}>Net Qty</th><th className={cx(th, 'text-right')}>Net Value (Lakhs)</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Avg Rate</th></tr></thead>
@@ -265,7 +285,7 @@ export default function HistoryTab({ gjahr, email, onGenerated }: { gjahr: strin
                       </Fragment>
                     );
                   })}
-                  {!shown.length && <tr><td colSpan={20} className="px-3 py-8 text-center text-sm text-muted">No materials match the filter</td></tr>}
+                  {!shown.length && <tr><td colSpan={21} className="px-3 py-8 text-center text-sm text-muted">No materials match the filter</td></tr>}
                 </tbody>
               )}
             </table>

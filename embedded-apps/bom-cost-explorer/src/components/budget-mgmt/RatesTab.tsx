@@ -2,12 +2,12 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Pencil, Save, Search, X } from 'lucide-react';
 import { Button, Card, Field, Pill, Spinner, cx, inputCls } from '../ui';
-import { CatBadge, ErrorBox, FilterRow, NO_RECORDS, OkBox, SkeletonRows, SourceChip, StatusBadge, errorText, td, th } from './shared';
+import { CatBadge, ErrorBox, FilterRow, SegmentBadge, SegmentChips, usePerfume, type SegmentFilter, NO_RECORDS, OkBox, SkeletonRows, SourceChip, StatusBadge, errorText, td, th } from './shared';
 import RateEditPanel from './RateEditPanel';
 import SourcePriorityEditor from '../rates/SourcePriorityEditor';
 import { fetchRateSrcDtl, fetchRates, patchRate } from '@/lib/budgetMgmt/api';
 import { COUNTRIES, STATUS_LABEL, type AdjType, type BudRateRow, type BudRateSrcDtlRow, type LastPriceMode, LAST_PRICE_MODES, type RateEdit } from '@/lib/budgetMgmt/types';
-import { LASTP_KEY, rowMatches, type ColFilters, freightText, showDate, DEFAULT_B_PRIORITY, adjustRate, avgBasePrice, lastPrice, amount, budgetedBasic, isEditable, freightApplies, historyBreakup, landedRate, rateBreakup, stripZeros, validateEdit, type Errors } from '@/lib/budgetMgmt/rules';
+import { CATLASTP_KEY, LASTP_KEY, rowMatches, type ColFilters, freightText, showDate, DEFAULT_B_PRIORITY, adjustRate, avgBasePrice, lastPrice, amount, budgetedBasic, isEditable, freightApplies, historyBreakup, landedRate, rateBreakup, stripZeros, validateEdit, type Errors } from '@/lib/budgetMgmt/rules';
 import { fmtNum } from '@/lib/format';
 
 const PRIO_KEY = 'bud-mgmt-b-priority';
@@ -19,11 +19,12 @@ const LEFT = FROZEN.map((_, i) => FROZEN.slice(0, i).reduce((a, b) => a + b, 0))
 const frozen = (i: number, head = false) => ({ className: cx('md:sticky', head ? 'md:z-30 bg-sunken' : 'md:z-10 bg-panel'), style: { left: LEFT[i], width: FROZEN[i], minWidth: FROZEN[i], maxWidth: FROZEN[i] } });
 const ADJ: { v: AdjType; label: string }[] = [{ v: 'N', label: 'None' }, { v: 'P', label: 'Percent (%)' }, { v: 'A', label: 'Amount' }];
 
-export default function RatesTab({ gjahr, generated }: { gjahr: string; generated?: { land1: string; gjahr: string; message: string } | null }) {
+export default function RatesTab({ segment, setSegment, gjahr, generated }: { segment: SegmentFilter; setSegment: (v: SegmentFilter) => void; gjahr: string; generated?: { land1: string; gjahr: string; message: string } | null }) {
   const [land1, setLand1] = useState(generated?.land1 ?? 'IN');
   const [year, setYear] = useState(generated?.gjahr ?? gjahr);
   const [status, setStatus] = useState('D');
   const [rows, setRows] = useState<BudRateRow[] | null>(null);
+  const perfume = usePerfume(land1, year);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [yearErr, setYearErr] = useState('');
@@ -42,6 +43,11 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
   const [lpGlobal, setLpGlobalState] = useState<LastPriceMode>('IR_C');
   const [lpRow, setLpRow] = useState<Record<string, LastPriceMode>>({});
   useEffect(() => { try { const v = localStorage.getItem(LASTP_KEY); if (LAST_PRICE_MODES.some((m) => m.v === v)) setLpGlobalState(v as LastPriceMode); } catch { /* default */ } }, []);
+  // Category-wise global last price order ('' = the global one); precedence: the row's own choice, its category's, the global one.
+  const [lpCat, setLpCatState] = useState<Record<string, string>>({});
+  useEffect(() => { try { const v = JSON.parse(localStorage.getItem(CATLASTP_KEY) ?? 'null'); if (v && typeof v === 'object') setLpCatState(v); } catch { /* none */ } }, []);
+  const setLpCat = (cat: string, v: string) => setLpCatState((x) => { const n = { ...x, [cat]: v }; try { localStorage.setItem(CATLASTP_KEY, JSON.stringify(n)); } catch { /* not kept */ } return n; });
+  const modeFor = (r: BudRateRow, k: string): LastPriceMode => lpRow[k] ?? (LAST_PRICE_MODES.some((m) => m.v === lpCat[r.Matcat]) ? (lpCat[r.Matcat] as LastPriceMode) : lpGlobal);
   const setLpGlobal = (v: LastPriceMode) => { setLpGlobalState(v); try { localStorage.setItem(LASTP_KEY, v); } catch { /* not kept */ } };
   useEffect(() => {
     setDtl({}); setLpRow({});
@@ -124,12 +130,12 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
     setSaving(false);
   }
 
-  const shown = useMemo(() => { const n = q.trim().toLowerCase(); return (rows ?? []).filter((r) => !n || stripZeros(r.Matnr).toLowerCase().includes(n) || r.Matnr.toLowerCase().includes(n)).sort((a, b) => (a.Matcat || 'Z').localeCompare(b.Matcat || 'Z')); }, [rows, q]);
+  const shown = useMemo(() => { const n = q.trim().toLowerCase(); return (rows ?? []).filter((r) => (segment === 'ALL' || !perfume.ready || perfume.segmentOf(r.Matnr) === segment) && (!n || stripZeros(r.Matnr).toLowerCase().includes(n) || r.Matnr.toLowerCase().includes(n))).sort((a, b) => (a.Matcat || 'Z').localeCompare(b.Matcat || 'Z')); }, [rows, q, segment, perfume.ready]);
 
   // One place for what a row shows (the table and the column filters read the same values).
   const [colF, setColF] = useState<ColFilters>({});
   function calc(r: BudRateRow, k: string) {
-    const dd0 = dtl[dtlKey(r)]; const hb = !r.RateSrc && !(r.SrcRate > 0) && Array.isArray(dd0) ? historyBreakup(r.Matcat, dd0, prio, lpRow[k] ?? lpGlobal) : null;
+    const dd0 = dtl[dtlKey(r)]; const hb = !r.RateSrc && !(r.SrcRate > 0) && Array.isArray(dd0) ? historyBreakup(r.Matcat, dd0, prio, modeFor(r, k)) : null;
     const bu = hb ?? rateBreakup(r, prio);
     // Simulation: the row's own (Enter in the edit panel) else the global adjustment, on the effective source rate; freight as shown.
     const base = hb?.pick ? hb.pick.RatePc : r.SrcRate > 0 ? r.SrcRate : r.DerivedRate;
@@ -143,9 +149,9 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
   }
   function filterValues(r: BudRateRow): Record<string, string | number | null> {
     const k = keyOf(r); const c = calc(r, k); const dd = dtl[dtlKey(r)]; const rows2 = Array.isArray(dd) ? dd : null;
-    const ab = rows2 ? avgBasePrice(rows2) : null; const lp = rows2 ? lastPrice(rows2, lpRow[k] ?? lpGlobal) : null;
+    const ab = rows2 ? avgBasePrice(rows2) : null; const lp = rows2 ? lastPrice(rows2, modeFor(r, k)) : null;
     return {
-      material: stripZeros(r.Matnr), plant: r.Werks, validFrom: showDate(r.ValidFrom), cat: r.Matcat, uom: r.BaseUom, source: c.hb?.pick ? c.hb.pick.RateSrc : r.RateSrc,
+      material: stripZeros(r.Matnr), segment: perfume.segmentOf(r.Matnr), plant: r.Werks, validFrom: showDate(r.ValidFrom), cat: r.Matcat, uom: r.BaseUom, source: c.hb?.pick ? c.hb.pick.RateSrc : r.RateSrc,
       srcRate: c.hb?.pick ? c.hb.pick.RatePc : r.SrcRate, derived: c.hb ? c.hb.derived : r.DerivedRate, avgBase: ab ? ab.RatePc : null, lastPrice: lp ? lp.row.RatePc : null,
       rule: `${c.bu.rule} ${c.bu.steps.map((x) => x.k).join(' ')}`, adj: r.OverrideRate > 0 ? `Override ${r.OverrideRate}` : r.AdjType === 'P' ? `${r.AdjValue}%` : r.AdjType === 'A' ? String(r.AdjValue) : '',
       freight: c.hb?.pick ? c.hb.pick.FrtTotal : r.FrtTotal, landed: c.curLanded, simBasic: c.simBasic, simLanded: c.simLanded,
@@ -155,7 +161,7 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
   const visible = Object.values(colF).some((v) => v.trim()) ? shown.filter((r) => rowMatches(filterValues(r), colF)) : shown;
 
   const simOn = !!gSim || Object.keys(rowSim).length > 0;
-  const COLS = simOn ? 19 : 16;
+  const COLS = simOn ? 20 : 17;
 
   return (
     <div className="flex flex-col gap-3">
@@ -188,6 +194,13 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
         <Card title="Last price priority (global)">
           <div className="flex flex-wrap items-end gap-3">
             <Field label="Last price from">{(id) => <select id={id} className={inputCls} value={lpGlobal} onChange={(e) => setLpGlobal(e.target.value as LastPriceMode)}>{LAST_PRICE_MODES.map((m) => <option key={m.v} value={m.v}>{m.label}</option>)}</select>}</Field>
+            <fieldset><legend className="mb-1 text-xs font-semibold">By category <span className="font-normal text-muted">(overrides the global order)</span></legend>
+              <div className="flex gap-2">{(['A', 'B', 'C'] as const).map((c) => (
+                <label key={c} className="flex items-center gap-1 text-xs font-bold"><CatBadge cat={c} />
+                  <select aria-label={`Last price order of category ${c}`} className="h-9 rounded-xl border border-line bg-panel px-2 text-xs font-normal" value={lpCat[c] ?? ''} onChange={(e) => setLpCat(c, e.target.value)}>
+                    <option value="">Global</option>{LAST_PRICE_MODES.map((m) => <option key={m.v} value={m.v}>{m.label}</option>)}</select></label>
+              ))}</div>
+            </fieldset>
             <p className="max-w-xl pb-2 text-2xs text-muted">Last price is the latest Info record or Contract price of the material (company code level); the first source of the chosen order that has one is used. Avg base price is SAP's weighted average (material + country). Each row can override the global choice in its Last price cell or in its edit panel.</p>
           </div>
           {dtlError && <p className="mt-2 text-xs text-warn">Avg base / last price could not be read: {dtlError.error}</p>}
@@ -199,6 +212,7 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
         <div className="mt-2 max-w-sm"><SourcePriorityEditor value={prio} onChange={setPrio} compact /></div>
       </details>
 
+      {perfume.error && segment !== 'ALL' && <ErrorBox>Segments could not be read ({perfume.error}) — showing every material.</ErrorBox>}
       {generated && <OkBox>✅ {generated.message}</OkBox>}
       {error && <ErrorBox>{error}</ErrorBox>}
       {rows && rows.length === 0 && !error && <Card><p className="py-6 text-center text-sm text-muted">{NO_RECORDS}</p></Card>}
@@ -206,7 +220,7 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
       {(loading || (rows && rows.length > 0)) && (
         <Card
           title={<span className="flex items-center gap-2">Rates {rows && <Pill tone="accent">{visible.length === (rows?.length ?? 0) ? `${visible.length} rows` : `${visible.length} of ${rows?.length ?? 0} rows`}</Pill>}</span>}
-          actions={<>{Object.values(colF).some((v) => v.trim()) && <Button size="sm" onClick={() => setColF({})}><X size={13} /> Clear filters</Button>}<input className={cx(inputCls, 'w-48')} placeholder="Filter: material" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Filter by material" /></>}
+          actions={<><SegmentChips value={segment} onChange={setSegment} />{Object.values(colF).some((v) => v.trim()) && <Button size="sm" onClick={() => setColF({})}><X size={13} /> Clear filters</Button>}<input className={cx(inputCls, 'w-48')} placeholder="Filter: material" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Filter by material" /></>}
           bodyClass="p-0"
         >
           <div className="max-h-[65vh] overflow-auto">
@@ -214,11 +228,11 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
               <thead className="sticky top-0 z-10 bg-sunken">
                 <tr>
                   {(['Material', 'Plant', 'Valid from', 'Cat', 'UOM', 'Source', 'Src rate', 'Derived'] as const).map((h, i) => { const f = frozen(i, true); return <th key={h} className={cx(th, f.className, i >= 6 && 'text-right', i === FROZEN.length - 1 && 'border-r border-line')} style={f.style}>{h}</th>; })}
-                  <th className={cx(th, 'text-right')}>Avg base price</th><th className={th}>Last price</th><th className={th}>Rule &amp; breakup</th><th className={th}>Adj</th><th className={cx(th, 'text-right')}>Freight</th><th className={cx(th, 'text-right')}>Landed rate</th>
+                  <th className={th}>Segment</th><th className={cx(th, 'text-right')}>Avg base price</th><th className={th}>Last price</th><th className={th}>Rule &amp; breakup</th><th className={th}>Adj</th><th className={cx(th, 'text-right')}>Freight</th><th className={cx(th, 'text-right')}>Landed rate</th>
                   {simOn && <><th className={cx(th, 'text-right')}>Sim. basic</th><th className={cx(th, 'text-right')}>Sim. landed</th><th className={cx(th, 'text-right')}>Δ landed</th></>}<th className={th}>Status</th><th className={th} /></tr>
                 <FilterRow filters={colF} setFilters={setColF} cols={[
                   ...(['material', 'plant', 'validFrom', 'cat', 'uom', 'source', 'srcRate', 'derived'] as const).map((key, i) => ({ key, className: frozen(i, true).className, style: frozen(i, true).style })),
-                  { key: 'avgBase' }, { key: 'lastPrice' }, { key: 'rule' }, { key: 'adj' }, { key: 'freight' }, { key: 'landed' },
+                  { key: 'segment' }, { key: 'avgBase' }, { key: 'lastPrice' }, { key: 'rule' }, { key: 'adj' }, { key: 'freight' }, { key: 'landed' },
                   ...(simOn ? [{ key: 'simBasic' }, { key: 'simLanded' }, { key: 'delta' }] : []), { key: 'status' }, { key: 'x', off: true },
                 ]} />
               </thead>
@@ -242,11 +256,12 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
                               <td className={cx(td, 'num text-right border-r border-line', f(7).className)} style={f(7).style}>{hb ? (hb.derived == null ? '—' : <span title="From the rate sources — SAP saved no rate for this row">{fmtNum(hb.derived, 2)}*</span>) : <>{fmtNum(r.DerivedRate, 2)} {r.DerivedCurr}</>}</td>
                             </>;
                           })()}
+                          <td className={td}><SegmentBadge segment={perfume.segmentOf(r.Matnr)} /></td>
                           {(() => {
                             const dd = dtl[dtlKey(r)];
                             if (!dd) return <><td className={cx(td, 'text-right text-faint')}>…</td><td className={cx(td, 'text-faint')}>…</td></>;
                             if (!Array.isArray(dd)) return <><td className={cx(td, 'text-right text-faint')} title={dd.error}>n/a</td><td className={cx(td, 'text-faint')} title={dd.error}>n/a</td></>;
-                            const ab = avgBasePrice(dd); const mode = lpRow[k] ?? lpGlobal; const lp = lastPrice(dd, mode);
+                            const ab = avgBasePrice(dd); const mode = modeFor(r, k); const lp = lastPrice(dd, mode);
                             return <>
                               <td className={cx(td, 'num text-right')} title={ab ? `Weighted average base price (material + country), valid from ${showDate(ab.ValidFrom)}` : 'No average base price'}>{ab ? fmtNum(ab.RatePc, 2) : '—'}</td>
                               <td className={td}><div className="flex items-center gap-1.5"><span className="num font-bold" title={lp ? `${lp.row.Vendor ? `${lp.row.Vendor} ${lp.row.Vendname} — ` : ''}valid from ${showDate(lp.row.ValidFrom)}${lp.row.FrtTotal ? ` — freight ${fmtNum(lp.row.FrtTotal, 2)}, landed ${fmtNum(lp.row.LandedRate, 2)}` : ''}` : 'No price from the chosen source'}>{lp ? fmtNum(lp.row.RatePc, 2) : '—'}</span>{lp && <SourceChip src={lp.row.RateSrc} />}
@@ -268,7 +283,7 @@ export default function RatesTab({ gjahr, generated }: { gjahr: string; generate
                         {isEd && (
                           <tr className="border-b border-line bg-accent/5">
                             <td colSpan={COLS} className="px-4 py-3">
-                              <RateEditPanel r={r} form={form} setForm={setForm} errs={fErr} prio={prio} dtl={Array.isArray(dtl[dtlKey(r)]) ? (dtl[dtlKey(r)] as BudRateSrcDtlRow[]) : undefined} lpMode={lpRow[k] ?? lpGlobal} setLpMode={(m) => setLpRow((x) => ({ ...x, [k]: m }))} fallback={hb?.pick ? { source: hb.pick.RateSrc, rate: hb.pick.RatePc, freight: hb.pick.FrtTotal } : undefined} frtLines={hb?.pick ? hb.pick.FrtLines : r.FrtLines} onEnter={() => simulateRow(r, base > 0 ? base : undefined)} />
+                              <RateEditPanel r={r} form={form} setForm={setForm} errs={fErr} prio={prio} dtl={Array.isArray(dtl[dtlKey(r)]) ? (dtl[dtlKey(r)] as BudRateSrcDtlRow[]) : undefined} lpMode={modeFor(r, k)} setLpMode={(m) => setLpRow((x) => ({ ...x, [k]: m }))} fallback={hb?.pick ? { source: hb.pick.RateSrc, rate: hb.pick.RatePc, freight: hb.pick.FrtTotal } : undefined} frtLines={hb?.pick ? hb.pick.FrtLines : r.FrtLines} onEnter={() => simulateRow(r, base > 0 ? base : undefined)} />
                               <div className="mt-3 flex flex-wrap items-center gap-2">
                                 <Button variant="primary" size="sm" disabled={saving} onClick={() => void save(r)}>{saving ? <Spinner /> : <Save size={13} />} Save changes</Button>
                                 <Button size="sm" disabled={saving} onClick={() => setEditing('')}><X size={13} /> Cancel</Button>

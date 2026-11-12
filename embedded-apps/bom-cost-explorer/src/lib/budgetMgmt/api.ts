@@ -5,8 +5,8 @@
  */
 import { sapGetCollection, sapWrite, SAP_MAX_TIMEOUT_MS, type SapGetOptions } from '../sap/client';
 import { odataDate, odataString } from '../sap/filter';
-import type { BasePrcRow, BudRateSrcDtlRow, FreightLine, ActionPayload, ActionResult, BudHistRow, BudRateRow, HistoryFilter, RateEdit, RateFilter } from './types';
-import { amount, dateText, padMatnr } from './rules';
+import { MATERIAL_TYPES, type ActionPayload, type ActionResult, type BasePrcRow, type BudHistRow, type BudRateRow, type BudRateSrcDtlRow, type FreightLine, type HistoryFilter, type RateEdit, type RateFilter } from './types';
+import { amount, dateText, defaultHistWindow, isPerfume, padMatnr, stripZeros } from './rules';
 
 export const BUD_MGMT_SET = { HIST: 'BudHistSet', RATE: 'BudRateSet', SRCDTL: 'BudRateSrcDtlSet', BASEDET: 'BasePrcDetSet', ACTION: 'BudRateActionSet' } as const;
 
@@ -44,7 +44,7 @@ export function rateFilter(f: RateFilter): string {
 export const DEFAULT_BUKRS = '1000';
 
 const hist = (r: Record<string, unknown>): BudHistRow => ({
-  Rowid: str(r.Rowid), Matnr: str(r.Matnr), Maktx: str(r.Maktx), Land1: str(r.Land1), Werks: str(r.Werks), Bukrs: str(r.Bukrs), Mtart: str(r.Mtart), BaseUom: str(r.BaseUom),
+  Rowid: str(r.Rowid), Matnr: str(r.Matnr), Maktx: str(r.Maktx), Land1: str(r.Land1), Werks: str(r.Werks), Bukrs: str(r.Bukrs), Mtart: str(r.Mtart), Matkl: str(r.Matkl), BaseUom: str(r.BaseUom),
   NetQty: num(r.NetQty), NetValue: num(r.NetValue), Currency: str(r.Currency), AvgRate: num(r.AvgRate), CtryValue: num(r.CtryValue), Matcat: str(r.Matcat),
 });
 const rate = (r: Record<string, unknown>): BudRateRow => ({
@@ -67,10 +67,24 @@ const basePrc = (r: Record<string, unknown>): BasePrcRow => ({
 });
 export const srcDtlFilter = (matnr: string, bukrs: string, land1: string) => [`Matnr eq ${odataString(padMatnr(matnr))}`, `Bukrs eq ${odataString(bukrs || DEFAULT_BUKRS)}`, `Land1 eq ${odataString(land1)}`].join(' and ');
 
-const read = async <T,>(set: string, filter: string, map: (r: Record<string, unknown>) => T, opts: SapGetOptions): Promise<T[]> =>
-  (await sapGetCollection(set, { $filter: filter }, { timeoutMs: SAP_MAX_TIMEOUT_MS, ...opts })).rows.map((r) => map(r as Record<string, unknown>));
+const read = async <T,>(set: string, filter: string, map: (r: Record<string, unknown>) => T, opts: SapGetOptions, select?: string): Promise<T[]> =>
+  (await sapGetCollection(set, { $filter: filter, $select: select }, { timeoutMs: SAP_MAX_TIMEOUT_MS, ...opts })).rows.map((r) => map(r as Record<string, unknown>));
 
-export const fetchHistory = (f: HistoryFilter, opts: SapGetOptions = {}) => read(BUD_MGMT_SET.HIST, historyFilter(f), hist, opts);
+/** BudHistSet leaves Matkl out unless the columns are asked for: $select names them all. */
+const HIST_SELECT = 'Rowid,Matnr,Maktx,Land1,Werks,Bukrs,Mtart,Matkl,BaseUom,NetQty,NetValue,Currency,AvgRate,CtryValue,Matcat';
+/** Material types to read: the ticked ones, or all of them when none is ticked (BudHistSet returns nothing without a type). */
+export const historyTypes = (f: HistoryFilter): string[] => (f.mtart?.length ? f.mtart : [...MATERIAL_TYPES]);
+/** BudHistSet honours only the first type of an "A or B" filter and drops the rest, so every type is read with its own request and the rows are put together. */
+export async function fetchHistory(f: HistoryFilter, opts: SapGetOptions = {}): Promise<BudHistRow[]> {
+  const parts = await Promise.all(historyTypes(f).map((t) => read(BUD_MGMT_SET.HIST, historyFilter({ ...f, mtart: [t] }), hist, opts, HIST_SELECT)));
+  return parts.flat();
+}
+/** Materials of the Perfume segment (ROH with material group 106) of a country and year, for the tabs whose rows carry no material group. */
+export async function fetchPerfumeMaterials(land1: string, gjahr: string, opts: SapGetOptions = {}): Promise<Set<string>> {
+  const w = defaultHistWindow(gjahr);
+  const rows = await read(BUD_MGMT_SET.HIST, historyFilter({ land1, gjahr, histFrom: w.from, histTo: w.to, catAFrom: '8,000,000', catBFrom: '4,000,000', mtart: ['ROH'] }), (r) => ({ m: str(r.Matnr), g: str(r.Matkl) }), opts, 'Matnr,Matkl,Mtart');
+  return new Set(rows.filter((r) => isPerfume('ROH', r.g)).map((r) => stripZeros(r.m)));
+}
 export const fetchRates = (f: RateFilter, opts: SapGetOptions = {}) => read(BUD_MGMT_SET.RATE, rateFilter(f), rate, opts);
 
 export const fetchRateSrcDtl = (matnr: string, bukrs: string, land1: string, opts: SapGetOptions = {}) => read(BUD_MGMT_SET.SRCDTL, srcDtlFilter(matnr, bukrs, land1), srcDtl, opts);
@@ -116,7 +130,7 @@ const msDate = (iso: string) => `/Date(${Date.UTC(Number(iso.slice(0, 4)), Numbe
 export function generateBody(f: HistoryFilter, email: string, matnrs: string[] = []) {
   return {
     Action: 'GENERATE', Gjahr: f.gjahr, Land1: f.land1, MatnrCsv: matnrs.join(','), WerksCsv: '', Reason: '', Email: email.trim().toLowerCase(),
-    HistFrom: msDate(f.histFrom), HistTo: msDate(f.histTo), CatAFrom: String(amount(f.catAFrom)), CatBFrom: String(amount(f.catBFrom)), MtartCsv: (f.mtart ?? []).join(','),
+    HistFrom: msDate(f.histFrom), HistTo: msDate(f.histTo), CatAFrom: String(amount(f.catAFrom)), CatBFrom: String(amount(f.catBFrom)), MtartCsv: historyTypes(f).join(','),
   };
 }
 export async function postGenerate(f: HistoryFilter, email: string, matnrs: string[] = [], opts: SapGetOptions = {}): Promise<ActionResult> {

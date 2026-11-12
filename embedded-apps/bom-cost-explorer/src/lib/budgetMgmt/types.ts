@@ -7,7 +7,7 @@ export const STATUS_LABEL: Record<ApprStatus, string> = { D: 'Draft', S: 'Submit
 export const SOURCE_LIST = ['CONTRACT', 'INFOREC', 'MARKT', 'CONSUMP', 'MBEW'] as const;
 
 export interface BudHistRow {
-  Rowid: string; Matnr: string; Maktx: string; Land1: string; Werks: string; Bukrs: string; Mtart: string; BaseUom: string;
+  Rowid: string; Matnr: string; Maktx: string; Land1: string; Werks: string; Bukrs: string; Mtart: string; Matkl: string; BaseUom: string;
   NetQty: number; NetValue: number; Currency: string; AvgRate: number; CtryValue: number; Matcat: string;
 }
 
@@ -33,7 +33,7 @@ export interface ActionResult { RowsActed: number; Message: string }
 
 /** History rows of one material in one country, summed over its plants (SAP returns one row per plant). */
 export interface BudHistGroup {
-  key: string; Matnr: string; Maktx: string; Land1: string; Mtart: string; BaseUom: string; Currency: string;
+  key: string; Matnr: string; Maktx: string; Land1: string; Mtart: string; Matkl: string; Segment: Segment; BaseUom: string; Currency: string;
   NetQty: number; NetValue: number; AvgRate: number; CtryValue: number; Matcat: string; plants: BudHistRow[];
 }
 
@@ -57,3 +57,7 @@ export interface BasePrcRow {
   Rowid: number; Matnr: string; Ebeln: string; Ebelp: string; Podate: string; Vendor: string; Plant: string; Matdesc: string; Baseunit: string; Qtybase: number;
   Doccurr: string; Valuedoc: number; Localcurr: string; Valuelocal: number; Valuegroup: number; Wtdavglocal: number; Wtdavggroup: number; Rowtype: string;
 }
+
+/** Raw Material (Budget Rate Preparation) is split in two: Perfume = material type ROH with material group 106, everything else is Raw Material. */
+export type Segment = 'Raw Material' | 'Perfume';
+export const SEGMENTS: Segment[] = ['Raw Material', 'Perfume'];

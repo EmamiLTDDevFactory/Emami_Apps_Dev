@@ -64,7 +64,7 @@ export function navSections(f: NavFlags): NavSection[] {
   ] : [];
   const budget: NavItem[] = budgetNavItems(BUDGET_ENABLED, f.budgetRole).map((n) => ({ id: 'budget', label: n.label, hint: 'Run, brand / product / SKU, BOM checklist, approvals', icon: Calculator, path: n.path, plan: 'budget' as PlanNav }));
   if (BUDGET_RATES_ENABLED) budget.push({ id: 'budget-rates', label: 'Component rates', hint: 'Domestic / international rates from SAP, Excel upload, recalculate', icon: Tags, path: '/budget-rates/', plan: 'budget-rates' });
-  if (BUDGET_RATE_MGMT_ENABLED) budget.push({ id: 'budget-rate-mgmt', label: 'Rate management', hint: 'History and A/B/C classes, edit rates, submit, approve', icon: Scale, path: '/budget-rate-management/', plan: 'budget-rate-mgmt' });
+  if (BUDGET_RATE_MGMT_ENABLED) budget.push({ id: 'budget-rate-mgmt', label: 'Raw Material (Budget Rate Preparation)', hint: 'History and A/B/C classes, Raw Material / Perfume, edit rates, submit, approve', icon: Scale, path: '/budget-rate-management/', plan: 'budget-rate-mgmt' });
   if (PKG_BUDGET_ENABLED) budget.push({ id: 'pkg-budget', label: 'Packing budget rate', hint: 'Packing material scenarios, edit rates and ZBUD %, finalise', icon: Boxes, path: '/pkg/', plan: 'pkg-budget' });
   const plan: NavItem[] = PLAN_MODULE_ENABLED ? [
     { id: 'plans', label: 'Plans', hint: 'Plans in SAP, breakup and cost', icon: ClipboardList, path: '/plan/', plan: 'plans' },

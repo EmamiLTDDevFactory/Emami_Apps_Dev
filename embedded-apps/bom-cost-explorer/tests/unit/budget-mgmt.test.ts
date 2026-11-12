@@ -256,3 +256,31 @@ describe('History material types and material selection', () => {
     expect(generateBody(f, 'a@b.com').MatnrCsv).toBe('');
   });
 });
+
+describe('segments: Perfume = ROH + material group 106, the rest Raw Material', () => {
+  it('segmentOf', async () => {
+    const { segmentOf, isPerfume } = await import('@/lib/budgetMgmt/rules');
+    expect(segmentOf('ROH', '106')).toBe('Perfume');
+    expect(segmentOf('roh', '000106')).toBe('Perfume');
+    expect(segmentOf('ROH', '101')).toBe('Raw Material');
+    expect(segmentOf('WIP', '106')).toBe('Raw Material'); // NWP has WIP materials in group 106: not Perfume
+    expect(segmentOf('PKGN', '204')).toBe('Raw Material');
+    expect(isPerfume('ROH', '')).toBe(false);
+  });
+  it('groupHistory carries Matkl and the segment', async () => {
+    const { groupHistory } = await import('@/lib/budgetMgmt/rules');
+    const row = (Matnr: string, Mtart: string, Matkl: string) => ({ Rowid: '1', Matnr, Maktx: 'M', Land1: 'IN', Werks: 'UN13', Bukrs: '1000', Mtart, Matkl, BaseUom: 'KG', NetQty: 1, NetValue: 1, Currency: 'INR', AvgRate: 1, CtryValue: 1, Matcat: 'C' }) as never;
+    const g = groupHistory([row('100004562', 'ROH', '106'), row('100000014', 'ROH', '101')]);
+    expect(g.find((x) => x.Matnr === '100004562')?.Segment).toBe('Perfume');
+    expect(g.find((x) => x.Matnr === '100000014')?.Segment).toBe('Raw Material');
+  });
+});
+
+describe('History reads one request per material type', () => {
+  it('ticked types, or all five when none is ticked', async () => {
+    const { historyTypes } = await import('@/lib/budgetMgmt/api');
+    const f = { land1: 'IN', gjahr: '2026', histFrom: '2025-04-01', histTo: '2026-03-31', catAFrom: '8,000,000', catBFrom: '4,000,000' };
+    expect(historyTypes({ ...f, mtart: ['ROH', 'WIP'] })).toEqual(['ROH', 'WIP']);
+    expect(historyTypes({ ...f, mtart: [] })).toEqual(['ROH', 'PKGN', 'VERP', 'WIP', 'FRT2']);
+  });
+});

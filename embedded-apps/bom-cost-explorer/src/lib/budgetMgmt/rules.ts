@@ -1,6 +1,6 @@
 /** Pure rules of the budget rate management screens: dates, material numbers, filters and the frontend validation. */
 import Decimal from 'decimal.js';
-import { LAST_PRICE_MODES, type BasePrcRow, type ActionPayload, type AdjType, type BudHistGroup, type BudHistRow, type BudRateRow, type BudRateSrcDtlRow, type BudRateSrcRow, type HistoryFilter, type LastPriceMode, type RateEdit, type RateAction } from './types';
+import { LAST_PRICE_MODES, type BasePrcRow, type Segment, type ActionPayload, type AdjType, type BudHistGroup, type BudHistRow, type BudRateRow, type BudRateSrcDtlRow, type BudRateSrcRow, type HistoryFilter, type LastPriceMode, type RateEdit, type RateAction } from './types';
 
 /** YYYYMMDD -> DD.MM.YYYY (anything else is shown as it is). */
 export const showDate = (v: string) => (/^\d{8}$/.test(v) ? `${v.slice(6)}.${v.slice(4, 6)}.${v.slice(0, 4)}` : v);
@@ -90,7 +90,7 @@ export function groupHistory(rows: BudHistRow[]): BudHistGroup[] {
     const val = plants.reduce((s, r) => s.plus(String(r.NetValue)), new Decimal(0));
     const same = (f: (r: BudHistRow) => string) => (plants.every((r) => f(r) === f(h)) ? f(h) : '');
     return {
-      key, Matnr: h.Matnr, Maktx: h.Maktx, Land1: h.Land1, Mtart: same((r) => r.Mtart), BaseUom: same((r) => r.BaseUom), Currency: same((r) => r.Currency),
+      key, Matnr: h.Matnr, Maktx: h.Maktx, Land1: h.Land1, Mtart: same((r) => r.Mtart), Matkl: h.Matkl, Segment: segmentOf(same((r) => r.Mtart) || h.Mtart, h.Matkl), BaseUom: same((r) => r.BaseUom), Currency: same((r) => r.Currency),
       NetQty: qty.toNumber(), NetValue: val.toNumber(), AvgRate: qty.isZero() ? 0 : val.div(qty).toNumber(), CtryValue: h.CtryValue, Matcat: h.Matcat,
       plants: [...plants].sort((a, b) => a.Werks.localeCompare(b.Werks)),
     };
@@ -247,6 +247,8 @@ export function lastPrice(rows: BudRateSrcDtlRow[], mode: LastPriceMode): { sour
 /** Browser keys shared by the History and Rates tabs: the global Last Price priority and the History rate basis. */
 export const LASTP_KEY = 'bud-mgmt-lastprice-mode';
 export const BASIS_KEY = 'bud-mgmt-hist-basis';
+export const CATBASIS_KEY = 'bud-mgmt-hist-catbasis';
+export const CATLASTP_KEY = 'bud-mgmt-lastprice-bycat';
 /** Rate basis of the History projection: the average base price or the last price (Info record / Contract). */
 export type RateBasis = 'AVG' | 'LAST';
 export const RATE_BASES: { v: RateBasis; label: string }[] = [{ v: 'AVG', label: 'Avg base price' }, { v: 'LAST', label: 'Last purchase price' }];
@@ -319,3 +321,8 @@ export function basePrcBreakup(rows: BasePrcRow[]): BasePrcBreakup {
     currency: det.find((r) => r.Localcurr)?.Localcurr ?? '', uom: det.find((r) => r.Baseunit)?.Baseunit ?? '',
   };
 }
+
+
+/** Perfume = material type ROH with material group 106; every other material is Raw Material. */
+export const isPerfume = (mtart: string, matkl: string): boolean => mtart.trim().toUpperCase() === 'ROH' && matkl.trim().replace(/^0+(?=\d)/, '') === '106';
+export const segmentOf = (mtart: string, matkl: string): Segment => (isPerfume(mtart, matkl) ? 'Perfume' : 'Raw Material');

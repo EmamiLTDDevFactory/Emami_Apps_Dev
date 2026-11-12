@@ -2,7 +2,7 @@
 import { Fragment, useMemo, useState } from 'react';
 import { Check, RotateCcw, Search, Send, ThumbsDown } from 'lucide-react';
 import { Button, Card, Field, Pill, Spinner, cx, inputCls } from '../ui';
-import { CatBadge, ErrorBox, FilterRow, NO_RECORDS, OkBox, SkeletonRows, SourceChip, StatusBadge, errorText, td, th } from './shared';
+import { CatBadge, ErrorBox, FilterRow, SegmentBadge, SegmentChips, usePerfume, type SegmentFilter, NO_RECORDS, OkBox, SkeletonRows, SourceChip, StatusBadge, errorText, td, th } from './shared';
 import { fetchRates, postAction } from '@/lib/budgetMgmt/api';
 import { ACTION_FROM, csvList, rateBreakup, readBPriority, rowMatches, type ColFilters, freightText, showDate, stripZeros, validateAction } from '@/lib/budgetMgmt/rules';
 import { COUNTRIES, STATUS_LABEL, type BudRateRow, type RateAction } from '@/lib/budgetMgmt/types';
@@ -11,7 +11,7 @@ import { fmtNum } from '@/lib/format';
 const DONE: Record<RateAction, string> = { SUBMIT: 'SUBMITTED', APPROVE: 'APPROVED', REJECT: 'REJECTED', REVISE: 'REVISED' };
 
 /** `email` is the hub session email: SAP decides who may submit / approve by it (ZBOM_BUD_AUTH), so it is not editable here. */
-export default function ReviewTab({ gjahr, email }: { gjahr: string; email: string }) {
+export default function ReviewTab({ segment, setSegment, gjahr, email }: { segment: SegmentFilter; setSegment: (v: SegmentFilter) => void; gjahr: string; email: string }) {
   const [land1, setLand1] = useState('IN');
   const [year, setYear] = useState(gjahr);
   const [mats, setMats] = useState('');
@@ -24,6 +24,7 @@ export default function ReviewTab({ gjahr, email }: { gjahr: string; email: stri
   const [err, setErr] = useState('');
   const [status, setStatus] = useState('S');
   const [rows, setRows] = useState<BudRateRow[] | null>(null);
+  const perfume = usePerfume(land1, year);
   const [loading, setLoading] = useState(false);
   const [loadErr, setLoadErr] = useState('');
   const [yearShown, setYearShown] = useState(gjahr);
@@ -57,13 +58,13 @@ export default function ReviewTab({ gjahr, email }: { gjahr: string; email: stri
     { a: 'REJECT', label: 'Reject', hint: 'S→R', icon: ThumbsDown }, { a: 'REVISE', label: 'Revise', hint: 'R→V', icon: RotateCcw },
   ];
   const [prio] = useState<string[]>(readBPriority);
-  const sorted = useMemo(() => [...(rows ?? [])].sort((a, b) => (a.Matcat || 'Z').localeCompare(b.Matcat || 'Z')), [rows]);
+  const sorted = useMemo(() => [...(rows ?? [])].filter((r) => segment === 'ALL' || !perfume.ready || perfume.segmentOf(r.Matnr) === segment).sort((a, b) => (a.Matcat || 'Z').localeCompare(b.Matcat || 'Z')), [rows, segment, perfume.ready]);
   const [colF, setColF] = useState<ColFilters>({});
   const filtering = Object.values(colF).some((v) => v.trim());
   const shown = filtering ? sorted.filter((r) => {
     const bu = rateBreakup(r, prio);
     return rowMatches({
-      material: stripZeros(r.Matnr), plant: r.Werks, cat: r.Matcat, source: r.RateSrc, derived: r.DerivedRate, rule: `${bu.rule} ${bu.steps.map((x) => x.k).join(' ')}`, override: r.OverrideRate, freight: r.FrtTotal, landed: r.LandedRate,
+      material: stripZeros(r.Matnr), plant: r.Werks, cat: r.Matcat, segment: perfume.segmentOf(r.Matnr), source: r.RateSrc, derived: r.DerivedRate, rule: `${bu.rule} ${bu.steps.map((x) => x.k).join(' ')}`, override: r.OverrideRate, freight: r.FrtTotal, landed: r.LandedRate,
       status: `${r.ApprStatus} ${STATUS_LABEL[r.ApprStatus as keyof typeof STATUS_LABEL] ?? ''}`, submitted: `${r.SubmittedBy} ${showDate(r.SubmittedOn)}`, approved: `${r.ApprovedBy} ${showDate(r.ApprovedOn)}`, rejected: `${r.RejectedBy} ${r.RejectionRsn}`,
     }, colF);
   }) : sorted;
@@ -104,21 +105,21 @@ export default function ReviewTab({ gjahr, email }: { gjahr: string; email: stri
       } bodyClass="p-0">
         {loadErr && <div className="p-3"><ErrorBox>{loadErr}</ErrorBox></div>}
         {rows && rows.length === 0 && !loadErr && <p className="py-6 text-center text-sm text-muted">{NO_RECORDS}</p>}
-        {(loading || sorted.length > 0) && (
+        {(loading || (rows?.length ?? 0) > 0) && (
           <div className="max-h-[60vh] overflow-auto">
-            <div className="flex items-center gap-3 px-3 py-2"><Pill tone="accent">{filtering ? `${shown.length} of ${sorted.length} rows` : `${shown.length} rows`}</Pill>{filtering && <button type="button" className="text-xs font-semibold text-accent underline" onClick={() => setColF({})}>Clear filters</button>}</div>
+            <div className="flex flex-wrap items-center gap-3 px-3 py-2"><SegmentChips value={segment} onChange={setSegment} /><Pill tone="accent">{filtering ? `${shown.length} of ${sorted.length} rows` : `${shown.length} rows`}</Pill>{filtering && <button type="button" className="text-xs font-semibold text-accent underline" onClick={() => setColF({})}>Clear filters</button>}</div>
             <table className="w-full border-collapse">
               <thead className="sticky top-0 z-10 bg-sunken">
-                <tr><th className={th}>Material</th><th className={th}>Plant</th><th className={th}>Cat</th><th className={th}>Source</th><th className={cx(th, 'text-right')}>Derived</th><th className={th}>Rule &amp; breakup</th><th className={cx(th, 'text-right')}>Override</th><th className={cx(th, 'text-right')}>Freight</th><th className={cx(th, 'text-right')}>Landed Rate</th><th className={th}>Status</th>
+                <tr><th className={th}>Material</th><th className={th}>Plant</th><th className={th}>Cat</th><th className={th}>Segment</th><th className={th}>Source</th><th className={cx(th, 'text-right')}>Derived</th><th className={th}>Rule &amp; breakup</th><th className={cx(th, 'text-right')}>Override</th><th className={cx(th, 'text-right')}>Freight</th><th className={cx(th, 'text-right')}>Landed Rate</th><th className={th}>Status</th>
                   <th className={th}>Submitted by / on</th><th className={th}>Approved by / on</th><th className={th}>Rejected by / reason</th></tr>
-                <FilterRow filters={colF} setFilters={setColF} cols={['material', 'plant', 'cat', 'source', 'derived', 'rule', 'override', 'freight', 'landed', 'status', 'submitted', 'approved', 'rejected'].map((key) => ({ key }))} />
+                <FilterRow filters={colF} setFilters={setColF} cols={['material', 'plant', 'cat', 'segment', 'source', 'derived', 'rule', 'override', 'freight', 'landed', 'status', 'submitted', 'approved', 'rejected'].map((key) => ({ key }))} />
               </thead>
-              {loading ? <SkeletonRows cols={13} /> : (
+              {loading ? <SkeletonRows cols={14} /> : (
                 <tbody>{shown.map((r, i) => { const bu = rateBreakup(r, prio); return (
                   <Fragment key={`${r.Matnr}|${r.Werks}|${r.ValidFrom}`}>
-                  {(i === 0 || shown[i - 1].Matcat !== r.Matcat) && <tr className="bg-sunken/60"><td colSpan={13} className="px-2 py-1 text-xs font-bold"><CatBadge cat={r.Matcat} /> Category {r.Matcat || '—'}</td></tr>}
+                  {(i === 0 || shown[i - 1].Matcat !== r.Matcat) && <tr className="bg-sunken/60"><td colSpan={14} className="px-2 py-1 text-xs font-bold"><CatBadge cat={r.Matcat} /> Category {r.Matcat || '—'}</td></tr>}
                   <tr className="border-b border-line/60">
-                    <td className={cx(td, 'num')}>{stripZeros(r.Matnr)}</td><td className={td}>{r.Werks}</td><td className={td}><CatBadge cat={r.Matcat} /></td><td className={td}><SourceChip src={r.RateSrc} /></td>
+                    <td className={cx(td, 'num')}>{stripZeros(r.Matnr)}</td><td className={td}>{r.Werks}</td><td className={td}><CatBadge cat={r.Matcat} /></td><td className={td}><SegmentBadge segment={perfume.segmentOf(r.Matnr)} /></td><td className={td}><SourceChip src={r.RateSrc} /></td>
                     <td className={cx(td, 'num text-right')}>{fmtNum(r.DerivedRate, 4)}</td>
                     <td className="min-w-64 px-2 py-1.5 text-2xs"><div className="font-bold">{bu.rule}</div><div className="num text-muted">{bu.steps.map((x) => `${x.k} ${fmtNum(x.v, 3)}`).join(' → ')}</div></td>
                     <td className={cx(td, 'num text-right')}>{r.OverrideRate ? fmtNum(r.OverrideRate, 4) : '—'}</td>
