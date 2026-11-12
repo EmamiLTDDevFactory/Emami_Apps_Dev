@@ -105,6 +105,7 @@ export function DispatchModal({
     setSubmitting(true);
     try {
       const casesNum = Number(cases);
+      const casesVal = Number((Number.isFinite(casesNum) ? casesNum : 0).toFixed(2));
       await postDispatch({
         invoice_no: row.invoice_no,
         werks: row.depot,
@@ -115,7 +116,7 @@ export function DispatchModal({
         vehicle_no: vehicleNo.trim(),
         vehicle_type: vehicleType,
         transporter: transporterName,
-        cases: Number((Number.isFinite(casesNum) ? casesNum : 0).toFixed(2)),
+        cases: casesVal,
       });
       // Move the row to Dispatched locally so it leaves Pending immediately. SAP's POST
       // returns before the update task commits, so an instant re-read can still miss it;
@@ -126,6 +127,8 @@ export function DispatchModal({
         vehicle_no: vehicleNo.trim(),
         vehicle_type: vehicleType,
         transporter: transporterName,
+        // postDispatch sends Fkimg blank (not 0) when cases is 0, so only patch what SAP got.
+        ...(casesVal ? { no_of_cases: casesVal } : {}),
       });
       const vtShort = VEHICLE_TYPE_SHORT[vehicleType] ?? vehicleType;
       onSuccess(`✓ ${row.invoice_no} dispatched via ${transporterName} [${vtShort}]`);
