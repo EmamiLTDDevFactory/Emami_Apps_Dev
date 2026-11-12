@@ -54,6 +54,14 @@ function defaultDateFilter(): DateFilterState {
   return { frmDate: isoDate(from), toDate: isoDate(to) };
 }
 
+/** Sentinel for the top bar's Depot filter meaning "no depot filter". */
+export const ALL_DEPOTS = 'All Depots';
+
+export interface DepotOption {
+  code: string;
+  name: string;
+}
+
 export type CacheKey = 'inv' | 'pend' | 'disp' | 'comp' | 'ret' | 'canc';
 
 const ALL_KEYS: CacheKey[] = ['inv', 'pend', 'disp', 'comp', 'ret', 'canc'];
@@ -73,6 +81,12 @@ interface DataState {
   errors: Partial<Record<CacheKey, string>>;
   /** Currently-applied From/To Date — only changes when runSearch() commits a new one. */
   dateFilter: DateFilterState;
+  /** The top bar's Depot filter (a Werks code, or ALL_DEPOTS). Applied client-side to the five
+   *  per-status slices below, so every tab, the tab badges, Dashboard and Reports follow it. */
+  depotFilter: string;
+  setDepotFilter: (depot: string) => void;
+  /** Every depot present in the fetched snapshot (ignores the depot filter itself). */
+  depotOptions: DepotOption[];
   loadDashboard: () => Promise<void>;
   ensurePending: () => Promise<void>;
   ensureDispatched: () => Promise<void>;
@@ -102,6 +116,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState<Partial<Record<CacheKey, boolean>>>({});
   const [errors, setErrors] = useState<Partial<Record<CacheKey, string>>>({});
   const [dateFilter, setDateFilter] = useState<DateFilterState>(defaultDateFilter);
+  const [depotFilter, setDepotFilter] = useState<string>(ALL_DEPOTS);
 
   useEffect(() => {
     if (!session) {
@@ -110,6 +125,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       inFlight.current = null;
       setLoading({});
       setErrors({});
+      setDepotFilter(ALL_DEPOTS);
     }
   }, [session]);
 
@@ -167,26 +183,48 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }, [consumeInitialInvoices, invCache, reloadInvoices]);
 
+  const depotOptions = useMemo<DepotOption[]>(() => {
+    const names = new Map<string, string>();
+    for (const r of invCache ?? []) {
+      const code = r.depot ?? '';
+      if (code && !names.get(code)) names.set(code, r.depot_name ?? '');
+    }
+    return Array.from(names, ([code, name]) => ({ code, name })).sort((a, b) => a.code.localeCompare(b.code));
+  }, [invCache]);
+
+  // A refetch under a new date range may no longer contain the selected depot — fall back to
+  // All Depots rather than leaving every tab silently empty.
+  useEffect(() => {
+    if (invCache !== null && depotFilter !== ALL_DEPOTS && !depotOptions.some((d) => d.code === depotFilter)) {
+      setDepotFilter(ALL_DEPOTS);
+    }
+  }, [invCache, depotFilter, depotOptions]);
+
+  const depotRows = useMemo(
+    () => (invCache === null || depotFilter === ALL_DEPOTS ? invCache : invCache.filter((r) => (r.depot ?? '') === depotFilter)),
+    [invCache, depotFilter]
+  );
+
   // Derived slices. null while nothing has loaded yet, exactly as the old caches behaved.
   const pendCache = useMemo(
-    () => (invCache === null ? null : (invCache.filter((r) => r.status === 'Pending') as unknown as PendingInvoice[])),
-    [invCache]
+    () => (depotRows === null ? null : (depotRows.filter((r) => r.status === 'Pending') as unknown as PendingInvoice[])),
+    [depotRows]
   );
   const dispCache = useMemo(
-    () => (invCache === null ? null : (invCache.filter((r) => r.status === 'Dispatched') as unknown as DispatchDetail[])),
-    [invCache]
+    () => (depotRows === null ? null : (depotRows.filter((r) => r.status === 'Dispatched') as unknown as DispatchDetail[])),
+    [depotRows]
   );
   const compCache = useMemo(
-    () => (invCache === null ? null : (invCache.filter((r) => r.status === 'Completed') as unknown as CompletedInvoice[])),
-    [invCache]
+    () => (depotRows === null ? null : (depotRows.filter((r) => r.status === 'Completed') as unknown as CompletedInvoice[])),
+    [depotRows]
   );
   const retCache = useMemo(
-    () => (invCache === null ? null : (invCache.filter((r) => r.status === 'Returned') as unknown as ReturnedInvoice[])),
-    [invCache]
+    () => (depotRows === null ? null : (depotRows.filter((r) => r.status === 'Returned') as unknown as ReturnedInvoice[])),
+    [depotRows]
   );
   const cancCache = useMemo(
-    () => (invCache === null ? null : (invCache.filter((r) => r.status === 'Cancelled') as unknown as CancelledInvoice[])),
-    [invCache]
+    () => (depotRows === null ? null : (depotRows.filter((r) => r.status === 'Cancelled') as unknown as CancelledInvoice[])),
+    [depotRows]
   );
 
   /**
@@ -238,6 +276,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
         loading,
         errors,
         dateFilter,
+        depotFilter,
+        setDepotFilter,
+        depotOptions,
         loadDashboard,
         ensurePending,
         ensureDispatched,

@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, radius } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
-import { useData } from '@/contexts/DataContext';
-import { DateRangeRow } from '@/components/FilterBar';
+import { ALL_DEPOTS, useData } from '@/contexts/DataContext';
+import { DateRangeRow, FilterSelect } from '@/components/FilterBar';
 import { isoDate, toDate, todayDate } from '@/lib/format';
+import { goBack, goToEmamiApps } from '@/lib/goBack';
 
 /**
  * Ported from top_bar() in main_panel.py. Date/time/email are dropped on
@@ -14,7 +15,7 @@ import { isoDate, toDate, todayDate } from '@/lib/format';
  */
 export function TopBar() {
   const { session, readOnly, signOut } = useAuth();
-  const { dateFilter, runSearch, loading } = useData();
+  const { dateFilter, runSearch, loading, depotFilter, setDepotFilter, depotOptions } = useData();
   const isHq = readOnly;
   const initials = isHq
     ? 'HQ'
@@ -27,8 +28,29 @@ export function TopBar() {
   const [dateTo, setDateTo] = useState<Date>(() => toDate(dateFilter.toDate) ?? todayDate());
   const searching = !!loading.inv;
 
+  // Depot applies instantly (client-side, no refetch) — unlike the dates, which wait for Go.
+  const depotLabel = (code: string) => {
+    const name = depotOptions.find((d) => d.code === code)?.name;
+    return name ? `${code} · ${name}` : code;
+  };
+  const depotLabels = [ALL_DEPOTS, ...depotOptions.map((d) => depotLabel(d.code))];
+  const onDepotChange = (label: string) => {
+    const match = depotOptions.find((d) => depotLabel(d.code) === label);
+    setDepotFilter(match ? match.code : ALL_DEPOTS);
+  };
+
   return (
     <View>
+      {Platform.OS === 'web' && (
+        <View style={styles.backRow}>
+          <Pressable style={styles.backBtn} onPress={goBack} accessibilityRole="button" accessibilityLabel="Back">
+            <Text style={styles.backText}>{'\u2039'} Back</Text>
+          </Pressable>
+          <Pressable style={styles.backBtn} onPress={goToEmamiApps} accessibilityRole="button" accessibilityLabel="Back to Emami Apps">
+            <Text style={styles.backText}>{'\u2039'} Back to Emami Apps</Text>
+          </Pressable>
+        </View>
+      )}
       <View style={styles.bar}>
         <View style={styles.leftCluster}>
           <View style={styles.logoBlock}>
@@ -60,6 +82,15 @@ export function TopBar() {
         <View style={{ flex: 1 }}>
           <DateRangeRow fromDate={frmDate} toDate={dateTo} onFromDateChange={setFrmDate} onToDateChange={setDateTo} />
         </View>
+        <View style={styles.depotBlock}>
+          <Text style={styles.depotLabel}>Depot</Text>
+          <FilterSelect
+            value={depotFilter === ALL_DEPOTS ? ALL_DEPOTS : depotLabel(depotFilter)}
+            options={depotLabels}
+            onChange={onDepotChange}
+            minWidth={150}
+          />
+        </View>
         <Pressable
           style={[styles.goBtn, searching && styles.goBtnDisabled]}
           disabled={searching}
@@ -72,6 +103,19 @@ export function TopBar() {
 }
 
 const styles = StyleSheet.create({
+  backRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.g200,
+  },
+  backBtn: { borderWidth: 1, borderColor: colors.g200, borderRadius: 6, height: 26, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center' },
+  backText: { color: colors.navy, fontSize: 10, fontWeight: '700' },
   bar: {
     height: 52,
     paddingHorizontal: 14,
@@ -107,6 +151,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.g200,
   },
+  depotBlock: { paddingBottom: 8 },
+  depotLabel: { fontSize: 10, fontWeight: '700', color: colors.g500, marginBottom: 4, textTransform: 'uppercase' },
   goBtn: {
     height: 34,
     minWidth: 64,
