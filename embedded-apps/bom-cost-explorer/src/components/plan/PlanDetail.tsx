@@ -22,6 +22,9 @@ import { readHubSession } from '@/lib/client/session';
 import { readPlanUrl } from '@/lib/plan/plants';
 import { usePlanWorkspace } from '@/lib/plan/workspace';
 import { exportPlanWorkbook } from '@/lib/plan/export';
+import { exportBudgetAnalysis } from '@/lib/plan/analysisExport';
+import { fetchPriorRates, priorWithFx } from '@/lib/plan/priorRates';
+import { lineFxInr } from '@/lib/plan/analysis';
 import { Button, Card, Empty, Pill, Spinner, Tabs } from '../ui';
 import { PlantChips, SelectPlants } from './common';
 
@@ -82,6 +85,20 @@ function PlanView({ plan, werks, email, tab, onTab }: { plan: string; werks: str
       setExporting(false);
     }
   };
+  // Budget analysis workbook: after the plan is costed; reads last year's zcomponent / zcomponent_n rates first.
+  const [analysing, setAnalysing] = useState('');
+  const costed = ws.cost.status === 'done' && ws.cost.rows.length > 0;
+  const doAnalysis = async () => {
+    const q = ws.cost.ranQuery ?? ws.query;
+    setAnalysing('Reading last year\'s rates…');
+    try {
+      const { rates, status } = await fetchPriorRates(ws.cost.rows, q.budgetYr, undefined, (d, t) => setAnalysing(`Reading last year's rates ${d}/${t}…`));
+      setAnalysing('Building the workbook…');
+      await exportBudgetAnalysis({ plan, plants: ws.plants, query: q, cost: ws.cost.rows, prior: priorWithFx(ws.cost.rows, rates, (l) => lineFxInr(l as never)), priorStatus: status, failed: ws.cost.progress?.failed ?? [], messages: ws.cost.messages });
+    } finally {
+      setAnalysing('');
+    }
+  };
   const running = ws.cost.status === 'running';
   return (
     <>
@@ -92,6 +109,9 @@ function PlanView({ plan, werks, email, tab, onTab }: { plan: string; werks: str
         {running && <span className="inline-flex items-center gap-1.5 text-xs text-muted"><Spinner className="h-3.5 w-3.5" /> SAP is costing the plan…</span>}
         <Button size="sm" className="ml-auto" disabled={exporting} onClick={() => void doExport()} title="Excel: Breakup, Requirement, Checks, WIP and Parameters (what you have loaded)">
           {exporting ? <Spinner className="h-3.5 w-3.5" /> : <FileSpreadsheet size={14} />} Excel
+        </Button>
+        <Button size="sm" variant="primary" disabled={!costed || !!analysing} onClick={() => void doAnalysis()} title={costed ? 'Budget analysis workbook: plant-wise FG cost with item breakup, component rates from zcomponent / zcomponent_n in INR and local currency, comparison with last year, ABC, monthly cost, sensitivity and risks' : 'Run the plan costing first (Breakup & cost > Run in SAP)'}>
+          {analysing ? <Spinner className="h-3.5 w-3.5" /> : <FileSpreadsheet size={14} />} {analysing || 'Budget analysis'}
         </Button>
       </div>
       <PlantChips ws={ws} />
