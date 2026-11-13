@@ -297,7 +297,7 @@ describe('Freight breakup (FrtDtlSet)', () => {
     const b = frtBreakup([row('ZFR4', 5), row('ZOTC', null)]);
     expect(b.total).toBe(5); expect(b.unread).toBe(1); expect(b.landed).toBeNull();
   });
-  it('filters on material, country, company code and the history window as YYYYMMDD', () => {
-    expect(frtDtlFilter('10000001', '1000', 'IN', '2025-04-01', '2026-03-31')).toBe("Matnr eq '000000000010000001' and Land1 eq 'IN' and Bukrs eq '1000' and HistFrom eq '20250401' and HistTo eq '20260331'");
+  it('filters on material, country and the history window as YYYYMMDD', () => {
+    expect(frtDtlFilter('10000001', 'IN', '2025-04-01', '2026-03-31')).toBe("Matnr eq '000000000010000001' and Land1 eq 'IN' and HistFrom eq '20250401' and HistTo eq '20260331'");
   });
 });

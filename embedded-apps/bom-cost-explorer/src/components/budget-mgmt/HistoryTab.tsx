@@ -61,7 +61,7 @@ export default function HistoryTab({ segment, setSegment, gjahr, email, onGenera
   }
 
   const [prio] = useState<string[]>(readBPriority);
-  const [frtBk, setFrtBk] = useState<{ matnr: string; bukrs: string; land1: string; histFrom: string; histTo: string; finalBasic: number | null; title: string } | null>(null);
+  const [frtBk, setFrtBk] = useState<{ matnr: string; land1: string; histFrom: string; histTo: string; finalBasic: number | null; title: string } | null>(null);
   const [breakup, setBreakup] = useState<{ matnr: string; bukrs: string; land1: string; title: string } | null>(null);
 
   // Rate basis of the projection: Avg base price or Last purchase price (Info record / Contract), globally and per material (BudRateSrcDtlSet).
@@ -93,7 +93,7 @@ export default function HistoryTab({ segment, setSegment, gjahr, email, onGenera
     if (!groups.length) return;
     let live = true; let next = 0;
     const worker = async () => { while (live && next < groups.length) { const g = groups[next++]; try { const list = await fetchRateSrcDtl(g.Matnr, g.plants[0]?.Bukrs ?? '', g.Land1 || f.land1); if (live) setDtl((x) => ({ ...x, [dKey(g)]: list })); } catch (x) { if (live) setDtl((y) => ({ ...y, [dKey(g)]: { error: errorText(x) } })); }
-      try { const b = frtBreakup(await fetchFrtDtl(g.Matnr, g.plants[0]?.Bukrs ?? '', g.Land1 || f.land1, win.from, win.to)); if (live) setFrt((x) => ({ ...x, [dKey(g)]: { total: b.total, n: b.lines.length, curr: b.currency } })); } catch (x) { if (live) setFrt((y) => ({ ...y, [dKey(g)]: { error: errorText(x) } })); } } };
+      try { const b = frtBreakup(await fetchFrtDtl(g.Matnr, g.Land1 || f.land1, win.from, win.to)); if (live) setFrt((x) => ({ ...x, [dKey(g)]: { total: b.total, n: b.lines.length, curr: b.currency } })); } catch (x) { if (live) setFrt((y) => ({ ...y, [dKey(g)]: { error: errorText(x) } })); } } };
     for (let i = 0; i < 3; i++) void worker();
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -280,7 +280,7 @@ export default function HistoryTab({ segment, setSegment, gjahr, email, onGenera
                               <div className="mb-1 mt-3 flex flex-wrap items-center gap-3">
                                 <p className="text-xs font-bold">Prices — BudRateSrcDtlSet <span className="font-normal text-muted">(avg base price: material + country; Info record / Contract: material + company code)</span></p>
                                 <Button size="sm" onClick={() => setBreakup({ matnr: g.Matnr, bukrs: g.plants[0]?.Bukrs ?? '', land1: g.Land1 || f.land1, title: g.Maktx })}><BarChart3 size={13} /> Avg base price breakup</Button>
-                                <Button size="sm" onClick={() => { const dd = dtl[dKey(g)]; const bu = Array.isArray(dd) ? historyBreakup(g.Matcat, dd, prio, effOf(g).mode) : null; setFrtBk({ matnr: g.Matnr, bukrs: g.plants[0]?.Bukrs ?? '', land1: g.Land1 || f.land1, histFrom: f.histFrom, histTo: f.histTo, finalBasic: bu?.derived ?? null, title: g.Maktx }); }}><Truck size={13} /> Freight breakup</Button>
+                                <Button size="sm" onClick={() => { const dd = dtl[dKey(g)]; const bu = Array.isArray(dd) ? historyBreakup(g.Matcat, dd, prio, effOf(g).mode) : null; setFrtBk({ matnr: g.Matnr, land1: g.Land1 || f.land1, histFrom: f.histFrom, histTo: f.histTo, finalBasic: bu?.derived ?? null, title: g.Maktx }); }}><Truck size={13} /> Freight breakup</Button>
                               </div>
                               {(() => { const dd = dtl[dKey(g)];
                                 if (!dd) return <Spinner />;
