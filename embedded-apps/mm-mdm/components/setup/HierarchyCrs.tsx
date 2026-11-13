@@ -2,9 +2,10 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { DragEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { DragEvent, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useMdm } from '@/lib/store';
-import { BUSINESS_VERTICALS, Opt, PH_LENGTH, PH_LEVELS, PH_SEGMENT, getHierarchyOptions, helpText } from '@/lib/valueHelps';
+import { phError, phLive, phLoad, phSubscribe, phTick } from '@/lib/phApi';
+import { BUSINESS_VERTICALS, Opt, PH_LENGTH, PH_LEVELS, getHierarchyOptions, helpText, phSegLen } from '@/lib/valueHelps';
 import {
   CRS_CODE_LEN, CRS_UNITS, CrsFile, CrsHelp, createCrs, createHierarchy, crsGroupingKey, crsOptions, listCrs, listHierarchies,
 } from '@/lib/setupData';
@@ -227,18 +228,29 @@ function HierarchyForm({ version, mounted, onCreated }: { version: number; mount
   const [last, setLast] = useState('');
 
   const codes = levels.map((l) => l.code);
+  const phVer = useSyncExternalStore(phSubscribe, phTick, phTick);
+  // Live: load each level's values from SAP once the levels above are filled in
+  useEffect(() => {
+    if (!phLive()) return;
+    for (let i = 0; i < PH_LEVELS.length; i++) {
+      if (i > 0 && !(codes[i - 1].length === phSegLen(i - 1))) break;
+      phLoad(i, codes);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [codes.join('|')]);
+  const loadErrors = phLive() ? PH_LEVELS.map((_, i) => phError(i, codes)).filter(Boolean) : [];
   // Options per level, given the codes above (a new parent has no existing children)
   const opts = useMemo(() => PH_LEVELS.map((_, i) => getHierarchyOptions(i, codes)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [codes.join('|'), version]);
+    [codes.join('|'), version, phVer]);
 
   const rows = levels.map((l, i) => {
-    const filledAbove = levels.slice(0, i).every((x) => /^\d{3}$/.test(x.code) && x.code !== '000');
+    const filledAbove = levels.slice(0, i).every((x, j) => new RegExp(`^\\d{${phSegLen(j)}}$`).test(x.code) && !/^0+$/.test(x.code));
     const isNew = !!l.code && !opts[i].some((o) => o.value === l.code);
     let error = '';
     if (filledAbove) {
       if (!l.code) error = `Enter the ${PH_LEVELS[i].toLowerCase()} code`;
-      else if (!/^\d{3}$/.test(l.code) || l.code === '000') error = 'Use a 3-digit code from 001 to 999';
+      else if (!new RegExp(`^\\d{${phSegLen(i)}}$`).test(l.code) || /^0+$/.test(l.code)) error = `Use a ${phSegLen(i)}-digit code from ${'1'.padStart(phSegLen(i), '0')} to ${'9'.repeat(phSegLen(i))}`;
       else if (isNew && !l.text.trim()) error = `Describe the new ${PH_LEVELS[i].toLowerCase()}`;
     }
     return { ...l, enabled: filledAbove, isNew, error };
@@ -273,6 +285,7 @@ function HierarchyForm({ version, mounted, onCreated }: { version: number; mount
       <section className="card su-card" aria-labelledby="ph-form-title">
         <FormBanner title="MDM Product Hierarchy Creation" sub="Pick an existing code with F4 or type a new one – everything below a new level is new as well." />
         <h3 id="ph-form-title" className="sr-only">Product hierarchy levels</h3>
+        {loadErrors.length > 0 && <p className="err su-msg" role="alert">{loadErrors[0]}</p>}
         <div className="su-rows">
           {rows.map((r, i) => (
             <CodeRow
@@ -282,12 +295,12 @@ function HierarchyForm({ version, mounted, onCreated }: { version: number; mount
               code={r.code}
               text={r.text}
               options={r.enabled ? opts[i] : []}
-              len={PH_SEGMENT}
+              len={phSegLen(i)}
               numeric
               disabled={!r.enabled}
               disabledHint={i > 0 ? `Fill ${PH_LEVELS[i - 1].toLowerCase()} first` : undefined}
               error={tried ? r.error : r.code && r.error && !r.error.startsWith('Describe') ? r.error : ''}
-              suggest={mounted && r.enabled ? nextFree(opts[i], PH_SEGMENT) : undefined}
+              suggest={mounted && r.enabled ? nextFree(opts[i], phSegLen(i)) : undefined}
               onChange={(c, t) => set(i, c, t)}
             />
           ))}
@@ -297,7 +310,7 @@ function HierarchyForm({ version, mounted, onCreated }: { version: number; mount
               <div className="ph-code su-ph-code" aria-live="polite" aria-label={`Product hierarchy ${codes.join('')}`}>
                 {PH_LEVELS.map((name, i) => (
                   <span key={name} className={rows[i].code && !(rows[i].error && rows[i].code) ? 'ph-seg-on' : 'ph-seg-off'} title={name}>
-                    {rows[i].code || '·'.repeat(PH_SEGMENT)}
+                    {rows[i].code || '·'.repeat(phSegLen(i))}
                   </span>
                 ))}
                 <span className="ph-len">{codes.join('').length}/{PH_LENGTH}</span>

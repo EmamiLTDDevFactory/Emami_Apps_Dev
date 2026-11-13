@@ -8,6 +8,7 @@
  */
 import { MaterialData } from './types';
 import { extraHierarchyOptions } from './setupData';
+import { PH_LIVE_SEGMENTS, phCached, phLive } from './phApi';
 
 export interface Opt {
   value: string;
@@ -188,8 +189,9 @@ export function isValidValue(id: HelpId, value: string, ctx: Partial<MaterialDat
 /* ------------------------------------------------------------------ */
 
 export const PH_LEVELS = ['Banner', 'Brand', 'Product', 'SKU', 'Variant', 'Scheme'] as const;
-export const PH_SEGMENT = 3;
-export const PH_LENGTH = PH_LEVELS.length * PH_SEGMENT; // 18
+/** Code length per level: 3 x 6 in the demo, 2/4/4/3/3/2 in SAP (live, see phApi.ts). Both add up to 18. */
+export const PH_LENGTH = 18;
+export const phSegLen = (level: number): number => (phLive() ? PH_LIVE_SEGMENTS[level] : 3);
 
 interface PhNode {
   code: string;
@@ -238,6 +240,12 @@ const PH_SCHEMES = [n('001', 'NO SCHEME'), n('002', 'CONSUMER OFFER'), n('003', 
  * for the levels above it.
  */
 export function getHierarchyOptions(level: number, path: string[]): Opt[] {
+  if (phLive()) {
+    // SAP's own list (loaded by phLoad); codes created in the portal this session are added by setupData
+    const live = phCached(level, path) ?? [];
+    const extra = extraHierarchyOptions(level, path).filter((x) => !live.some((s) => s.value === x.value));
+    return [...live, ...extra].sort((a, b) => a.value.localeCompare(b.value));
+  }
   // Every level above must hold an existing code (standard or created in Product Hierarchy Creation)
   for (let i = 0; i < level; i++) {
     if (!getHierarchyOptions(i, path).some((x) => x.value === path[i])) return [];
@@ -257,7 +265,11 @@ export function getHierarchyOptions(level: number, path: string[]): Opt[] {
 
 export function splitHierarchy(code: string): string[] {
   const parts: string[] = [];
-  for (let i = 0; i < code.length; i += PH_SEGMENT) parts.push(code.slice(i, i + PH_SEGMENT));
+  let at = 0;
+  for (let i = 0; i < PH_LEVELS.length && at < code.length; i++) {
+    parts.push(code.slice(at, at + phSegLen(i)));
+    at += phSegLen(i);
+  }
   return parts;
 }
 
@@ -269,7 +281,8 @@ export function decodeHierarchy(code: string): { valid: boolean; parts: { level:
   PH_LEVELS.forEach((level, i) => {
     const c = codes[i] ?? '';
     const text = c ? getHierarchyOptions(i, codes).find((x) => x.value === c)?.label ?? '' : '';
-    if (!text) valid = false;
+    // Live: the texts come from SAP once loaded; a code is valid by its shape (SAP checks existence on submit)
+    if (!text && !phLive()) valid = false;
     parts.push({ level, code: c, text });
   });
   return { valid, parts };
@@ -278,5 +291,5 @@ export function decodeHierarchy(code: string): { valid: boolean; parts: { level:
 export function hierarchyText(code: string): string {
   if (!code) return '';
   const d = decodeHierarchy(code);
-  return d.valid ? d.parts.map((p) => p.text).join(' › ') : '';
+  return d.valid && d.parts.every((p) => p.text) ? d.parts.map((p) => p.text).join(' › ') : '';
 }

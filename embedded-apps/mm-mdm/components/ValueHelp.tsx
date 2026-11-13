@@ -1,7 +1,8 @@
 'use client';
 
-import { KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { Opt, PH_LENGTH, PH_LEVELS, PH_SEGMENT, decodeHierarchy, getHierarchyOptions, splitHierarchy } from '@/lib/valueHelps';
+import { KeyboardEvent, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { Opt, PH_LENGTH, PH_LEVELS, decodeHierarchy, getHierarchyOptions, phSegLen, splitHierarchy } from '@/lib/valueHelps';
+import { phError, phLive, phLoad, phLoadCode, phSubscribe, phTick } from '@/lib/phApi';
 
 /* ------------------------------------------------------------------ */
 /* Value help field: code input + F4 pop-up + description               */
@@ -232,6 +233,9 @@ export function ProductHierarchyField({ id, value, onChange, error, required }: 
     setLocalError('');
   }, [value]);
 
+  usePhTick();
+  // Live: the level texts of the stored code come from SAP
+  useEffect(() => { if (value && phLive()) phLoadCode(value); }, [value]);
   const decoded = value ? decodeHierarchy(value) : null;
 
   function commit(raw: string) {
@@ -303,8 +307,15 @@ function ProductHierarchyDialog({ initial, onSelect, onClose }: { initial: strin
   const [path, setPath] = useState<string[]>(() => (decodeHierarchy(initial).valid ? splitHierarchy(initial) : []));
   const first = useRef<HTMLSelectElement>(null);
   useEffect(() => first.current?.focus(), []);
+  usePhTick();
+  // Live: load the next level's values as soon as the levels above are chosen
+  useEffect(() => {
+    if (!phLive()) return;
+    for (let i = 0; i <= path.length && i < PH_LEVELS.length; i++) phLoad(i, path);
+  }, [path]);
+  const loadError = phLive() ? phError(Math.min(path.length, PH_LEVELS.length - 1), path) : '';
 
-  // The code grows by 3 digits with every level chosen
+  // The code grows by one level's digits with every level chosen
   const code = path.join('');
   const complete = path.length === PH_LEVELS.length;
 
@@ -339,11 +350,12 @@ function ProductHierarchyDialog({ initial, onSelect, onClose }: { initial: strin
               </label>
             );
           })}
+          {loadError && <small className="err">{loadError}</small>}
           <div className="ph-row">
             <span className="field-label">Prod. hierarchy</span>
             <div className="ph-code" aria-live="polite">
               {PH_LEVELS.map((name, i) => (
-                <span key={name} className={path[i] ? 'ph-seg-on' : 'ph-seg-off'} title={name}>{path[i] ?? '·'.repeat(PH_SEGMENT)}</span>
+                <span key={name} className={path[i] ? 'ph-seg-on' : 'ph-seg-off'} title={name}>{path[i] ?? '·'.repeat(phSegLen(i))}</span>
               ))}
               <span className="ph-len">{code.length}/{PH_LENGTH}</span>
             </div>
@@ -393,4 +405,9 @@ export function LongTextField({ value, onChange, max, error }: { value: string; 
       )}
     </div>
   );
+}
+
+/** Re-renders the component whenever a hierarchy level finishes loading from SAP */
+function usePhTick() {
+  return useSyncExternalStore(phSubscribe, phTick, phTick);
 }

@@ -87,6 +87,8 @@ apiRouter.use('/me/cost-watch', require('./costWatch'));
 apiRouter.use('/me/cascade-pricing', require('./cascadePricing'));
 // Material master requests -> SAP ZMM_MDM_SRV (server side; the app is static). Rides /api/me; see mmMdm.js.
 apiRouter.use('/me/mm-mdm', require('./mmMdm'));
+// Product hierarchy read side -> SAP ZMDM_PH_SRV (server side). See mmMdmPh.js.
+apiRouter.use('/me/mm-mdm-ph', require('./mmMdmPh'));
 // Auditee Response (replaces WD ZAUDIT_TOOL) -> SAP ZIT_MSD_TOOL_INTERNAL_AUDIT_SRV (server side). Rides /api/me; see auditeeResponse.js.
 apiRouter.use('/me/auditee', require('./auditeeResponse'));
 
