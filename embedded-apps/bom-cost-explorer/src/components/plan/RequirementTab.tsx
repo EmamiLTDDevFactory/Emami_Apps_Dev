@@ -10,7 +10,7 @@
  */
 import { Fragment, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, FileSpreadsheet, Info, RotateCcw, SlidersHorizontal, X } from 'lucide-react';
-import { CostError, PlanQueryBar, tdCls, tdNum, thCls, thNum } from './common';
+import { CostError, CostProgress, PlanQueryBar, tdCls, tdNum, thCls, thNum } from './common';
 import { Button, Card, Empty, SimTag, Skeleton, Stat, cx, inputBase } from '../ui';
 import type { PlanWorkspace } from '@/lib/plan/workspace';
 import { costFilter, type PlanCostQuery } from '@/lib/plan/requests';
@@ -82,6 +82,7 @@ export default function RequirementTab({ ws }: { ws: PlanWorkspace }) {
     <div className="flex flex-col gap-3">
       <PlanQueryBar query={ws.query} onChange={ws.setQuery} onRun={(q: PlanCostQuery) => void ws.runCost({ ...q, inclBudget: true })} onCancel={ws.cancelCost} running={running} ms={cost.ms}
         runLabel={hasRows ? 'Reload requirement' : 'Load requirement'} />
+      <CostProgress ws={ws} />
       <CostError error={cost.error} />
       {!hasRows && running ? <Card><Skeleton rows={8} /></Card> : !hasRows ? (
         <Card><Empty title="Requirement not loaded" icon="▦">Press <b>Load requirement</b>: SAP explodes the plan&apos;s BOMs (the same run as Breakup &amp; cost) and returns every component&apos;s monthly quantity and budget rate.</Empty></Card>

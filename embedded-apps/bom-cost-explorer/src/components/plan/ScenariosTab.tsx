@@ -9,7 +9,7 @@ import { Copy, Play, Plus, Trash2, X } from 'lucide-react';
 import { CostError, tdCls, tdNum, thCls, thNum } from './common';
 import { Button, Card, Empty, Field, Segmented, SimTag, Spinner, Stat, cx, inputBase, inputCls } from '../ui';
 import { PriorityList } from '../Pickers';
-import { fetchPlanCostLines } from '@/lib/plan/client';
+import { planUnits, runPlanUnits } from '@/lib/plan/batchRun';
 import { compare, emptyClientWhatIf, hasSapWhatIf, isClientIdentity, lineKey, loadScenarios, newScenario, saveScenarios, scenarioQuery, type PlanClientWhatIf, type PlanSapWhatIf, type PlanScenario } from '@/lib/plan/scenarios';
 import { FISCAL_MONTHS, type PlanCostLine } from '@/lib/plan/fields';
 import type { PlanWorkspace } from '@/lib/plan/workspace';
@@ -53,8 +53,13 @@ export default function ScenariosTab({ ws }: { ws: PlanWorkspace }) {
     setRunning(true);
     setError('');
     try {
-      const r = await fetchPlanCostLines(scenarioQuery(baseQuery, active.sap));
-      setResult({ rows: r.rows, sapRun: true, ms: r.ms, at: Date.now(), key: sapKey });
+      // Same step-by-step run as the baseline (one plant and a few FGs per request), so a big plan does not hit the gateway limit.
+      const q = scenarioQuery(baseQuery, active.sap);
+      const t0 = Date.now();
+      const plants = q.plants.length ? q.plants : (ws.planPlants ?? []).map((p) => p.werks);
+      const r = await runPlanUnits(q, await planUnits(q, plants));
+      if (!r.rows.length && r.failed.length) throw new Error(r.failed[0].message);
+      setResult({ rows: r.rows, sapRun: true, ms: Date.now() - t0, at: Date.now(), key: sapKey });
     } catch (e) {
       setError((e as Error).message);
     } finally {

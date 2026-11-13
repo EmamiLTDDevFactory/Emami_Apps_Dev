@@ -7,7 +7,7 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { ChevronDown, ChevronRight, Info } from 'lucide-react';
-import { CostError, PlanQueryBar, tdCls, tdNum, thCls, thNum } from './common';
+import { CostError, CostProgress, PlanQueryBar, tdCls, tdNum, thCls, thNum } from './common';
 import { FgStrips } from '../price-context/slots';
 import Warnings from '../Warnings';
 import RateSources from '../rates/RateSources';
@@ -144,6 +144,7 @@ export default function BreakupTab({ ws }: { ws: PlanWorkspace }) {
   return (
     <div className="flex flex-col gap-3">
       <PlanQueryBar query={ws.query} onChange={ws.setQuery} onRun={(q) => void ws.runCost(q)} onCancel={ws.cancelCost} running={running} ms={cost.ms} />
+      <CostProgress ws={ws} />
       <CostError error={cost.error} />
       {cost.status === 'idle' && !cost.rows.length ? (
         <Card><Empty title="Nothing costed yet" icon="▦">Choose filters and press <b>Run in SAP</b>. SAP explodes every plan row (at most 30 per request; filter by plant or material for bigger plans) and prices the components.</Empty></Card>

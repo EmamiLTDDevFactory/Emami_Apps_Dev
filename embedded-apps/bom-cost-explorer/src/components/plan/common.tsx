@@ -152,3 +152,38 @@ export const thCls = 'whitespace-nowrap px-2 py-1.5 text-left text-[11px] font-b
 export const thNum = 'whitespace-nowrap px-2 py-1.5 text-right text-[11px] font-bold uppercase tracking-wide text-faint';
 export const tdCls = 'whitespace-nowrap px-2 py-1';
 export const tdNum = 'num whitespace-nowrap px-2 py-1 text-right';
+
+/** The step-by-step costing run: how many steps are done, what runs now, and the FGs that failed (with a Retry). Shows nothing while idle. */
+export function CostProgress({ ws }: { ws: Pick<PlanWorkspace, 'cost' | 'retryFailed'> }) {
+  const { status, progress: p } = ws.cost;
+  if (!p || (status !== 'running' && !p.failed.length)) return null;
+  const pct = p.total ? Math.round((p.done / p.total) * 100) : 0;
+  const eta = p.etaMs && p.etaMs > 0 ? (p.etaMs >= 60000 ? `about ${Math.round(p.etaMs / 60000)} min left` : 'less than a minute left') : '';
+  return (
+    <div className="rounded-xl border border-line bg-panel px-3 py-2 text-xs" role="status" aria-live="polite">
+      {status === 'running' && (
+        <>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <Spinner className="h-3.5 w-3.5" />
+            <span className="font-bold">{p.total ? `Costing step ${Math.min(p.done + 1, p.total)} of ${p.total}` : 'Preparing the run…'}</span>
+            {p.current.length > 0 && <span className="text-muted">now: {p.current.join(' · ')}</span>}
+            <span className="text-muted">{p.lines.toLocaleString('en-IN')} cost lines so far{eta && ` · ${eta}`}</span>
+          </div>
+          {p.total > 0 && <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-sunken"><div className="h-full bg-accent transition-all" style={{ width: `${pct}%` }} /></div>}
+          <p className="mt-1 text-2xs text-muted">The lines of each finished step are already in the table below; the rest keeps loading.</p>
+        </>
+      )}
+      {p.failed.length > 0 && (
+        <div className={cx('flex flex-wrap items-start gap-2', status === 'running' && 'mt-2 border-t border-line pt-2')}>
+          <AlertTriangle size={14} className="mt-0.5 shrink-0 text-bad" />
+          <div className="min-w-0 flex-1">
+            <p className="font-bold text-bad">{p.failed.reduce((a, f) => a + f.materials.length, 0)} FG(s) could not be costed</p>
+            <p className="break-words text-muted">{p.failed.slice(0, 6).map((f) => `${f.werks || 'plan'} ${f.materials.map((m) => m.replace(/^0+/, '')).join(', ')}`).join(' · ')}{p.failed.length > 6 ? ' …' : ''}</p>
+            <p className="break-words text-muted">{p.failed[0].message}</p>
+          </div>
+          {status !== 'running' && <Button size="sm" onClick={() => void ws.retryFailed()}>Retry failed</Button>}
+        </div>
+      )}
+    </div>
+  );
+}

@@ -6,7 +6,8 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SapMessage } from '../sap/messages';
-import { fetchPlanCostLines, fetchPlanHeads, type PlanResult } from './client';
+import { fetchPlanHeads, type PlanResult } from './client';
+import { planUnits, runPlanUnits, type PlanProgress, type PlanRun, type PlanUnit } from './batchRun';
 import { BASE_PATH } from '../client/session';
 import { groupPlanHeads, needsPlant, planHref, type PlanPlant } from './plants';
 import { defaultPlanCostQuery, type PlanCostQuery } from './requests';
@@ -21,6 +22,8 @@ export interface PlanCostState {
   error: string;
   ranQuery: PlanCostQuery | null;
   at: number;
+  /** the step-by-step run: units finished, what runs now, FGs that failed (null when idle or when SAP answered in one call) */
+  progress: PlanProgress | null;
 }
 
 export interface PlanWorkspace {
@@ -33,6 +36,8 @@ export interface PlanWorkspace {
   cost: PlanCostState;
   runCost: (q?: PlanCostQuery) => Promise<void>;
   cancelCost: () => void;
+  /** costs again only the FGs that failed in the last run and adds their lines */
+  retryFailed: () => Promise<void>;
   /** bumped after any write so tabs reload what they show */
   version: number;
   changed: () => void;
@@ -56,12 +61,14 @@ export interface PlanLoaded {
 }
 const NOTHING: PlanLoaded = { summary: null, checks: null, wip: null };
 
-const EMPTY: PlanCostState = { status: 'idle', rows: [], messages: [], ms: 0, error: '', ranQuery: null, at: 0 };
+const EMPTY: PlanCostState = { status: 'idle', rows: [], messages: [], ms: 0, error: '', ranQuery: null, at: 0, progress: null };
 export const PLANNER_ROLES = ['Planner', 'Admin'];
 
 export function usePlanWorkspace(plan: string, user: string, initialPlants: string[] = []): PlanWorkspace {
   const [plants, setPlantsState] = useState<string[]>(initialPlants);
   const [planPlants, setPlanPlants] = useState<PlanPlant[] | null>(null);
+  const planPlantsRef = useRef<PlanPlant[] | null>(null);
+  planPlantsRef.current = planPlants;
   const [plantsError, setPlantsError] = useState('');
   const [query, setQueryState] = useState<PlanCostQuery>(() => ({ ...defaultPlanCostQuery(plan), plants: initialPlants }));
   // The plant selection lives at page level: the query always carries it.
@@ -110,20 +117,56 @@ export function usePlanWorkspace(plan: string, user: string, initialPlants: stri
     if (user) void fetchAppRole(user).then(setRole);
   }, [user]);
 
+  const unitsRef = useRef<PlanUnit[]>([]);
+  const runRef = useRef<PlanRun | null>(null);
+  const publish = (run: PlanRun, p: PlanProgress, q: PlanCostQuery, status: PlanCostState['status'], t0: number) =>
+    setCost({ status, rows: run.rows, messages: run.messages, ms: Date.now() - t0, error: '', ranQuery: q, at: Date.now(), progress: p });
+  const finish = (run: PlanRun, q: PlanCostQuery, t0: number, c: AbortController) => {
+    runRef.current = run;
+    if (c.signal.aborted) return;
+    const p: PlanProgress = { done: 1, total: 1, current: [], lines: run.rows.length, failed: run.failed, etaMs: null };
+    if (!run.rows.length && run.failed.length) setCost((s) => ({ ...s, status: 'error', error: run.failed[0].message, progress: { ...p, failed: run.failed } }));
+    else publish(run, p, q, 'done', t0);
+  };
+
   const runCost = useCallback(async (q?: PlanCostQuery) => {
     const run = { ...(q ?? query), plants: plantsRef.current };
     ctl.current?.abort();
     const c = new AbortController();
     ctl.current = c;
-    setCost((s) => ({ ...s, status: 'running', error: '' }));
+    const t0 = Date.now();
+    setCost((s) => ({ ...s, status: 'running', error: '', rows: [], messages: [], progress: { done: 0, total: 0, current: ['reading the plan rows'], lines: 0, failed: [], etaMs: null } }));
     try {
-      const r = await fetchPlanCostLines(run, { signal: c.signal });
-      if (!c.signal.aborted) setCost({ status: 'done', rows: r.rows, messages: r.messages, ms: r.ms, error: '', ranQuery: run, at: Date.now() });
+      const plants = run.plants.length ? run.plants : (planPlantsRef.current ?? []).map((p) => p.werks);
+      const units = await planUnits(run, plants, c.signal);
+      unitsRef.current = units;
+      const result = await runPlanUnits(run, units, { signal: c.signal, onStep: (r, p) => { if (!c.signal.aborted) publish(r, p, run, 'running', t0); } });
+      finish(result, run, t0, c);
     } catch (e) {
       if (c.signal.aborted) return;
       setCost((s) => ({ ...s, status: 'error', error: (e as Error).message }));
     }
   }, [query]);
+  const retryFailed = useCallback(async () => {
+    const prev = runRef.current; const run = cost.ranQuery;
+    if (!prev || !run || !prev.failed.length) return;
+    const c = new AbortController();
+    ctl.current?.abort(); ctl.current = c;
+    const t0 = Date.now();
+    // Each failed FG becomes its own unit; the old failure entries are replaced by whatever this run reports.
+    const extra: PlanUnit[] = prev.failed.flatMap((f) => f.materials.map((m) => ({ werks: f.werks, materials: [m] })));
+    const units = [...unitsRef.current, ...extra];
+    unitsRef.current = units;
+    const parts = [...prev.parts, ...extra.map((): PlanRun['parts'][number] => [])];
+    setCost((s) => ({ ...s, status: 'running', error: '' }));
+    try {
+      const result = await runPlanUnits(run, units, { signal: c.signal, parts, indexes: extra.map((_, i) => prev.parts.length + i), onStep: (r, p) => { if (!c.signal.aborted) publish(r, p, run, 'running', t0); } });
+      finish(result, run, t0, c);
+    } catch (e) {
+      if (c.signal.aborted) return;
+      setCost((s) => ({ ...s, status: 'error', error: (e as Error).message }));
+    }
+  }, [cost.ranQuery]);
   const cancelCost = useCallback(() => {
     ctl.current?.abort();
     setCost((s) => ({ ...s, status: s.rows.length ? 'done' : 'idle' }));
@@ -135,7 +178,7 @@ export function usePlanWorkspace(plan: string, user: string, initialPlants: stri
     setLoadedState(NOTHING); // quantities changed: requirement / checks / WIP are stale
   }, []);
   return {
-    plan, user, role, canWrite: PLANNER_ROLES.includes(role), query, setQuery, cost, runCost, cancelCost, version, changed, loaded, setLoaded,
+    plan, user, role, canWrite: PLANNER_ROLES.includes(role), query, setQuery, cost, runCost, cancelCost, retryFailed, version, changed, loaded, setLoaded,
     plants, setPlants, planPlants, plantsError, needsPlant: needsPlant(plants, planPlants),
   };
 }

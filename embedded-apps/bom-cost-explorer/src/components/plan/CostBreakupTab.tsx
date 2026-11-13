@@ -6,7 +6,7 @@
  */
 import { useCallback } from 'react';
 import CostBreakup from '../costbreakup/CostBreakup';
-import { CostError, PlanQueryBar } from './common';
+import { CostError, CostProgress, PlanQueryBar } from './common';
 import { Card, Empty, Skeleton } from '../ui';
 import { D } from '@/lib/cost/decimal';
 import type { PlanCostLine } from '@/lib/plan/fields';
@@ -20,6 +20,7 @@ export default function CostBreakupTab({ ws }: { ws: PlanWorkspace }) {
   return (
     <div className="flex flex-col gap-3">
       <PlanQueryBar query={ws.query} onChange={ws.setQuery} onRun={(q) => void ws.runCost(q)} onCancel={ws.cancelCost} running={running} ms={cost.ms} />
+      <CostProgress ws={ws} />
       {cost.status === 'error' && <CostError error={cost.error} />}
       {running && !cost.rows.length ? (
         <Card><Skeleton rows={10} /></Card>
