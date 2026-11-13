@@ -91,19 +91,13 @@ export const fetchRateSrcDtl = (matnr: string, bukrs: string, land1: string, opt
 
 export const fetchBasePrcDet = (matnr: string, bukrs: string, land1: string, opts: SapGetOptions = {}) => read(BUD_MGMT_SET.BASEDET, srcDtlFilter(matnr, bukrs, land1), basePrc, opts);
 
-/** FrtDtlSet: every freight condition type of a material in a country for the history window (no company code: SAP does not need it). The dates go as YYYYMMDD strings, as in SAP's own example request. */
-const firstOf = (r: Record<string, unknown>, names: string[]) => names.find((n) => r[n] !== undefined && r[n] !== null && String(r[n]).trim() !== '');
-const frtDtl = (r: Record<string, unknown>): FrtDtlRow => {
-  const pick = (names: string[]) => { const n = firstOf(r, names); return n ? str(r[n]).trim() : ''; };
-  const an = firstOf(r, FRT_AMOUNT_FIELDS);
-  const raw: Record<string, string> = {};
-  for (const [k, v] of Object.entries(r)) if (k !== '__metadata' && (typeof v !== 'object' || v === null)) raw[k] = str(v);
-  return { cond: pick(['CondType', 'Kschl', 'FrtCond', 'Cond']), text: pick(['CondText', 'Vtext', 'Description', 'Text']), vendor: pick(['Vendor', 'Lifnr']), amount: an ? num(r[an]) : null, curr: pick(['Currency', 'Waers', 'FrtCurr', 'Curr']), raw };
-};
-export const FRT_AMOUNT_FIELDS = ['FrtTotal', 'FreightTotal', 'FrtAmt', 'FrtRate', 'FrtValue', 'Amount', 'Rate', 'Kwert', 'Value'];
-const yyyymmdd = (iso: string) => iso.replace(/-/g, '').slice(0, 8);
+/** FrtDtlSet: every freight condition type of a material in a country for the history window (no company code: SAP does not need it). HistFrom / HistTo are Edm.DateTime. */
+export const FRT_TOTAL_COND = 'TOTA';
+const frtDtl = (r: Record<string, unknown>): FrtDtlRow => ({
+  cond: str(r.Condtype).trim(), totalAmt: num(r.TotalAmt), totalQty: num(r.TotalQty), avgRate: num(r.AvgRate), curr: str(r.Currency).trim(), plants: num(r.PlantCnt), pos: num(r.PoCnt), isTotal: str(r.Condtype).trim().toUpperCase() === FRT_TOTAL_COND,
+});
 export const frtDtlFilter = (matnr: string, land1: string, histFrom: string, histTo: string) =>
-  [`Matnr eq ${odataString(padMatnr(matnr))}`, `Land1 eq ${odataString(land1)}`, `HistFrom eq ${odataString(yyyymmdd(histFrom))}`, `HistTo eq ${odataString(yyyymmdd(histTo))}`].join(' and ');
+  [`Matnr eq ${odataString(padMatnr(matnr))}`, `Land1 eq ${odataString(land1)}`, `HistFrom eq ${odataDate(histFrom)}`, `HistTo eq ${odataDate(histTo)}`].join(' and ');
 export const fetchFrtDtl = (matnr: string, land1: string, histFrom: string, histTo: string, opts: SapGetOptions = {}) => read(BUD_MGMT_SET.FRTDET, frtDtlFilter(matnr, land1, histFrom, histTo), frtDtl, opts);
 
 export const rateKeyPath = (r: Pick<BudRateRow, 'Gjahr' | 'Land1' | 'Matnr' | 'Werks' | 'ValidFrom'>) =>

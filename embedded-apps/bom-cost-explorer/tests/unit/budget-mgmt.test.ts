@@ -286,18 +286,22 @@ describe('History reads one request per material type', () => {
 });
 
 describe('Freight breakup (FrtDtlSet)', () => {
-  const row = (cond: string, amount: number | null) => ({ cond, text: '', vendor: '', amount, curr: 'INR', raw: {} });
-  it('totals every condition type and adds the total to the final basic rate', () => {
-    const b = frtBreakup([row('ZFR4', 9.78), row('ZOTC', 17.31), row('ZINS', 0.5)], 100);
-    expect(b.total).toBeCloseTo(27.59, 6);
-    expect(b.landed).toBeCloseTo(127.59, 6);
-    expect(b.unread).toBe(0);
+  const row = (cond: string, avgRate: number, isTotal = false) => ({ cond, totalAmt: 0, totalQty: 0, avgRate, curr: 'INR', plants: 1, pos: 1, isTotal });
+  // Live NWP rows of material 100003362, India, FY25-26.
+  const live = [row('ZFR4', 25.642591), row('ZFRC', 16.6), row('ZFRB', 11.8), row('TOTA', 54.042591, true)];
+  it('uses the sum of every condition type rate as the freight total, and adds it to the final basic rate', () => {
+    const b = frtBreakup(live, 100);
+    expect(b.lines).toHaveLength(3);
+    expect(b.total).toBeCloseTo(54.042591, 6);
+    expect(b.agrees).toBe(true);
+    expect(b.landed).toBeCloseTo(154.042591, 6);
   });
-  it('counts rows with no recognised amount and leaves landed empty without a basic rate', () => {
-    const b = frtBreakup([row('ZFR4', 5), row('ZOTC', null)]);
-    expect(b.total).toBe(5); expect(b.unread).toBe(1); expect(b.landed).toBeNull();
+  it('sums the lines itself when SAP sends no total row, and flags a total row that disagrees', () => {
+    expect(frtBreakup(live.slice(0, 3)).total).toBeCloseTo(54.042591, 6);
+    const off = frtBreakup([row('ZFR4', 5), row('TOTA', 9, true)]);
+    expect(off.total).toBe(9); expect(off.agrees).toBe(false); expect(off.landed).toBeNull();
   });
-  it('filters on material, country and the history window as YYYYMMDD', () => {
-    expect(frtDtlFilter('10000001', 'IN', '2025-04-01', '2026-03-31')).toBe("Matnr eq '000000000010000001' and Land1 eq 'IN' and HistFrom eq '20250401' and HistTo eq '20260331'");
+  it('filters on material, country and the history window as Edm.DateTime (no company code)', () => {
+    expect(frtDtlFilter('10000001', 'IN', '2025-04-01', '2026-03-31')).toBe("Matnr eq '000000000010000001' and Land1 eq 'IN' and HistFrom eq datetime'2025-04-01T00:00:00' and HistTo eq datetime'2026-03-31T00:00:00'");
   });
 });

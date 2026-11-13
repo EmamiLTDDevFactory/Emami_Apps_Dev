@@ -6,9 +6,9 @@ import BasePriceBreakup from './BasePriceBreakup';
 import FreightBreakup from './FreightBreakup';
 import { Button, Field, Spinner, cx, inputCls } from '../ui';
 import { CatBadge, ErrorBox, Panel, StatTile, bandClass, FilterRow, SegmentBadge, SegmentChips, type SegmentFilter, NO_RECORDS, OkBox, SkeletonRows, SourceChip, errorText, td, th } from './shared';
-import { fetchFrtDtl, fetchHistory, fetchRateSrcDtl, fetchRates, postGenerate } from '@/lib/budgetMgmt/api';
+import { fetchHistory, fetchRateSrcDtl, fetchRates, postGenerate } from '@/lib/budgetMgmt/api';
 import { COUNTRIES, MATERIAL_TYPES, type BudHistRow, type BudRateRow, type BudRateSrcDtlRow, LAST_PRICE_MODES, type LastPriceMode, type HistoryFilter } from '@/lib/budgetMgmt/types';
-import { frtBreakup, csvList, CATBASIS_KEY, BASIS_KEY, LASTP_KEY, landedRate, rowMatches, type ColFilters, freightText, RATE_BASES, avgBasePrice, lastPrice, type RateBasis, defaultHistWindow, filterHistory, groupHistory, historyBreakup, projectedValue, readBPriority, showDate, sortByCountryTotal, stripZeros, validateHistory, type Errors } from '@/lib/budgetMgmt/rules';
+import { csvList, CATBASIS_KEY, BASIS_KEY, LASTP_KEY, landedRate, rowMatches, type ColFilters, freightText, RATE_BASES, avgBasePrice, lastPrice, type RateBasis, defaultHistWindow, filterHistory, groupHistory, historyBreakup, projectedValue, readBPriority, showDate, sortByCountryTotal, stripZeros, validateHistory, type Errors } from '@/lib/budgetMgmt/rules';
 import { fmtNum } from '@/lib/format';
 
 /** Rupees as lakhs (1 lakh = 100,000). */
@@ -26,8 +26,6 @@ export default function HistoryTab({ segment, setSegment, gjahr, email, onGenera
   const [cats, setCats] = useState<string[]>([]);
   // Freight and landed rate exist only on saved rates (Generate Draft Rates): read once per load and matched by material.
   const [saved, setSaved] = useState<Record<string, BudRateRow[]>>({});
-  /** The history window the loaded rows were read with (FrtDtlSet is asked for the same one, even if the From / To boxes are edited afterwards). */
-  const [win, setWin] = useState({ from: '', to: '' });
 
   // The shared fiscal year pre-fills this tab (and moves the history window with it).
   useEffect(() => { const w = defaultHistWindow(gjahr); setF((x) => ({ ...x, gjahr, histFrom: w.from, histTo: w.to })); }, [gjahr]);
@@ -38,7 +36,6 @@ export default function HistoryTab({ segment, setSegment, gjahr, email, onGenera
     setErrs(e);
     if (Object.keys(e).length) return;
     setLoading(true); setError(''); setOpen(''); setPicked([]); setPasteMsg(''); setRows(null); setSaved({});
-    setWin({ from: f.histFrom, to: f.histTo });
     try { setRows(await fetchHistory(f)); } catch (x) { setError(errorText(x)); }
     setLoading(false);
     try { const rr = await fetchRates({ gjahr: f.gjahr, land1: f.land1, status: '' }); const m: Record<string, BudRateRow[]> = {}; for (const r of rr) (m[r.Matnr] ??= []).push(r); setSaved(m); } catch { /* freight and landed stay blank */ }
@@ -69,8 +66,6 @@ export default function HistoryTab({ segment, setSegment, gjahr, email, onGenera
   const [lpMode, setLpModeState] = useState<LastPriceMode>('IR_C');
   const [rowSel, setRowSel] = useState<Record<string, { basis: RateBasis; mode: LastPriceMode }>>({});
   const [dtl, setDtl] = useState<Record<string, BudRateSrcDtlRow[] | { error: string }>>({});
-  // Freight total per material + country (FrtDtlSet: the sum of every freight condition type over the history window).
-  const [frt, setFrt] = useState<Record<string, { total: number; n: number; curr: string } | { error: string }>>({});
   useEffect(() => { try { const b = localStorage.getItem(BASIS_KEY); if (RATE_BASES.some((x) => x.v === b)) setBasisState(b as RateBasis); const m = localStorage.getItem(LASTP_KEY); if (LAST_PRICE_MODES.some((x) => x.v === m)) setLpModeState(m as LastPriceMode); } catch { /* defaults */ } }, []);
   const setBasis = (v: RateBasis) => { setBasisState(v); try { localStorage.setItem(BASIS_KEY, v); } catch { /* not kept */ } };
   const setLpMode = (v: LastPriceMode) => { setLpModeState(v); try { localStorage.setItem(LASTP_KEY, v); } catch { /* not kept */ } };
@@ -89,11 +84,10 @@ export default function HistoryTab({ segment, setSegment, gjahr, email, onGenera
   const dKey = (g: (typeof groups)[number]) => `${g.Matnr}|${g.plants[0]?.Bukrs || '1000'}|${g.Land1 || f.land1}`;
   const [retry, setRetry] = useState(0);
   useEffect(() => {
-    setDtl({}); setFrt({}); setRowSel({});
+    setDtl({}); setRowSel({});
     if (!groups.length) return;
     let live = true; let next = 0;
-    const worker = async () => { while (live && next < groups.length) { const g = groups[next++]; try { const list = await fetchRateSrcDtl(g.Matnr, g.plants[0]?.Bukrs ?? '', g.Land1 || f.land1); if (live) setDtl((x) => ({ ...x, [dKey(g)]: list })); } catch (x) { if (live) setDtl((y) => ({ ...y, [dKey(g)]: { error: errorText(x) } })); }
-      try { const b = frtBreakup(await fetchFrtDtl(g.Matnr, g.Land1 || f.land1, win.from, win.to)); if (live) setFrt((x) => ({ ...x, [dKey(g)]: { total: b.total, n: b.lines.length, curr: b.currency } })); } catch (x) { if (live) setFrt((y) => ({ ...y, [dKey(g)]: { error: errorText(x) } })); } } };
+    const worker = async () => { while (live && next < groups.length) { const g = groups[next++]; try { const list = await fetchRateSrcDtl(g.Matnr, g.plants[0]?.Bukrs ?? '', g.Land1 || f.land1); if (live) setDtl((x) => ({ ...x, [dKey(g)]: list })); } catch (x) { if (live) setDtl((y) => ({ ...y, [dKey(g)]: { error: errorText(x) } })); } } };
     for (let i = 0; i < 3; i++) void worker();
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -119,7 +113,7 @@ export default function HistoryTab({ segment, setSegment, gjahr, email, onGenera
       material: stripZeros(g.Matnr), description: g.Maktx, uom: g.BaseUom, netQty: g.NetQty, netValue: lakh(g.NetValue), curr: g.Currency, avgRate: g.AvgRate, ctryValue: g.CtryValue,
       avgBase: ab ? ab.RatePc : null, lastPrice: lp ? lp.row.RatePc : null, lastSrc: lp ? lp.row.RateSrc : '', basis: sel ? (sel.basis === 'AVG' ? 'Avg base price' : `Last ${sel.mode}`) : 'Global',
       projRate: rate, projValue: rate == null ? null : lakh(projectedValue(g.NetQty, rate)), cat: g.Matcat, segment: g.Segment, derived: bu ? bu.derived : null, freight: sv.length ? spread((r) => r.FrtTotal) : bu?.pick ? bu.pick.FrtTotal : null, landed: sv.length ? spread((r) => r.LandedRate) : bu?.pick ? landedRate(bu.pick.RatePc, bu.pick.FrtTotal, true) : null,
-      frtTotal: ((x) => (x && 'total' in x ? x.total : null))(frt[dKey(g)]),
+      frtTotal: ab ? ab.FrtTotal : null,
       rule: bu ? `${bu.rule} ${bu.steps.map((x) => x.k).join(' ')}` : '',
     }, colF);
   }) : searched;
@@ -214,7 +208,7 @@ export default function HistoryTab({ segment, setSegment, gjahr, email, onGenera
             <table className="w-full border-collapse">
               <thead className="bm-thead sticky top-0 z-10">
                 <tr><th className={th}><input type="checkbox" aria-label="Select all shown materials" checked={shown.length > 0 && shown.every((g) => picked.includes(g.Matnr))} onChange={(e) => setPicked(e.target.checked ? Array.from(new Set([...picked, ...shown.map((g) => g.Matnr)])) : picked.filter((m) => !shown.some((g) => g.Matnr === m)))} /></th><th className={th} /><th className={th}>Material</th><th className={th}>Description</th><th className={th}>UOM</th>
-                  <th className={cx(th, 'text-right')}>Net Qty</th><th className={cx(th, 'text-right')}>Net Value (Lakhs)</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Avg Rate</th><th className={cx(th, 'text-right')}>Country Total</th><th className={cx(th, 'text-right')}>Avg Base Price</th><th className={th}>Last Price</th><th className={th}>Rate basis</th><th className={cx(th, 'text-right')}>Proj Rate</th><th className={cx(th, 'text-right')}>Proj Value (Lakhs)</th><th className={th}>Cat</th><th className={th}>Segment</th><th className={cx(th, 'text-right')}>Derived Rate</th><th className={cx(th, 'text-right')}>Freight</th><th className={cx(th, 'text-right')}>Landed Rate</th><th className={cx(th, 'text-right')} title="FrtDtlSet: sum of every freight condition type, material + country, over the history window">Freight Total</th><th className={th}>Rule &amp; breakup</th></tr>
+                  <th className={cx(th, 'text-right')}>Net Qty</th><th className={cx(th, 'text-right')}>Net Value (Lakhs)</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Avg Rate</th><th className={cx(th, 'text-right')}>Country Total</th><th className={cx(th, 'text-right')}>Avg Base Price</th><th className={th}>Last Price</th><th className={th}>Rate basis</th><th className={cx(th, 'text-right')}>Proj Rate</th><th className={cx(th, 'text-right')}>Proj Value (Lakhs)</th><th className={th}>Cat</th><th className={th}>Segment</th><th className={cx(th, 'text-right')}>Derived Rate</th><th className={cx(th, 'text-right')}>Freight</th><th className={cx(th, 'text-right')}>Landed Rate</th><th className={cx(th, 'text-right')} title="BudRateSrcDtlSet BASE row: freight total of the material in the country (the breakup button shows the condition types, from FrtDtlSet)">Freight Total</th><th className={th}>Rule &amp; breakup</th></tr>
                 <FilterRow filters={colF} setFilters={setColF} cols={[{ key: 'x00', off: true }, { key: 'x0', off: true }, ...['material', 'description', 'uom', 'netQty', 'netValue', 'curr', 'avgRate', 'ctryValue', 'avgBase', 'lastPrice'].map((key) => ({ key })), { key: 'basis' }, ...['projRate', 'projValue', 'cat', 'segment', 'derived', 'freight', 'landed', 'frtTotal', 'rule'].map((key) => ({ key }))]} />
               </thead>
               {loading ? <SkeletonRows cols={22} /> : (
@@ -258,7 +252,7 @@ export default function HistoryTab({ segment, setSegment, gjahr, email, onGenera
                               const pk = bu.pick; const t = pk ? (pk.FrtLines.length ? `From ${pk.RateSrc}: ${freightText(pk.FrtLines)}` : `From ${pk.RateSrc}: no freight`) : undefined;
                               return <><td className={cx(td, 'num text-right')} title={t}>{pk ? `${fmtNum(pk.FrtTotal, 3)}*` : '—'}</td><td className={cx(td, 'num text-right font-extrabold')} title={t}>{pk ? `${fmtNum(landedRate(pk.RatePc, pk.FrtTotal, true), 3)}*` : '—'}</td></>;
                             })()}
-                              {(() => { const fz = frt[dKey(g)]; return <td className={cx(td, 'num text-right font-extrabold')} title={fz && 'error' in fz ? fz.error : fz ? `Sum of ${fz.n} freight condition type${fz.n === 1 ? '' : 's'}` : undefined}>{!fz ? '…' : 'error' in fz ? 'n/a' : `${fmtNum(fz.total, 3)}`}</td>; })()}
+                              {(() => { const ab2 = avgBasePrice(dtl[dKey(g)] as BudRateSrcDtlRow[]); return <td className={cx(td, 'num text-right font-extrabold')} title={ab2 ? `Freight total of the base price (${freightText(ab2.FrtLines) || 'no line items'})` : undefined}>{ab2 ? fmtNum(ab2.FrtTotal, 3) : '—'}</td>; })()}
                               <td className="min-w-64 px-2 py-1.5 text-2xs"><div className="font-bold">{bu.rule}</div><div className="num text-muted">{bu.steps.map((x) => `${x.k} ${fmtNum(x.v, 3)}`).join(' · ')}</div></td></>;
                           })()}
                         </tr>
