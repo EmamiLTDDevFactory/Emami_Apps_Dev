@@ -5,10 +5,10 @@
  */
 import { sapGetCollection, sapWrite, SAP_MAX_TIMEOUT_MS, type SapGetOptions } from '../sap/client';
 import { odataDate, odataString } from '../sap/filter';
-import { MATERIAL_TYPES, type ActionPayload, type ActionResult, type BasePrcRow, type BudHistRow, type BudRateRow, type BudRateSrcDtlRow, type FreightLine, type HistoryFilter, type RateEdit, type RateFilter } from './types';
+import { MATERIAL_TYPES, type ActionPayload, type ActionResult, type BasePrcRow, type BudHistRow, type BudRateRow, type BudRateSrcDtlRow, type FreightLine, type FrtDtlRow, type HistoryFilter, type RateEdit, type RateFilter } from './types';
 import { amount, dateText, defaultHistWindow, isPerfume, padMatnr, stripZeros } from './rules';
 
-export const BUD_MGMT_SET = { HIST: 'BudHistSet', RATE: 'BudRateSet', SRCDTL: 'BudRateSrcDtlSet', BASEDET: 'BasePrcDetSet', ACTION: 'BudRateActionSet' } as const;
+export const BUD_MGMT_SET = { HIST: 'BudHistSet', RATE: 'BudRateSet', SRCDTL: 'BudRateSrcDtlSet', BASEDET: 'BasePrcDetSet', FRTDET: 'FrtDtlSet', ACTION: 'BudRateActionSet' } as const;
 
 const num = (v: unknown) => Number(v) || 0;
 const str = (v: unknown) => String(v ?? '');
@@ -90,6 +90,21 @@ export const fetchRates = (f: RateFilter, opts: SapGetOptions = {}) => read(BUD_
 export const fetchRateSrcDtl = (matnr: string, bukrs: string, land1: string, opts: SapGetOptions = {}) => read(BUD_MGMT_SET.SRCDTL, srcDtlFilter(matnr, bukrs, land1), srcDtl, opts);
 
 export const fetchBasePrcDet = (matnr: string, bukrs: string, land1: string, opts: SapGetOptions = {}) => read(BUD_MGMT_SET.BASEDET, srcDtlFilter(matnr, bukrs, land1), basePrc, opts);
+
+/** FrtDtlSet: every freight condition type of a material in a country for the history window. The dates go as YYYYMMDD strings, as in SAP's own example request. */
+const firstOf = (r: Record<string, unknown>, names: string[]) => names.find((n) => r[n] !== undefined && r[n] !== null && String(r[n]).trim() !== '');
+const frtDtl = (r: Record<string, unknown>): FrtDtlRow => {
+  const pick = (names: string[]) => { const n = firstOf(r, names); return n ? str(r[n]).trim() : ''; };
+  const an = firstOf(r, FRT_AMOUNT_FIELDS);
+  const raw: Record<string, string> = {};
+  for (const [k, v] of Object.entries(r)) if (k !== '__metadata' && (typeof v !== 'object' || v === null)) raw[k] = str(v);
+  return { cond: pick(['CondType', 'Kschl', 'FrtCond', 'Cond']), text: pick(['CondText', 'Vtext', 'Description', 'Text']), vendor: pick(['Vendor', 'Lifnr']), amount: an ? num(r[an]) : null, curr: pick(['Currency', 'Waers', 'FrtCurr', 'Curr']), raw };
+};
+export const FRT_AMOUNT_FIELDS = ['FrtAmt', 'FrtRate', 'FrtValue', 'Amount', 'Rate', 'Kwert', 'Value'];
+const yyyymmdd = (iso: string) => iso.replace(/-/g, '').slice(0, 8);
+export const frtDtlFilter = (matnr: string, bukrs: string, land1: string, histFrom: string, histTo: string) =>
+  [`Matnr eq ${odataString(padMatnr(matnr))}`, `Land1 eq ${odataString(land1)}`, `Bukrs eq ${odataString(bukrs || DEFAULT_BUKRS)}`, `HistFrom eq ${odataString(yyyymmdd(histFrom))}`, `HistTo eq ${odataString(yyyymmdd(histTo))}`].join(' and ');
+export const fetchFrtDtl = (matnr: string, bukrs: string, land1: string, histFrom: string, histTo: string, opts: SapGetOptions = {}) => read(BUD_MGMT_SET.FRTDET, frtDtlFilter(matnr, bukrs, land1, histFrom, histTo), frtDtl, opts);
 
 export const rateKeyPath = (r: Pick<BudRateRow, 'Gjahr' | 'Land1' | 'Matnr' | 'Werks' | 'ValidFrom'>) =>
   `${BUD_MGMT_SET.RATE}(Gjahr=${odataString(r.Gjahr)},Land1=${odataString(r.Land1)},Matnr=${odataString(padMatnr(r.Matnr))},Werks=${odataString(r.Werks)},ValidFrom=${odataString(r.ValidFrom)})`;

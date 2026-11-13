@@ -58,6 +58,10 @@ export interface BasePrcRow {
   Doccurr: string; Valuedoc: number; Localcurr: string; Valuelocal: number; Valuegroup: number; Wtdavglocal: number; Wtdavggroup: number; Rowtype: string;
 }
 
+/** FrtDtlSet (filters Matnr + Land1 + Bukrs + HistFrom + HistTo): one row per freight condition type of a material in a country over the history window.
+ *  Which property carries what is not confirmed by SAP: `cond`, `text`, `vendor`, `amount`, `curr` are read from the first name that exists, `raw` keeps the row as sent. */
+export interface FrtDtlRow { cond: string; text: string; vendor: string; amount: number | null; curr: string; raw: Record<string, string> }
+
 /** Raw Material (Budget Rate Preparation) is split in two: Perfume = material type ROH with material group 106, everything else is Raw Material. */
 export type Segment = 'Raw Material' | 'Perfume';
 export const SEGMENTS: Segment[] = ['Raw Material', 'Perfume'];

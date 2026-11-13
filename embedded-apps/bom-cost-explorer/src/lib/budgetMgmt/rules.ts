@@ -1,6 +1,6 @@
 /** Pure rules of the budget rate management screens: dates, material numbers, filters and the frontend validation. */
 import Decimal from 'decimal.js';
-import { LAST_PRICE_MODES, type BasePrcRow, type Segment, type ActionPayload, type AdjType, type BudHistGroup, type BudHistRow, type BudRateRow, type BudRateSrcDtlRow, type BudRateSrcRow, type HistoryFilter, type LastPriceMode, type RateEdit, type RateAction } from './types';
+import { LAST_PRICE_MODES, type BasePrcRow, type FrtDtlRow, type Segment, type ActionPayload, type AdjType, type BudHistGroup, type BudHistRow, type BudRateRow, type BudRateSrcDtlRow, type BudRateSrcRow, type HistoryFilter, type LastPriceMode, type RateEdit, type RateAction } from './types';
 
 /** YYYYMMDD -> DD.MM.YYYY (anything else is shown as it is). */
 export const showDate = (v: string) => (/^\d{8}$/.test(v) ? `${v.slice(6)}.${v.slice(4, 6)}.${v.slice(0, 4)}` : v);
@@ -322,6 +322,15 @@ export function basePrcBreakup(rows: BasePrcRow[]): BasePrcBreakup {
   };
 }
 
+
+/** Freight total of a material in a country = the SUM of every freight condition type (there can be 20), and landed rate = final basic rate + that total.
+ *  `unread` counts rows whose amount property could not be found, so the screen can say so instead of showing a wrong total. */
+export interface FrtBreakup { lines: (FrtDtlRow & { share: number })[]; total: number; unread: number; currency: string; landed: number | null }
+export function frtBreakup(rows: FrtDtlRow[], finalBasic: number | null = null): FrtBreakup {
+  const total = rows.reduce((a, r) => (r.amount === null ? a : a.plus(String(r.amount))), new Decimal(0));
+  const lines = rows.map((r) => ({ ...r, share: r.amount === null || total.isZero() ? 0 : new Decimal(String(r.amount)).div(total).toNumber() }));
+  return { lines, total: total.toNumber(), unread: rows.filter((r) => r.amount === null).length, currency: rows.find((r) => r.curr)?.curr ?? '', landed: finalBasic === null ? null : total.plus(String(finalBasic)).toNumber() };
+}
 
 /** Perfume = material type ROH with material group 106; every other material is Raw Material. */
 export const isPerfume = (mtart: string, matkl: string): boolean => mtart.trim().toUpperCase() === 'ROH' && matkl.trim().replace(/^0+(?=\d)/, '') === '106';

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { actionBody, generateBody, historyFilter, patchBody, rateFilter, rateKeyPath } from '@/lib/budgetMgmt/api';
-import { csvList, dateText, defaultHistWindow, fiscalYear, isEditable, padMatnr, showDate, stripZeros, toSapDate, validateAction, validateEdit, validateHistory, groupHistory, filterHistory, latestSourceRate, projectedValue, sortByCountryTotal, adjustRate, budgetedBasic, landedRate, validateEdit as validateEdit2, srcCode, freightApplies, pickByPriority, marketRate, DEFAULT_B_PRIORITY } from '@/lib/budgetMgmt/rules';
+import { actionBody, frtDtlFilter, generateBody, historyFilter, patchBody, rateFilter, rateKeyPath } from '@/lib/budgetMgmt/api';
+import { frtBreakup, csvList, dateText, defaultHistWindow, fiscalYear, isEditable, padMatnr, showDate, stripZeros, toSapDate, validateAction, validateEdit, validateHistory, groupHistory, filterHistory, latestSourceRate, projectedValue, sortByCountryTotal, adjustRate, budgetedBasic, landedRate, validateEdit as validateEdit2, srcCode, freightApplies, pickByPriority, marketRate, DEFAULT_B_PRIORITY } from '@/lib/budgetMgmt/rules';
 
 const hist = { land1: 'IN', gjahr: '2026', histFrom: '2025-04-01', histTo: '2026-03-31', catAFrom: '8,000,000', catBFrom: '4,000,000' };
 
@@ -282,5 +282,22 @@ describe('History reads one request per material type', () => {
     const f = { land1: 'IN', gjahr: '2026', histFrom: '2025-04-01', histTo: '2026-03-31', catAFrom: '8,000,000', catBFrom: '4,000,000' };
     expect(historyTypes({ ...f, mtart: ['ROH', 'WIP'] })).toEqual(['ROH', 'WIP']);
     expect(historyTypes({ ...f, mtart: [] })).toEqual(['ROH', 'PKGN', 'VERP', 'WIP', 'FRT2']);
+  });
+});
+
+describe('Freight breakup (FrtDtlSet)', () => {
+  const row = (cond: string, amount: number | null) => ({ cond, text: '', vendor: '', amount, curr: 'INR', raw: {} });
+  it('totals every condition type and adds the total to the final basic rate', () => {
+    const b = frtBreakup([row('ZFR4', 9.78), row('ZOTC', 17.31), row('ZINS', 0.5)], 100);
+    expect(b.total).toBeCloseTo(27.59, 6);
+    expect(b.landed).toBeCloseTo(127.59, 6);
+    expect(b.unread).toBe(0);
+  });
+  it('counts rows with no recognised amount and leaves landed empty without a basic rate', () => {
+    const b = frtBreakup([row('ZFR4', 5), row('ZOTC', null)]);
+    expect(b.total).toBe(5); expect(b.unread).toBe(1); expect(b.landed).toBeNull();
+  });
+  it('filters on material, country, company code and the history window as YYYYMMDD', () => {
+    expect(frtDtlFilter('10000001', '1000', 'IN', '2025-04-01', '2026-03-31')).toBe("Matnr eq '000000000010000001' and Land1 eq 'IN' and Bukrs eq '1000' and HistFrom eq '20250401' and HistTo eq '20260331'");
   });
 });

@@ -1,8 +1,9 @@
 'use client';
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { BarChart3, ChevronDown, ChevronRight, Search } from 'lucide-react';
+import { BarChart3, Truck, ChevronDown, ChevronRight, Search } from 'lucide-react';
 import { Wand2 } from 'lucide-react';
 import BasePriceBreakup from './BasePriceBreakup';
+import FreightBreakup from './FreightBreakup';
 import { Button, Field, Spinner, cx, inputCls } from '../ui';
 import { CatBadge, ErrorBox, Panel, StatTile, bandClass, FilterRow, SegmentBadge, SegmentChips, type SegmentFilter, NO_RECORDS, OkBox, SkeletonRows, SourceChip, errorText, td, th } from './shared';
 import { fetchHistory, fetchRateSrcDtl, fetchRates, postGenerate } from '@/lib/budgetMgmt/api';
@@ -57,6 +58,7 @@ export default function HistoryTab({ segment, setSegment, gjahr, email, onGenera
   }
 
   const [prio] = useState<string[]>(readBPriority);
+  const [frtBk, setFrtBk] = useState<{ matnr: string; bukrs: string; land1: string; histFrom: string; histTo: string; finalBasic: number | null; title: string } | null>(null);
   const [breakup, setBreakup] = useState<{ matnr: string; bukrs: string; land1: string; title: string } | null>(null);
 
   // Rate basis of the projection: Avg base price or Last purchase price (Info record / Contract), globally and per material (BudRateSrcDtlSet).
@@ -270,6 +272,7 @@ export default function HistoryTab({ segment, setSegment, gjahr, email, onGenera
                               <div className="mb-1 mt-3 flex flex-wrap items-center gap-3">
                                 <p className="text-xs font-bold">Prices — BudRateSrcDtlSet <span className="font-normal text-muted">(avg base price: material + country; Info record / Contract: material + company code)</span></p>
                                 <Button size="sm" onClick={() => setBreakup({ matnr: g.Matnr, bukrs: g.plants[0]?.Bukrs ?? '', land1: g.Land1 || f.land1, title: g.Maktx })}><BarChart3 size={13} /> Avg base price breakup</Button>
+                                <Button size="sm" onClick={() => { const dd = dtl[dKey(g)]; const bu = Array.isArray(dd) ? historyBreakup(g.Matcat, dd, prio, effOf(g).mode) : null; setFrtBk({ matnr: g.Matnr, bukrs: g.plants[0]?.Bukrs ?? '', land1: g.Land1 || f.land1, histFrom: f.histFrom, histTo: f.histTo, finalBasic: bu?.derived ?? null, title: g.Maktx }); }}><Truck size={13} /> Freight breakup</Button>
                               </div>
                               {(() => { const dd = dtl[dKey(g)];
                                 if (!dd) return <Spinner />;
@@ -301,6 +304,7 @@ export default function HistoryTab({ segment, setSegment, gjahr, email, onGenera
           </div>
         </Panel>
       )}
+      {frtBk && <FreightBreakup {...frtBk} onClose={() => setFrtBk(null)} />}
       {breakup && <BasePriceBreakup {...breakup} onClose={() => setBreakup(null)} />}
     </div>
   );
