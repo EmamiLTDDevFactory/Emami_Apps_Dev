@@ -1,14 +1,16 @@
 'use client';
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { BarChart3, Truck, ChevronDown, ChevronRight, Search } from 'lucide-react';
+import { FileSpreadsheet, SlidersHorizontal, BarChart3, Truck, ChevronDown, ChevronRight, Search } from 'lucide-react';
 import { Wand2 } from 'lucide-react';
 import BasePriceBreakup from './BasePriceBreakup';
 import FreightBreakup from './FreightBreakup';
+import { HIST_COLS, clearHistLayout, readHistLayout, writeHistLayout } from '@/lib/budgetMgmt/columns';
+import { exportTable, type XCol } from '@/lib/client/export';
 import { Button, Field, Spinner, cx, inputCls } from '../ui';
 import { CatBadge, ErrorBox, Panel, StatTile, bandClass, FilterRow, SegmentBadge, SegmentChips, type SegmentFilter, NO_RECORDS, OkBox, SkeletonRows, SourceChip, errorText, td, th } from './shared';
-import { fetchHistory, fetchRateSrcDtl, fetchRates, postGenerate } from '@/lib/budgetMgmt/api';
+import { fetchFrtDtl, fetchHistory, fetchRateSrcDtl, fetchRates, postGenerate } from '@/lib/budgetMgmt/api';
 import { COUNTRIES, MATERIAL_TYPES, type BudHistRow, type BudRateRow, type BudRateSrcDtlRow, LAST_PRICE_MODES, type LastPriceMode, type HistoryFilter } from '@/lib/budgetMgmt/types';
-import { csvList, CATBASIS_KEY, BASIS_KEY, LASTP_KEY, landedRate, rowMatches, type ColFilters, freightText, RATE_BASES, avgBasePrice, lastPrice, type RateBasis, defaultHistWindow, filterHistory, groupHistory, historyBreakup, projectedValue, readBPriority, showDate, sortByCountryTotal, stripZeros, validateHistory, type Errors } from '@/lib/budgetMgmt/rules';
+import { frtBreakup, csvList, CATBASIS_KEY, BASIS_KEY, LASTP_KEY, landedRate, rowMatches, type ColFilters, freightText, RATE_BASES, avgBasePrice, lastPrice, type RateBasis, defaultHistWindow, filterHistory, groupHistory, historyBreakup, projectedValue, readBPriority, showDate, sortByCountryTotal, stripZeros, validateHistory, type Errors } from '@/lib/budgetMgmt/rules';
 import { fmtNum } from '@/lib/format';
 
 /** Rupees as lakhs (1 lakh = 100,000). */
@@ -26,6 +28,8 @@ export default function HistoryTab({ segment, setSegment, gjahr, email, onGenera
   const [cats, setCats] = useState<string[]>([]);
   // Freight and landed rate exist only on saved rates (Generate Draft Rates): read once per load and matched by material.
   const [saved, setSaved] = useState<Record<string, BudRateRow[]>>({});
+  /** The history window the loaded rows were read with (the delivery charges are asked for the same one, even if the From / To boxes are edited afterwards). */
+  const [win, setWin] = useState({ from: '', to: '' });
 
   // The shared fiscal year pre-fills this tab (and moves the history window with it).
   useEffect(() => { const w = defaultHistWindow(gjahr); setF((x) => ({ ...x, gjahr, histFrom: w.from, histTo: w.to })); }, [gjahr]);
@@ -36,6 +40,7 @@ export default function HistoryTab({ segment, setSegment, gjahr, email, onGenera
     setErrs(e);
     if (Object.keys(e).length) return;
     setLoading(true); setError(''); setOpen(''); setPicked([]); setPasteMsg(''); setRows(null); setSaved({});
+    setWin({ from: f.histFrom, to: f.histTo });
     try { setRows(await fetchHistory(f)); } catch (x) { setError(errorText(x)); }
     setLoading(false);
     try { const rr = await fetchRates({ gjahr: f.gjahr, land1: f.land1, status: '' }); const m: Record<string, BudRateRow[]> = {}; for (const r of rr) (m[r.Matnr] ??= []).push(r); setSaved(m); } catch { /* freight and landed stay blank */ }
@@ -66,6 +71,8 @@ export default function HistoryTab({ segment, setSegment, gjahr, email, onGenera
   const [lpMode, setLpModeState] = useState<LastPriceMode>('IR_C');
   const [rowSel, setRowSel] = useState<Record<string, { basis: RateBasis; mode: LastPriceMode }>>({});
   const [dtl, setDtl] = useState<Record<string, BudRateSrcDtlRow[] | { error: string }>>({});
+  // Delivery charges per material + country (FrtDtlSet: the freight total of the breakup dialog).
+  const [frt, setFrt] = useState<Record<string, { total: number; n: number } | { error: string }>>({});
   useEffect(() => { try { const b = localStorage.getItem(BASIS_KEY); if (RATE_BASES.some((x) => x.v === b)) setBasisState(b as RateBasis); const m = localStorage.getItem(LASTP_KEY); if (LAST_PRICE_MODES.some((x) => x.v === m)) setLpModeState(m as LastPriceMode); } catch { /* defaults */ } }, []);
   const setBasis = (v: RateBasis) => { setBasisState(v); try { localStorage.setItem(BASIS_KEY, v); } catch { /* not kept */ } };
   const setLpMode = (v: LastPriceMode) => { setLpModeState(v); try { localStorage.setItem(LASTP_KEY, v); } catch { /* not kept */ } };
@@ -84,10 +91,11 @@ export default function HistoryTab({ segment, setSegment, gjahr, email, onGenera
   const dKey = (g: (typeof groups)[number]) => `${g.Matnr}|${g.plants[0]?.Bukrs || '1000'}|${g.Land1 || f.land1}`;
   const [retry, setRetry] = useState(0);
   useEffect(() => {
-    setDtl({}); setRowSel({});
+    setDtl({}); setFrt({}); setRowSel({});
     if (!groups.length) return;
     let live = true; let next = 0;
-    const worker = async () => { while (live && next < groups.length) { const g = groups[next++]; try { const list = await fetchRateSrcDtl(g.Matnr, g.plants[0]?.Bukrs ?? '', g.Land1 || f.land1); if (live) setDtl((x) => ({ ...x, [dKey(g)]: list })); } catch (x) { if (live) setDtl((y) => ({ ...y, [dKey(g)]: { error: errorText(x) } })); } } };
+    const worker = async () => { while (live && next < groups.length) { const g = groups[next++]; try { const list = await fetchRateSrcDtl(g.Matnr, g.plants[0]?.Bukrs ?? '', g.Land1 || f.land1); if (live) setDtl((x) => ({ ...x, [dKey(g)]: list })); } catch (x) { if (live) setDtl((y) => ({ ...y, [dKey(g)]: { error: errorText(x) } })); }
+      try { const b = frtBreakup(await fetchFrtDtl(g.Matnr, g.Land1 || f.land1, win.from, win.to)); if (live) setFrt((x) => ({ ...x, [dKey(g)]: { total: b.total, n: b.lines.length } })); } catch (x) { if (live) setFrt((y) => ({ ...y, [dKey(g)]: { error: errorText(x) } })); } } };
     for (let i = 0; i < 3; i++) void worker();
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -101,7 +109,8 @@ export default function HistoryTab({ segment, setSegment, gjahr, email, onGenera
   // Column filters: one expression per column, on the same values the table shows.
   const [colF, setColF] = useState<ColFilters>({});
   const filtering = Object.values(colF).some((v) => v.trim());
-  const shown = filtering ? searched.filter((g) => {
+  /** The values of one material's row, as the table shows them: the column filters and the Excel download read these. */
+  const rowVals = (g: (typeof groups)[number]): Record<string, string | number | null | undefined> => {
     const dd = dtl[dKey(g)]; const rows2 = Array.isArray(dd) ? dd : null;
     const sel = rowSel[g.key]; const { basis: effBasis, mode: effMode } = effOf(g);
     const ab = rows2 ? avgBasePrice(rows2) : null; const lp = rows2 ? lastPrice(rows2, effMode) : null;
@@ -109,14 +118,36 @@ export default function HistoryTab({ segment, setSegment, gjahr, email, onGenera
     const bu = rows2 ? historyBreakup(g.Matcat, rows2, prio, effMode) : null;
     const sv = saved[g.Matnr] ?? [];
     const spread = (f: (r: BudRateRow) => number) => (sv.length ? Math.max(...sv.map(f)) : null);
-    return rowMatches({
+    return {
       material: stripZeros(g.Matnr), description: g.Maktx, uom: g.BaseUom, netQty: g.NetQty, netValue: lakh(g.NetValue), curr: g.Currency, avgRate: g.AvgRate, ctryValue: g.CtryValue,
       avgBase: ab ? ab.RatePc : null, lastPrice: lp ? lp.row.RatePc : null, lastSrc: lp ? lp.row.RateSrc : '', basis: sel ? (sel.basis === 'AVG' ? 'Avg base price' : `Last ${sel.mode}`) : 'Global',
       projRate: rate, projValue: rate == null ? null : lakh(projectedValue(g.NetQty, rate)), cat: g.Matcat, segment: g.Segment, derived: bu ? bu.derived : null, freight: sv.length ? spread((r) => r.FrtTotal) : bu?.pick ? bu.pick.FrtTotal : null, landed: sv.length ? spread((r) => r.LandedRate) : bu?.pick ? landedRate(bu.pick.RatePc, bu.pick.FrtTotal, true) : null,
-      frtTotal: ab ? ab.FrtTotal : null,
+      frtTotal: ((x) => (x && 'total' in x ? x.total : null))(frt[dKey(g)]),
       rule: bu ? `${bu.rule} ${bu.steps.map((x) => x.k).join(' ')}` : '',
-    }, colF);
-  }) : searched;
+    };
+  };
+  const shown = filtering ? searched.filter((g) => rowMatches(rowVals(g), colF)) : searched;
+  // Hidden columns (CSS on the column position), the saved layout and the Excel download.
+  const [hidden, setHidden] = useState<string[]>([]);
+  const [colMenu, setColMenu] = useState(false);
+  const [layoutMsg, setLayoutMsg] = useState('');
+  useEffect(() => { const h = readHistLayout(); if (h) setHidden(h); }, []);
+  const toggleCol = (k: string) => { setLayoutMsg(''); setHidden((x) => (x.includes(k) ? x.filter((y) => y !== k) : [...x, k])); };
+  const saveLayout = () => setLayoutMsg(writeHistLayout(hidden) ? 'Layout saved' : 'Could not save the layout in this browser');
+  const resetLayout = () => { clearHistLayout(); setHidden([]); setLayoutMsg('Layout reset'); };
+  const hideCss = HIST_COLS.filter((c) => hidden.includes(c.key)).map((c) => `#bm-hist-table thead tr > :nth-child(${c.idx}), #bm-hist-table tr.bm-row > :nth-child(${c.idx})`).join(',');
+  const exportXlsx = () => {
+    const list = shown.map((g) => rowVals(g));
+    const X = (header: string, key: string, dp?: number, width?: number): XCol => ({ header, width, dp, get: (i) => { const v = list[i][key]; return v === undefined || v === null ? null : dp !== undefined ? Number(v) : String(v); } });
+    const all: Record<string, XCol> = {
+      description: X('Description', 'description', undefined, 32), uom: X('UOM', 'uom'), netQty: X('Net Qty', 'netQty', 3), netValue: X('Net Value (Lakhs)', 'netValue', 3), curr: X('Curr', 'curr'),
+      avgRate: X('Avg Rate', 'avgRate', 3), ctryValue: X('Country Total', 'ctryValue', 2), avgBase: X('Avg Base Price', 'avgBase', 3), lastPrice: X('Last Price', 'lastPrice', 3), basis: X('Rate basis', 'basis'),
+      projRate: X('Proj Rate', 'projRate', 3), projValue: X('Proj Value (Lakhs)', 'projValue', 3), cat: X('Cat', 'cat'), segment: X('Segment', 'segment'), derived: X('Derived Rate', 'derived', 3),
+      freight: X('Freight', 'freight', 3), landed: X('Landed Rate', 'landed', 3), frtTotal: X('Delivery Charges', 'frtTotal', 3), rule: X('Rule & breakup', 'rule', undefined, 50),
+    };
+    const cols = [X('Material', 'material', undefined, 14), ...HIST_COLS.filter((c) => !hidden.includes(c.key)).map((c) => all[c.key])];
+    void exportTable({ fmt: 'xlsx', name: `Budget history ${f.land1} ${f.gjahr}`, cols, count: list.length, extraParams: [['Country', f.land1], ['Year', f.gjahr], ['History window', `${win.from} to ${win.to}`], ['Segment', segment], ['Delivery Charges', 'Freight total of the freight breakup (FrtDtlSet), per unit']] });
+  };
   const counts = useMemo(() => { const c = { A: 0, B: 0, C: 0 }; for (const g of groups) if (g.Matcat in c) c[g.Matcat as 'A']++; return c; }, [groups]);
   const num = (k: keyof HistoryFilter) => (v: string) => set(k, v);
 
@@ -194,7 +225,22 @@ export default function HistoryTab({ segment, setSegment, gjahr, email, onGenera
                 className={cx('rounded-full px-3 py-1 text-xs font-bold ring-1', cats.includes(c) ? 'bg-accent text-white ring-accent' : 'bg-panel text-ink ring-line')}>{c} ({counts[c]})</button>
             ))}
           </div>
-          <span className="text-xs text-muted">{shown.length} of {groups.length} materials</span>{filtering && <button type="button" className="text-xs font-semibold text-accent underline" onClick={() => setColF({})}>Clear column filters</button>}
+          <span className="text-xs text-muted">{shown.length} of {groups.length} materials</span>
+          <div className="relative ml-auto flex items-center gap-2">
+            {layoutMsg && <span className="text-xs text-muted" role="status">{layoutMsg}</span>}
+            <Button size="sm" variant="ghost" onClick={() => setColMenu((v) => !v)} aria-expanded={colMenu}><SlidersHorizontal size={14} /> Columns{hidden.length ? ` (${hidden.length} hidden)` : ''}</Button>
+            <Button size="sm" variant="ghost" onClick={exportXlsx}><FileSpreadsheet size={14} /> Excel</Button>
+            {colMenu && (
+              <div className="absolute right-0 top-9 z-30 w-64 rounded-xl border border-line bg-panel p-3 shadow-pop" role="dialog" aria-label="Columns">
+                <p className="mb-1 text-xs font-bold">Show columns</p>
+                <div className="max-h-64 overflow-auto">{HIST_COLS.map((c) => <label key={c.key} className="flex items-center gap-2 py-0.5 text-xs"><input type="checkbox" checked={!hidden.includes(c.key)} onChange={() => toggleCol(c.key)} />{c.label}</label>)}</div>
+                <div className="mt-2 flex flex-wrap gap-2 border-t border-line pt-2">
+                  <Button size="sm" variant="primary" onClick={saveLayout}>Save layout</Button><Button size="sm" onClick={resetLayout}>Reset</Button><Button size="sm" variant="ghost" onClick={() => setColMenu(false)}>Close</Button>
+                </div>
+                <p className="mt-1 text-2xs text-muted">The saved layout is kept in this browser and applied every time this tab opens.</p>
+              </div>
+            )}
+          </div>{filtering && <button type="button" className="text-xs font-semibold text-accent underline" onClick={() => setColF({})}>Clear column filters</button>}
           {dtlDone === groups.length && dtlFailed > 0 && <span className="text-xs font-semibold text-bad" title={dtlError?.error}>{dtlFailed} price reads failed: {dtlError?.error} <button type="button" className="underline" onClick={() => setRetry((n) => n + 1)}>Retry</button></span>}
           {dtlDone < groups.length && <span className="text-xs text-muted">Reading prices: {dtlDone} / {groups.length}</span>}
           {(q || cats.length > 0) && <button type="button" className="text-xs font-semibold text-accent underline" onClick={() => { setQ(''); setCats([]); }}>Clear filters</button>}
@@ -205,10 +251,11 @@ export default function HistoryTab({ segment, setSegment, gjahr, email, onGenera
       {(loading || (rows && rows.length > 0)) && (
         <Panel bodyClass="p-0">
           <div className="max-h-[65vh] overflow-auto">
-            <table className="w-full border-collapse">
+            {hideCss && <style>{`${hideCss}{display:none}`}</style>}
+            <table id="bm-hist-table" className="w-full border-collapse">
               <thead className="bm-thead sticky top-0 z-10">
                 <tr><th className={th}><input type="checkbox" aria-label="Select all shown materials" checked={shown.length > 0 && shown.every((g) => picked.includes(g.Matnr))} onChange={(e) => setPicked(e.target.checked ? Array.from(new Set([...picked, ...shown.map((g) => g.Matnr)])) : picked.filter((m) => !shown.some((g) => g.Matnr === m)))} /></th><th className={th} /><th className={th}>Material</th><th className={th}>Description</th><th className={th}>UOM</th>
-                  <th className={cx(th, 'text-right')}>Net Qty</th><th className={cx(th, 'text-right')}>Net Value (Lakhs)</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Avg Rate</th><th className={cx(th, 'text-right')}>Country Total</th><th className={cx(th, 'text-right')}>Avg Base Price</th><th className={th}>Last Price</th><th className={th}>Rate basis</th><th className={cx(th, 'text-right')}>Proj Rate</th><th className={cx(th, 'text-right')}>Proj Value (Lakhs)</th><th className={th}>Cat</th><th className={th}>Segment</th><th className={cx(th, 'text-right')}>Derived Rate</th><th className={cx(th, 'text-right')}>Freight</th><th className={cx(th, 'text-right')}>Landed Rate</th><th className={cx(th, 'text-right')} title="BudRateSrcDtlSet BASE row: freight total of the material in the country (the breakup button shows the condition types, from FrtDtlSet)">Freight Total</th><th className={th}>Rule &amp; breakup</th></tr>
+                  <th className={cx(th, 'text-right')}>Net Qty</th><th className={cx(th, 'text-right')}>Net Value (Lakhs)</th><th className={th}>Curr</th><th className={cx(th, 'text-right')}>Avg Rate</th><th className={cx(th, 'text-right')}>Country Total</th><th className={cx(th, 'text-right')}>Avg Base Price</th><th className={th}>Last Price</th><th className={th}>Rate basis</th><th className={cx(th, 'text-right')}>Proj Rate</th><th className={cx(th, 'text-right')}>Proj Value (Lakhs)</th><th className={th}>Cat</th><th className={th}>Segment</th><th className={cx(th, 'text-right')}>Derived Rate</th><th className={cx(th, 'text-right')}>Freight</th><th className={cx(th, 'text-right')}>Landed Rate</th><th className={cx(th, 'text-right')} title="Freight total of the material in the country over the history window (FrtDtlSet), the same figure as the Freight breakup dialog">Delivery Charges</th><th className={th}>Rule &amp; breakup</th></tr>
                 <FilterRow filters={colF} setFilters={setColF} cols={[{ key: 'x00', off: true }, { key: 'x0', off: true }, ...['material', 'description', 'uom', 'netQty', 'netValue', 'curr', 'avgRate', 'ctryValue', 'avgBase', 'lastPrice'].map((key) => ({ key })), { key: 'basis' }, ...['projRate', 'projValue', 'cat', 'segment', 'derived', 'freight', 'landed', 'frtTotal', 'rule'].map((key) => ({ key }))]} />
               </thead>
               {loading ? <SkeletonRows cols={22} /> : (
@@ -252,7 +299,7 @@ export default function HistoryTab({ segment, setSegment, gjahr, email, onGenera
                               const pk = bu.pick; const t = pk ? (pk.FrtLines.length ? `From ${pk.RateSrc}: ${freightText(pk.FrtLines)}` : `From ${pk.RateSrc}: no freight`) : undefined;
                               return <><td className={cx(td, 'num text-right')} title={t}>{pk ? `${fmtNum(pk.FrtTotal, 3)}*` : '—'}</td><td className={cx(td, 'num text-right font-extrabold')} title={t}>{pk ? `${fmtNum(landedRate(pk.RatePc, pk.FrtTotal, true), 3)}*` : '—'}</td></>;
                             })()}
-                              {(() => { const ab2 = avgBasePrice(dtl[dKey(g)] as BudRateSrcDtlRow[]); return <td className={cx(td, 'num text-right font-extrabold')} title={ab2 ? `Freight total of the base price (${freightText(ab2.FrtLines) || 'no line items'})` : undefined}>{ab2 ? fmtNum(ab2.FrtTotal, 3) : '—'}</td>; })()}
+                              {(() => { const fz = frt[dKey(g)]; return <td className={cx(td, 'num text-right font-extrabold')} title={fz && 'error' in fz ? fz.error : fz ? `Sum of ${fz.n} freight condition type${fz.n === 1 ? '' : 's'}` : undefined}>{!fz ? '…' : 'error' in fz ? 'n/a' : fmtNum(fz.total, 3)}</td>; })()}
                               <td className="min-w-64 px-2 py-1.5 text-2xs"><div className="font-bold">{bu.rule}</div><div className="num text-muted">{bu.steps.map((x) => `${x.k} ${fmtNum(x.v, 3)}`).join(' · ')}</div></td></>;
                           })()}
                         </tr>
@@ -274,7 +321,7 @@ export default function HistoryTab({ segment, setSegment, gjahr, email, onGenera
                               <div className="mb-1 mt-3 flex flex-wrap items-center gap-3">
                                 <p className="text-xs font-bold">Prices — BudRateSrcDtlSet <span className="font-normal text-muted">(avg base price: material + country; Info record / Contract: material + company code)</span></p>
                                 <Button size="sm" onClick={() => setBreakup({ matnr: g.Matnr, bukrs: g.plants[0]?.Bukrs ?? '', land1: g.Land1 || f.land1, title: g.Maktx })}><BarChart3 size={13} /> Avg base price breakup</Button>
-                                <Button size="sm" onClick={() => { const dd = dtl[dKey(g)]; const bu = Array.isArray(dd) ? historyBreakup(g.Matcat, dd, prio, effOf(g).mode) : null; setFrtBk({ matnr: g.Matnr, land1: g.Land1 || f.land1, histFrom: f.histFrom, histTo: f.histTo, finalBasic: bu?.derived ?? null, title: g.Maktx }); }}><Truck size={13} /> Freight breakup</Button>
+                                <Button size="sm" onClick={() => { const dd = dtl[dKey(g)]; const bu = Array.isArray(dd) ? historyBreakup(g.Matcat, dd, prio, effOf(g).mode) : null; setFrtBk({ matnr: g.Matnr, land1: g.Land1 || f.land1, histFrom: win.from, histTo: win.to, finalBasic: bu?.derived ?? null, title: g.Maktx }); }}><Truck size={13} /> Freight breakup</Button>
                               </div>
                               {(() => { const dd = dtl[dKey(g)];
                                 if (!dd) return <Spinner />;
