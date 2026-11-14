@@ -34,10 +34,28 @@ html, body { height: 100%; }
 body { @apply bg-bg font-sans text-ink antialiased; font-feature-settings: 'cv11' 1; }
 .num { font-variant-numeric: tabular-nums; }
 
+/* The app canvas (Shell's content column): the flat grey lifted with three very soft brand washes.
+   Pure decoration - every panel sits on opaque white, so contrast is untouched. */
+.app-canvas {
+  background-image:
+    radial-gradient(rgb(var(--ink) / 0.05) 1px, transparent 1.5px),
+    radial-gradient(1000px 520px at 88% -12%, rgb(var(--accent) / 0.08), transparent 62%),
+    radial-gradient(760px 460px at -12% 32%, rgb(var(--sim) / 0.05), transparent 60%),
+    radial-gradient(680px 440px at 55% 115%, rgb(var(--accent-deep) / 0.06), transparent 58%);
+  background-size: 22px 22px, auto, auto, auto;
+}
+/* Brand hairline under the header / over feature blocks. */
+.brand-hairline { background-image: linear-gradient(90deg, rgb(var(--accent-deep)), rgb(var(--accent)) 35%, rgb(var(--sim)) 75%, transparent); }
+/* Brand gradient text for the product name and feature headings. */
+.brand-text { background-image: linear-gradient(92deg, rgb(var(--accent-deep)), rgb(var(--accent)) 55%, rgb(var(--sim))); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+::selection { background: rgb(var(--accent) / 0.18); }
+
 *:focus-visible { outline: 2px solid rgb(var(--accent)); outline-offset: 1px; border-radius: 3px; }
 
 .scroll-thin::-webkit-scrollbar { width: 10px; height: 10px; }
 .scroll-thin::-webkit-scrollbar-thumb { background: #d9d4ee; border-radius: 999px; border: 2px solid rgb(var(--panel)); }
+.scroll-thin::-webkit-scrollbar-thumb:hover { background: #b9aee6; }
 
 /* Tree group rows: OPAQUE colours, because the sticky structure cell inherits the row colour
    and a translucent one would be painted twice there. */
@@ -55,7 +73,10 @@ body { @apply bg-bg font-sans text-ink antialiased; font-feature-settings: 'cv11
 .indeterminate { animation: indet 1.4s ease-in-out infinite; }
 @keyframes shimmer { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }
 .skeleton { background: linear-gradient(90deg, rgb(var(--sunken)) 0%, rgb(var(--line)) 50%, rgb(var(--sunken)) 100%); background-size: 800px 100%; animation: shimmer 1.3s linear infinite; }
-@media (prefers-reduced-motion: reduce) { .indeterminate, .skeleton { animation: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .indeterminate, .skeleton { animation: none; }
+  .animate-slideUp, .animate-fadeIn, .animate-slideIn, .animate-pageIn { animation: none; }
+}
 
 /* Table headings: every header row lines up on the bottom edge, so one-line and wrapped (two-line) headings share
    one baseline above their column. */

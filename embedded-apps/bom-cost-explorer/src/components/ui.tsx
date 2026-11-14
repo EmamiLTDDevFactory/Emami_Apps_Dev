@@ -6,8 +6,8 @@ export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Bool
 
 // Explicit class map: Tailwind purges dynamically built class names.
 const BTN: Record<string, string> = {
-  primary: 'bg-gradient-to-br from-accent to-accent-deep text-accent-ink border-transparent shadow-sm hover:shadow-md',
-  secondary: 'bg-panel text-ink border-line hover:bg-sunken',
+  primary: 'bg-gradient-to-br from-accent to-accent-deep text-accent-ink border-transparent shadow-sm hover:-translate-y-px hover:shadow-glow',
+  secondary: 'bg-panel text-ink border-line hover:border-accent/40 hover:bg-sunken',
   ghost: 'bg-transparent text-ink border-transparent hover:bg-sunken',
   danger: 'bg-panel text-bad border-bad/60 hover:bg-bad/10',
 };
@@ -28,7 +28,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLBut
 
 export function Card({ title, actions, children, className, bodyClass }: { title?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string; bodyClass?: string }) {
   return (
-    <section className={cx('rounded-2xl border border-line bg-panel shadow-card', className)}>
+    <section className={cx('rounded-2xl border border-line bg-panel shadow-card transition-shadow duration-300 hover:shadow-cardHover', className)}>
       {(title || actions) && (
         <header className="flex items-center justify-between gap-2 border-b border-line px-4 py-2.5">
           <h3 className="text-sm font-bold">{title}</h3>
@@ -80,7 +80,7 @@ export function Field({ label, hint, error, children, className }: { label: stri
 
 /** Size-free input styling; inputCls adds the default size. Pass inputBase + your own h-/w- to
  * avoid two conflicting width classes. */
-export const inputBase = 'rounded-xl border border-line bg-panel px-3 text-sm text-ink placeholder:text-faint focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/15';
+export const inputBase = 'rounded-xl border border-line bg-panel px-3 text-sm text-ink transition-colors placeholder:text-faint hover:border-accent/40 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/15';
 export const inputCls = `h-9 w-full ${inputBase}`;
 
 export function Toggle({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
@@ -92,7 +92,7 @@ export function Toggle({ checked, onChange, label, disabled }: { checked: boolea
         aria-checked={checked}
         disabled={disabled}
         onClick={() => onChange(!checked)}
-        className={cx('relative h-5 w-9 shrink-0 rounded-full border transition', checked ? 'border-accent bg-accent' : 'border-line bg-line')}
+        className={cx('relative h-5 w-9 shrink-0 rounded-full border transition', checked ? 'border-accent bg-gradient-to-r from-accent to-accent-deep shadow-glow' : 'border-line bg-line')}
       >
         <span className={cx('absolute top-0.5 h-3.5 w-3.5 rounded-full bg-white shadow transition', checked ? 'left-[18px]' : 'left-0.5')} />
       </button>
@@ -149,8 +149,8 @@ export function Skeleton({ rows = 8 }: { rows?: number }) {
 
 export function Empty({ title, children, icon = '∅' }: { title: string; children?: ReactNode; icon?: ReactNode }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-2 px-6 py-16 text-center">
-      <div className="text-3xl text-faint" aria-hidden>{icon}</div>
+    <div className="flex animate-pageIn flex-col items-center justify-center gap-2 px-6 py-16 text-center">
+      <div aria-hidden className="grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-accent/10 to-sim/10 text-2xl text-accent/70 shadow-card">{icon}</div>
       <p className="font-medium">{title}</p>
       {children && <div className="max-w-md text-sm text-muted">{children}</div>}
     </div>
@@ -184,8 +184,8 @@ export function Drawer({ open, onClose, title, children, width = 720, trapFocus 
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex justify-end no-print" role="dialog" aria-modal="true" aria-label={typeof title === 'string' ? title : 'Details'}>
-      <div className="absolute inset-0 bg-plum-deep/40 backdrop-blur-[2px]" onClick={onClose} />
-      <div ref={ref} tabIndex={-1} className="relative flex h-full w-full flex-col border-l border-line bg-panel shadow-2xl outline-none" style={{ maxWidth: width }}>
+      <div className="absolute inset-0 animate-fadeIn bg-plum-deep/40 backdrop-blur-[2px]" onClick={onClose} />
+      <div ref={ref} tabIndex={-1} className="relative flex h-full w-full animate-slideIn flex-col border-l border-line bg-panel shadow-2xl outline-none" style={{ maxWidth: width }}>
         <div className="flex items-start justify-between gap-3 border-b border-line px-4 py-3">
           <div className="min-w-0">{title}</div>
           <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close">✕</Button>
@@ -212,7 +212,7 @@ export function Modal({ open, onClose, title, children, footer }: { open: boolea
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 no-print" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="absolute inset-0 bg-plum-deep/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 animate-fadeIn bg-plum-deep/50 backdrop-blur-sm" onClick={onClose} />
       <div ref={ref} tabIndex={-1} className="relative w-full max-w-lg animate-slideUp rounded-2xl border border-line bg-panel shadow-pop outline-none">
         <div className="border-b border-line px-4 py-3 text-sm font-bold">{title}</div>
         <div className="max-h-[70vh] overflow-auto p-4">{children}</div>
@@ -224,7 +224,8 @@ export function Modal({ open, onClose, title, children, footer }: { open: boolea
 
 export function Stat({ label, value, sub, tone, sim, title }: { label: string; value: ReactNode; sub?: ReactNode; tone?: 'good' | 'warn' | 'bad'; sim?: boolean; title?: string }) {
   return (
-    <div className="rounded-2xl border border-line bg-panel px-4 py-3 shadow-card" title={title}>
+    <div className="relative overflow-hidden rounded-2xl border border-line bg-panel px-4 py-3 shadow-card transition duration-300 hover:-translate-y-0.5 hover:shadow-cardHover" title={title}>
+      <span aria-hidden className="pointer-events-none absolute -right-7 -top-9 h-24 w-24 rounded-full bg-accent/[0.08] blur-2xl" />
       <div className="flex items-center gap-1.5 text-2xs font-bold uppercase tracking-wide text-muted">
         {label}
         {sim && <SimTag />}

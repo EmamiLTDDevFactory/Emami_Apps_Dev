@@ -14,11 +14,11 @@ export default function SectionHome({ id, onMode }: { id: SectionId; onMode?: (m
   }
   const Icon = section.icon;
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4 lg:p-6">
+    <div className="flex min-h-0 flex-1 animate-pageIn flex-col gap-5 overflow-y-auto p-4 lg:p-6">
       <div className="flex items-center gap-3">
-        <span className="grid h-11 w-11 place-items-center rounded-xl bg-gradient-to-br from-accent to-accent-deep text-white shadow-sm"><Icon size={22} /></span>
+        <span className="grid h-11 w-11 place-items-center rounded-xl bg-gradient-to-br from-accent to-accent-deep text-white shadow-glow"><Icon size={22} /></span>
         <div>
-          <h2 className="text-lg font-extrabold text-ink">{section.label}</h2>
+          <h2 className="brand-text text-lg font-extrabold">{section.label}</h2>
           <p className="text-sm text-muted">{section.hint}</p>
         </div>
       </div>
@@ -31,10 +31,11 @@ export default function SectionHome({ id, onMode }: { id: SectionId; onMode?: (m
 
 function Tile({ item, onMode }: { item: NavItem; onMode?: (m: Mode) => void }) {
   const Icon = item.icon;
-  const cls = 'group flex items-start gap-3 rounded-2xl border border-line bg-panel p-4 text-left shadow-card transition hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-pop focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent';
+  const cls = 'group relative flex items-start gap-3 overflow-hidden rounded-2xl border border-line bg-panel p-4 text-left shadow-card transition duration-300 hover:-translate-y-1 hover:border-accent/50 hover:shadow-cardHover focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent';
   const body = (
     <>
-      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-sunken text-accent transition group-hover:bg-accent group-hover:text-white"><Icon size={19} /></span>
+      <span aria-hidden className="pointer-events-none absolute -right-8 -top-10 h-28 w-28 rounded-full bg-accent/[0.07] blur-2xl transition-opacity opacity-0 group-hover:opacity-100" />
+      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-accent/15 to-sim/10 text-accent transition group-hover:from-accent group-hover:to-accent-deep group-hover:text-white group-hover:shadow-glow"><Icon size={19} /></span>
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-extrabold text-ink">{item.label}</span>
         <span className="mt-0.5 block text-xs text-muted">{item.hint}</span>
