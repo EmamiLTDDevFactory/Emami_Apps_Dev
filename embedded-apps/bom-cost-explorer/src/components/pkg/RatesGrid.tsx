@@ -74,7 +74,7 @@ export default function RatesGrid({ groups, loading, cell, editKey, setEditKey, 
                 <td className={cx(td, 'text-right tabular-nums', !bl && (h.Variance > 0 ? 'text-bad' : h.Variance < 0 ? 'text-good' : ''))}>{bl ? '-' : fmtRate4(h.Variance)}</td>
                 <td className={cx(td, 'text-right tabular-nums', !bl && (h.VariancePct > 0 ? 'text-bad' : h.VariancePct < 0 ? 'text-good' : ''))}>{bl ? '-' : fmtVar2(h.VariancePct)}</td>
                 <td className={cx(td, 'text-muted')}>{h.Waers} / {h.Peinh} / {h.Meins}</td>
-                <td className={td}><FlagChips flags={h.MsgFlags} /></td>
+                <td className={td}><FlagChips flags={h.MsgFlags} matnr={h.Matnr} descr={h.Maktx} /></td>
               </tr>
               {open && (
                 <tr><td colSpan={COLS} className="bg-sunken/30 px-3 py-2"><ComponentTable g={g} cell={api} /></td></tr>

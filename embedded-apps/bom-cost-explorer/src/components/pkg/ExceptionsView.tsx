@@ -33,7 +33,7 @@ export default function ExceptionsView({ groups }: { groups: PkgGroup[] }) {
                   <td className="whitespace-nowrap px-3 py-1.5 font-bold">{stripZeros(g.head.Matnr)}</td>
                   <td className="max-w-[260px] truncate px-2" title={g.head.Maktx}>{g.head.Maktx}</td>
                   <td className="px-2">{g.head.Matkl}</td>
-                  <td className="px-2"><FlagChips flags={g.head.MsgFlags} /></td>
+                  <td className="px-2"><FlagChips flags={g.head.MsgFlags} matnr={g.head.Matnr} descr={g.head.Maktx} /></td>
                   <td className="px-2">{flagHint(f, g)}{blocked(g.head) && <span className="ml-2 font-semibold text-bad">Will be skipped on finalise</span>}</td>
                 </tr>
               ))}

@@ -12,6 +12,7 @@ import GlobalEditBar from './GlobalEditBar';
 import KpiCards from './KpiCards';
 import NewScenarioDrawer from './NewScenarioDrawer';
 import RatesGrid from './RatesGrid';
+import { NoRateWhyProvider } from './NoRateWhy';
 import ScenarioBar, { type BarAction } from './ScenarioBar';
 import { useHubSession } from '@/lib/client/session';
 import { fetchItems, fetchOverrides, fetchScenarios, postAction } from '@/lib/pkg/api';
@@ -151,6 +152,7 @@ export default function PkgScreen() {
 
   return (
     <PlanFrame active="pkg-budget">
+      <NoRateWhyProvider scen={scen ?? null}>
       <div className="mx-auto flex w-full max-w-[1800px] flex-col gap-3">
         <h2 className="text-lg font-extrabold">Packing material budget rate</h2>
         <ScenarioBar scens={scens} scen={scen} pending={pending} onSelect={setScenId} onNew={() => { setDrawerErr(''); setDrawer(true); }} onAction={onBar} onOpenBase={(id) => scens.some((s) => s.ScenId === id) && setScenId(id)} />
@@ -216,6 +218,7 @@ export default function PkgScreen() {
           </div>
         )}
       </Modal>
+      </NoRateWhyProvider>
     </PlanFrame>
   );
 }

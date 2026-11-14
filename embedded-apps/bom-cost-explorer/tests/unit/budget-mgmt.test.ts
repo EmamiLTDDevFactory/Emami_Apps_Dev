@@ -305,3 +305,13 @@ describe('Freight breakup (FrtDtlSet)', () => {
     expect(frtDtlFilter('10000001', 'IN', '2025-04-01', '2026-03-31')).toBe("Matnr eq '000000000010000001' and Land1 eq 'IN' and HistFrom eq datetime'2025-04-01T00:00:00' and HistTo eq datetime'2026-03-31T00:00:00'");
   });
 });
+
+describe('why a packing material has no rate (windowVerdict)', () => {
+  it('compares a rate record with the scenario key date', async () => {
+    const { windowVerdict } = await import('@/lib/pkg/rules');
+    expect(windowVerdict({ ValidFrom: '20260521', ValidTo: '20260531' }, '2026-04-01')).toEqual({ ok: false, text: 'starts 50 day(s) after the key date' });
+    expect(windowVerdict({ ValidFrom: '20260101', ValidTo: '20260301' }, '2026-04-01')).toEqual({ ok: false, text: 'ended 31 day(s) before the key date' });
+    expect(windowVerdict({ ValidFrom: '20260301', ValidTo: '20260630' }, '2026-04-01').ok).toBe(true);
+    expect(windowVerdict({ ValidFrom: '', ValidTo: '' }, '2026-04-01').ok).toBe(false);
+  });
+});

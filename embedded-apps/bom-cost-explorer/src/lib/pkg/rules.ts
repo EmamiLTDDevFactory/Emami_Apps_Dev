@@ -190,3 +190,15 @@ export function createBody(f: NewScenarioForm): PkgActionBody {
 }
 
 export const scenLabel = (s: PkgScen) => `v${s.BudgetVersion} #${stripZeros(s.ScenId)} ${s.Descr} - ${STATUS_META[statusOf(s.Status)].label}`;
+
+// ---- why a material has no rate ---------------------------------------------------------------------------------------
+export interface RateWindow { RateSrc: string; CondType: string; Vendor: string; ValidFrom: string; ValidTo: string }
+/** Where a rate's validity (YYYYMMDD from / to) lies against the scenario key date (YYYY-MM-DD). */
+export function windowVerdict(w: Pick<RateWindow, 'ValidFrom' | 'ValidTo'>, keyDate: string): { ok: boolean; text: string } {
+  const k = keyDate.replace(/-/g, '');
+  const days = (a: string, b: string) => Math.round((Date.UTC(+a.slice(0, 4), +a.slice(4, 6) - 1, +a.slice(6, 8)) - Date.UTC(+b.slice(0, 4), +b.slice(4, 6) - 1, +b.slice(6, 8))) / 86400000);
+  if (!/^\d{8}$/.test(k) || !/^\d{8}$/.test(w.ValidFrom)) return { ok: false, text: 'validity unknown' };
+  if (k < w.ValidFrom) return { ok: false, text: `starts ${days(w.ValidFrom, k)} day(s) after the key date` };
+  if (/^\d{8}$/.test(w.ValidTo) && k > w.ValidTo) return { ok: false, text: `ended ${days(k, w.ValidTo)} day(s) before the key date` };
+  return { ok: true, text: 'valid on the key date' };
+}
