@@ -12,6 +12,7 @@ import { normalizeEntity } from './normalize';
 import type { SapMessage } from './messages';
 import type { CostQuery, Mode } from '../query/schema';
 import { excludeIncludedFreight, excludeIncludedFreightRmPm } from '../cost/freightIncluded';
+import { budgetPerUnit } from '../cost/budgetUnit';
 
 /** Result field map for each mode's entity set (MODE_TO_ENTITY in entities.ts). */
 export const MODE_FIELDS = { B: COST_LINE, C: COST_LINE, R: RATE_ROW, F: FREIGHT_ROW, M: RMPM_ROW } as const satisfies Record<Mode, unknown>;
@@ -50,7 +51,7 @@ export async function fetchCostLines(q: CostQuery, opts: SapGetOptions = {}): Pr
   // not a costing problem - the Rate sources tab says it neutrally instead.
   const messages = r.messages.filter((m) => !/RATEOPTIONSET/i.test(m.message));
   // Consumption / MBEW rates include freight: SAP's added freight is taken out here (lib/cost/freightIncluded).
-  const rows = r.rows.map((raw) => excludeIncludedFreight(normalizeEntity<CostLine>(raw, COST_LINE, { [NAV_RATE_OPTIONS]: RATE_OPTION })));
+  const rows = r.rows.map((raw) => budgetPerUnit(excludeIncludedFreight(normalizeEntity<CostLine>(raw, COST_LINE, { [NAV_RATE_OPTIONS]: RATE_OPTION }))));
   // SAP returns depth-first order; Seqnr makes it explicit, so never trust transport order.
   rows.sort((a, b) => a.Seqnr - b.Seqnr);
   const cap = getRatesCapability(cfg.system).state;

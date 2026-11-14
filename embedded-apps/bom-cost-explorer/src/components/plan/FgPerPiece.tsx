@@ -17,6 +17,7 @@ import { planParams } from '@/lib/plan/export';
 import type { PlanCostQuery } from '@/lib/plan/requests';
 import type { RatesState } from '@/lib/rates/useRateOptions';
 import { isLeafRow } from '@/lib/cost/tree';
+import FgPcDialog, { type PcBasis } from './FgPcDialog';
 import { fmtNum, fmtQty, fmtRate } from '@/lib/format';
 
 const num = (d: { toFixed: (n: number) => string } | null | undefined, dp = 4) => (d ? Number(d.toFixed(dp)) : null);
@@ -28,6 +29,7 @@ export default function FgPerPiece({ rows, rates, query, lines }: { rows: FgSour
   useEffect(() => { request(); }, [request]);
   const countries = useMemo(() => byCountry(rows), [rows]);
   const [country, setCountry] = useState<string>('');
+  const [pc, setPc] = useState<{ key: string; basis: PcBasis } | null>(null);
   const shownCountries = country ? countries.filter((c) => c.land1 === country) : countries;
   const shown = shownCountries.flatMap((c) => c.rows);
   const optionsReady = rates.status === 'ready';
@@ -133,11 +135,11 @@ export default function FgPerPiece({ rows, rates, query, lines }: { rows: FgSour
                         if (hidden(s)) return <td key={s} className={cx(tdNum, 'text-faint')}>…</td>;
                         return (
                           <td key={s} className={cx(tdNum, r.lowest === s && 'font-bold text-good', f.priced < f.leaves && 'text-warn')} title={`${f.priced} of ${f.leaves} components priced`}>
-                            {f.perPc ? <>{fmtRate(f.perPc)}{f.priced < f.leaves ? '*' : ''}</> : '—'}
+                            {f.perPc ? <button type="button" className="underline decoration-dotted hover:decoration-solid" title="Show the calculation" onClick={() => setPc({ key: r.key, basis: s })}>{fmtRate(f.perPc)}{f.priced < f.leaves ? '*' : ''}</button> : '—'}
                           </td>
                         );
                       })}
-                      <td className={tdNum}>{r.selectedInclFrt ? fmtRate(r.selectedInclFrt) : '—'}</td>
+                      <td className={tdNum}>{r.selectedInclFrt ? <button type="button" className="underline decoration-dotted hover:decoration-solid" title="Show the calculation" onClick={() => setPc({ key: r.key, basis: 'INCL' })}>{fmtRate(r.selectedInclFrt)}</button> : '—'}</td>
                       <td className={tdCls}>{r.lowest ? PLAN_SOURCE_LABEL[r.lowest].replace('As per ', '') : '—'}</td>
                       <PriceCells matnr={r.headmat} plant={r.hwerks} className={tdNum} costCurr="INR" />
                     </tr>
@@ -149,6 +151,7 @@ export default function FgPerPiece({ rows, rates, query, lines }: { rows: FgSour
         </div>
         </PriceScope>
       </Card>
+      {pc && <FgPcDialog fgKey={pc.key} lines={lines} basis={pc.basis} optionsReady={optionsReady} onClose={() => setPc(null)} />}
       <Card title="Per pc by source (INR per FG piece)">
         <div className="h-80">
           <ResponsiveContainer>

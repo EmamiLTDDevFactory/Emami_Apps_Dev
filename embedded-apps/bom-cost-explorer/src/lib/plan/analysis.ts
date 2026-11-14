@@ -4,8 +4,8 @@
  *   Current cost  = the rate SAP selected (TotCostPcInr per component unit, freight in) x the component quantity of the plan
  *   Budget cost   = the zcomponent / zcomponent_n budget landed rate SAP attached to the line (BudLanded, INR; BudSrcamt in BudSrccurr =
  *                   local currency) x the same quantity. A leaf with no budget rate is costed at the current rate and counted as "no budget".
- *                   SAP sends that rate per PRICE unit (e.g. 65,000 per kg) while the BOM quantity is in the component unit (e.g. g): it is brought to
- *                   the component unit with the line's own factor SelRate / SelRatePc (1,000 for kg -> g). Without a selected rate the factor is unknown:
+ *                   SAP sends that rate per PRICE unit (e.g. 65,000 per kg) while the BOM quantity is in the component unit (e.g. g): lib/cost/budgetUnit
+ *                   brings it to the component unit where the lines come in (factor SelRate / SelRatePc). Without a selected rate the factor is unknown:
  *                   the rate is used as sent and the line is listed on Risks & gaps.
  *   Prior year    = the previous year's zcomponent (India) / zcomponent_n (other countries) landed rate of the same component and plant, x the same
  *                   quantity (like for like). Local-currency rates are turned into INR at the line's own exchange rate.
@@ -14,11 +14,12 @@
 import { isLeafRow } from '../cost/tree';
 import { costCategory, CATEGORIES, type CostCategory } from '../cost/categories';
 import { componentFreightInr, type FreightTagged } from '../cost/freightIncluded';
+import type { BudUnitTagged } from '../cost/budgetUnit';
 import { FISCAL_MONTHS, monthKeys, type PlanCostLine } from './fields';
 import { headerKey } from './maths';
 import type { PlanFailure } from './batchRun';
 
-export type Line = PlanCostLine & FreightTagged;
+export type Line = PlanCostLine & FreightTagged & BudUnitTagged;
 const n = (v: unknown) => { const x = Number(v); return Number.isFinite(x) ? x : 0; };
 const strip = (m: string) => m.replace(/^0+(?=\d)/, '');
 export const pct = (a: number, b: number): number | null => (b ? ((a - b) / Math.abs(b)) * 100 : null);
@@ -101,8 +102,8 @@ export function buildItems(lines: Line[], prior: PriorRates | null): Item[] {
     const fx = lineFxInr(l);
     const costInr = n(l.TotCostInr);
     const hasBudget = n(l.BudLanded) > 0;
-    const uf = n(l.SelRate) > 0 && n(l.SelRatePc) > 0 ? n(l.SelRate) / n(l.SelRatePc) : null; // price unit -> component unit
-    const budgetRate = hasBudget ? n(l.BudLanded) / (uf ?? 1) : null;
+    const uf = l.BudUnitFactor ?? null; // the budget rate was brought from its price unit to the component unit where the lines came in (lib/cost/budgetUnit)
+    const budgetRate = hasBudget ? n(l.BudLanded) : null;
     const pr = prior?.get(priorKey(l.Land1, l.Werks, l.Idnrk)) ?? null;
     const priorInrRaw = pr ? (pr.inr ?? (pr.curr === 'INR' ? pr.rate : null)) : null;
     const priorInr = priorInrRaw === null ? null : priorInrRaw / (uf ?? 1);
@@ -114,9 +115,9 @@ export function buildItems(lines: Line[], prior: PriorRates | null): Item[] {
       source: l.SelSource || 'NO RATE', vendor: l.SelVendor, vendorName: l.SelVname,
       rateInr: n(l.SelRatePcInr), freightInr: componentFreightInr(l).toNumber(), totalPcInr: curRate, costInr,
       locCurr: l.LocCurr, ratePcLoc: n(l.SelRatePcLoc), costLoc: n(l.TotCostLoc),
-      budgetRateInr: budgetRate, budgetSrcAmt: hasBudget && n(l.BudSrcamt) ? n(l.BudSrcamt) / (uf ?? 1) : null, budgetCurr: l.BudSrccurr, budgetSource: l.BudSource, budgetYr: l.BudGjahr,
+      budgetRateInr: budgetRate, budgetSrcAmt: hasBudget && n(l.BudSrcamt) ? n(l.BudSrcamt) : null, budgetCurr: l.BudSrccurr, budgetSource: l.BudSource, budgetYr: l.BudGjahr,
       budgetCostInr: budgetRate === null ? null : budgetRate * qty,
-      budgetCostLoc: hasBudget && n(l.BudSrcamt) ? (n(l.BudSrcamt) / (uf ?? 1)) * qty : hasBudget && fx ? (budgetRate as number) * qty / fx : null,
+      budgetCostLoc: hasBudget && n(l.BudSrcamt) ? n(l.BudSrcamt) * qty : hasBudget && fx ? (budgetRate as number) * qty / fx : null,
       priorRateInr: priorInr, priorRateLoc: pr ? pr.rate / (uf ?? 1) : null, priorCurr: pr ? pr.curr : '', priorCostInr: priorInr === null ? null : priorInr * qty,
       budgetVsCurrentPct: budgetRate !== null && curRate ? pct(budgetRate, curRate) : null,
       yoyPct: budgetRate !== null && priorInr ? pct(budgetRate, priorInr) : null,

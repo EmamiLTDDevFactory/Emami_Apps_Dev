@@ -10,6 +10,7 @@ import { ChevronDown, ChevronRight, Info } from 'lucide-react';
 import { CostError, CostProgress, PlanQueryBar, tdCls, tdNum, thCls, thNum } from './common';
 import { FgStrips } from '../price-context/slots';
 import Warnings from '../Warnings';
+import FgPcDialog, { type PcBasis } from './FgPcDialog';
 import RateSources from '../rates/RateSources';
 import { HBars, useChartTheme } from '../charts';
 import { Card, Drawer, Empty, Pill, Segmented, Skeleton, SourceBadge, Stat, cx, inputBase } from '../ui';
@@ -80,6 +81,7 @@ export default function BreakupTab({ ws }: { ws: PlanWorkspace }) {
   const [search, setSearch] = useState('');
   const [leafOnly, setLeafOnly] = useState(false);
   const [drawer, setDrawer] = useState<number | null>(null);
+  const [pcDlg, setPcDlg] = useState<{ key: string; basis: PcBasis } | null>(null);
   const system = useMemo(() => { const c = loadSapConfig(); return c.ok ? c.config.system : ''; }, []);
   const { cost } = ws;
 
@@ -223,7 +225,7 @@ export default function BreakupTab({ ws }: { ws: PlanWorkspace }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {visible.list.map((v) => ('g' in v ? <GroupRow key={v.g.key} g={v.g} open={isOpen(v.g)} onToggle={() => toggle(v.g)} months={months} fg={v.g.rollup ? fgByKey.get(v.g.rollup.key) : undefined} optionsLoaded={optionsLoaded} /> : <LineRow key={`${v.i}`} l={lines[v.i]} months={months} optionsLoaded={optionsLoaded} onOpen={() => setDrawer(v.i)} />))}
+                    {visible.list.map((v) => ('g' in v ? <GroupRow key={v.g.key} g={v.g} open={isOpen(v.g)} onToggle={() => toggle(v.g)} months={months} fg={v.g.rollup ? fgByKey.get(v.g.rollup.key) : undefined} optionsLoaded={optionsLoaded} onPc={(basis) => v.g.rollup && setPcDlg({ key: v.g.rollup.key, basis })} /> : <LineRow key={`${v.i}`} l={lines[v.i]} months={months} optionsLoaded={optionsLoaded} onOpen={() => setDrawer(v.i)} />))}
                   </tbody>
                 </table>
                 {visible.capped && <p className="px-3 py-2 text-xs text-warn">Showing the first {ROW_CAP.toLocaleString('en-IN')} component rows. Filter or collapse to see the rest (the export has every row).</p>}
@@ -265,6 +267,7 @@ export default function BreakupTab({ ws }: { ws: PlanWorkspace }) {
           )}
         </>
       )}
+      {pcDlg && <FgPcDialog fgKey={pcDlg.key} lines={withRates as unknown as PlanLineWithOptions[]} basis={pcDlg.basis} optionsReady={optionsLoaded} onClose={() => setPcDlg(null)} />}
       <LineDrawer line={drawer === null ? null : (withRates[drawer] as unknown as PlanCostLine & { RateOptions?: CostLine['RateOptions'] })} onClose={() => setDrawer(null)} />
     </div>
   );
@@ -290,14 +293,14 @@ const GROUP_BG: Record<Group['kind'], string> = {
   header: 'color-mix(in srgb, rgb(var(--accent)) 5%, rgb(var(--panel)))',
 };
 
-const pcCell = (f: FgSources | undefined, k: 'BUDGET' | 'MBEW' | 'CONSUMP', loaded = true) => {
+const pcCell = (f: FgSources | undefined, k: 'BUDGET' | 'MBEW' | 'CONSUMP', loaded = true, onPc?: (basis: PcBasis) => void) => {
   const x = f?.sources[k];
   if (!x || (!loaded && k !== 'BUDGET')) return '';
   if (!x.perPc) return <span className="text-faint">—</span>;
-  return <span title={`${x.priced} of ${x.leaves} components priced`} className={cx(x.priced < x.leaves && 'text-warn')}>{fmtRate(x.perPc)}{x.priced < x.leaves ? '*' : ''}</span>;
+  return <button type="button" title={`${x.priced} of ${x.leaves} components priced - click for the calculation`} onClick={() => onPc?.(k)} className={cx('underline decoration-dotted hover:decoration-solid', x.priced < x.leaves && 'text-warn')}>{fmtRate(x.perPc)}{x.priced < x.leaves ? '*' : ''}</button>;
 };
 
-function GroupRow({ g, open, onToggle, months, fg, optionsLoaded }: { g: Group; open: boolean; onToggle: () => void; months: Months; fg?: FgSources; optionsLoaded: boolean }) {
+function GroupRow({ g, open, onToggle, months, fg, optionsLoaded, onPc }: { g: Group; open: boolean; onToggle: () => void; months: Months; fg?: FgSources; optionsLoaded: boolean; onPc: (basis: PcBasis) => void }) {
   const r = g.rollup;
   const Chevron = open ? ChevronDown : ChevronRight;
   const background = GROUP_BG[g.kind];
@@ -313,7 +316,7 @@ function GroupRow({ g, open, onToggle, months, fg, optionsLoaded }: { g: Group; 
           <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-4 font-normal">
             {r.bomSrc === 'LASTPROD' ? <span title={BOM_SOURCE_RULE}><Pill tone="warn">{bomSourceLabel(r)}</Pill></span> : <span title={BOM_SOURCE_RULE}><Pill>OWN</Pill></span>}
             {g.stlal && <span title="Alternative BOM SAP used for this plan material"><Pill tone="accent">Alt BOM {g.stlal}</Pill></span>}
-            <span className="text-2xs text-muted">Plan {fmtQty(r.planQty)} · {r.perPiece ? <>{fmtRate(r.perPiece)} /pc · {fmtNum(r.per1000, 2)} /1000</> : 'no plan qty'}</span>
+            <span className="text-2xs text-muted">Plan {fmtQty(r.planQty)} · {r.perPiece ? <><button type="button" className="font-semibold text-accent underline decoration-dotted hover:decoration-solid" title="Show how this cost per piece is worked out" onClick={() => onPc('INCL')}>{fmtRate(r.perPiece)} /pc</button> · {fmtNum(r.per1000, 2)} /1000</> : 'no plan qty'}</span>
           </div>
         )}
       </td>
@@ -321,13 +324,13 @@ function GroupRow({ g, open, onToggle, months, fg, optionsLoaded }: { g: Group; 
       {g.months.map((m, i) => <td key={i} className={cx(tdNum, months === 'qty' && 'text-faint')}>{months === 'cost' ? fmtCompactInr(Number(m.toFixed(2))) : ''}</td>)}
       <td className={tdNum}>{r ? fmtQty(r.planQty) : ''}</td>
       <td />
-      <td className={tdNum}>{r?.perPiece ? fmtRate(r.perPiece) : ''}</td>
+      <td className={tdNum}>{r?.perPiece ? <button type="button" className="underline decoration-dotted hover:decoration-solid" title="Show the calculation" onClick={() => onPc('INCL')}>{fmtRate(r.perPiece)}</button> : ''}</td>
       <td />
       <td />
       <td className={tdNum}>{fmtNum(g.total, 2)}</td>
-      <td className={tdNum}>{pcCell(fg, 'BUDGET')}</td>
-      <td className={tdNum}>{pcCell(fg, 'MBEW', optionsLoaded)}</td>
-      <td className={tdNum}>{pcCell(fg, 'CONSUMP', optionsLoaded)}</td>
+      <td className={tdNum}>{pcCell(fg, 'BUDGET', true, onPc)}</td>
+      <td className={tdNum}>{pcCell(fg, 'MBEW', optionsLoaded, onPc)}</td>
+      <td className={tdNum}>{pcCell(fg, 'CONSUMP', optionsLoaded, onPc)}</td>
       <td /><td />
     </tr>
   );

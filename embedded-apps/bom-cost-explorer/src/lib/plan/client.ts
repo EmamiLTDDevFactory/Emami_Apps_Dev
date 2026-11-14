@@ -10,6 +10,7 @@ import type { SapMessage } from '../sap/messages';
 import { PLAN_CHECK, PLAN_COST_LINE, PLAN_ENTRY, PLAN_HEAD, PLAN_SUMMARY, PLAN_WIP, type PlanCheck, type PlanCostLine, type PlanEntry, type PlanHead, type PlanSummary, type PlanWip } from './fields';
 import { planChecksRequest, planCostRequest, planEntriesRequest, planHeadsRequest, planSummaryRequest, planWipRequest, type PlanCostQuery, type PlanFilters } from './requests';
 import { excludeIncludedFreight } from '../cost/freightIncluded';
+import { budgetPerUnit } from '../cost/budgetUnit';
 
 export interface PlanResult<T> {
   rows: T[];
@@ -34,6 +35,6 @@ export async function fetchPlanCostLines(q: PlanCostQuery, opts: SapGetOptions =
   const r = await read<PlanCostLine>(planCostRequest(q, OPTIONAL_PROPS), PLAN_COST_LINE, { ...opts, costing: true });
   r.rows.sort((a, b) => a.Seqnr - b.Seqnr);
   // Consumption / MBEW rates include freight (lib/cost/freightIncluded).
-  r.rows = r.rows.map(excludeIncludedFreight);
+  r.rows = r.rows.map((l) => budgetPerUnit(excludeIncludedFreight(l)));
   return { ...r, messages: r.messages.filter((m) => !/RATEOPTIONSET/i.test(m.message)) };
 }

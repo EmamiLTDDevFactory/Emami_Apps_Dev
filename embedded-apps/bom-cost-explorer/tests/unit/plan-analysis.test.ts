@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { analyse, priorKey, type PriorRates } from '@/lib/plan/analysis';
 import { analysisSheets } from '@/lib/plan/analysisExport';
 import type { PlanCostLine } from '@/lib/plan/fields';
+import { budgetPerUnit } from '@/lib/cost/budgetUnit';
 
 const base = { Land1: 'IN', Landx: 'India', Hwerks: 'P1', Headmat: '4000', Headtxt: 'FG ONE', PlanQty: '1000', HasChild: '', Level: 2, BomSrc: 'OWN', LocCurr: 'INR', Werks: 'P1', Meins: 'G', Mtart: 'ROH', Matkl: '404' };
 // Capsacin-like leaf: price unit kg, BOM unit g (factor 1000), current 55/g, budget 65000/kg.
-const leaf = (o: Record<string, unknown>) => ({ ...base, QtyTot: '400', SelSource: 'CONTRACT', SelRate: '55000', SelRatePc: '55', SelRatePcInr: '55', TotCostPcInr: '55', TotCostInr: '22000', TotCostLoc: '22000', TotCostPcLoc: '55', BudLanded: '65000', BudSrcamt: '65000', BudSrccurr: 'INR', BudSource: 'ZCOMP', BudGjahr: '2026', ...o }) as unknown as PlanCostLine;
+const leaf = (o: Record<string, unknown>) => budgetPerUnit({ ...base, QtyTot: '400', SelSource: 'CONTRACT', SelRate: '55000', SelRatePc: '55', SelRatePcInr: '55', TotCostPcInr: '55', TotCostInr: '22000', TotCostLoc: '22000', TotCostPcLoc: '55', BudLanded: '65000', BudSrcamt: '65000', BudSrccurr: 'INR', BudSource: 'ZCOMP', BudGjahr: '2026', ...o } as never) as unknown as PlanCostLine;
 const parent = { ...base, HasChild: 'X', Level: 1, Idnrk: '4000' } as unknown as PlanCostLine;
 
 describe('budget analysis', () => {
