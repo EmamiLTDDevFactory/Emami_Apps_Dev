@@ -175,3 +175,41 @@ async function resolve(q: string, pq: string, opts: SapGetOptions, c: SapConfig)
   setRatesCapability(c.system, 'unavailable', probes, reason);
   return { unavailable: true, reason };
 }
+
+/**
+ * Rate options of a plan run, in the SAME steps as its costing (one plant + a few FGs per request, with the filter that costed them), so each request is
+ * as small as the cost request was and its Seqnr lines up with the cost lines. The first step goes alone (it settles the capability probe), the rest run
+ * `concurrency` at a time. A step that fails is retried once (never on a timeout: a costing-class call must not run twice) and, if it still fails, its
+ * FGs simply have no rate options: the result carries a warning instead of failing the whole load.
+ */
+export async function fetchRateOptionsSteps(
+  filters: string[], opts: SapGetOptions = {}, report?: (done: number, total: number) => void, concurrency = 2,
+): Promise<RatesResult & { failed?: { count: number; first: string } }> {
+  const rows: RateOptionRow[] = [];
+  let mode: 'direct' | 'expand' = 'direct';
+  let done = 0; let failedCount = 0; let first = '';
+  const one = async (f: string): Promise<RatesResult | null> => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try { return await fetchRateOptionsByFilter(f, opts); } catch (e) {
+        if (opts.signal?.aborted || (e as Error)?.name === 'AbortError') throw e;
+        if (!first) first = (e as Error).message;
+        if (e instanceof SapError && (e.kind === 'timeout' || e.kind === 'config')) break;
+      }
+    }
+    failedCount++;
+    return null;
+  };
+  const take = (r: RatesResult | null): RatesResult | null => {
+    done++; report?.(done, filters.length);
+    if (r && !('unavailable' in r)) { rows.push(...r.rows); mode = r.mode; }
+    return r;
+  };
+  if (!filters.length) return { rows, mode };
+  const head = take(await one(filters[0]));
+  if (head && 'unavailable' in head) return head;
+  let next = 1;
+  const worker = async () => { while (next < filters.length) { const f = filters[next++]; const r = take(await one(f)); if (r && 'unavailable' in r) return; } };
+  await Promise.all(Array.from({ length: Math.min(concurrency, filters.length - 1) }, worker));
+  if (failedCount === filters.length) throw new SapError(first || 'Could not load rate options.', 'http');
+  return { rows, mode, ...(failedCount ? { failed: { count: failedCount, first } } : {}) };
+}

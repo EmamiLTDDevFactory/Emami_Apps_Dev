@@ -15,14 +15,13 @@ import { HBars, useChartTheme } from '../charts';
 import { Card, Drawer, Empty, Pill, Segmented, Skeleton, SourceBadge, Stat, cx, inputBase } from '../ui';
 import type { PlanWorkspace } from '@/lib/plan/workspace';
 import { BOM_SOURCE_RULE, actVariancePct, bomSourceLabel, headerKey, headerRollups, monthlyCost, monthQty, planTotals, type PlanHeaderRollup } from '@/lib/plan/maths';
-import { costFilter } from '@/lib/plan/requests';
 import { FISCAL_MONTHS, type PlanCostLine } from '@/lib/plan/fields';
 import { componentRate, fgSources, type FgSources, type PlanLineWithOptions } from '@/lib/plan/sources';
 import FgPerPiece from './FgPerPiece';
 import ComponentSimulator from './ComponentSimulator';
 import RateCoverage from '../rates/RateCoverage';
 import { parsePrio, prioLabel } from '@/lib/rates/priority';
-import { useRateOptionsByFilter } from '@/lib/rates/useRateOptions';
+import { usePlanRateOptions } from '@/lib/plan/useRates';
 import { attachRateOptions } from '@/lib/rates/options';
 import { defaultQuery } from '@/lib/query/schema';
 import { loadSapConfig } from '@/lib/sap/config';
@@ -84,8 +83,7 @@ export default function BreakupTab({ ws }: { ws: PlanWorkspace }) {
   const system = useMemo(() => { const c = loadSapConfig(); return c.ok ? c.config.system : ''; }, []);
   const { cost } = ws;
 
-  const ranFilter = cost.status === 'done' && cost.ranQuery ? costFilter(cost.ranQuery) : null;
-  const rates = useRateOptionsByFilter(ranFilter, system);
+  const rates = usePlanRateOptions(cost, system);
   const rows = cost.rows;
   const rollups = useMemo(() => headerRollups(rows), [rows]);
   const groups = useMemo(() => buildGroups(rows, rollups), [rows, rollups]);
@@ -257,6 +255,7 @@ export default function BreakupTab({ ws }: { ws: PlanWorkspace }) {
           )}
           {view === 'rates' && (
             <Card bodyClass="p-0 h-[70vh]">
+              {rates.status === 'ready' && rates.note && <p role="alert" className="border-b border-line bg-warn/10 px-3 py-1.5 text-xs">{rates.note} <button type="button" className="underline" onClick={rates.retest}>Test again</button></p>}
               {rates.status === 'ready' ? (
                 <RateSources rows={withRates} rates={rates} query={{ ...defaultQuery('B'), materials: cost.ranQuery?.materials ?? [], plants: cost.ranQuery?.plants ?? [] }} onOpenRow={setDrawer} prio={ranPrio} />
               ) : (

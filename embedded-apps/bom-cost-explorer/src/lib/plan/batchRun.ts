@@ -14,6 +14,8 @@ export const PLAN_BATCH = 5;
 export const PLAN_CONCURRENCY = 2;
 
 export interface PlanUnit { werks: string; materials: string[] }
+/** One successful CostLineSet request: the rate options are read with the SAME plant + FG list, so their Seqnr lines up with the cost lines. */
+export interface PlanCall { werks: string; materials: string[] }
 export interface PlanFailure { werks: string; materials: string[]; message: string }
 export interface PlanProgress {
   done: number;
@@ -49,22 +51,24 @@ export interface PlanRun {
   rows: PlanCostLine[];
   messages: SapMessage[];
   failed: PlanFailure[];
+  calls: PlanCall[];
   /** rows per unit, in unit order (kept so a retry can slot its rows in) */
   parts: PlanCostLine[][];
 }
 
 export async function runPlanUnits(
-  q: PlanCostQuery, units: PlanUnit[], opts: { signal?: AbortSignal; onStep?: (run: PlanRun, p: PlanProgress) => void; parts?: PlanCostLine[][]; indexes?: number[] } = {},
+  q: PlanCostQuery, units: PlanUnit[], opts: { signal?: AbortSignal; onStep?: (run: PlanRun, p: PlanProgress) => void; parts?: PlanCostLine[][]; indexes?: number[]; calls?: PlanCall[] } = {},
 ): Promise<PlanRun> {
   const { signal, onStep } = opts;
   const parts: PlanCostLine[][] = opts.parts ? opts.parts.map((p) => p.slice()) : units.map(() => []);
   const todo = opts.indexes ?? units.map((_, i) => i);
   const msgs = new Map<string, SapMessage>();
   const failed: PlanFailure[] = [];
+  const calls: PlanCall[] = opts.calls ? opts.calls.slice() : [];
   const running = new Map<number, string>();
   let done = 0;
   const started = Date.now();
-  const snapshot = (): PlanRun => ({ rows: parts.flat(), messages: [...msgs.values()], failed: failed.slice(), parts });
+  const snapshot = (): PlanRun => ({ rows: parts.flat(), messages: [...msgs.values()], failed: failed.slice(), calls: calls.slice(), parts });
   const step = () => {
     const left = todo.length - done;
     onStep?.(snapshot(), { done, total: todo.length, current: [...running.values()], lines: parts.reduce((a, p) => a + p.length, 0), failed: failed.slice(), etaMs: done > 0 && left > 0 ? Math.round(((Date.now() - started) / done) * left / PLAN_CONCURRENCY) : null });
@@ -75,6 +79,7 @@ export async function runPlanUnits(
     try {
       const r = await fetchPlanCostLines({ ...q, plants: werks ? [werks] : q.plants, materials: list }, { signal });
       parts[idx].push(...r.rows);
+      calls.push({ werks, materials: list });
       r.messages.forEach((m) => msgs.set(`${m.severity}|${m.code}|${m.message}`, m));
     } catch (e) {
       if (isAbort(e, signal)) throw abortErr();

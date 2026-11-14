@@ -10,6 +10,8 @@ import { fetchRateOptions, fetchRateOptionsByFilter, clearRatesCache, UNAVAILABL
 import { getRatesCapability, resetRatesCapability } from './capability';
 import type { RateOptionRow } from './fields';
 
+const warning = (f?: { count: number; first: string }) => (f ? `${f.count} step(s) of the rate-option load failed (${f.first}); the FGs in them have no C-MAP / Consumption rates. Use Test again to retry.` : '');
+
 export type RatesStatus = 'idle' | 'loading' | 'ready' | 'unavailable' | 'error';
 
 export interface RatesState {
@@ -20,6 +22,9 @@ export interface RatesState {
   request: () => void;
   retest: () => void;
 }
+
+/** Progress of a batched load: steps done / total and how many failed. */
+export interface RatesProgress { done: number; total: number; failed: number }
 
 /** Lazy rate options for a BOM costing query (mode B). */
 export function useRateOptions(query: CostQuery | null, system: string): RatesState {
@@ -32,7 +37,7 @@ export function useRateOptionsByFilter(filter: string | null, system: string): R
   return useLazyRates(filter ?? '', system, (signal) => fetchRateOptionsByFilter(filter as string, { signal }));
 }
 
-function useLazyRates(qKey: string, system: string, loader: (signal: AbortSignal) => Promise<RatesResult>): RatesState {
+export function useLazyRates(qKey: string, system: string, loader: (signal: AbortSignal, report?: (done: number, total: number) => void) => Promise<RatesResult>): RatesState {
   const [state, setState] = useState<Omit<RatesState, 'request' | 'retest'>>({ status: 'idle', rows: null, mode: null, note: '' });
   const ctl = useRef<AbortController | null>(null);
   const statusRef = useRef<RatesStatus>('idle');
@@ -55,11 +60,11 @@ function useLazyRates(qKey: string, system: string, loader: (signal: AbortSignal
     const c = new AbortController();
     ctl.current = c;
     setState((s) => ({ ...s, status: 'loading', note: '' }));
-    loaderRef.current(c.signal)
+    loaderRef.current(c.signal, (done, total) => { if (!c.signal.aborted) setState((s) => (s.status === 'loading' ? { ...s, note: `step ${Math.min(done + 1, total)} of ${total}` } : s)); })
       .then((r) => {
         if (c.signal.aborted) return;
         if ('unavailable' in r) setState({ status: 'unavailable', rows: null, mode: null, note: r.reason });
-        else setState({ status: 'ready', rows: r.rows, mode: r.mode, note: '' });
+        else setState({ status: 'ready', rows: r.rows, mode: r.mode, note: warning((r as { failed?: { count: number; first: string } }).failed) });
       })
       .catch((e) => {
         if (c.signal.aborted || (e as Error)?.name === 'AbortError') return;

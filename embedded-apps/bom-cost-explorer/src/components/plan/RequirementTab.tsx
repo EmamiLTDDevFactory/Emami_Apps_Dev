@@ -13,7 +13,7 @@ import { ChevronDown, ChevronRight, FileSpreadsheet, Info, RotateCcw, SlidersHor
 import { CostError, CostProgress, PlanQueryBar, tdCls, tdNum, thCls, thNum } from './common';
 import { Button, Card, Empty, SimTag, Skeleton, Stat, cx, inputBase } from '../ui';
 import type { PlanWorkspace } from '@/lib/plan/workspace';
-import { costFilter, type PlanCostQuery } from '@/lib/plan/requests';
+import { type PlanCostQuery } from '@/lib/plan/requests';
 import { FISCAL_MONTHS } from '@/lib/plan/fields';
 import type { PlanLineWithOptions } from '@/lib/plan/sources';
 import { planParams } from '@/lib/plan/export';
@@ -22,7 +22,8 @@ import {
   type ActualBasis, type ActualGroup, type BudgetResult, type BudgetSettings, type ComponentQty, type RateChange, type RateContext, type SavingsGroup,
 } from '@/lib/plan/budgetSim';
 import { BUDGET_RATE_SET, PROD_ACTUAL_SET, actualsByFg, fetchBudgetRates, fetchProdActuals, rateLookup, type ActualCell, type BudgetRateRow, type Feed, type ProdActualRow } from '@/lib/plan/sapFeeds';
-import { useRateOptionsByFilter, type RatesState } from '@/lib/rates/useRateOptions';
+import { type RatesState } from '@/lib/rates/useRateOptions';
+import { usePlanRateOptions } from '@/lib/plan/useRates';
 import { attachRateOptions } from '@/lib/rates/options';
 import { loadSapConfig } from '@/lib/sap/config';
 import { exportTable, type XCol } from '@/lib/client/export';
@@ -54,8 +55,7 @@ export default function RequirementTab({ ws }: { ws: PlanWorkspace }) {
   const ds = useDeferredValue(s);
 
   const system = useMemo(() => { const c = loadSapConfig(); return c.ok ? c.config.system : ''; }, []);
-  const ranFilter = cost.status === 'done' && cost.ranQuery ? costFilter(cost.ranQuery) : null;
-  const rates = useRateOptionsByFilter(ranFilter, system);
+  const rates = usePlanRateOptions(cost, system);
   const lines = useMemo(() => (rates.status === 'ready' && rates.rows ? attachRateOptions(cost.rows as unknown as CostLine[], rates.rows) : (cost.rows as unknown as CostLine[])) as unknown as PlanLineWithOptions[], [cost.rows, rates.status, rates.rows]);
   // SAP feeds: budget rates with validity, and FG production actuals (sapFeeds.ts); null while loading.
   const fyStart = useMemo(() => { const y = Number(cost.ranQuery?.budgetYr ?? ws.query.budgetYr); const now = new Date(); return y > 2000 ? y : now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1; }, [cost.ranQuery?.budgetYr, ws.query.budgetYr]);

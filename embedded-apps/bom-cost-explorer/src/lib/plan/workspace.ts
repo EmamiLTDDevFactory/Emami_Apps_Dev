@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SapMessage } from '../sap/messages';
 import { fetchPlanHeads, type PlanResult } from './client';
-import { planUnits, runPlanUnits, type PlanProgress, type PlanRun, type PlanUnit } from './batchRun';
+import { planUnits, runPlanUnits, type PlanCall, type PlanProgress, type PlanRun, type PlanUnit } from './batchRun';
 import { BASE_PATH } from '../client/session';
 import { groupPlanHeads, needsPlant, planHref, type PlanPlant } from './plants';
 import { defaultPlanCostQuery, type PlanCostQuery } from './requests';
@@ -24,6 +24,8 @@ export interface PlanCostState {
   at: number;
   /** the step-by-step run: units finished, what runs now, FGs that failed (null when idle or when SAP answered in one call) */
   progress: PlanProgress | null;
+  /** the CostLineSet requests that succeeded (plant + FGs): rate options are read with the same ones */
+  calls: PlanCall[];
 }
 
 export interface PlanWorkspace {
@@ -61,7 +63,7 @@ export interface PlanLoaded {
 }
 const NOTHING: PlanLoaded = { summary: null, checks: null, wip: null };
 
-const EMPTY: PlanCostState = { status: 'idle', rows: [], messages: [], ms: 0, error: '', ranQuery: null, at: 0, progress: null };
+const EMPTY: PlanCostState = { status: 'idle', rows: [], messages: [], ms: 0, error: '', ranQuery: null, at: 0, progress: null, calls: [] };
 export const PLANNER_ROLES = ['Planner', 'Admin'];
 
 export function usePlanWorkspace(plan: string, user: string, initialPlants: string[] = []): PlanWorkspace {
@@ -120,7 +122,7 @@ export function usePlanWorkspace(plan: string, user: string, initialPlants: stri
   const unitsRef = useRef<PlanUnit[]>([]);
   const runRef = useRef<PlanRun | null>(null);
   const publish = (run: PlanRun, p: PlanProgress, q: PlanCostQuery, status: PlanCostState['status'], t0: number) =>
-    setCost({ status, rows: run.rows, messages: run.messages, ms: Date.now() - t0, error: '', ranQuery: q, at: Date.now(), progress: p });
+    setCost({ status, rows: run.rows, messages: run.messages, ms: Date.now() - t0, error: '', ranQuery: q, at: Date.now(), progress: p, calls: run.calls });
   const finish = (run: PlanRun, q: PlanCostQuery, t0: number, c: AbortController) => {
     runRef.current = run;
     if (c.signal.aborted) return;
@@ -160,7 +162,7 @@ export function usePlanWorkspace(plan: string, user: string, initialPlants: stri
     const parts = [...prev.parts, ...extra.map((): PlanRun['parts'][number] => [])];
     setCost((s) => ({ ...s, status: 'running', error: '' }));
     try {
-      const result = await runPlanUnits(run, units, { signal: c.signal, parts, indexes: extra.map((_, i) => prev.parts.length + i), onStep: (r, p) => { if (!c.signal.aborted) publish(r, p, run, 'running', t0); } });
+      const result = await runPlanUnits(run, units, { signal: c.signal, parts, indexes: extra.map((_, i) => prev.parts.length + i), calls: prev.calls, onStep: (r, p) => { if (!c.signal.aborted) publish(r, p, run, 'running', t0); } });
       finish(result, run, t0, c);
     } catch (e) {
       if (c.signal.aborted) return;
