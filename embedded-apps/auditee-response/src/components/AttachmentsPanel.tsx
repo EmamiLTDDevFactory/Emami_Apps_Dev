@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
-import { ALLOWED_EXTENSIONS, type Attachment, type Track } from '@/lib/types';
+import { ALLOWED_EXTENSIONS, MAX_FILE_NAME, type Attachment, type Track } from '@/lib/types';
 import { ConfirmDialog } from './ConfirmDialog';
 import { IconDownload, IconPaperclip, IconTrash } from './icons';
 
@@ -25,6 +25,7 @@ export function AttachmentsPanel({ track, guid, editable }: { track: Track; guid
     if (!file) return;
     setError(''); setNote('');
     if (file.size > api.maxUploadBytes) { setError(`The file is larger than ${maxMb} MB.`); return; }
+    if (file.name.length > MAX_FILE_NAME) { setError(`The file name is longer than ${MAX_FILE_NAME} characters. Rename the file and try again.`); if (input.current) input.current.value = ''; return; }
     setBusy(true);
     try {
       setList(await api.upload(track, guid, file));
@@ -80,7 +81,7 @@ export function AttachmentsPanel({ track, guid, editable }: { track: Track; guid
         <div>
           <label className="lbl" htmlFor="file">Add a file</label>
           <input id="file" ref={input} type="file" accept={ALLOWED_EXTENSIONS.map((e) => `.${e}`).join(',')} onChange={(e) => upload(e.target.files?.[0])} disabled={busy} aria-describedby="file-hint" />
-          <p id="file-hint" className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>Up to {maxMb} MB. PDF, Office, image, text, e-mail or ZIP files. The file is stored right away.</p>
+          <p id="file-hint" className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>Up to {maxMb} MB, file name up to {MAX_FILE_NAME} characters. PDF, Office, image, text, e-mail or ZIP files. The file is stored right away.</p>
           {busy && <p className="muted" role="status">Please wait…</p>}
         </div>
       ) : (

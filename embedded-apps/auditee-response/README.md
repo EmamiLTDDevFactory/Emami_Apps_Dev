@@ -70,26 +70,32 @@ assignee rows are sent. All SAP names are in the MAPPING section of `auditeeResp
 | `AUD_SAP_CLIENT` | sap-client (URL parameter and header), optional |
 | `AUD_SAP_AUTH` | `gateway` (default: the gateway signs in) or `basic` (dev only, with `AUD_SAP_USER` / `AUD_SAP_PASSWORD`) |
 | `AUD_SAP_USER_HEADER` | header with the verified e-mail, default `X-Emami-User` |
-| `AUD_DRAFTS` | `browser` (default, = as built) or `sap` |
+| `AUD_DRAFTS` | `browser` (default, = as built; keep it) or `sap` (only for a future SAP build with a submitted marker) |
 
 Deploying backend changes is manual on the PM2 box (patch the live `server.js`, do not overwrite it: it has uncommitted hardening).
 
-## SAP prerequisites
+## SAP side and prerequisites
 
-- The SAP code of `ZCL_ZIT_MSD_TOOL_INTER_DPC_EXT` ("SAP OData - as built" + updates 1 and 2 in `fix/AUDITEE-CONTRACT.md`) must be
-  deployed to EDS in a **new modifiable transport** (EDSK9B0EDF was released) and tested per the contract's test plan; then NGD / production.
-- **No TVARVC entry is needed** (ZAUDIT_HUB_TECH_USER was dropped).
-- **User master:** every auditee's hub e-mail must exist in the audit tool's Users master **ZIT_MSD_USR_MSTR** (not deleted) with the
-  user id (UNAME) that the auditors pick as person responsible / owner. Auditees need no SAP logon user. Unknown e-mail -> "Your Emami
-  Apps account is not set up as an auditee in the audit tool (no user master entry)."
-- The backend also reads `ZUSER_MASTERSet` (cached 10 min) to find the caller's UNAME (to tell my assignee rows from others') and display
-  names. TODO(sap-contract): it assumes the fields `Email` and `Uname`; simpler would be a `MyRole` field on each assignee row.
-- Risk noted by the SAP side: SAP does not verify `X-Emami-User`; restrict who can reach the service (gateway / ICF) to the hub.
+- Live on **EDS 900** (transport EDSK9B0EDP, not released): `ZCL_ZIT_MSD_TOOL_INTER_DPC_EXT`, see "SAP OData - as built", updates 1 and 2
+  and "EDS test results" in `fix/AUDITEE-CONTRACT.md`. NGD / production follow with that transport.
+- **No TVARVC entry is needed.** The backend sends the verified e-mail in `X-Emami-User`; SAP resolves it in the audit tool's Users
+  master and acts as that auditee only for the auditee functions (list 'A' / 'B', submit 'T' / 'M', attachments).
+- **User master:** every auditee's hub e-mail must exist in **ZIT_MSD_USR_MSTR** (not deleted) with the user id (UNAME) that the auditors
+  pick as person responsible / owner. Auditees need no SAP logon user. Unknown e-mail -> "Your Emami Apps account is not set up as an
+  auditee in the audit tool (no user master entry)."
+- The backend reads `ZUSER_MASTERSet` (Email, Uname, Fname, Lname, Loekz; cached 10 min) to know the caller's UNAME: SAP returns only the
+  caller's assignee rows, but a row can carry the other side's user id, so the side (person responsible / owner) needs it.
+- Risk noted by the SAP side: SAP does not verify `X-Emami-User`; only the hub backend should be able to reach the service (gateway / ICF).
 
-## Open points (TODO(sap-contract) in the code)
+## Live test (6 Nov 2026, EDS 900, from a Mac through this backend)
 
-Not verified on EDS yet. Assumed: ZUSER_MASTERSet field names, MIS attachments on the same entity set and keys (the contract says shared),
-the response field length (4000 in the app and backend), `MailText` empty = nobody pending.
+Fresh TEST – Claude data (schedule P7, process DIRECT TAX_HOKOL): audit workpaper "TEST - Claude Live Audit" and MIS issue "TEST - Claude
+Live MIS", assignees USER2 (arun.mohata, IT_FCOMMON) and USER1 (indranil.banerjee, 90007422). Live build of this app in Chromium (Playwright)
+against the real `auditeeResponse.js` router, both tabs: list -> detail -> draft in the browser (survives reload) -> USER2 submits (stays
+"Send to Auditee", "Waiting for: INDRANIL BANERJEE") -> attachments (upload, list, download, delete own, delete of another auditee's file
+refused 403) -> USER1 submits (Management Responded, read-only banner, upload and submit refused afterwards). SAP: one
+"Management Response:-DIRECT TAX_HOKOL" mail per track, TO reviewer + performer; owner-side comment stored on the owner field; uploads stored
+with PERSON_RES_FLG = X and the uploader's e-mail; history AENAM = each auditee's UNAME.
 
 ## Tests
 

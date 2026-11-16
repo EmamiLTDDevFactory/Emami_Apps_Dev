@@ -22,9 +22,8 @@
                                       free field for a per-assignee "submitted" marker, so this is the mode to use.
                             sap     : only for a later SAP build with a per-side submitted marker: "Save draft" stores the comment
 
-   Status: aligned with "SAP OData — as built" of fix/AUDITEE-CONTRACT.md (code ready, not yet deployed on EDS) and the owner update
-   (per-assignee submit, MIS track). Everything that still depends on how SAP finally builds that update is marked TODO(sap-contract)
-   and lives in the MAPPING section only.
+   Status: aligned with "SAP OData — as built", updates 1 and 2 and the "EDS test results" of fix/AUDITEE-CONTRACT.md (live on EDS,
+   transport EDSK9B0EDP) and tested end to end against EDS 900 through this backend. All SAP names live in the MAPPING section.
 */
 const env = (k, d = '') => String(process.env[k] ?? d).trim();
 
@@ -188,15 +187,15 @@ function guidOf(raw) {
 }
 
 /**
- * User master (ZIT_MSD_USR_MSTR via ZUSER_MASTERSet) -> { byEmail, byUname }. Needed because SAP returns every assignee row of my
- * observations and my role is "PersonResUname = me / OwnerUname = me" (as built), so the backend must know my SAP user name.
- * TODO(sap-contract): field names Email / Uname / Fname / Lname of ZUSER_MASTERSet (Uname is used by the audit tool; Email assumed).
- * Simpler for everyone: SAP adds MyRole ('P' / 'O' / 'B') on each assignee row; rolesOf already prefers it.
+ * User master (ZIT_MSD_USR_MSTR via ZUSER_MASTERSet: Email, Uname, Fname, Lname, Loekz) -> { byEmail, byUname }. As built, SAP returns
+ * only my own assignee rows, but such a row can still carry the other side's user id (e.g. PR = someone else, owner = me), so which side
+ * is mine needs my SAP user id: resolved the way SAP resolves X-Emami-User (e-mail case-insensitive, not deleted, UNAME not empty).
  */
 function toDirectory(rows) {
     const byEmail = new Map();
     const byUname = new Map();
     for (const u of rows) {
+        if (isX(u.Loekz)) continue;
         const uname = str(u.Uname).trim().toUpperCase();
         const name = [str(u.Fname || u.FirstName), str(u.Lname || u.LastName)].join(' ').trim() || str(u.FullName || u.Name).trim() || uname;
         if (uname) byUname.set(uname, name);
@@ -216,7 +215,11 @@ function rolesOf(row, me) {
         return { pr: r.startsWith('p') || r === 'b', owner: r.startsWith('o') || r === 'b' };
     }
     const u = str(me).trim().toUpperCase();
-    return { pr: !!u && str(row.PersonResUname).trim().toUpperCase() === u, owner: !!u && str(row.OwnerUname).trim().toUpperCase() === u };
+    const prU = str(row.PersonResUname).trim().toUpperCase();
+    const owU = str(row.OwnerUname).trim().toUpperCase();
+    if (u) return { pr: prU === u, owner: owU === u };
+    // My user id unknown (user master not readable): SAP returns only my rows, so a row with one filled side is that side.
+    return { pr: !!prU && !owU, owner: !!owU && !prU };
 }
 
 /**
@@ -337,7 +340,7 @@ function savePayload(raw, track, byKey, me, newStatus) {
 }
 
 // ---- attachments (ObservationAttachementSet, keyed by the workpaper's control number / FY / org / process / period; as built, section 4)
-// TODO(sap-contract): the MIS track is assumed to use the same entity set and keys.
+// As built (update 1): shared by both tracks (same table, same keys); the status rule (audit OR MIS at Send to Auditee) is SAP's.
 const ATT_KEYS = ['ControlNumber', 'Gjahr', 'SubLglEntL1', 'SubLglEntL2', 'Process', 'Scheduling', 'Period', 'SubProcess'];
 const attKey = (raw) => Object.fromEntries(ATT_KEYS.map((k) => [k, str(raw[k])]));
 function attachmentListPath(raw) {

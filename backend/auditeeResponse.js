@@ -31,7 +31,8 @@ const sap = require('./auditeeResponseSap');
 const { map } = sap;
 const router = express.Router();
 
-// Transport guards. SAP decides in the end. TODO(sap-contract): confirm the length of PERSON_RES_COMMENT / OWNER_COMMENT.
+// Transport guards. SAP decides in the end. The comment fields are unlimited strings in SAP; 4000 is the app's own limit.
+// Filename is MaxLength 50 in the service.
 const MAX_RESPONSE = 4000;
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const ALLOWED_EXTENSIONS = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'png', 'jpg', 'jpeg', 'msg', 'eml', 'zip'];
@@ -80,7 +81,7 @@ function parseResponses(body) {
 const extOf = (n) => (n.lastIndexOf('.') < 0 ? '' : n.slice(n.lastIndexOf('.') + 1).toLowerCase());
 function parseFileName(v) {
     const n = String(v || '').replace(/[\u0000-\u001f]/g, '').trim();
-    if (!n || n.length > 120 || /[\\/:*?"<>|]/.test(n) || n.includes('..')) throw bad('The file name is not valid.');
+    if (!n || n.length > 50 || /[\\/:*?"<>|]/.test(n) || n.includes('..')) throw bad('The file name is not valid.');
     return n;
 }
 function checkUpload(fileName, size) {

@@ -71,6 +71,8 @@ export const STATUS = { toAuditee: 'Send to Auditee', responded: 'Management Res
 /** Same limit as the backend (MAX_RESPONSE in backend/auditeeResponse.js). */
 export const MAX_RESPONSE = 4000;
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+/** ObservationAttachementSet-Filename is MaxLength 50 in the SAP service. */
+export const MAX_FILE_NAME = 50;
 export const ALLOWED_EXTENSIONS = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'png', 'jpg', 'jpeg', 'msg', 'eml', 'zip'];
 
 export const obsKey = (o: { lineItem: string; ownerLineItem: string }) => `${o.lineItem}|${o.ownerLineItem}`;
