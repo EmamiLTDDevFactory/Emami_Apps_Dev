@@ -124,8 +124,8 @@ const demoApi: Api = {
 };
 
 // ---------------------------------------------------------------- which mode runs
-/** Hosts where the app talks to SAP through the hub backend. Empty until the SAP side is transported (see README). */
-const LIVE_HOSTS: string[] = [];
+/** Hosts where the app talks to SAP through the hub backend. Dev only: the prod backend has no /me/auditee route yet (see README). */
+const LIVE_HOSTS: string[] = ['dev.emamiapps.in'];
 const MODE_KEY = 'aud_mode';
 
 /** 1. build setting AUD_MODE wins, 2. a ?aud=demo|live link switches (remembered in this browser), 3. LIVE_HOSTS, else demo. */

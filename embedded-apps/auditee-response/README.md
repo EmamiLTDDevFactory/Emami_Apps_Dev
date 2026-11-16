@@ -47,8 +47,7 @@ and two MIS issues.
     npm run dev              # http://localhost:3330/apps/auditee-response/
     npm run build            # static export to dist/ (what the hub's Amplify build does)
 
-Live mode: `AUD_MODE=live npm run build`, or add `?aud=live` (remembered in the browser; `?aud=demo` switches back). No host runs live
-by default (`LIVE_HOSTS` in `src/lib/api.ts` is empty) until the SAP side is transported and tested. `AUD_API_BASE` overrides the backend
+Live mode: `AUD_MODE=live npm run build`, or add `?aud=live` (remembered in the browser; `?aud=demo` switches back). dev.emamiapps.in runs live (SAP through the dev hub backend, `LIVE_HOSTS` in `src/lib/api.ts`); other hosts stay demo until the prod backend has the /me/auditee route. `AUD_API_BASE` overrides the backend
 URL (default `https://audit-capa-api.emamiapps.in/dev-api/api/me/auditee` on dev / localhost, `/api/me/auditee` on www).
 
 ## Hub backend (`backend/auditeeResponse.js`, `backend/auditeeResponseSap.js`, mounted at `/api/me/auditee`)
