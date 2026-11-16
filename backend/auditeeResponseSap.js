@@ -57,11 +57,17 @@ function baseUrl() {
     return base;
 }
 
-/** <base>/<path> with sap-client added as URL parameter when configured. */
-function url(path) {
+/**
+ * <base>/<path> with sap-client (when configured) and the verified hub user's e-mail as URL option emamiuser: the same e-mail as the
+ * header, for gateways that drop custom headers (SAP takes the header first, then emamiuser; Prabal passes it in the URL too).
+ */
+function url(path, caller) {
     const { client } = config();
-    const u = `${baseUrl()}/${path}`;
-    return client ? `${u}${u.includes('?') ? '&' : '?'}sap-client=${encodeURIComponent(client)}` : u;
+    let u = `${baseUrl()}/${path}`;
+    const add = (k, v) => { u += `${u.includes('?') ? '&' : '?'}${k}=${encodeURIComponent(v)}`; };
+    if (client) add('sap-client', client);
+    if (caller && caller.email) add('emamiuser', caller.email);
+    return u;
 }
 
 function headersFor(caller, extra = {}) {
@@ -77,7 +83,7 @@ async function csrf(caller, force = false) {
     if (!force && cur && Date.now() - cur.at < TTL) return cur;
     let res;
     try {
-        res = await fetch(url(''), { method: 'GET', headers: headersFor(caller, { 'x-csrf-token': 'Fetch' }), cache: 'no-store' });
+        res = await fetch(url('', caller), { method: 'GET', headers: headersFor(caller, { 'x-csrf-token': 'Fetch' }), cache: 'no-store' });
     } catch (e) { throw new SapError(`SAP is not reachable: ${e.message}`); }
     await res.arrayBuffer().catch(() => null);
     const s = {
@@ -102,7 +108,7 @@ function mapError(body, status) {
     const ref = e && e.innererror && e.innererror.transactionid ? ` (SAP transaction ${e.innererror.transactionid})` : '';
     const message = given || `SAP returned HTTP ${status} without a message${ref}.`;
     let code;
-    if (/not set up as an auditee|no user master|only respond to observations assigned to you|not assigned to you|not authori[sz]ed|only delete attachments that you uploaded|you are not the performer|you are not an assignee/i.test(message)) code = 403;
+    if (/not set up as an auditee|no user master|no sap user found|only respond to observations assigned to you|not assigned to you|not authori[sz]ed|only delete attachments that you uploaded|you are not the performer|you are not an assignee/i.test(message)) code = 403;
     else if (/being edited by|changed by another user|can only respond while|can only be added or removed while/i.test(message)) code = 409;
     else if (/was not found/i.test(message)) code = 404;
     else if (status === 401 || status === 403 || status === 404) code = status;
@@ -121,7 +127,7 @@ async function request(caller, method, path, body, retry = true) {
     });
     let res;
     try {
-        res = await fetch(url(path), { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined, cache: 'no-store' });
+        res = await fetch(url(path, caller), { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined, cache: 'no-store' });
     } catch (e) { throw new SapError(`SAP is not reachable: ${e.message}`); }
     if (res.status === 403 && write && retry && (res.headers.get('x-csrf-token') || '').toLowerCase() === 'required') {
         await res.arrayBuffer().catch(() => null);
