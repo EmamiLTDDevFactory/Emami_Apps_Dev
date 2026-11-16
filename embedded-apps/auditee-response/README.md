@@ -66,7 +66,7 @@ assignee rows are sent. All SAP names are in the MAPPING section of `auditeeResp
 
 | Env var (backend `.env`) | |
 | --- | --- |
-| `AUD_SAP_ODATA_BASE` | service URL, e.g. `https://<azure gateway>/api/EDS/ZIT_MSD_TOOL_INTERNAL_AUDIT_SRV` (required) |
+| `AUD_SAP_ODATA_BASE` | service URL, e.g. `https://<azure gateway>/api/NGQ/ZIT_MSD_TOOL_INTERNAL_AUDIT_SRV` (required). Since 2026-11-16 both hub backends point at **NGQ**, where the service is registered and answering (the gateway mangles bare `$metadata`; probe an entity set with `?%24top=1` instead) |
 | `AUD_SAP_CLIENT` | sap-client (URL parameter and header), optional |
 | `AUD_SAP_AUTH` | `gateway` (default: the gateway signs in) or `basic` (dev only, with `AUD_SAP_USER` / `AUD_SAP_PASSWORD`) |
 | `AUD_SAP_USER_HEADER` | header with the verified e-mail, default `X-Emami-User` |

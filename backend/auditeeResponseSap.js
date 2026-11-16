@@ -5,7 +5,7 @@
    embedded-apps/auditee-response/README.md). Both tracks: AUDIT and MIS.
 
    Settings (backend .env):
-     AUD_SAP_ODATA_BASE   the service URL, e.g. https://<azure gateway>/api/EDS/ZIT_MSD_TOOL_INTERNAL_AUDIT_SRV
+     AUD_SAP_ODATA_BASE   the service URL, e.g. https://<azure gateway>/api/NGQ/ZIT_MSD_TOOL_INTERNAL_AUDIT_SRV (NGQ since 2026-11-16)
                           or https://<host>/sap/opu/odata/sap/ZIT_MSD_TOOL_INTERNAL_AUDIT_SRV                 (required for live mode)
      AUD_SAP_CLIENT       sap-client (sent as URL parameter and header)                                       (optional)
      AUD_SAP_AUTH         gateway (default) | basic
