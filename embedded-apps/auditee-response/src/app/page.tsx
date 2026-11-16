@@ -14,6 +14,13 @@ const STATUS_FILTERS = [
   { key: STATUS.closed, label: 'Closed' },
 ];
 const isClosed = (s: string) => s === STATUS.closed || s === 'MIS Close';
+// the three count cards: a click lists only those workpapers (again = all)
+type CardKey = '' | 'awaiting' | 'waiting' | 'done';
+const CARDS: { key: Exclude<CardKey, ''>; label: string; test: (w: Workpaper) => boolean }[] = [
+  { key: 'awaiting', label: 'Awaiting my response', test: (w) => w.status === STATUS.toAuditee && !w.mySubmitted },
+  { key: 'waiting', label: 'Submitted, waiting for others', test: (w) => w.status === STATUS.toAuditee && w.mySubmitted },
+  { key: 'done', label: 'Responded or closed', test: (w) => w.status !== STATUS.toAuditee },
+];
 
 function MyObservations() {
   const q = useSearchParams();
@@ -24,6 +31,7 @@ function MyObservations() {
   const [fy, setFy] = useState('');
   const [status, setStatus] = useState('');
   const [text, setText] = useState('');
+  const [card, setCard] = useState<CardKey>('');
 
   const load = useCallback(() => {
     setAll(null);
@@ -31,15 +39,17 @@ function MyObservations() {
     api.list(track).then(setAll).catch((e: Error) => { setError(e.message); setAll([]); });
   }, [track]);
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setFy(''); setStatus(''); setText(''); }, [track]);
+  const clearFilters = () => { setFy(''); setStatus(''); setText(''); setCard(''); };
+  useEffect(() => { setFy(''); setStatus(''); setText(''); setCard(''); }, [track]);
 
   const years = useMemo(() => [...new Set((all ?? []).map((w) => w.fy))].sort().reverse(), [all]);
   const inYear = useMemo(() => (all ?? []).filter((w) => !fy || w.fy === fy), [all, fy]);
   const shown = useMemo(() => {
     const needle = text.trim().toLowerCase();
-    return inYear.filter((w) => (!status || w.status === status || (status === STATUS.closed && isClosed(w.status)))
+    const cardTest = CARDS.find((c) => c.key === card)?.test;
+    return inYear.filter((w) => (!cardTest || cardTest(w)) && (!status || w.status === status || (status === STATUS.closed && isClosed(w.status)))
       && (!needle || [w.process, w.subProcess, w.location, w.city, w.period, ...w.observations.map((o) => o.title)].join(' ').toLowerCase().includes(needle)));
-  }, [inYear, status, text]);
+  }, [inYear, status, text, card]);
   // grouped by sub-process (process / sub-process), workpapers inside
   const groups = useMemo(() => {
     const m = new Map<string, Workpaper[]>();
@@ -72,9 +82,13 @@ function MyObservations() {
       </div>
       <div id="track-panel" role="tabpanel" aria-labelledby={`tab-${track}`}>
         <div className="counts">
-          <div className="card stat"><b>{count((w) => w.status === STATUS.toAuditee && !w.mySubmitted)}</b>Awaiting my response</div>
-          <div className="card stat"><b>{count((w) => w.status === STATUS.toAuditee && w.mySubmitted)}</b>Submitted, waiting for others</div>
-          <div className="card stat"><b>{count((w) => w.status !== STATUS.toAuditee)}</b>Responded or closed</div>
+          {CARDS.map((c) => (
+            <button key={c.key} type="button" className="card stat" aria-pressed={card === c.key} disabled={all === null}
+              title={card === c.key ? 'Show all workpapers again' : `Show only: ${c.label}`}
+              onClick={() => { setCard(card === c.key ? '' : c.key); setStatus(''); }}>
+              <b>{count(c.test)}</b>{c.label}
+            </button>
+          ))}
         </div>
         <div className="card">
           <div className="filters">
@@ -87,7 +101,7 @@ function MyObservations() {
             </div>
             <div className="field">
               <label className="lbl" htmlFor="status">Status</label>
-              <select id="status" value={status} onChange={(e) => setStatus(e.target.value)}>
+              <select id="status" value={status} onChange={(e) => { setStatus(e.target.value); setCard(''); }}>
                 {STATUS_FILTERS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
               </select>
             </div>
@@ -95,7 +109,7 @@ function MyObservations() {
               <label className="lbl" htmlFor="search">Search</label>
               <input id="search" type="search" placeholder="Process, sub-process, location or observation title" value={text} onChange={(e) => setText(e.target.value)} />
             </div>
-            <button type="button" onClick={() => { setFy(''); setStatus(''); setText(''); }} disabled={!fy && !status && !text}>Clear filters</button>
+            <button type="button" onClick={clearFilters} disabled={!fy && !status && !text && !card}>Clear filters</button>
             <button type="button" onClick={load} disabled={all === null}>Refresh</button>
           </div>
         </div>
