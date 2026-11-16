@@ -135,6 +135,22 @@ function noMine(wp) {
     if (!wp.observations.length) throw new HttpError('None of the observations of this workpaper could be matched to your SAP user. Ask the audit team to check your user master entry (ZIT_MSD_USR_MSTR).', 403);
 }
 
+/**
+ * Every SAP write also carries the verified hub e-mail in the body (EmailId on the workpaper with UserType 'A', Email on an attachment):
+ * some gateways drop the X-Emami-User header and the emamiuser URL option on POST, the body always arrives (SAP side EDSK9B0EIX+).
+ */
+const withEmail = (c, payload, field) => ({ ...payload, [field]: c.email });
+
+/** Attachment write with Email in the body; an SAP model without the Email property (before EDSK9B0EJ0) gets the plain body. */
+async function postAttachment(c, payload) {
+    try {
+        return await sap.odata.post(c, map.SET.attachment, withEmail(c, payload, 'Email'));
+    } catch (e) {
+        if (!/property 'email' is invalid/i.test(String(e && e.message))) throw e;
+        return sap.odata.post(c, map.SET.attachment, payload);
+    }
+}
+
 const service = {
     config: () => ({ draftStorage: sap.config().drafts, tracks: map.TRACKS }),
     async list(c, track, fy) {
@@ -154,7 +170,7 @@ const service = {
         const wp = map.toWorkpaper(raw, track, ctx);
         noMine(wp);
         if (!wp.canRespond) throw new HttpError(`This workpaper is "${wp.statusText}": responses can no longer be changed.`, 409);
-        await sap.odata.post(c, map.SET.workpaper, map.savePayload(raw, track, mergeResponses(wp, byKey), ctx.me, wp.status));
+        await sap.odata.post(c, map.SET.workpaper, withEmail(c, map.savePayload(raw, track, mergeResponses(wp, byKey), ctx.me, wp.status), 'EmailId'));
         return service.get(c, track, guid);
     },
     async submit(c, track, guid, byKey) {
@@ -167,7 +183,7 @@ const service = {
         const missing = wp.observations.filter((o) => !merged.get(`${o.lineItem}|${o.ownerLineItem}`)).map((o) => o.lineItem);
         if (missing.length) throw bad(`Please write a response to every observation assigned to you before submitting. Missing: observation ${[...new Set(missing)].join(', ')}.`);
         // SAP sets "Management Responded" only when every assignee side is answered after this write (as built, update).
-        await sap.odata.post(c, map.SET.workpaper, map.savePayload(raw, track, merged, ctx.me, map.STATUS.responded));
+        await sap.odata.post(c, map.SET.workpaper, withEmail(c, map.savePayload(raw, track, merged, ctx.me, map.STATUS.responded), 'EmailId'));
         return service.get(c, track, guid);
     },
     async attachments(c, track, guid) {
@@ -189,7 +205,7 @@ const service = {
         // The status rule is SAP's: attachments are shared by both tracks and allowed while either is "Send to Auditee".
         const existing = await attachmentsRaw(c, raw);
         if (existing.some((a) => String(a.Filename).toLowerCase() === fileName.toLowerCase())) throw new HttpError('A file with this name is already attached. Rename the file and try again.', 409);
-        await sap.odata.post(c, map.SET.attachment, map.uploadPayload(raw, fileName, mimeType, bytes));
+        await postAttachment(c, map.uploadPayload(raw, fileName, mimeType, bytes));
         return (await attachmentsRaw(c, raw)).map((a) => map.toAttachment(a, c.email));
     },
     async remove(c, track, guid, name) {
@@ -197,7 +213,7 @@ const service = {
         const row = (await attachmentsRaw(c, raw)).find((a) => String(a.Filename) === name);
         if (!row) throw new HttpError('Attachment not found.', 404);
         if (!map.toAttachment(row, c.email).mine) throw new HttpError('You can only delete attachments that you uploaded yourself.', 403);
-        await sap.odata.post(c, map.SET.attachment, map.deletePayload(raw, name));
+        await postAttachment(c, map.deletePayload(raw, name));
         return (await attachmentsRaw(c, raw)).map((a) => map.toAttachment(a, c.email));
     },
 };
