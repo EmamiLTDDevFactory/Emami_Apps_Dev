@@ -49,6 +49,20 @@ const formatMonthLabel = (monthKey: string) => {
   return new Date(y, m - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
 };
 
+// From/To Period picker options - any month can be missed, not just "last 6/12", so this is a
+// plain scrollable list (most recent first) rather than preset shortcuts. 3 years back is
+// generous headroom for a missed-months catch-up without the list being unreasonably long.
+const PERIOD_PICKER_MONTHS_BACK = 36;
+const getPeriodPickerOptions = () => {
+  const now = new Date();
+  const options: string[] = [];
+  for (let i = 0; i < PERIOD_PICKER_MONTHS_BACK; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    options.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  }
+  return options;
+};
+
 type MonthClaimEntry = {
   attachment: Attachment | null;
   claimAmount: string;
@@ -203,6 +217,9 @@ function CreateClaimInner() {
   // outcome) is NOT wired yet — see the disabled note on the Submit button below.
   const [periodFrom, setPeriodFrom] = useState('');
   const [periodTo, setPeriodTo] = useState('');
+  // Which of the two period fields the picker modal is currently editing, if any.
+  const [periodPickerTarget, setPeriodPickerTarget] = useState<'from' | 'to' | null>(null);
+  const [periodPickerSearch, setPeriodPickerSearch] = useState('');
   const [monthClaims, setMonthClaims] = useState<Record<string, MonthClaimEntry>>({});
   const [monthPickingKey, setMonthPickingKey] = useState<string | null>(null);
   const [monthExtractingKey, setMonthExtractingKey] = useState<string | null>(null);
@@ -557,6 +574,10 @@ function CreateClaimInner() {
     () => monthsInRange.filter((mk) => claimedMonthKeys.has(mk)),
     [monthsInRange, claimedMonthKeys],
   );
+  // "YYYY-MM" strings sort lexicographically, so a plain comparison is enough here. Both fields
+  // picked but in the wrong order would otherwise just show an empty list with no explanation -
+  // this makes that case an explicit, visible message instead of a confusing blank screen.
+  const periodRangeInvalid = Boolean(periodFrom && periodTo && periodTo < periodFrom);
 
   const getMonthEntry = (monthKey: string): MonthClaimEntry =>
     monthClaims[monthKey] || { attachment: null, claimAmount: '', eligibleAmount: null, dateMismatchWarning: null };
@@ -953,7 +974,7 @@ function CreateClaimInner() {
     // (auto-park vs HoD) before it can correctly build one or two CLAIMNAV submissions. Blocking
     // here rather than sending an incomplete/wrong claim to real SAP.
     if (isMobileExpense) {
-      setFormError('Multi-month Mobile Expense submission is not available yet — the eligibility table and SAP routing are still pending. Everything above is saved as you fill it in; submission will be enabled once those land.');
+      setFormError('Submission for missed-months Mobile Expense claims is not available yet — the eligibility table and SAP routing are still pending. Everything above is saved as you fill it in; submission will be enabled once those land.');
       return;
     }
 
@@ -1243,28 +1264,46 @@ function CreateClaimInner() {
       {isMobileExpense && (
         <>
           <Card className="mb-3">
-            <h2 className="mb-1 text-sm font-bold text-ink">Claim Period</h2>
-            <p className="mb-3 text-xs text-inkSoft">Pick the month range this claim covers (6–12 months). Each month gets its own invoice below.</p>
+            <h2 className="mb-1 text-sm font-bold text-ink">Claim for Missed Months</h2>
+            <p className="mb-3 text-xs text-inkSoft">Catching up on months you didn't claim? Pick the range below and add each month's invoice below. Already-claimed months are automatically left out.</p>
             <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-2">
               <Field label="From Period" required>
-                <input type="month" value={periodFrom} onChange={(e) => setPeriodFrom(e.target.value)} className="input" />
+                <button
+                  type="button"
+                  onClick={() => { setPeriodPickerTarget('from'); setPeriodPickerSearch(''); }}
+                  className="input flex items-center justify-between text-left"
+                >
+                  <span className={periodFrom ? 'truncate' : 'truncate text-inkSoft'}>{periodFrom ? formatMonthLabel(periodFrom) : 'Select month'}</span>
+                  <ChevronDown size={16} className="shrink-0 text-inkSoft" />
+                </button>
               </Field>
               <Field label="To Period" required>
-                <input type="month" value={periodTo} onChange={(e) => setPeriodTo(e.target.value)} className="input" />
+                <button
+                  type="button"
+                  onClick={() => { setPeriodPickerTarget('to'); setPeriodPickerSearch(''); }}
+                  className="input flex items-center justify-between text-left"
+                >
+                  <span className={periodTo ? 'truncate' : 'truncate text-inkSoft'}>{periodTo ? formatMonthLabel(periodTo) : 'Select month'}</span>
+                  <ChevronDown size={16} className="shrink-0 text-inkSoft" />
+                </button>
               </Field>
             </div>
             <p className="text-sm font-semibold text-ink">
               Claim from Period [{periodFrom ? formatMonthLabel(periodFrom) : ' '}] To Period [{periodTo ? formatMonthLabel(periodTo) : ' '}]
             </p>
-            {alreadyClaimedMonths.length > 0 && (
+            {periodRangeInvalid ? (
+              <div className="mt-3">
+                <Banner type="error">To Period must be on or after From Period. Please re-check the months you picked.</Banner>
+              </div>
+            ) : alreadyClaimedMonths.length > 0 && (
               <div className="mt-3 flex items-start gap-2 rounded-lg border border-border bg-cream/50 px-3 py-2 text-xs text-inkSoft">
                 <Info size={14} className="mt-0.5 shrink-0" />
-                <span>Already claimed, excluded from this submission: {alreadyClaimedMonths.map(formatMonthLabel).join(', ')}</span>
+                <span>Already claimed, so left out of this catch-up: {alreadyClaimedMonths.map(formatMonthLabel).join(', ')}</span>
               </div>
             )}
           </Card>
 
-          {pendingMonths.map((monthKey) => {
+          {!periodRangeInvalid && pendingMonths.map((monthKey) => {
             const entry = getMonthEntry(monthKey);
             return (
               <Card key={monthKey} className="mb-3">
@@ -1435,7 +1474,7 @@ function CreateClaimInner() {
       {isMobileExpense && (
         <div className="mb-3 flex items-start gap-2 rounded-lg border border-border bg-cream/50 px-3 py-2 text-xs text-inkSoft">
           <Info size={14} className="mt-0.5 shrink-0" />
-          <span>Submission for Mobile Expense isn't enabled yet — the grade-eligibility table and SAP routing are still pending. Everything above saves locally as you fill it in.</span>
+          <span>Submission for this missed-months catch-up isn't enabled yet — the grade-eligibility table and SAP routing are still pending. Everything above saves locally as you fill it in.</span>
         </div>
       )}
       <div className="flex gap-3">
@@ -1471,6 +1510,42 @@ function CreateClaimInner() {
               </button>
             ))
           )}
+        </div>
+      </Modal>
+
+      {/* Period Picker Modal (Non-CTC: Mobile Exp) - same list-with-search pattern as Expense
+          Type above, so there's nothing new for the user to learn. Any month can be missed, so
+          this is a plain scrollable list (most recent first) rather than preset shortcuts. */}
+      <Modal
+        open={periodPickerTarget !== null}
+        title={periodPickerTarget === 'from' ? 'Select From Period' : 'Select To Period'}
+        onClose={() => setPeriodPickerTarget(null)}
+      >
+        <Input value={periodPickerSearch} onChange={(e) => setPeriodPickerSearch(e.target.value)} placeholder="Search month or year" className="mb-3" />
+        <div className="max-h-80 overflow-y-auto">
+          {(() => {
+            const selected = periodPickerTarget === 'from' ? periodFrom : periodTo;
+            const options = getPeriodPickerOptions().filter((mk) =>
+              formatMonthLabel(mk).toLowerCase().includes(periodPickerSearch.toLowerCase())
+            );
+            if (options.length === 0) {
+              return <p className="py-3 text-sm text-inkSoft">No matching months</p>;
+            }
+            return options.map((mk) => (
+              <button
+                key={mk}
+                type="button"
+                onClick={() => {
+                  if (periodPickerTarget === 'from') setPeriodFrom(mk); else setPeriodTo(mk);
+                  setPeriodPickerTarget(null);
+                }}
+                className="flex w-full items-center justify-between border-b border-line py-2.5 text-left text-sm text-ink last:border-b-0 hover:bg-cream"
+              >
+                {formatMonthLabel(mk)}
+                {selected === mk && <Check size={16} className="text-brand" />}
+              </button>
+            ));
+          })()}
         </div>
       </Modal>
 
