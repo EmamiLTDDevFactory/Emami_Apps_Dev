@@ -1,7 +1,7 @@
 'use client';
 
 import axios from 'axios';
-import { Check, CheckCircle2, ChevronDown, CloudUpload, Download, Eye, FileText, Send, Trash2, X } from 'lucide-react';
+import { Check, CheckCircle2, ChevronDown, CloudUpload, Download, Eye, FileText, Info, Send, Trash2, X } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { Banner, Button, Card, Chip, Field, Input, InfoField, MessageModal, type MessageModalState, Modal, Spinner, TextArea, YesNo } from '../../components/ui';
@@ -34,6 +34,32 @@ const EXCEL_MIME_TYPES = ['application/vnd.ms-excel', 'application/vnd.openxmlfo
 // document-extraction result, so a bad OCR read on a non-GST receipt can't force someone into
 // the GST flow (Region/HSN fields) for a value that isn't actually a real GSTIN.
 const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+
+// Non-CTC: Mobile Exp — the multi-month claim flow only turns on for this exact SAP expense
+// type (confirmed against SAP's live ExptypeSet, ZslNo 00073). "1st Telephone Claim" is kept as
+// an alias since it may be the same type surfaced differently for an employee's first claim
+// (SAP returns it per-LoginId, not as a static catalog row — unverified against a real
+// employee login, so both names are honored here rather than guessing which one is shown).
+const MOBILE_EXPENSE_TYPE_NAMES = new Set(['TELE & COMM-TELEPHONE CHARGES-MOBILE PHONE', '1st Telephone Claim']);
+
+// "2026-08" -> "August 2026". Used for month keys throughout the multi-month flow below.
+const formatMonthLabel = (monthKey: string) => {
+  const [y, m] = monthKey.split('-').map(Number);
+  if (!y || !m) return monthKey;
+  return new Date(y, m - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+};
+
+type MonthClaimEntry = {
+  attachment: Attachment | null;
+  claimAmount: string;
+  // Eligible Amount is grade-table-driven (not built yet — see RoutingBadge below). Left in the
+  // shape now so wiring it in later doesn't require touching every call site again.
+  eligibleAmount: number | null;
+  // Set once OCR reads the invoice's own printed date off this card's document and it doesn't
+  // fall inside this card's month — e.g. an August invoice dropped into the July card. Informational
+  // only (doesn't block anything); the card's period stays whatever slot the user put it in.
+  dateMismatchWarning: string | null;
+};
 
 const blobToBase64 = (blob: Blob): Promise<string> => new Promise((resolve, reject) => {
   const reader = new FileReader();
@@ -169,6 +195,20 @@ function CreateClaimInner() {
   // size budget as the two lists above (see pickAttachmentInto).
   const [managerApprovedAttachments, setManagerApprovedAttachments] = useState<Attachment[]>([]);
   const [managerApprovedOriginalSources, setManagerApprovedOriginalSources] = useState<Record<string, { uri: string; mimeType: string }>>({});
+
+  // Non-CTC: Mobile Exp — multi-month claim state. Independent of the shared attachment-budget
+  // system above: each month's document is its own claim line with its own amount, not folded
+  // into the single combined attachments list the rest of this form submits today. Submission
+  // itself (building per-month CLAIMNAV lines, splitting into one or two SAP claims by routing
+  // outcome) is NOT wired yet — see the disabled note on the Submit button below.
+  const [periodFrom, setPeriodFrom] = useState('');
+  const [periodTo, setPeriodTo] = useState('');
+  const [monthClaims, setMonthClaims] = useState<Record<string, MonthClaimEntry>>({});
+  const [monthPickingKey, setMonthPickingKey] = useState<string | null>(null);
+  const [monthExtractingKey, setMonthExtractingKey] = useState<string | null>(null);
+  const [financeDocument, setFinanceDocument] = useState<Attachment[]>([]);
+  const [pickingFinanceDocument, setPickingFinanceDocument] = useState(false);
+  const [approvalNotes, setApprovalNotes] = useState('');
   const normalizedGstin = gstinInput.replace(/\s+/g, '').toUpperCase();
   const [amountError, setAmountError] = useState('');
   const [messageModal, setMessageModal] = useState<MessageModalState>(null);
@@ -226,6 +266,11 @@ function CreateClaimInner() {
     setAmountError('');
     setFormError('');
     setExistingClaimId('');
+    setPeriodFrom('');
+    setPeriodTo('');
+    setMonthClaims({});
+    setFinanceDocument([]);
+    setApprovalNotes('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, expenseTypes]);
 
@@ -467,6 +512,162 @@ function CreateClaimInner() {
   // Same Flag field, different value: blank means this expense type needs a second, separate
   // Manager Approved Attachment - see requiresManagerApprovedAttachment in ClaimContext.tsx.
   const requiresManagerApprovedAttachment = expenseTypes.find((et: any) => et.name === expenseType)?.requiresManagerApprovedAttachment === true;
+
+  // Non-CTC: Mobile Exp — turns on the multi-month flow below in place of the single
+  // date/amount/document fields. Every other expense type is completely unaffected.
+  const isMobileExpense = MOBILE_EXPENSE_TYPE_NAMES.has(expenseType);
+
+  // Months already claimed for this expense type, from claims the app has already fetched —
+  // no new backend call. "Pending" (claimable) months in the picked range exclude these.
+  const claimedMonthKeys = useMemo(() => {
+    const set = new Set<string>();
+    claims.forEach((c: any) => {
+      if (MOBILE_EXPENSE_TYPE_NAMES.has(c.expenseType) && c.expenseDate) {
+        set.add(String(c.expenseDate).slice(0, 7));
+      }
+    });
+    return set;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [claims]);
+
+  const monthsInRange = useMemo(() => {
+    if (!periodFrom || !periodTo) return [] as string[];
+    const [fromY, fromM] = periodFrom.split('-').map(Number);
+    const [toY, toM] = periodTo.split('-').map(Number);
+    if (!fromY || !fromM || !toY || !toM) return [] as string[];
+    const months: string[] = [];
+    let y = fromY;
+    let m = fromM;
+    // Hard stop at 24 iterations — a typo'd end date (e.g. a year off) can't spin this forever.
+    let guard = 0;
+    while ((y < toY || (y === toY && m <= toM)) && guard < 24) {
+      months.push(`${y}-${String(m).padStart(2, '0')}`);
+      m += 1;
+      if (m > 12) { m = 1; y += 1; }
+      guard += 1;
+    }
+    return months;
+  }, [periodFrom, periodTo]);
+
+  const pendingMonths = useMemo(
+    () => monthsInRange.filter((mk) => !claimedMonthKeys.has(mk)),
+    [monthsInRange, claimedMonthKeys],
+  );
+  const alreadyClaimedMonths = useMemo(
+    () => monthsInRange.filter((mk) => claimedMonthKeys.has(mk)),
+    [monthsInRange, claimedMonthKeys],
+  );
+
+  const getMonthEntry = (monthKey: string): MonthClaimEntry =>
+    monthClaims[monthKey] || { attachment: null, claimAmount: '', eligibleAmount: null, dateMismatchWarning: null };
+
+  // Mirrors extractDocumentDetails above, but for one month card: reads the invoice's amount
+  // (auto-fills Claim Amount if the user hasn't typed one yet) and its printed date (checked
+  // against this card's own month — informational warning only, same backend endpoint, no new
+  // infrastructure). 503/non-2xx responses no-op exactly like the existing flow, same reasoning.
+  const extractMonthDocumentDetails = async (monthKey: string, attachment: Attachment) => {
+    setMonthExtractingKey(monthKey);
+    try {
+      const fileRes = await fetch(attachment.uri);
+      const blob = await fileRes.blob();
+      const base64 = await blobToBase64(blob);
+
+      const response = await axios.post(
+        `${API_BASE_URL}/api/expense/extract-document`,
+        { mimeType: attachment.type || blob.type, data: base64 },
+        { validateStatus: () => true },
+      );
+
+      if (response.status < 200 || response.status >= 300) return;
+
+      const { totalAmount, invoiceDate } = response.data || {};
+
+      setMonthClaims((prev) => {
+        const entry = prev[monthKey] || { attachment: null, claimAmount: '', eligibleAmount: null, dateMismatchWarning: null };
+        const claimAmount = (!entry.claimAmount && totalAmount && Number(totalAmount) > 0)
+          ? Number(totalAmount).toString()
+          : entry.claimAmount;
+
+        let dateMismatchWarning: string | null = null;
+        if (invoiceDate) {
+          const invoiceMonthKey = String(invoiceDate).slice(0, 7);
+          if (invoiceMonthKey !== monthKey) {
+            dateMismatchWarning = `This invoice is dated ${formatMonthLabel(invoiceMonthKey)}, but it's attached to the ${formatMonthLabel(monthKey)} card.`;
+          }
+        }
+
+        return { ...prev, [monthKey]: { ...entry, claimAmount, dateMismatchWarning } };
+      });
+    } catch {
+      // Same as the existing single-document flow: a failed read just leaves the fields for the
+      // user to fill in manually, no error surfaced for this best-effort auto-fill.
+    } finally {
+      setMonthExtractingKey(null);
+    }
+  };
+
+  const pickMonthAttachment = async (monthKey: string) => {
+    setMonthPickingKey(monthKey);
+    try {
+      setFormError('');
+      const result = await getDocumentAsync({ multiple: false });
+      if (result.canceled) return;
+      const asset = result.assets[0];
+      if (!asset || !asset.uri) return;
+
+      const mimeType = getMimeTypeForFile(asset.name, asset.mimeType);
+      if (!isAttachmentAllowed(asset.name, mimeType)) {
+        setFormError(`Unsupported attachment type. Allowed file types: ${ALLOWED_ATTACHMENT_LABEL}.`);
+        return;
+      }
+
+      const newAtt: Attachment = { id: `att-${monthKey}-${Date.now()}`, name: asset.name || 'document', uri: asset.uri, size: asset.size || 0, type: mimeType };
+      setMonthClaims((prev) => ({ ...prev, [monthKey]: { ...getMonthEntry(monthKey), attachment: newAtt } }));
+      extractMonthDocumentDetails(monthKey, newAtt);
+    } catch {
+      setFormError('Unable to add attachment. Please try again with a supported file.');
+    } finally {
+      setMonthPickingKey(null);
+    }
+  };
+
+  const removeMonthAttachment = (monthKey: string) => {
+    setMonthClaims((prev) => ({ ...prev, [monthKey]: { ...getMonthEntry(monthKey), attachment: null, dateMismatchWarning: null } }));
+  };
+
+  const setMonthClaimAmount = (monthKey: string, value: string) => {
+    setMonthClaims((prev) => ({ ...prev, [monthKey]: { ...getMonthEntry(monthKey), claimAmount: value } }));
+  };
+
+  const pickFinanceDocument = async () => {
+    if (financeDocument.length >= 1) {
+      setFormError('Remove the current Finance Document before adding another.');
+      return;
+    }
+    setPickingFinanceDocument(true);
+    try {
+      setFormError('');
+      const result = await getDocumentAsync({ multiple: false });
+      if (result.canceled) return;
+      const asset = result.assets[0];
+      if (!asset || !asset.uri) return;
+
+      const mimeType = getMimeTypeForFile(asset.name, asset.mimeType);
+      if (!isAttachmentAllowed(asset.name, mimeType)) {
+        setFormError(`Unsupported attachment type. Allowed file types: ${ALLOWED_ATTACHMENT_LABEL}.`);
+        return;
+      }
+
+      const newAtt: Attachment = { id: `fin-doc-${Date.now()}`, name: asset.name || 'document', uri: asset.uri, size: asset.size || 0, type: mimeType };
+      setFinanceDocument([newAtt]);
+    } catch {
+      setFormError('Unable to add attachment. Please try again with a supported file.');
+    } finally {
+      setPickingFinanceDocument(false);
+    }
+  };
+
+  const removeFinanceDocument = () => setFinanceDocument([]);
 
   useEffect(() => {
     if (parsedAmount > 20000) {
@@ -746,6 +947,16 @@ function CreateClaimInner() {
   };
 
   const handleSubmit = async (isDraft: boolean) => {
+    // Non-CTC: Mobile Exp — the per-month cards, OCR period/amount, and Finance Document/Approval
+    // Notes fields below are real and testable now. Actual submission to SAP is NOT wired yet:
+    // it needs the grade-eligibility table (to compute Eligible Amount) and the routing decision
+    // (auto-park vs HoD) before it can correctly build one or two CLAIMNAV submissions. Blocking
+    // here rather than sending an incomplete/wrong claim to real SAP.
+    if (isMobileExpense) {
+      setFormError('Multi-month Mobile Expense submission is not available yet — the eligibility table and SAP routing are still pending. Everything above is saved as you fill it in; submission will be enabled once those land.');
+      return;
+    }
+
     if (parsedAmount <= 0) {
       setAmountError('Amount must be greater than 0');
       return;
@@ -849,7 +1060,10 @@ function CreateClaimInner() {
 
       {/* Original Expense Document - moved ahead of Claim Details so uploading the receipt first
           can auto-fill GSTIN/Region, HSN, and Amount below via extractDocumentDetails. Capped at
-          exactly 1 file - this is the receipt/invoice itself, not a general attachment bucket. */}
+          exactly 1 file - this is the receipt/invoice itself, not a general attachment bucket.
+          Hidden for Non-CTC: Mobile Exp - that flow uploads one document per claimed month
+          instead (see the per-month cards below Claim Details). */}
+      {!isMobileExpense && (
       <Card className="mb-3">
         <h2 className="text-sm font-bold text-ink">Original Expense Document{attachmentOptionalForType ? '' : ' *'}</h2>
         <p className="text-xs text-inkSoft">{attachmentOptionalForType ? 'Optional for this expense type' : 'Mandatory — upload the receipt or invoice for this expense'}</p>
@@ -893,6 +1107,7 @@ function CreateClaimInner() {
           <p className="mt-2 text-xs font-semibold text-red">{documentExtractionError}</p>
         )}
       </Card>
+      )}
 
       {/* Claim Details */}
       <Card className="mb-3">
@@ -999,14 +1214,18 @@ function CreateClaimInner() {
         )}
 
         <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-          <Field label="Amount (₹)" required>
-            <Input value={amountStr} onChange={(e) => setAmountStr(e.target.value)} placeholder="0.00" inputMode="decimal" />
-            {amountError && (
-              <div className="mt-2">
-                <Banner type="error">{amountError}</Banner>
-              </div>
-            )}
-          </Field>
+          {/* Amount is per-month for Mobile Exp (see Claim Amount on each month card below) -
+              there's no single claim-wide amount to enter here for that flow. */}
+          {!isMobileExpense && (
+            <Field label="Amount (₹)" required>
+              <Input value={amountStr} onChange={(e) => setAmountStr(e.target.value)} placeholder="0.00" inputMode="decimal" />
+              {amountError && (
+                <div className="mt-2">
+                  <Banner type="error">{amountError}</Banner>
+                </div>
+              )}
+            </Field>
+          )}
 
           <Field label="Cost Center" required>
             <Input value={costCenter} disabled />
@@ -1017,6 +1236,129 @@ function CreateClaimInner() {
           <TextArea value={justification} onChange={(e) => setJustification(e.target.value)} placeholder="State the business purpose for this expense..." />
         </Field>
       </Card>
+
+      {/* Non-CTC: Mobile Exp — period range + one card per claimed month, each with its own
+          document, Eligible/Claim Amount, and routing indicator. Only shown for this expense
+          type; every other type keeps the single-document/single-amount flow above untouched. */}
+      {isMobileExpense && (
+        <>
+          <Card className="mb-3">
+            <h2 className="mb-1 text-sm font-bold text-ink">Claim Period</h2>
+            <p className="mb-3 text-xs text-inkSoft">Pick the month range this claim covers (6–12 months). Each month gets its own invoice below.</p>
+            <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+              <Field label="From Period" required>
+                <input type="month" value={periodFrom} onChange={(e) => setPeriodFrom(e.target.value)} className="input" />
+              </Field>
+              <Field label="To Period" required>
+                <input type="month" value={periodTo} onChange={(e) => setPeriodTo(e.target.value)} className="input" />
+              </Field>
+            </div>
+            <p className="text-sm font-semibold text-ink">
+              Claim from Period [{periodFrom ? formatMonthLabel(periodFrom) : ' '}] To Period [{periodTo ? formatMonthLabel(periodTo) : ' '}]
+            </p>
+            {alreadyClaimedMonths.length > 0 && (
+              <div className="mt-3 flex items-start gap-2 rounded-lg border border-border bg-cream/50 px-3 py-2 text-xs text-inkSoft">
+                <Info size={14} className="mt-0.5 shrink-0" />
+                <span>Already claimed, excluded from this submission: {alreadyClaimedMonths.map(formatMonthLabel).join(', ')}</span>
+              </div>
+            )}
+          </Card>
+
+          {pendingMonths.map((monthKey) => {
+            const entry = getMonthEntry(monthKey);
+            return (
+              <Card key={monthKey} className="mb-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <h2 className="text-sm font-bold text-ink">{formatMonthLabel(monthKey)}</h2>
+                  <span className="rounded-full bg-cream px-2.5 py-1 text-[11px] font-semibold text-inkSoft">Pending eligibility check</span>
+                </div>
+
+                {entry.attachment ? (
+                  <div className="mb-3 flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-2">
+                    <FileText size={20} className="shrink-0 text-brand" />
+                    <span className="min-w-0 flex-1 truncate text-sm text-ink">{entry.attachment.name}</span>
+                    <button type="button" onClick={() => entry.attachment && handlePreviewAttachment(entry.attachment)} aria-label="View document" className="rounded p-1.5 text-brand hover:bg-cream">
+                      <Eye size={18} />
+                    </button>
+                    <button type="button" onClick={() => removeMonthAttachment(monthKey)} aria-label="Remove document" className="rounded p-1.5 text-red hover:bg-redBg">
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => pickMonthAttachment(monthKey)}
+                    disabled={monthPickingKey !== null}
+                    className="mb-3 flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-brand/40 bg-cream/40 py-3 text-sm font-semibold text-brand hover:bg-cream disabled:opacity-60"
+                  >
+                    <CloudUpload size={18} /> Add Invoice for {formatMonthLabel(monthKey)}
+                  </button>
+                )}
+                {monthPickingKey === monthKey && (
+                  <div className="mb-3 flex items-center gap-2 text-xs text-inkSoft"><Spinner size={13} /> Processing document…</div>
+                )}
+                {monthExtractingKey === monthKey && (
+                  <div className="mb-3 flex items-center gap-2 text-xs text-inkSoft"><Spinner size={13} /> Reading amount and invoice date…</div>
+                )}
+                {entry.dateMismatchWarning && (
+                  <p className="mb-3 text-xs font-semibold text-red">{entry.dateMismatchWarning}</p>
+                )}
+
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <Field label="Eligible Amount (₹)">
+                    <Input value={entry.eligibleAmount != null ? String(entry.eligibleAmount) : ''} placeholder="Auto-fetched from grade table" disabled />
+                  </Field>
+                  <Field label="Claim Amount (₹)" required>
+                    <Input
+                      value={entry.claimAmount}
+                      onChange={(e) => setMonthClaimAmount(monthKey, e.target.value)}
+                      placeholder="0.00"
+                      inputMode="decimal"
+                    />
+                  </Field>
+                </div>
+              </Card>
+            );
+          })}
+
+          {/* Finance Document + Approval Notes - both manual-entry, per the requirement sheet. */}
+          <Card className="mb-3">
+            <h2 className="text-sm font-bold text-ink">Finance Document</h2>
+            <p className="mb-3 text-xs text-inkSoft">Manual input — attach any supporting finance document for this claim</p>
+
+            {financeDocument.length > 0 ? (
+              <div className="mb-2 flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-2">
+                <FileText size={20} className="shrink-0 text-brand" />
+                <span className="min-w-0 flex-1 truncate text-sm text-ink">{financeDocument[0].name}</span>
+                <button type="button" onClick={() => handlePreviewAttachment(financeDocument[0])} aria-label="View document" className="rounded p-1.5 text-brand hover:bg-cream">
+                  <Eye size={18} />
+                </button>
+                <button type="button" onClick={removeFinanceDocument} aria-label="Remove document" className="rounded p-1.5 text-red hover:bg-redBg">
+                  <Trash2 size={18} />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={pickFinanceDocument}
+                disabled={pickingFinanceDocument}
+                className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-brand/40 bg-cream/40 py-3 text-sm font-semibold text-brand hover:bg-cream disabled:opacity-60"
+              >
+                <CloudUpload size={18} /> Add Finance Document
+              </button>
+            )}
+            {pickingFinanceDocument && (
+              <div className="mt-2 flex items-center gap-2 text-xs text-inkSoft"><Spinner size={13} /> Processing document…</div>
+            )}
+
+            <div className="mt-4">
+              <Field label="Approval Notes">
+                <TextArea value={approvalNotes} onChange={(e) => setApprovalNotes(e.target.value)} placeholder="Manual input — any note relevant to approval" />
+              </Field>
+            </div>
+          </Card>
+        </>
+      )}
 
       {/* Supporting Document - optional, any number of additional related documents. No
           extraction/OCR runs on these; only the Original Expense Document above feeds that. */}
@@ -1090,6 +1432,12 @@ function CreateClaimInner() {
       )}
 
       {/* Actions */}
+      {isMobileExpense && (
+        <div className="mb-3 flex items-start gap-2 rounded-lg border border-border bg-cream/50 px-3 py-2 text-xs text-inkSoft">
+          <Info size={14} className="mt-0.5 shrink-0" />
+          <span>Submission for Mobile Expense isn't enabled yet — the grade-eligibility table and SAP routing are still pending. Everything above saves locally as you fill it in.</span>
+        </div>
+      )}
       <div className="flex gap-3">
         <Button variant="secondary" className="flex-1" onClick={() => setCancelConfirmVisible(true)}>
           <X size={18} /> Cancel
