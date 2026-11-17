@@ -1325,7 +1325,6 @@ function CreateClaimInner() {
               <Card key={monthKey} className="mb-3">
                 <div className="mb-2 flex items-center justify-between">
                   <h2 className="text-sm font-bold text-ink">{formatMonthLabel(monthKey)}</h2>
-                  <span className="rounded-full bg-cream px-2.5 py-1 text-[11px] font-semibold text-inkSoft">Pending eligibility check</span>
                 </div>
 
                 {entry.attachment ? (
@@ -1359,13 +1358,10 @@ function CreateClaimInner() {
                   <p className="mb-3 text-xs font-semibold text-red">{entry.dateMismatchWarning}</p>
                 )}
 
-                <div className="mb-3">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                   <Field label="Invoice Number">
                     <Input value={entry.invoiceNumber || ''} placeholder="Auto-fetched from invoice" disabled />
                   </Field>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <Field label="Eligible Amount (₹)">
                     <Input value={entry.eligibleAmount != null ? String(entry.eligibleAmount) : ''} placeholder="Auto-fetched from grade table" disabled />
                   </Field>
@@ -1376,6 +1372,14 @@ function CreateClaimInner() {
                       placeholder="0.00"
                       inputMode="decimal"
                     />
+                    {/* Same ₹20,000 per-claim cap the regular single-claim flow enforces (see
+                        parsedAmount above) - each month here is its own claim line, so it gets
+                        the same check individually rather than only on the combined total. */}
+                    {(parseFloat(entry.claimAmount) || 0) > 20000 && (
+                      <div className="mt-2">
+                        <Banner type="error">Amount cannot exceed ₹20,000</Banner>
+                      </div>
+                    )}
                   </Field>
                 </div>
               </Card>
