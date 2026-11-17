@@ -6,9 +6,12 @@ const { URL } = require("url");
 // Service: ZQM_CAPA_AUDIT_SRV, Protocol: OData v2 (JSON), Method: POST
 //
 // Overridable via SAP_NGD_BASE_URL so infra can move it without a code change.
-const NGD_BASE =
-  process.env.SAP_NGD_BASE_URL ||
-  "https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGD/ZQM_CAPA_AUDIT_SRV";
+// const API_BASE_NGD = "https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGD/ZQM_CAPA_AUDIT_SRV";
+const API_BASE_NWP = "https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NWP/ZQM_CAPA_AUDIT_SRV";
+// const API_BASE_NGQ = "https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGQ/ZQM_CAPA_AUDIT_SRV";
+
+// To switch SAP system, uncomment the one you want above and use it here.
+const NGD_BASE = process.env.SAP_NGD_BASE_URL || API_BASE_NWP;
 
 // A hung proxy must never hold a request open indefinitely — Dispatch Tracker's /LoginSet
 // call taught us that, where the same middleware hung until Azure returned a 504 minutes
