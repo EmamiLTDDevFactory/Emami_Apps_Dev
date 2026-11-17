@@ -84,7 +84,7 @@ export default function NotificationBell({ onNavigateToPendingCorrection }: Prop
       </button>
       {/* On document.body: the glass header (backdrop-filter) would otherwise confine the fixed panel to the header. */}
       {open && createPortal(
-        <aside id="notif-panel" aria-label="Rejection notifications" className="glass-strong fade-up fixed right-0 top-0 z-40 h-screen w-[400px] max-w-full overflow-y-auto shadow-[-12px_0_40px_-12px_rgba(36,30,61,0.35)]">
+        <aside id="notif-panel" aria-label="Rejection notifications" className="glass-strong fade-up fixed inset-y-0 right-0 z-40 w-[400px] max-w-full overflow-y-auto shadow-[-12px_0_40px_-12px_rgba(36,30,61,0.35)]">
           <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-plum/10 bg-white/90 px-4 py-3 backdrop-blur">
             <h2 className="flex-1 font-display text-sm font-semibold text-sap-ink">Rejection Notifications</h2>
             {count > 0 && <button type="button" onClick={() => void markRead(items.map((n) => n.NOTIF_ID), 'all')} disabled={marking !== null} className="text-sm font-semibold text-plum hover:underline disabled:opacity-50">{marking === 'all' ? 'Marking...' : 'Mark all as read'}</button>}

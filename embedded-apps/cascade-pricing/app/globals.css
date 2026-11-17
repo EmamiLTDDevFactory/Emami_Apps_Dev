@@ -19,6 +19,8 @@
 }
 
 html { -webkit-text-size-adjust: 100%; color-scheme: light; }
+/* Whole screen a little zoomed out so more fits (the shell is position:fixed, so it still fills the window). */
+body { zoom: 0.9; }
 body { font-family: Inter, -apple-system, "Segoe UI", Roboto, sans-serif; background: #E9E6F7; color: rgb(var(--ink)); }
 :focus-visible { outline: 2px solid rgb(var(--plum)); outline-offset: 2px; border-radius: 6px; }
 ::selection { background: rgba(139, 92, 246, 0.25); }

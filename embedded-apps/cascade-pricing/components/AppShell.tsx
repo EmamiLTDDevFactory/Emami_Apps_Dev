@@ -27,6 +27,7 @@ const TABS: { id: string; label: string; hint: string; group: string; icon: Icon
 ];
 const GROUPS = [...new Set(TABS.map((t) => t.group))];
 
+const PANE_KEY = 'cascade-pricing:menu-collapsed';
 const BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
 /** SAP system shown until the backend says which one it is connected to (its /health answer). */
 const DEFAULT_SAP_SYSTEM = process.env.NEXT_PUBLIC_CASCADE_SAP_SYSTEM || 'NGQ';
@@ -51,6 +52,7 @@ function useIsWide() {
 export default function AppShell() {
   const wide = useIsWide();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const [tab, setTab] = useState('material');
   const [visited, setVisited] = useState<ReadonlySet<string>>(() => new Set(['material']));
   const [busy, setBusy] = useState(false);
@@ -67,6 +69,7 @@ export default function AppShell() {
   useEffect(() => {
     // The hub's own sign-in (read only): the name in the header, like every sibling app.
     try { setEmail(window.localStorage.getItem('emami_apps_user_email') || ''); } catch { /* storage blocked */ }
+    try { setCollapsed(window.localStorage.getItem(PANE_KEY) === '1'); } catch { /* storage blocked */ }
     setToday(new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }));
   }, []);
 
@@ -91,20 +94,29 @@ export default function AppShell() {
     setFailures([]);
     setMenuOpen(false);
   };
+  const setPane = (c: boolean) => {
+    setCollapsed(c);
+    try { window.localStorage.setItem(PANE_KEY, c ? '1' : '0'); } catch { /* storage blocked */ }
+  };
   const current = TABS.find((t) => t.id === tab) ?? TABS[0];
   const CurrentIcon = current.icon;
 
   const pane = wide
-    ? 'relative m-3 mr-0 w-[17rem] shrink-0 rounded-3xl glass'
+    ? `${collapsed ? 'hidden ' : ''}relative m-3 mr-0 w-[17rem] shrink-0 rounded-3xl glass`
     : `fixed inset-y-2 left-2 z-40 w-72 max-w-[85vw] rounded-3xl glass-strong shadow-pop transition-transform duration-300 ${menuOpen ? 'translate-x-0' : '-translate-x-[110%]'}`;
   const healthDot = health.state === 'ok' ? 'bg-emerald-400 shadow-[0_0_0_4px_rgba(52,211,153,0.25)]' : health.state === 'down' ? 'bg-red-500 shadow-[0_0_0_4px_rgba(239,68,68,0.2)]' : 'animate-pulse bg-amber-400';
 
   return (
-    <div className="aurora flex h-screen overflow-hidden">
+    <div className="aurora fixed inset-0 flex overflow-hidden">
       <div className="grain" aria-hidden="true" />
       {!wide && menuOpen && <div className="fixed inset-0 z-30 bg-brand-deep/30 backdrop-blur-sm" onClick={() => setMenuOpen(false)} />}
       <aside className={`${pane} flex flex-col overflow-hidden`} aria-label="Cascade pricing sections">
         <div className="relative">
+          {wide && (
+            <div className="absolute right-2 top-2 z-10">
+              <button type="button" onClick={() => setPane(true)} aria-label="Collapse menu" title="Collapse menu" className="rounded-full p-1.5 text-sap-muted hover:bg-white/70 hover:text-sap-ink"><IconArrowLeft size={18} /></button>
+            </div>
+          )}
           {!wide && (
             <div className="absolute right-2 top-2 z-10">
               <button type="button" onClick={() => setMenuOpen(false)} aria-label="Close menu" className="rounded-full p-1.5 text-sap-muted hover:bg-white/70 hover:text-sap-ink"><IconX size={18} /></button>
@@ -154,6 +166,7 @@ export default function AppShell() {
           <span className="mr-4 hidden items-center gap-2 text-[11px] font-semibold text-white/70 md:flex"><span className={`h-1.5 w-1.5 rounded-full ${healthDot}`} aria-hidden="true" /> SAP {system}</span>
         </div>
         <header className="glass mt-3 flex flex-wrap items-center gap-2.5 rounded-2xl px-4 py-3">
+          {wide && collapsed && <button type="button" onClick={() => setPane(false)} aria-label="Expand menu" title="Expand menu" className="rounded-full p-1.5 text-sap-ink hover:bg-white/70"><IconMenu size={22} /></button>}
           {!wide && <button type="button" onClick={() => setMenuOpen(true)} aria-label="Open menu" className="rounded-full p-1.5 text-sap-ink hover:bg-white/70"><IconMenu size={22} /></button>}
           <h1 className="truncate font-display text-[19px] font-extrabold tracking-tight"><span className="text-gradient">Cascade</span> <span className="text-sap-ink">Pricing</span></h1>
           <span className="chip hidden text-plum sm:inline-flex"><CurrentIcon size={11} /> {current.label}</span>
