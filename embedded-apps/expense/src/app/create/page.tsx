@@ -73,6 +73,8 @@ type MonthClaimEntry = {
   // fall inside this card's month — e.g. an August invoice dropped into the July card. Informational
   // only (doesn't block anything); the card's period stays whatever slot the user put it in.
   dateMismatchWarning: string | null;
+  // OCR-read invoice/bill number, shown read-only on the card for reference back to the document.
+  invoiceNumber: string | null;
 };
 
 const blobToBase64 = (blob: Blob): Promise<string> => new Promise((resolve, reject) => {
@@ -580,7 +582,21 @@ function CreateClaimInner() {
   const periodRangeInvalid = Boolean(periodFrom && periodTo && periodTo < periodFrom);
 
   const getMonthEntry = (monthKey: string): MonthClaimEntry =>
-    monthClaims[monthKey] || { attachment: null, claimAmount: '', eligibleAmount: null, dateMismatchWarning: null };
+    monthClaims[monthKey] || { attachment: null, claimAmount: '', eligibleAmount: null, dateMismatchWarning: null, invoiceNumber: null };
+
+  // Running totals across every pending month card - so the employee sees the overall numbers
+  // without manually adding up each card. Null Eligible Amount (not fetched yet) counts as 0, not
+  // "unknown" - once the grade table is wired in this will only ever be a real number per card.
+  const totalEligibleAmount = useMemo(
+    () => pendingMonths.reduce((sum, mk) => sum + (getMonthEntry(mk).eligibleAmount || 0), 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pendingMonths, monthClaims],
+  );
+  const totalClaimAmount = useMemo(
+    () => pendingMonths.reduce((sum, mk) => sum + (parseFloat(getMonthEntry(mk).claimAmount) || 0), 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pendingMonths, monthClaims],
+  );
 
   // Mirrors extractDocumentDetails above, but for one month card: reads the invoice's amount
   // (auto-fills Claim Amount if the user hasn't typed one yet) and its printed date (checked
@@ -601,10 +617,10 @@ function CreateClaimInner() {
 
       if (response.status < 200 || response.status >= 300) return;
 
-      const { totalAmount, invoiceDate } = response.data || {};
+      const { totalAmount, invoiceDate, invoiceNumber } = response.data || {};
 
       setMonthClaims((prev) => {
-        const entry = prev[monthKey] || { attachment: null, claimAmount: '', eligibleAmount: null, dateMismatchWarning: null };
+        const entry = prev[monthKey] || { attachment: null, claimAmount: '', eligibleAmount: null, dateMismatchWarning: null, invoiceNumber: null };
         const claimAmount = (!entry.claimAmount && totalAmount && Number(totalAmount) > 0)
           ? Number(totalAmount).toString()
           : entry.claimAmount;
@@ -617,7 +633,7 @@ function CreateClaimInner() {
           }
         }
 
-        return { ...prev, [monthKey]: { ...entry, claimAmount, dateMismatchWarning } };
+        return { ...prev, [monthKey]: { ...entry, claimAmount, dateMismatchWarning, invoiceNumber: invoiceNumber || null } };
       });
     } catch {
       // Same as the existing single-document flow: a failed read just leaves the fields for the
@@ -653,7 +669,7 @@ function CreateClaimInner() {
   };
 
   const removeMonthAttachment = (monthKey: string) => {
-    setMonthClaims((prev) => ({ ...prev, [monthKey]: { ...getMonthEntry(monthKey), attachment: null, dateMismatchWarning: null } }));
+    setMonthClaims((prev) => ({ ...prev, [monthKey]: { ...getMonthEntry(monthKey), attachment: null, dateMismatchWarning: null, invoiceNumber: null } }));
   };
 
   const setMonthClaimAmount = (monthKey: string, value: string) => {
@@ -1337,11 +1353,17 @@ function CreateClaimInner() {
                   <div className="mb-3 flex items-center gap-2 text-xs text-inkSoft"><Spinner size={13} /> Processing document…</div>
                 )}
                 {monthExtractingKey === monthKey && (
-                  <div className="mb-3 flex items-center gap-2 text-xs text-inkSoft"><Spinner size={13} /> Reading amount and invoice date…</div>
+                  <div className="mb-3 flex items-center gap-2 text-xs text-inkSoft"><Spinner size={13} /> Reading amount, invoice number and date…</div>
                 )}
                 {entry.dateMismatchWarning && (
                   <p className="mb-3 text-xs font-semibold text-red">{entry.dateMismatchWarning}</p>
                 )}
+
+                <div className="mb-3">
+                  <Field label="Invoice Number">
+                    <Input value={entry.invoiceNumber || ''} placeholder="Auto-fetched from invoice" disabled />
+                  </Field>
+                </div>
 
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <Field label="Eligible Amount (₹)">
@@ -1359,6 +1381,22 @@ function CreateClaimInner() {
               </Card>
             );
           })}
+
+          {!periodRangeInvalid && pendingMonths.length > 0 && (
+            <Card className="mb-3">
+              <h2 className="mb-3 text-sm font-bold text-ink">Total Across {pendingMonths.length} Month{pendingMonths.length === 1 ? '' : 's'}</h2>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div className="rounded-lg border border-border bg-cream/40 px-3 py-2.5">
+                  <p className="text-xs font-semibold text-inkSoft">Total Eligible Amount (₹)</p>
+                  <p className="text-lg font-extrabold text-ink">{totalEligibleAmount.toFixed(2)}</p>
+                </div>
+                <div className="rounded-lg border border-border bg-cream/40 px-3 py-2.5">
+                  <p className="text-xs font-semibold text-inkSoft">Total Claim Amount (₹)</p>
+                  <p className="text-lg font-extrabold text-ink">{totalClaimAmount.toFixed(2)}</p>
+                </div>
+              </div>
+            </Card>
+          )}
 
           {/* Finance Document + Approval Notes - both manual-entry, per the requirement sheet. */}
           <Card className="mb-3">
