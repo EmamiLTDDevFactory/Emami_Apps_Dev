@@ -49,6 +49,20 @@ const formatMonthLabel = (monthKey: string) => {
   return new Date(y, m - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
 };
 
+// From/To Period picker options - any month can be missed, not just "last 6/12", so this is a
+// plain scrollable list (most recent first) rather than preset shortcuts. 3 years back is
+// generous headroom for a missed-months catch-up without the list being unreasonably long.
+const PERIOD_PICKER_MONTHS_BACK = 36;
+const getPeriodPickerOptions = () => {
+  const now = new Date();
+  const options: string[] = [];
+  for (let i = 0; i < PERIOD_PICKER_MONTHS_BACK; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    options.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  }
+  return options;
+};
+
 type MonthClaimEntry = {
   attachment: Attachment | null;
   claimAmount: string;
@@ -59,6 +73,8 @@ type MonthClaimEntry = {
   // fall inside this card's month — e.g. an August invoice dropped into the July card. Informational
   // only (doesn't block anything); the card's period stays whatever slot the user put it in.
   dateMismatchWarning: string | null;
+  // OCR-read invoice/bill number, shown read-only on the card for reference back to the document.
+  invoiceNumber: string | null;
 };
 
 const blobToBase64 = (blob: Blob): Promise<string> => new Promise((resolve, reject) => {
@@ -201,8 +217,14 @@ function CreateClaimInner() {
   // into the single combined attachments list the rest of this form submits today. Submission
   // itself (building per-month CLAIMNAV lines, splitting into one or two SAP claims by routing
   // outcome) is NOT wired yet — see the disabled note on the Submit button below.
-  const [periodFrom, setPeriodFrom] = useState('');
-  const [periodTo, setPeriodTo] = useState('');
+  // One card by default, each slot holding a month key once picked ('' = not yet picked). Growable
+  // via "+ Add Another Month" rather than a From/To range - months missed aren't always
+  // contiguous (e.g. March and June but not April/May), and a single default slot means the
+  // common one-month case needs no extra field at all.
+  const [selectedMonths, setSelectedMonths] = useState<string[]>(['']);
+  // Which slot's picker modal is open, if any (index into selectedMonths).
+  const [monthPickerSlotIndex, setMonthPickerSlotIndex] = useState<number | null>(null);
+  const [monthPickerSearch, setMonthPickerSearch] = useState('');
   const [monthClaims, setMonthClaims] = useState<Record<string, MonthClaimEntry>>({});
   const [monthPickingKey, setMonthPickingKey] = useState<string | null>(null);
   const [monthExtractingKey, setMonthExtractingKey] = useState<string | null>(null);
@@ -266,8 +288,7 @@ function CreateClaimInner() {
     setAmountError('');
     setFormError('');
     setExistingClaimId('');
-    setPeriodFrom('');
-    setPeriodTo('');
+    setSelectedMonths(['']);
     setMonthClaims({});
     setFinanceDocument([]);
     setApprovalNotes('');
@@ -518,7 +539,7 @@ function CreateClaimInner() {
   const isMobileExpense = MOBILE_EXPENSE_TYPE_NAMES.has(expenseType);
 
   // Months already claimed for this expense type, from claims the app has already fetched —
-  // no new backend call. "Pending" (claimable) months in the picked range exclude these.
+  // no new backend call. Excluded from every slot's picker options below.
   const claimedMonthKeys = useMemo(() => {
     const set = new Set<string>();
     claims.forEach((c: any) => {
@@ -530,36 +551,50 @@ function CreateClaimInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [claims]);
 
-  const monthsInRange = useMemo(() => {
-    if (!periodFrom || !periodTo) return [] as string[];
-    const [fromY, fromM] = periodFrom.split('-').map(Number);
-    const [toY, toM] = periodTo.split('-').map(Number);
-    if (!fromY || !fromM || !toY || !toM) return [] as string[];
-    const months: string[] = [];
-    let y = fromY;
-    let m = fromM;
-    // Hard stop at 24 iterations — a typo'd end date (e.g. a year off) can't spin this forever.
-    let guard = 0;
-    while ((y < toY || (y === toY && m <= toM)) && guard < 24) {
-      months.push(`${y}-${String(m).padStart(2, '0')}`);
-      m += 1;
-      if (m > 12) { m = 1; y += 1; }
-      guard += 1;
-    }
-    return months;
-  }, [periodFrom, periodTo]);
+  // The months actually picked across all slots, in slot order - what every card/total below
+  // renders from. Empty slots (not yet picked) are filtered out.
+  const pickedMonths = useMemo(() => selectedMonths.filter(Boolean), [selectedMonths]);
 
-  const pendingMonths = useMemo(
-    () => monthsInRange.filter((mk) => !claimedMonthKeys.has(mk)),
-    [monthsInRange, claimedMonthKeys],
-  );
-  const alreadyClaimedMonths = useMemo(
-    () => monthsInRange.filter((mk) => claimedMonthKeys.has(mk)),
-    [monthsInRange, claimedMonthKeys],
-  );
+  // Options for one slot's picker: every month in the lookback window, minus already-claimed
+  // months, minus whatever's already picked in every OTHER slot (so the same month can't end up
+  // selected twice across different cards) - but including this slot's own current pick, so
+  // re-opening its picker still shows it as selected.
+  const getAvailableMonthsForSlot = (slotIndex: number) => {
+    const takenElsewhere = new Set(
+      selectedMonths.filter((mk, i) => i !== slotIndex && mk),
+    );
+    return getPeriodPickerOptions().filter((mk) => !claimedMonthKeys.has(mk) && !takenElsewhere.has(mk));
+  };
+
+  const addMonthSlot = () => setSelectedMonths((prev) => [...prev, '']);
+
+  // Always keeps at least one slot - removing the only one just resets it to empty rather than
+  // leaving zero cards with no entry point to pick a month at all.
+  const removeMonthSlot = (slotIndex: number) => {
+    setSelectedMonths((prev) => (prev.length <= 1 ? [''] : prev.filter((_, i) => i !== slotIndex)));
+  };
+
+  const selectMonthForSlot = (slotIndex: number, monthKey: string) => {
+    setSelectedMonths((prev) => prev.map((mk, i) => (i === slotIndex ? monthKey : mk)));
+    setMonthPickerSlotIndex(null);
+  };
 
   const getMonthEntry = (monthKey: string): MonthClaimEntry =>
-    monthClaims[monthKey] || { attachment: null, claimAmount: '', eligibleAmount: null, dateMismatchWarning: null };
+    monthClaims[monthKey] || { attachment: null, claimAmount: '', eligibleAmount: null, dateMismatchWarning: null, invoiceNumber: null };
+
+  // Running totals across every picked month - so the employee sees the overall numbers without
+  // manually adding up each card. Null Eligible Amount (not fetched yet) counts as 0, not
+  // "unknown" - once the grade table is wired in this will only ever be a real number per card.
+  const totalEligibleAmount = useMemo(
+    () => pickedMonths.reduce((sum, mk) => sum + (getMonthEntry(mk).eligibleAmount || 0), 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pickedMonths, monthClaims],
+  );
+  const totalClaimAmount = useMemo(
+    () => pickedMonths.reduce((sum, mk) => sum + (parseFloat(getMonthEntry(mk).claimAmount) || 0), 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pickedMonths, monthClaims],
+  );
 
   // Mirrors extractDocumentDetails above, but for one month card: reads the invoice's amount
   // (auto-fills Claim Amount if the user hasn't typed one yet) and its printed date (checked
@@ -580,10 +615,10 @@ function CreateClaimInner() {
 
       if (response.status < 200 || response.status >= 300) return;
 
-      const { totalAmount, invoiceDate } = response.data || {};
+      const { totalAmount, invoiceDate, invoiceNumber } = response.data || {};
 
       setMonthClaims((prev) => {
-        const entry = prev[monthKey] || { attachment: null, claimAmount: '', eligibleAmount: null, dateMismatchWarning: null };
+        const entry = prev[monthKey] || { attachment: null, claimAmount: '', eligibleAmount: null, dateMismatchWarning: null, invoiceNumber: null };
         const claimAmount = (!entry.claimAmount && totalAmount && Number(totalAmount) > 0)
           ? Number(totalAmount).toString()
           : entry.claimAmount;
@@ -596,7 +631,7 @@ function CreateClaimInner() {
           }
         }
 
-        return { ...prev, [monthKey]: { ...entry, claimAmount, dateMismatchWarning } };
+        return { ...prev, [monthKey]: { ...entry, claimAmount, dateMismatchWarning, invoiceNumber: invoiceNumber || null } };
       });
     } catch {
       // Same as the existing single-document flow: a failed read just leaves the fields for the
@@ -632,7 +667,7 @@ function CreateClaimInner() {
   };
 
   const removeMonthAttachment = (monthKey: string) => {
-    setMonthClaims((prev) => ({ ...prev, [monthKey]: { ...getMonthEntry(monthKey), attachment: null, dateMismatchWarning: null } }));
+    setMonthClaims((prev) => ({ ...prev, [monthKey]: { ...getMonthEntry(monthKey), attachment: null, dateMismatchWarning: null, invoiceNumber: null } }));
   };
 
   const setMonthClaimAmount = (monthKey: string, value: string) => {
@@ -953,7 +988,7 @@ function CreateClaimInner() {
     // (auto-park vs HoD) before it can correctly build one or two CLAIMNAV submissions. Blocking
     // here rather than sending an incomplete/wrong claim to real SAP.
     if (isMobileExpense) {
-      setFormError('Multi-month Mobile Expense submission is not available yet — the eligibility table and SAP routing are still pending. Everything above is saved as you fill it in; submission will be enabled once those land.');
+      setFormError('Submission for missed-months Mobile Expense claims is not available yet — the eligibility table and SAP routing are still pending. Everything above is saved as you fill it in; submission will be enabled once those land.');
       return;
     }
 
@@ -1237,89 +1272,123 @@ function CreateClaimInner() {
         </Field>
       </Card>
 
-      {/* Non-CTC: Mobile Exp — period range + one card per claimed month, each with its own
-          document, Eligible/Claim Amount, and routing indicator. Only shown for this expense
-          type; every other type keeps the single-document/single-amount flow above untouched. */}
+      {/* Non-CTC: Mobile Exp — one card by default, each with its own document, Eligible/Claim
+          Amount; "+ Add Another Month" grows the list for a missed-months catch-up. No From/To
+          range - missed months aren't always contiguous, and a single default card means the
+          common one-month case needs no extra field at all. Only shown for this expense type;
+          every other type keeps the single-document/single-amount flow above untouched. */}
       {isMobileExpense && (
         <>
-          <Card className="mb-3">
-            <h2 className="mb-1 text-sm font-bold text-ink">Claim Period</h2>
-            <p className="mb-3 text-xs text-inkSoft">Pick the month range this claim covers (6–12 months). Each month gets its own invoice below.</p>
-            <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-              <Field label="From Period" required>
-                <input type="month" value={periodFrom} onChange={(e) => setPeriodFrom(e.target.value)} className="input" />
-              </Field>
-              <Field label="To Period" required>
-                <input type="month" value={periodTo} onChange={(e) => setPeriodTo(e.target.value)} className="input" />
-              </Field>
-            </div>
-            <p className="text-sm font-semibold text-ink">
-              Claim from Period [{periodFrom ? formatMonthLabel(periodFrom) : ' '}] To Period [{periodTo ? formatMonthLabel(periodTo) : ' '}]
-            </p>
-            {alreadyClaimedMonths.length > 0 && (
-              <div className="mt-3 flex items-start gap-2 rounded-lg border border-border bg-cream/50 px-3 py-2 text-xs text-inkSoft">
-                <Info size={14} className="mt-0.5 shrink-0" />
-                <span>Already claimed, excluded from this submission: {alreadyClaimedMonths.map(formatMonthLabel).join(', ')}</span>
-              </div>
-            )}
-          </Card>
-
-          {pendingMonths.map((monthKey) => {
-            const entry = getMonthEntry(monthKey);
+          {selectedMonths.map((monthKey, slotIndex) => {
+            const entry = monthKey ? getMonthEntry(monthKey) : null;
             return (
-              <Card key={monthKey} className="mb-3">
-                <div className="mb-2 flex items-center justify-between">
-                  <h2 className="text-sm font-bold text-ink">{formatMonthLabel(monthKey)}</h2>
-                  <span className="rounded-full bg-cream px-2.5 py-1 text-[11px] font-semibold text-inkSoft">Pending eligibility check</span>
-                </div>
-
-                {entry.attachment ? (
-                  <div className="mb-3 flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-2">
-                    <FileText size={20} className="shrink-0 text-brand" />
-                    <span className="min-w-0 flex-1 truncate text-sm text-ink">{entry.attachment.name}</span>
-                    <button type="button" onClick={() => entry.attachment && handlePreviewAttachment(entry.attachment)} aria-label="View document" className="rounded p-1.5 text-brand hover:bg-cream">
-                      <Eye size={18} />
-                    </button>
-                    <button type="button" onClick={() => removeMonthAttachment(monthKey)} aria-label="Remove document" className="rounded p-1.5 text-red hover:bg-redBg">
-                      <Trash2 size={18} />
-                    </button>
-                  </div>
-                ) : (
+              <Card key={slotIndex} className="mb-3">
+                <div className="mb-3 flex items-center justify-between gap-2">
                   <button
                     type="button"
-                    onClick={() => pickMonthAttachment(monthKey)}
-                    disabled={monthPickingKey !== null}
-                    className="mb-3 flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-brand/40 bg-cream/40 py-3 text-sm font-semibold text-brand hover:bg-cream disabled:opacity-60"
+                    onClick={() => { setMonthPickerSlotIndex(slotIndex); setMonthPickerSearch(''); }}
+                    className="input flex max-w-xs flex-1 items-center justify-between text-left"
                   >
-                    <CloudUpload size={18} /> Add Invoice for {formatMonthLabel(monthKey)}
+                    <span className={monthKey ? 'truncate font-semibold text-ink' : 'truncate text-inkSoft'}>
+                      {monthKey ? formatMonthLabel(monthKey) : 'Select Month'}
+                    </span>
+                    <ChevronDown size={16} className="shrink-0 text-inkSoft" />
                   </button>
-                )}
-                {monthPickingKey === monthKey && (
-                  <div className="mb-3 flex items-center gap-2 text-xs text-inkSoft"><Spinner size={13} /> Processing document…</div>
-                )}
-                {monthExtractingKey === monthKey && (
-                  <div className="mb-3 flex items-center gap-2 text-xs text-inkSoft"><Spinner size={13} /> Reading amount and invoice date…</div>
-                )}
-                {entry.dateMismatchWarning && (
-                  <p className="mb-3 text-xs font-semibold text-red">{entry.dateMismatchWarning}</p>
-                )}
-
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  <Field label="Eligible Amount (₹)">
-                    <Input value={entry.eligibleAmount != null ? String(entry.eligibleAmount) : ''} placeholder="Auto-fetched from grade table" disabled />
-                  </Field>
-                  <Field label="Claim Amount (₹)" required>
-                    <Input
-                      value={entry.claimAmount}
-                      onChange={(e) => setMonthClaimAmount(monthKey, e.target.value)}
-                      placeholder="0.00"
-                      inputMode="decimal"
-                    />
-                  </Field>
+                  {selectedMonths.length > 1 && (
+                    <button type="button" onClick={() => removeMonthSlot(slotIndex)} aria-label="Remove this month" className="rounded p-1.5 text-red hover:bg-redBg">
+                      <Trash2 size={18} />
+                    </button>
+                  )}
                 </div>
+
+                {!monthKey ? (
+                  <p className="text-xs text-inkSoft">Pick the month this claim is for.</p>
+                ) : (
+                  <>
+                    {entry!.attachment ? (
+                      <div className="mb-3 flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-2">
+                        <FileText size={20} className="shrink-0 text-brand" />
+                        <span className="min-w-0 flex-1 truncate text-sm text-ink">{entry!.attachment.name}</span>
+                        <button type="button" onClick={() => entry!.attachment && handlePreviewAttachment(entry!.attachment)} aria-label="View document" className="rounded p-1.5 text-brand hover:bg-cream">
+                          <Eye size={18} />
+                        </button>
+                        <button type="button" onClick={() => removeMonthAttachment(monthKey)} aria-label="Remove document" className="rounded p-1.5 text-red hover:bg-redBg">
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => pickMonthAttachment(monthKey)}
+                        disabled={monthPickingKey !== null}
+                        className="mb-3 flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-brand/40 bg-cream/40 py-3 text-sm font-semibold text-brand hover:bg-cream disabled:opacity-60"
+                      >
+                        <CloudUpload size={18} /> Add Invoice for {formatMonthLabel(monthKey)}
+                      </button>
+                    )}
+                    {monthPickingKey === monthKey && (
+                      <div className="mb-3 flex items-center gap-2 text-xs text-inkSoft"><Spinner size={13} /> Processing document…</div>
+                    )}
+                    {monthExtractingKey === monthKey && (
+                      <div className="mb-3 flex items-center gap-2 text-xs text-inkSoft"><Spinner size={13} /> Reading amount, invoice number and date…</div>
+                    )}
+                    {entry!.dateMismatchWarning && (
+                      <p className="mb-3 text-xs font-semibold text-red">{entry!.dateMismatchWarning}</p>
+                    )}
+
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                      <Field label="Invoice Number">
+                        <Input value={entry!.invoiceNumber || ''} placeholder="Auto-fetched from invoice" disabled />
+                      </Field>
+                      <Field label="Eligible Amount (₹)">
+                        <Input value={entry!.eligibleAmount != null ? String(entry!.eligibleAmount) : ''} placeholder="Auto-fetched from grade table" disabled />
+                      </Field>
+                      <Field label="Claim Amount (₹)" required>
+                        <Input
+                          value={entry!.claimAmount}
+                          onChange={(e) => setMonthClaimAmount(monthKey, e.target.value)}
+                          placeholder="0.00"
+                          inputMode="decimal"
+                        />
+                        {/* Same ₹20,000 per-claim cap the regular single-claim flow enforces (see
+                            parsedAmount above) - each month here is its own claim line, so it gets
+                            the same check individually rather than only on the combined total. */}
+                        {(parseFloat(entry!.claimAmount) || 0) > 20000 && (
+                          <div className="mt-2">
+                            <Banner type="error">Amount cannot exceed ₹20,000</Banner>
+                          </div>
+                        )}
+                      </Field>
+                    </div>
+                  </>
+                )}
               </Card>
             );
           })}
+
+          <button
+            type="button"
+            onClick={addMonthSlot}
+            className="mb-3 flex w-full items-center justify-center gap-2 rounded-lg border border-brand/40 bg-white py-2.5 text-sm font-semibold text-brand hover:bg-cream"
+          >
+            + Add Another Month
+          </button>
+
+          {pickedMonths.length > 0 && (
+            <Card className="mb-3">
+              <h2 className="mb-3 text-sm font-bold text-ink">Total Across {pickedMonths.length} Month{pickedMonths.length === 1 ? '' : 's'}</h2>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div className="rounded-lg border border-border bg-cream/40 px-3 py-2.5">
+                  <p className="text-xs font-semibold text-inkSoft">Total Eligible Amount (₹)</p>
+                  <p className="text-lg font-extrabold text-ink">{totalEligibleAmount.toFixed(2)}</p>
+                </div>
+                <div className="rounded-lg border border-border bg-cream/40 px-3 py-2.5">
+                  <p className="text-xs font-semibold text-inkSoft">Total Claim Amount (₹)</p>
+                  <p className="text-lg font-extrabold text-ink">{totalClaimAmount.toFixed(2)}</p>
+                </div>
+              </div>
+            </Card>
+          )}
 
           {/* Finance Document + Approval Notes - both manual-entry, per the requirement sheet. */}
           <Card className="mb-3">
@@ -1435,7 +1504,7 @@ function CreateClaimInner() {
       {isMobileExpense && (
         <div className="mb-3 flex items-start gap-2 rounded-lg border border-border bg-cream/50 px-3 py-2 text-xs text-inkSoft">
           <Info size={14} className="mt-0.5 shrink-0" />
-          <span>Submission for Mobile Expense isn't enabled yet — the grade-eligibility table and SAP routing are still pending. Everything above saves locally as you fill it in.</span>
+          <span>Submission for this missed-months catch-up isn't enabled yet — the grade-eligibility table and SAP routing are still pending. Everything above saves locally as you fill it in.</span>
         </div>
       )}
       <div className="flex gap-3">
@@ -1471,6 +1540,41 @@ function CreateClaimInner() {
               </button>
             ))
           )}
+        </div>
+      </Modal>
+
+      {/* Month Picker Modal (Non-CTC: Mobile Exp) - same list-with-search pattern as Expense
+          Type above, so there's nothing new for the user to learn. Options exclude already-
+          claimed months and whatever's already picked on every OTHER card (see
+          getAvailableMonthsForSlot), so the same month can't be selected twice. */}
+      <Modal
+        open={monthPickerSlotIndex !== null}
+        title="Select Month"
+        onClose={() => setMonthPickerSlotIndex(null)}
+      >
+        <Input value={monthPickerSearch} onChange={(e) => setMonthPickerSearch(e.target.value)} placeholder="Search month or year" className="mb-3" />
+        <div className="max-h-80 overflow-y-auto">
+          {(() => {
+            if (monthPickerSlotIndex === null) return null;
+            const selected = selectedMonths[monthPickerSlotIndex];
+            const options = getAvailableMonthsForSlot(monthPickerSlotIndex).filter((mk) =>
+              formatMonthLabel(mk).toLowerCase().includes(monthPickerSearch.toLowerCase())
+            );
+            if (options.length === 0) {
+              return <p className="py-3 text-sm text-inkSoft">No matching months</p>;
+            }
+            return options.map((mk) => (
+              <button
+                key={mk}
+                type="button"
+                onClick={() => selectMonthForSlot(monthPickerSlotIndex, mk)}
+                className="flex w-full items-center justify-between border-b border-line py-2.5 text-left text-sm text-ink last:border-b-0 hover:bg-cream"
+              >
+                {formatMonthLabel(mk)}
+                {selected === mk && <Check size={16} className="text-brand" />}
+              </button>
+            ));
+          })()}
         </div>
       </Modal>
 

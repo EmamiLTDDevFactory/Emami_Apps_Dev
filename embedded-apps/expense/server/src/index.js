@@ -49,23 +49,28 @@ const EXTRACTION_SCHEMA = {
     // Non-CTC: Mobile Exp — the invoice's own printed date, used to auto-fill that month's Claim
     // Period instead of the employee typing it. Every other field/flow ignores this.
     invoiceDate: { anyOf: [{ type: 'string' }, { type: 'null' }], description: "The invoice/bill date printed on the document, in YYYY-MM-DD format. Null if no date is readable." },
+    // Non-CTC: Mobile Exp — the vendor's own invoice/bill number, shown on the month card so the
+    // employee (and later, whoever reviews the claim) can match the claim back to the physical
+    // document without reopening it.
+    invoiceNumber: { anyOf: [{ type: 'string' }, { type: 'null' }], description: 'The invoice or bill number printed on the document, if present. Null if none is visible.' },
   },
-  required: ['gstin', 'hsnSac', 'totalAmount', 'invoiceDate'],
+  required: ['gstin', 'hsnSac', 'totalAmount', 'invoiceDate', 'invoiceNumber'],
   additionalProperties: false,
 };
 
-const EXTRACTION_PROMPT = `This is a scanned expense receipt or invoice. Read it and extract exactly these four fields:
+const EXTRACTION_PROMPT = `This is a scanned expense receipt or invoice. Read it and extract exactly these five fields:
 1. GSTIN - the vendor's 15-character GST registration number, if printed on the document.
 2. HSN/SAC code - the HSN or SAC classification code for the goods/service billed, if printed.
 3. Total amount - the final total amount payable, including any GST/tax (not the pre-tax subtotal).
 4. Invoice date - the invoice/bill date printed on the document, in YYYY-MM-DD format.
+5. Invoice number - the invoice or bill number printed on the document, if present.
 
 If a field is not printed anywhere on the document, return null for it rather than guessing.`;
 
 const JSON_EXTRACTION_PROMPT = `${EXTRACTION_PROMPT}
 
 Respond with ONLY a JSON object, no other text, in exactly this shape:
-{"gstin": string or null, "hsnSac": string or null, "totalAmount": number or null, "invoiceDate": string or null}`;
+{"gstin": string or null, "hsnSac": string or null, "totalAmount": number or null, "invoiceDate": string or null, "invoiceNumber": string or null}`;
 
 async function extractWithClaude(mimeType, data, isImage) {
   const documentBlock = isImage
@@ -120,6 +125,7 @@ async function extractWithGroq(mimeType, data) {
     hsnSac: parsed.hsnSac ?? null,
     totalAmount: typeof parsed.totalAmount === 'number' ? parsed.totalAmount : null,
     invoiceDate: parsed.invoiceDate ?? null,
+    invoiceNumber: parsed.invoiceNumber ?? null,
   };
 }
 
@@ -192,6 +198,7 @@ async function extractWithGlm(mimeType, data) {
     hsnSac: parsed.hsnSac ?? null,
     totalAmount: typeof parsed.totalAmount === 'number' ? parsed.totalAmount : null,
     invoiceDate: parsed.invoiceDate ?? null,
+    invoiceNumber: parsed.invoiceNumber ?? null,
   };
 }
 
@@ -210,7 +217,7 @@ app.post('/api/expense/extract-document', async (req, res) => {
   const isImage = mimeType.startsWith('image/');
   const isPdf = mimeType === 'application/pdf';
   if (!isImage && !isPdf) {
-    return res.json({ gstin: null, hsnSac: null, totalAmount: null, invoiceDate: null });
+    return res.json({ gstin: null, hsnSac: null, totalAmount: null, invoiceDate: null, invoiceNumber: null });
   }
 
   // Low-resolution photos (a phone camera shot, compressed by the frontend's upload budget) are

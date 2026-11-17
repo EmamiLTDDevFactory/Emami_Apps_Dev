@@ -99,10 +99,25 @@ export async function getAsn(shipId: string): Promise<{ asn: AsnDetail; items: P
 
 /* --------------------------------- PO --------------------------------- */
 
+/** One PO header with the login email. SAP checks the email on this read too, but a keyed OData read carries
+ * nothing except the key fields, and the service declares Ebeln as PoInfoSet's only key - so SAP "gets only
+ * Ebeln". The compound key (Ebeln, Email) is tried first: it works the moment SAP adds Email to the key the
+ * way AsnSet has it, and until then the URI parser rejects it as "Invalid key predicate" (checked on NGQ
+ * 2026-11-17), in which case the Ebeln-only read keeps today's behaviour. */
+async function poInfo(ebeln: string): Promise<any> {
+  try {
+    return await sapGet<any>(`/PoInfoSet(Ebeln=${odataKey(ebeln)},Email=${odataKey(email())})`);
+  } catch (e) {
+    if (e instanceof GateError && e.status === 400 && /invalid key/i.test(e.message))
+      return sapGet<any>(`/PoInfoSet(${odataKey(ebeln)})`);
+    throw e;
+  }
+}
+
 /** WD PO_ENTER. SAP answers with the WD message (not released, not authorised, ...), often as "PO_NO: text". */
 export async function getPo(ebeln: string): Promise<{ po: PoInfo; items: PoItem[] }> {
   const [p, items] = await Promise.all([
-    sapGet<any>(`/PoInfoSet(${odataKey(ebeln)})`),
+    poInfo(ebeln),
     list('/PoItemSet', eq('Ebeln', ebeln)),
   ]);
   return {

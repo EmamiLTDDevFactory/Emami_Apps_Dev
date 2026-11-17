@@ -43,7 +43,7 @@ there exists (checked with `$select`), and every call below reaches the DPC.
 
 | UI action | Call |
 |---|---|
-| PO + Enter | `GET PoInfoSet('<po>')` + `GET PoItemSet?$filter=Ebeln eq '<po>'` |
+| PO + Enter | `GET PoInfoSet(Ebeln='<po>',Email='<login email>')` (falls back to `PoInfoSet('<po>')` until SAP adds Email to the key) + `GET PoItemSet?$filter=Email eq '<login email>' and Ebeln eq '<po>'` |
 | ASN value help | `GET AsnSet[?$filter=Ebeln eq '<po>']` |
 | ASN chosen | `GET AsnSet(ShipId='<id>',Email='<login email>')` + `GET AsnItemSet?$filter=Email eq .. and ShipId eq '<id>'` |
 | Save (PO or ASN) | `POST GateEntrySet` deep insert, `Pos` = one element per PO (one for an ASN), each with `Items`; response `ReqNo` |
@@ -72,8 +72,14 @@ TRUCK_DATE, TRUCK_TIM; QNT_RECIEVD shows as a general message), `CONFIRM_DATE|te
 2. **Email.** Every call runs as the gateway's technical SAP user, so the signed-in Emami Apps email (lower case)
    goes with every call: first in every list `$filter` (`Email eq '<login email>' and ...`), as the second key of
    `AsnSet(ShipId='..',Email='..')` and of `GateRequestItemSet(ReqNo,Slno,Ebeln,Ebelp,Email)` (admin PUT / DELETE), and as property `Email` on the GateEntry create (top level and each `Pos`),
-   GateOutTime and GateCancel. NGD has `Email` on every entity type except `GateRequestPdf` (2026-10-09);
-   `PoInfoSet('<po>')` is still keyed by `Ebeln` alone.
+   GateOutTime and GateCancel. NGD has `Email` on every entity type except `GateRequestPdf` (2026-10-09).
+   **PoInfoSet** (NGQ, 2026-11-17): SAP now requires the email on this read too ("Sign in again: the e-mail address
+   is missing"), but its key is still `Ebeln` alone, and a keyed OData read carries nothing except key fields -
+   there is no legal place for Email in that URL (compound key → "Invalid key predicate"; `$filter` →
+   `POINFOSET_GET_ENTITYSET not implemented`; a bare `?Email=` parameter is ignored by the DPC). The app therefore
+   tries `PoInfoSet(Ebeln='..',Email='..')` first and falls back to the Ebeln-only read: the moment SAP adds
+   `Email` to the PoInfoSet key (as in AsnSet), the email arrives with no further app change. Until then SAP's
+   own "sign in again" message is what the user sees on PO entry.
 3. **The gateway has no route for `.../$value` or for `DELETE`** (its own 404 "Cannot GET/DELETE /api/..."). Print
    falls back to a printable gate pass built from the entry data (`src/components/print.ts`); delete line shows
    "The SAP gateway does not pass this request on to SAP yet". Both start working unchanged once the gateway
