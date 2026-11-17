@@ -347,6 +347,12 @@ export default function AuditList() {
             renderCell: (params) => formatDate(params.value),
         },
         {
+            field: "auditDate",
+            headerName: "Audit Date",
+            flex: 1,
+            renderCell: (params) => formatDate(params.value),
+        },
+        {
             field: "dueDate",
             headerName: "Due Date",
             flex: 1,
@@ -1329,6 +1335,12 @@ export default function AuditList() {
                                                 <Grid item xs={6}>
                                                     <Typography variant="body2">
                                                         <b>Type:</b> {audit.auditType}
+                                                    </Typography>
+                                                </Grid>
+
+                                                <Grid item xs={6}>
+                                                    <Typography variant="body2">
+                                                        <b>Audit Date:</b> {formatDate(audit.auditDate)}
                                                     </Typography>
                                                 </Grid>
 
