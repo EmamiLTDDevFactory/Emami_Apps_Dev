@@ -53,11 +53,12 @@ const toSapTime = (value) => {
   return `PT${hours.padStart(2, "0")}H${minutes}M${seconds}S`;
 };
 
-export const notifyAuditTypesSet = ({ flag, depot, dueDate, time = "", email = "" }) =>
+export const notifyAuditTypesSet = ({ flag, depot, auditDate, dueDate, time = "", email = "" }) =>
   notifySap("AuditTypesSet", {
     Flag: flag,
     // Full depot name as chosen on Create Audit, e.g. "Ambala Depot".
     Depot: depot || "",
+    AuditDate: toSapDate(auditDate),
     DueDate: toSapDate(dueDate),
     Time: toSapTime(time),
     Email: email || "",

@@ -239,6 +239,7 @@ export default function CreateAudit() {
                         : SAP_FLAG.ONSITE_AUDIT_SCHEDULED,
                 // Full depot name as chosen in the dropdown, e.g. "Ambala Depot".
                 depot,
+                auditDate: auditDate.toDate(),
                 dueDate: dueDate.toDate(),
                 // SAP mails the auditor chosen in the Auditor dropdown (matched by name).
                 email:
