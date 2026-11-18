@@ -32,13 +32,19 @@ can reach the gateway (see `sap/README.md`).
 
 ## Screens
 
-| Route | Screen | Roles |
+| Route | Tab (Web Dynpro equivalent) | Roles |
 |---|---|---|
-| `/` | **Apply / change**: employee fetch (own number automatic; EDITOR/ADMIN may type another), sum assured by limit, premium/GST, mobile, personal mail, nominees (max 6, shares = 100%), submit or change, delete | everyone; delete = ADMIN |
-| `/admin/` | **Policies** (search, download, mail), **Insurance limits** (.xlsx), **Mass upload** (.xlsx, one save per row) | ADMIN |
+| `/` | **Create / Change**: employee fetch (own number automatic; EDITOR/ADMIN may type another), sum assured by limit, premium/GST, mobile, personal mail, nominees (max 6, shares = 100%), submit or change, delete | everyone; delete = ADMIN |
+| `/display/` | **Display**: look up a request with its nominees. EDITOR/ADMIN search any employee; a USER sees the requests they created | everyone |
+| `/report/` | **Insurance Report**: all policies of the year, search, Excel download, mail, delete | ADMIN |
+| `/limits/` | **Insurance Limits**: upload each employee's cap (.xlsx) | ADMIN |
+| `/mass/` | **Mass Upload**: one policy per Excel row, per-row results | ADMIN |
+
+All five tabs are shown to everyone, like the Web Dynpro; the HR-only ones show "Not authorised" to others, and SAP refuses the calls anyway.
+A user who is not in ZMEDI_AUTH_USERS (flag E or R) is a USER: after the cut-off date in ZMEDI_DATE (slno 2) SAP answers "You have exceeded the permissible date limit".
 
 ## Files
 
 `src/lib/config.ts` constants, `termPolicyApi.ts` typed OData client (one function per call, `isServiceDown`), `validate.ts` client-side
 copies of the Web Dynpro checks, `exportExcel.ts` download/templates/parsers, `src/context/AppContext.tsx` loads `ProfileSet`,
-`src/components/Shell.tsx` shows `ServiceUnavailable` when it cannot.
+`src/components/Shell.tsx` shows `ServiceUnavailable` when it cannot, `AdminGuard` gates the HR tabs.

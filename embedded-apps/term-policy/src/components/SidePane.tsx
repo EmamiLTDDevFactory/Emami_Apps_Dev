@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ShieldCheck, BarChart3, ArrowLeft, X } from 'lucide-react';
+import { ShieldCheck, Search, BarChart3, Gauge, Upload, ArrowLeft, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { nameFromEmail } from '../lib/hubEmailLogin';
 import { goBack } from '../lib/goBack';
@@ -13,8 +13,15 @@ import { goBack } from '../lib/goBack';
 // embedded-apps/timesheet/src/components/gates/BASE_PATH.ts).
 const BASE_PATH = '/apps/term-policy';
 
-const NAV_ITEMS = [{ href: '/', label: 'My Term Policy', icon: ShieldCheck }];
-const ADMIN_NAV_ITEM = { href: '/admin/', label: 'Admin Reports', icon: BarChart3 };
+// Same tabs as the Web Dynpro. Everyone sees them; the HR-only ones (report, limits, mass upload) tell a non-admin
+// they are not authorised, and SAP refuses the calls anyway.
+const NAV_ITEMS = [
+  { href: '/', label: 'Create / Change', icon: ShieldCheck },
+  { href: '/display/', label: 'Display', icon: Search },
+  { href: '/report/', label: 'Insurance Report', icon: BarChart3 },
+  { href: '/limits/', label: 'Insurance Limits', icon: Gauge },
+  { href: '/mass/', label: 'Mass Upload', icon: Upload },
+];
 
 export default function SidePane({
   isOpen,
@@ -26,8 +33,8 @@ export default function SidePane({
   isWideScreen: boolean;
 }) {
   const pathname = usePathname();
-  const { email, isAdmin } = useApp();
-  const items = isAdmin ? [...NAV_ITEMS, ADMIN_NAV_ITEM] : NAV_ITEMS;
+  const { email } = useApp();
+  const items = NAV_ITEMS;
 
   const paneClasses = isWideScreen
     ? 'relative w-56 shrink-0'
