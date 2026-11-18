@@ -40,6 +40,47 @@ const Head = ({ t, children }: { t: RateType; children: ReactNode }) => (
   <span className="inline-flex items-start justify-end gap-1 text-right"><span className="mt-[3px] shrink-0"><Swatch t={t} /></span><span>{children}</span></span>
 );
 
+/** Excel sheets of the "Rate summary" tab: FGs, then RM / PM (/ other) components. */
+export function rateSummarySheets(s: ReturnType<typeof rateSummary>) {
+  const anyLocal = s.fgs.some((f) => f.locPerInr) || [...s.rm, ...s.pm, ...s.other].some((c) => c.locPerInr);
+  const fgCols: XCol[] = [
+    { header: 'Country', get: (i) => s.fgs[i].land1 }, { header: 'Plant', get: (i) => s.fgs[i].hwerks }, { header: 'FG', get: (i) => s.fgs[i].headmat },
+    { header: 'Description', width: 30, get: (i) => s.fgs[i].headtxt },
+    ...FG_TYPES.map((rt): XCol => ({ header: `${RATE_TYPE_LABEL[rt]} / pc INR`, dp: 4, curr: 'INR', get: (i) => n(s.fgs[i].perPc[rt].value) })),
+    ...FG_TYPES.map((rt): XCol => ({ header: `${RATE_TYPE_LABEL[rt]} priced`, get: (i) => `${s.fgs[i].perPc[rt].priced}/${s.fgs[i].leaves}` })),
+    { header: 'Freight / pc INR', dp: 4, curr: 'INR', get: (i) => n(s.fgs[i].freightPc) },
+    { header: 'Landed / pc INR (BOM total)', dp: 4, curr: 'INR', get: (i) => n(s.fgs[i].landedPc) },
+    { header: 'Lowest complete type', get: (i) => { const t = fgLowest(s.fgs[i], FG_TYPES); return t ? RATE_TYPE_LABEL[t] : ''; } },
+    ...(anyLocal ? [
+      { header: 'Local currency', get: (i: number) => s.fgs[i].curr },
+      ...FG_TYPES.map((rt): XCol => ({ header: `${RATE_TYPE_LABEL[rt]} / pc local`, dp: 4, get: (i) => n(toLocal(s.fgs[i].perPc[rt].value, s.fgs[i].locPerInr)) })),
+      { header: 'Freight / pc local', dp: 4, get: (i: number) => n(toLocal(s.fgs[i].freightPc, s.fgs[i].locPerInr)) },
+      { header: 'Landed / pc local', dp: 4, get: (i: number) => n(toLocal(s.fgs[i].landedPc, s.fgs[i].locPerInr)) },
+    ] as XCol[] : []),
+  ];
+  const compCols = (list: ComponentRow[]): XCol[] => [
+    { header: 'Component plant', get: (i) => list[i].werks }, { header: 'Component', get: (i) => list[i].idnrk }, { header: 'Description', width: 30, get: (i) => list[i].maktx },
+    { header: 'Category', get: (i) => CATEGORY_LABEL[list[i].cat] }, { header: 'Unit', get: (i) => list[i].meins }, { header: 'Used in FGs', get: (i) => list[i].fgs },
+    { header: 'Qty', dp: 3, get: (i) => n(list[i].qty, 3) }, { header: 'Selected source', get: (i) => list[i].selectedSource },
+    ...RATE_TYPES.map((rt): XCol => ({ header: `${RATE_TYPE_LABEL[rt]} INR / unit`, dp: 4, curr: 'INR', get: (i) => n(list[i].rates[rt]) })),
+    ...WITH_FREIGHT_SOURCES.flatMap((src): XCol[] => [
+      { header: `${WITH_FREIGHT_LABEL[src]} local / unit`, dp: 4, get: (i) => n(list[i].withFrt[src].loc) },
+      { header: `${WITH_FREIGHT_LABEL[src]} local curr`, get: (i) => list[i].withFrt[src].locCurr },
+      { header: `${WITH_FREIGHT_LABEL[src]} INR / unit`, dp: 4, curr: 'INR', get: (i) => n(list[i].withFrt[src].inr) },
+      { header: `${src === 'CONTRACT' ? 'Contract' : 'Info record'} vendor`, width: 28, get: (i) => list[i].withFrt[src].vendor },
+    ]),
+    { header: 'Spread %', dp: 1, get: (i) => n(list[i].spreadPct, 1) }, { header: 'Lowest type', get: (i) => (list[i].lowestType ? RATE_TYPE_LABEL[list[i].lowestType!] : '') },
+    ...(anyLocal ? [
+      { header: 'Local currency', get: (i: number) => list[i].curr },
+      ...RATE_TYPES.map((rt): XCol => ({ header: `${RATE_TYPE_LABEL[rt]} local / unit`, dp: 4, get: (i) => n(toLocal(list[i].rates[rt], list[i].locPerInr)) })),
+    ] as XCol[] : []),
+  ];
+  return {
+    fgCols,
+    sheets: [{ name: 'RM rates', cols: compCols(s.rm), count: s.rm.length }, { name: 'PM rates', cols: compCols(s.pm), count: s.pm.length }, ...(s.other.length ? [{ name: 'Other rates', cols: compCols(s.other), count: s.other.length }] : [])],
+  };
+}
+
 export default function RateSummary({ rows, rates, query }: { rows: CostLine[]; rates: RatesState; query: CostQuery }) {
   const { request } = rates;
   useEffect(() => { request(); }, [request]);
@@ -58,41 +99,10 @@ export default function RateSummary({ rows, rates, query }: { rows: CostLine[]; 
   const localCurrs = [...new Set([...s.fgs, ...s.rm, ...s.pm, ...s.other].filter((x) => x.locPerInr).map((x) => x.curr))];
 
   const exportXlsx = () => {
-    const fgCols: XCol[] = [
-      { header: 'Country', get: (i) => s.fgs[i].land1 }, { header: 'Plant', get: (i) => s.fgs[i].hwerks }, { header: 'FG', get: (i) => s.fgs[i].headmat },
-      { header: 'Description', width: 30, get: (i) => s.fgs[i].headtxt },
-      ...FG_TYPES.map((rt): XCol => ({ header: `${RATE_TYPE_LABEL[rt]} / pc INR`, dp: 4, curr: 'INR', get: (i) => n(s.fgs[i].perPc[rt].value) })),
-      ...FG_TYPES.map((rt): XCol => ({ header: `${RATE_TYPE_LABEL[rt]} priced`, get: (i) => `${s.fgs[i].perPc[rt].priced}/${s.fgs[i].leaves}` })),
-      { header: 'Freight / pc INR', dp: 4, curr: 'INR', get: (i) => n(s.fgs[i].freightPc) },
-      { header: 'Landed / pc INR (BOM total)', dp: 4, curr: 'INR', get: (i) => n(s.fgs[i].landedPc) },
-      { header: 'Lowest complete type', get: (i) => { const t = fgLowest(s.fgs[i], FG_TYPES); return t ? RATE_TYPE_LABEL[t] : ''; } },
-      ...(anyLocal ? [
-        { header: 'Local currency', get: (i: number) => s.fgs[i].curr },
-        ...FG_TYPES.map((rt): XCol => ({ header: `${RATE_TYPE_LABEL[rt]} / pc local`, dp: 4, get: (i) => n(toLocal(s.fgs[i].perPc[rt].value, s.fgs[i].locPerInr)) })),
-        { header: 'Freight / pc local', dp: 4, get: (i: number) => n(toLocal(s.fgs[i].freightPc, s.fgs[i].locPerInr)) },
-        { header: 'Landed / pc local', dp: 4, get: (i: number) => n(toLocal(s.fgs[i].landedPc, s.fgs[i].locPerInr)) },
-      ] as XCol[] : []),
-    ];
-    const compCols = (list: ComponentRow[]): XCol[] => [
-      { header: 'Component plant', get: (i) => list[i].werks }, { header: 'Component', get: (i) => list[i].idnrk }, { header: 'Description', width: 30, get: (i) => list[i].maktx },
-      { header: 'Category', get: (i) => CATEGORY_LABEL[list[i].cat] }, { header: 'Unit', get: (i) => list[i].meins }, { header: 'Used in FGs', get: (i) => list[i].fgs },
-      { header: 'Qty', dp: 3, get: (i) => n(list[i].qty, 3) }, { header: 'Selected source', get: (i) => list[i].selectedSource },
-      ...RATE_TYPES.map((rt): XCol => ({ header: `${RATE_TYPE_LABEL[rt]} INR / unit`, dp: 4, curr: 'INR', get: (i) => n(list[i].rates[rt]) })),
-      ...WITH_FREIGHT_SOURCES.flatMap((src): XCol[] => [
-        { header: `${WITH_FREIGHT_LABEL[src]} local / unit`, dp: 4, get: (i) => n(list[i].withFrt[src].loc) },
-        { header: `${WITH_FREIGHT_LABEL[src]} local curr`, get: (i) => list[i].withFrt[src].locCurr },
-        { header: `${WITH_FREIGHT_LABEL[src]} INR / unit`, dp: 4, curr: 'INR', get: (i) => n(list[i].withFrt[src].inr) },
-        { header: `${src === 'CONTRACT' ? 'Contract' : 'Info record'} vendor`, width: 28, get: (i) => list[i].withFrt[src].vendor },
-      ]),
-      { header: 'Spread %', dp: 1, get: (i) => n(list[i].spreadPct, 1) }, { header: 'Lowest type', get: (i) => (list[i].lowestType ? RATE_TYPE_LABEL[list[i].lowestType!] : '') },
-      ...(anyLocal ? [
-        { header: 'Local currency', get: (i: number) => list[i].curr },
-        ...RATE_TYPES.map((rt): XCol => ({ header: `${RATE_TYPE_LABEL[rt]} local / unit`, dp: 4, get: (i) => n(toLocal(list[i].rates[rt], list[i].locPerInr)) })),
-      ] as XCol[] : []),
-    ];
+    const { fgCols, sheets } = rateSummarySheets(s);
     void exportTable({
       fmt: 'xlsx', name: 'Rate summary', query, cols: fgCols, count: s.fgs.length,
-      extraSheets: [{ name: 'RM rates', cols: compCols(s.rm), count: s.rm.length }, { name: 'PM rates', cols: compCols(s.pm), count: s.pm.length }, ...(s.other.length ? [{ name: 'Other rates', cols: compCols(s.other), count: s.other.length }] : [])],
+      extraSheets: sheets,
       extraParams: [['FG cost per piece', 'Sum over leaf components of rate x qty / explosion qty (material only; freight and landed shown separately)'], ['Contract / Info record + freight', 'That source\'s rate plus the line\'s freight per unit (BOM tree freight), local and INR'], ['Rate options', optionsReady ? 'loaded' : `not loaded: ${rates.note || rates.status}`]],
     });
   };

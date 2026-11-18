@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useHubSession, BASE_PATH } from '@/lib/client/session';
 import { fetchIsAdmin } from '@/lib/client/hubAccess';
 import { loadSapConfig } from '@/lib/sap/config';
@@ -36,6 +36,7 @@ import { EMPTY_SIM, isIdentity, simulate, type SimSettings } from '@/lib/cost/si
 import { dataQuality } from '@/lib/cost/analytics';
 import { fmtMs, fmtNum } from '@/lib/format';
 import { exportCostLines, exportPivot } from '@/lib/client/export';
+import { exportAllTabs } from './exportAllTabs';
 import type { SapMessage } from '@/lib/sap/messages';
 import { AlertTriangle, Check, Download, FileSpreadsheet, FlaskConical, Link2, Printer } from 'lucide-react';
 import FilterPanel, { type PlantsState } from './FilterPanel';
@@ -274,6 +275,29 @@ export default function Explorer() {
     else if (pivot) await exportPivot({ fmt, query: ranQuery, pivot, messages: result.messages });
   };
 
+  // "All tabs" Excel: rate options are needed for the Rate sources / coverage sheets, so request them and wait (up to 90 s).
+  const latest = useRef({ rows, simRows, rates, effectiveSim });
+  latest.current = { rows, simRows, rates, effectiveSim };
+  const [exportingAll, setExportingAll] = useState(false);
+  const doExportAll = async () => {
+    if (!ranQuery || !result || ranQuery.mode !== 'B' || exportingAll) return;
+    setExportingAll(true);
+    try {
+      latest.current.rates.request();
+      for (let t = 0; t < 360; t++) {
+        const st = latest.current.rates.status;
+        if (st === 'ready' || st === 'unavailable' || st === 'error') break;
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      const l = latest.current;
+      await exportAllTabs({ query: ranQuery, rows: l.rows, sim: l.simRows, settings: l.effectiveSim, messages: result.messages, rates: l.rates, scenarios: scen.list, plantNames, coverDays, groupCurr });
+    } catch (e) {
+      alert(`Excel export failed: ${(e as Error).message}`);
+    } finally {
+      setExportingAll(false);
+    }
+  };
+
   const doPrint = () => {
     setPrinting(true);
     setTimeout(() => {
@@ -350,6 +374,7 @@ export default function Explorer() {
       {result && (
         <>
           <Button size="sm" onClick={() => doExport('xlsx')} title="Excel (all columns + Parameters sheet)"><FileSpreadsheet size={14} /><span className="hidden lg:inline">Excel</span></Button>
+          {ranQuery?.mode === 'B' && <Button size="sm" disabled={exportingAll} onClick={doExportAll} title="Excel with every tab: BOM tree, Cost breakup, Dashboard, Simulator, Data quality, Scenarios, Rate sources, Rate summary, Rate coverage"><FileSpreadsheet size={14} /><span className="hidden lg:inline">{exportingAll ? 'Preparing…' : 'Excel (all tabs)'}</span></Button>}
           <Button size="sm" onClick={() => doExport('csv')} title="CSV"><Download size={14} /><span className="hidden lg:inline">CSV</span></Button>
           <Button size="sm" onClick={doPrint} title="Print"><Printer size={14} /><span className="hidden lg:inline">Print</span></Button>
         </>

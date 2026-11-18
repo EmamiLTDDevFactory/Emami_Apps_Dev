@@ -71,6 +71,48 @@ type Item = { kind: 'block'; source: string; lines: number; total: string } | { 
 
 const ROW_H = 30;
 
+/** Excel columns of the "Rate sources" tab: every option of every source. */
+export function rateSourcesXlsx(model: NonNullable<ReturnType<typeof buildSourcesModel>>) {
+  const flat = model.blocks.flatMap((b) => b.rows);
+  const val = (r: SourceOptionRow, id: string): string | number => {
+    const n = (x: unknown) => Number(x ?? 0);
+    switch (id) {
+      case 'comp': return r.line.Idnrk;
+      case 'desc': return r.line.Maktx;
+      case 'plant': return r.opt.Plant || r.line.Werks;
+      case 'vendor': return vendorText(vendorOf(r.opt, r.line));
+      case 'cond': return r.opt.Cond;
+      case 'curr': return r.opt.Curr;
+      case 'rate': return n(r.opt.Rate);
+      case 'uom': return r.opt.Uom;
+      case 'valid': return r.opt.ValidFrom ?? '';
+      case 'ratePc': return n(r.opt.RatePc);
+      case 'fx': return n(r.opt.FxInr);
+      case 'ratePcInr': return n(r.opt.RatePcInr);
+      case 'qty': return n(r.line.ProdQty);
+      case 'frtInr': return Number(componentFreightInr(r.line).toFixed(4));
+      case 'totInr': return Number(r.total.toFixed(2));
+      case 'locCurr': return r.opt.LocCurr || r.line.LocCurr;
+      case 'ratePcLoc': return n(r.opt.RatePcLoc);
+      case 'costLoc': return n(r.opt.CostLoc);
+      case 'frtLoc': return Number(componentFreightLoc(r.line).toFixed(4));
+      case 'totLoc': return Number(r.totalLoc.toFixed(2));
+      case 'rfLoc': { const w = rateWithFreight(r.opt, r.line); return w?.loc ? Number(w.loc.toFixed(4)) : ''; }
+      case 'rfInr': { const w = rateWithFreight(r.opt, r.line); return w ? Number(w.inr.toFixed(4)) : ''; }
+      default: return '';
+    }
+  };
+  const xcols: XCol[] = [
+    { header: 'Source', get: (i) => flat[i].opt.Source },
+    { header: 'Header', get: (i) => flat[i].line.Headmat },
+    ...SETS.report.concat(['locCurr', 'ratePcLoc', 'costLoc', 'frtLoc', 'totLoc']).map((id) => ({ ...COLS.find((c) => c.id === id)!.xlsx, get: (i: number) => val(flat[i], id) })),
+    ...FRT_COLS.map((c) => ({ ...c.xlsx, get: (i: number) => val(flat[i], c.id) })),
+    { header: 'Used by SAP', get: (i) => (flat[i].used ? 'X' : '') },
+    { header: 'Cheapest', get: (i) => (flat[i].cheapest ? 'X' : '') },
+  ];
+  return { xcols, count: flat.length };
+}
+
 export default function RateSources({ rows, rates, query, onOpenRow, prio }: { rows: CostLine[]; rates: RatesState; query: CostQuery; onOpenRow?: (i: number) => void; /** priority of the run (for "none" cells and the label); default = query.prio */ prio?: string[] }) {
   const [set, setSet] = useState<ColSet>('compact');
   const [view, setView] = useState<'blocks' | 'compare'>('blocks');
@@ -125,45 +167,9 @@ export default function RateSources({ rows, rates, query, onOpenRow, prio }: { r
   if (!model) return null;
 
   const doExport = () => {
-    const flat = model.blocks.flatMap((b) => b.rows);
-    const val = (r: SourceOptionRow, id: string): string | number => {
-      const n = (x: unknown) => Number(x ?? 0);
-      switch (id) {
-        case 'comp': return r.line.Idnrk;
-        case 'desc': return r.line.Maktx;
-        case 'plant': return r.opt.Plant || r.line.Werks;
-        case 'vendor': return vendorText(vendorOf(r.opt, r.line));
-        case 'cond': return r.opt.Cond;
-        case 'curr': return r.opt.Curr;
-        case 'rate': return n(r.opt.Rate);
-        case 'uom': return r.opt.Uom;
-        case 'valid': return r.opt.ValidFrom ?? '';
-        case 'ratePc': return n(r.opt.RatePc);
-        case 'fx': return n(r.opt.FxInr);
-        case 'ratePcInr': return n(r.opt.RatePcInr);
-        case 'qty': return n(r.line.ProdQty);
-        case 'frtInr': return Number(componentFreightInr(r.line).toFixed(4));
-        case 'totInr': return Number(r.total.toFixed(2));
-        case 'locCurr': return r.opt.LocCurr || r.line.LocCurr;
-        case 'ratePcLoc': return n(r.opt.RatePcLoc);
-        case 'costLoc': return n(r.opt.CostLoc);
-        case 'frtLoc': return Number(componentFreightLoc(r.line).toFixed(4));
-        case 'totLoc': return Number(r.totalLoc.toFixed(2));
-        case 'rfLoc': { const w = rateWithFreight(r.opt, r.line); return w?.loc ? Number(w.loc.toFixed(4)) : ''; }
-        case 'rfInr': { const w = rateWithFreight(r.opt, r.line); return w ? Number(w.inr.toFixed(4)) : ''; }
-        default: return '';
-      }
-    };
-    const xcols: XCol[] = [
-      { header: 'Source', get: (i) => flat[i].opt.Source },
-      { header: 'Header', get: (i) => flat[i].line.Headmat },
-      ...SETS.report.concat(['locCurr', 'ratePcLoc', 'costLoc', 'frtLoc', 'totLoc']).map((id) => ({ ...COLS.find((c) => c.id === id)!.xlsx, get: (i: number) => val(flat[i], id) })),
-      ...FRT_COLS.map((c) => ({ ...c.xlsx, get: (i: number) => val(flat[i], c.id) })),
-      { header: 'Used by SAP', get: (i) => (flat[i].used ? 'X' : '') },
-      { header: 'Cheapest', get: (i) => (flat[i].cheapest ? 'X' : '') },
-    ];
+    const { xcols, count } = rateSourcesXlsx(model);
     void exportTable({
-      fmt: 'xlsx', name: 'Rate sources', query, cols: xcols, count: flat.length,
+      fmt: 'xlsx', name: 'Rate sources', query, cols: xcols, count,
       extraParams: [['Rate options from', rates.mode === 'direct' ? 'RateOptionSet' : 'CostLineSet $expand=RateOptions'], ['Used total INR', model.usedTotal.toFixed(2)], ['Cheapest total INR', model.cheapestTotal.toFixed(2)], ['Saving INR', model.saving.toFixed(2)]],
     });
   };

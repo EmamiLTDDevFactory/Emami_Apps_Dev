@@ -49,6 +49,28 @@ export interface CostBreakupProps<T extends BreakupLine> {
 type Pick = { scope: 'all' } | { scope: 'fg'; key: string };
 type Detail = { el: Element; fgKey: string | null };
 
+/** Excel columns of the "Cost breakup" tab (one row per FG). */
+export function breakupCols(fgs: FgBreakup[]): XCol[] {
+  const els = [...MATERIAL_ELEMENTS, ...CONVERSION_ELEMENTS];
+  return [
+    { header: 'Country', get: (i) => fgs[i].land1 }, { header: 'Plant', get: (i) => fgs[i].hwerks }, { header: 'FG', get: (i) => fgs[i].headmat },
+    { header: 'Description', width: 30, get: (i) => fgs[i].headtxt }, { header: 'FG qty', dp: 3, get: (i) => n4(fgs[i].fgQty) }, { header: 'Local curr', get: (i) => fgs[i].curr },
+    ...els.flatMap((el): XCol[] => [
+      { header: `${ELEMENT_LABEL[el]} qty`, width: 18, get: (i) => qtyText(fgs[i].elements[el].qty, (d) => d.toFixed(3)) },
+      { header: `${ELEMENT_LABEL[el]} local`, dp: 2, get: (i) => n4(fgs[i].elements[el].loc) },
+      { header: `${ELEMENT_LABEL[el]} INR`, dp: 2, curr: 'INR', get: (i) => n4(fgs[i].elements[el].inr) },
+      { header: `${ELEMENT_LABEL[el]} actual / pc INR`, dp: 4, curr: 'INR', get: (i) => n4(fgs[i].elements[el].actualPcInr) },
+    ]),
+    { header: 'Total Material INR', dp: 2, curr: 'INR', get: (i) => n4(fgs[i].material.inr) },
+    { header: 'Conversion INR', dp: 2, curr: 'INR', get: (i) => n4(fgs[i].conversion.inr) },
+    { header: 'Total cost INR', dp: 2, curr: 'INR', get: (i) => n4(fgs[i].total.inr) },
+    { header: 'Total cost / pc INR', dp: 4, curr: 'INR', get: (i) => n4(fgs[i].fgQty.gt(0) ? fgs[i].total.inr.div(fgs[i].fgQty) : null) },
+    { header: 'Total cost / pc local', dp: 4, get: (i) => n4(fgs[i].fgQty.gt(0) ? fgs[i].total.loc.div(fgs[i].fgQty) : null) },
+    { header: 'Routings with activities', get: (i) => fgs[i].activity.filter((u) => u.act && u.unitOk).length },
+    { header: 'Process orders', get: (i) => fgs[i].actual?.orders ?? 0 },
+  ];
+}
+
 export default function CostBreakup<T extends BreakupLine>({ lines, qtyOf, fgQtyOf, qtyLabel, active = true, exportName }: CostBreakupProps<T>) {
   const [months, setMonths] = useState(12);
   const plants = useMemo(() => [...new Set(lines.map((l) => l.Hwerks))], [lines]);
@@ -68,24 +90,7 @@ export default function CostBreakup<T extends BreakupLine>({ lines, qtyOf, fgQty
   if (!fgs.length) return <Empty title="Nothing to break up" icon="▦">Run the costing first; the cost breakup is built from SAP&apos;s lines.</Empty>;
 
   const doExport = () => {
-    const els = [...MATERIAL_ELEMENTS, ...CONVERSION_ELEMENTS];
-    const cols: XCol[] = [
-      { header: 'Country', get: (i) => fgs[i].land1 }, { header: 'Plant', get: (i) => fgs[i].hwerks }, { header: 'FG', get: (i) => fgs[i].headmat },
-      { header: 'Description', width: 30, get: (i) => fgs[i].headtxt }, { header: 'FG qty', dp: 3, get: (i) => n4(fgs[i].fgQty) }, { header: 'Local curr', get: (i) => fgs[i].curr },
-      ...els.flatMap((el): XCol[] => [
-        { header: `${ELEMENT_LABEL[el]} qty`, width: 18, get: (i) => qtyText(fgs[i].elements[el].qty, (d) => d.toFixed(3)) },
-        { header: `${ELEMENT_LABEL[el]} local`, dp: 2, get: (i) => n4(fgs[i].elements[el].loc) },
-        { header: `${ELEMENT_LABEL[el]} INR`, dp: 2, curr: 'INR', get: (i) => n4(fgs[i].elements[el].inr) },
-        { header: `${ELEMENT_LABEL[el]} actual / pc INR`, dp: 4, curr: 'INR', get: (i) => n4(fgs[i].elements[el].actualPcInr) },
-      ]),
-      { header: 'Total Material INR', dp: 2, curr: 'INR', get: (i) => n4(fgs[i].material.inr) },
-      { header: 'Conversion INR', dp: 2, curr: 'INR', get: (i) => n4(fgs[i].conversion.inr) },
-      { header: 'Total cost INR', dp: 2, curr: 'INR', get: (i) => n4(fgs[i].total.inr) },
-      { header: 'Total cost / pc INR', dp: 4, curr: 'INR', get: (i) => n4(fgs[i].fgQty.gt(0) ? fgs[i].total.inr.div(fgs[i].fgQty) : null) },
-      { header: 'Total cost / pc local', dp: 4, get: (i) => n4(fgs[i].fgQty.gt(0) ? fgs[i].total.loc.div(fgs[i].fgQty) : null) },
-      { header: 'Routings with activities', get: (i) => fgs[i].activity.filter((u) => u.act && u.unitOk).length },
-      { header: 'Process orders', get: (i) => fgs[i].actual?.orders ?? 0 },
-    ];
+    const cols = breakupCols(fgs);
     void exportTable({ fmt: 'xlsx', name: exportName, cols, count: fgs.length, extraParams: [['FG quantity', qtyLabel], ['Material', 'Leaf components by type: ROH = Raw Material (group 106 = Perfume), PKGN / VERP = Pack Material'], ['Conversion', `SAP routing activities (ActivityCostSet) of the FG and its semi-finished components, period ${act.period.poper}/${act.period.gjahr}, x their quantity`], ['Activity rows', act.status === 'ready' ? `${act.rows.length}` : act.note || act.status], ['Process orders', po.status === 'ready' ? `${po.rows.length} rows (last ${months} months)` : po.note || po.status]] });
   };
 

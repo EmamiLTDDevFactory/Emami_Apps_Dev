@@ -61,10 +61,12 @@ export interface ExportSpec {
   extraParams?: [string, string][];
   messages?: SapMessage[];
   extraSheets?: { name: string; cols: XCol[]; count: number }[];
+  /** file name stem when it should differ from the first sheet's name */
+  fileLabel?: string;
 }
 
 export async function exportTable(spec: ExportSpec) {
-  const file = `bom-simulator-${spec.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${stamp()}`;
+  const file = `bom-simulator-${(spec.fileLabel ?? spec.name).toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${stamp()}`;
   if (spec.fmt === 'csv') {
     const lines = [spec.cols.map((c) => csvCell(c.header)).join(',')];
     for (let i = 0; i < spec.count; i++) lines.push(spec.cols.map((c) => csvCell(c.get(i))).join(','));
@@ -123,8 +125,10 @@ export async function exportRows({ fmt, name, query, cols, rows, totals }: { fmt
   await exportTable({ fmt, name, query, cols: xcols, count: rows.length, extraParams: extra });
 }
 
-/** Mode B: every CostLine field (the "all columns" view), plus simulated values when active. */
-export async function exportCostLines({ fmt, query, rows, sim, settings, messages }: { fmt: 'xlsx' | 'csv'; query: CostQuery; rows: CostLine[]; sim: SimRow[]; settings: SimSettings; messages: SapMessage[] }) {
+export interface XSheet { name: string; cols: XCol[]; count: number }
+
+/** The BOM tree sheet (every CostLine field, plus simulated values when active) and the Rate options sheet. */
+export function costLineSheets({ query: _q, rows, sim, settings }: { query: CostQuery; rows: CostLine[]; sim: SimRow[]; settings: SimSettings }) {
   const simOn = !isIdentity(settings);
   const kinds = COST_LINE as Record<string, readonly [string, string]>;
   const keys = Object.keys(kinds).filter((k) => costPropVisible(k));
@@ -169,7 +173,19 @@ export async function exportCostLines({ fmt, query, rows, sim, settings, message
     { header: 'Rate/pc INR', dp: 4, curr: 'INR', get: (i) => num(flat[i].o.RatePcInr) },
     { header: 'Cost INR', dp: 2, curr: 'INR', get: (i) => num(flat[i].o.CostInr) },
   ];
-  await exportTable({ fmt, name: 'BOM costing', query, cols, count: rows.length, extraParams: extra, messages, extraSheets: fmt === 'xlsx' ? [{ name: 'Rate options', cols: optCols, count: flat.length }] : [] });
+  return { cols, extra, options: { name: 'Rate options', cols: optCols, count: flat.length } as XSheet };
+}
+
+/** Mode B: every CostLine field (the "all columns" view), plus simulated values when active. */
+export async function exportCostLines({ fmt, query, rows, sim, settings, messages }: { fmt: 'xlsx' | 'csv'; query: CostQuery; rows: CostLine[]; sim: SimRow[]; settings: SimSettings; messages: SapMessage[] }) {
+  const { cols, extra, options } = costLineSheets({ query, rows, sim, settings });
+  await exportTable({ fmt, name: 'BOM costing', query, cols, count: rows.length, extraParams: extra, messages, extraSheets: fmt === 'xlsx' ? [options] : [] });
+}
+
+/** One Excel workbook with a sheet per tab (and its parameters sheet): the first sheet is the main one. */
+export async function exportWorkbook({ fileLabel, query, sheets, extraParams, messages }: { fileLabel: string; query: CostQuery; sheets: XSheet[]; extraParams?: [string, string][]; messages?: SapMessage[] }) {
+  const [first, ...rest] = sheets;
+  await exportTable({ fmt: 'xlsx', name: first.name, fileLabel, query, cols: first.cols, count: first.count, extraSheets: rest, extraParams, messages });
 }
 
 export async function exportPivot({ fmt, query, pivot, messages }: { fmt: 'xlsx' | 'csv'; query: CostQuery; pivot: Pivot; messages: SapMessage[] }) {
