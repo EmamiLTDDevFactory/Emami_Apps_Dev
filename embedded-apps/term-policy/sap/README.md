@@ -45,8 +45,9 @@ All properties Edm.String unless noted. Keys in **bold**.
 - Function imports (POST): `DeletePolicy(Reqno, Email)`, `SendSummary(Reqnos, Email)`, both returning Result
 
 Basis steps: create SEGW project, define the above, generate, paste `zcl_zlife_ins_dpc_ext.abap` over the DPC_EXT, register
-`ZLIFE_INS_SRV` in /IWFND/MAINT_SERVICE, expose it on the Azure gateway for system EDS, then build the app with
-`NEXT_PUBLIC_TERM_POLICY_LIVE=1` (optionally `NEXT_PUBLIC_TERM_POLICY_SAP_SYSTEM`).
+`ZLIFE_INS_SRV` in /IWFND/MAINT_SERVICE, expose it on the Azure gateway for system EDS, then check `SAP_SYSTEM` in
+`src/lib/config.ts` (EDS by default; or build with `NEXT_PUBLIC_TERM_POLICY_SAP_SYSTEM`). The app has no mock: until the service answers it
+shows "Term Life service not available (SAP)" with a Try again button, like Mediclaim.
 
 ## Differences from the Web Dynpro (deliberate)
 
@@ -67,6 +68,6 @@ Basis steps: create SEGW project, define the above, generate, paste `zcl_zlife_i
   gateway forwards the hub JWT and the DPC verifies it, or the gateway signs in as the person.
 - **DEV is not configured for the current year**: `ZLIFE_PERIOD` has only year 2018 active and `ZLIFE_AMT` has no 2018 slabs, so
   nobody gets a sum-assured list until HR maintains the active period, slabs (`ZLIFE_AMT`) and limits (`ZLIFE_INS_LIMIT`).
-- Request number (`ZLIFE_REQNO`) is `MAX(reqno)+1` with no lock: two simultaneous saves can collide.
+- Request number (`ZLIFE_REQNO`) is `MAX(reqno)+1`. `save_policy` now takes an exclusive enqueue (`ENQUEUE_E_TABLE`, ZLIFE_EMP/SAVE) before reading anything, released by the caller's COMMIT/ROLLBACK, so two simultaneous saves can no longer collide or both pass the duplicate-employee check. **The DPC must COMMIT (or ROLLBACK) after every `save_policy`** or the lock is held until the session ends. A save that cannot get the lock answers "Another request is being saved right now. Please try again in a moment."
 - The cut-off date row (`ZMEDI_DATE` slno 2) is 2025-08-31, already past, so on DEV only editors can apply.
 - The Web Dynpro saved through `ZLIFE_UPDATE_TABS` in update task; the BL does the same three statements (MODIFY emp, DELETE family, MODIFY family) directly and the DPC commits.

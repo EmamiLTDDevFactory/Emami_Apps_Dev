@@ -82,7 +82,8 @@ CLASS zcl_life_ins_utils DEFINITION PUBLIC FINAL CREATE PUBLIC.
                  EXPORTING es_emp TYPE ty_emp ev_error TYPE string,
       limit_in_rupees IMPORTING iv_pernr TYPE zlife_emp-emp_id iv_year TYPE zlife_period-zyear
                       RETURNING VALUE(rv_amt) TYPE zlife_amt-zsum,
-      next_reqno RETURNING VALUE(rv_reqno) TYPE zlife_emp-reqno.
+      next_reqno RETURNING VALUE(rv_reqno) TYPE zlife_emp-reqno,
+      lock_saves RETURNING VALUE(rv_ok) TYPE abap_bool.
 ENDCLASS.
 
 
@@ -265,6 +266,24 @@ CLASS zcl_life_ins_utils IMPLEMENTATION.
     CALL FUNCTION 'ZLIFE_REQNO' IMPORTING ex_reqno = rv_reqno.
   ENDMETHOD.
 
+  METHOD lock_saves.
+    " ZLIFE_REQNO hands out MAX( reqno ) + 1 and the duplicate-employee check is a plain SELECT, so two saves running together
+    " could get the same request number (the second MODIFY would overwrite the first policy) or both pass the duplicate check.
+    " One exclusive lock, taken before either is read and released by the caller's COMMIT / ROLLBACK, serialises the saves.
+    " Saving is a rare, short action, so one lock for the whole table costs nothing.
+    CALL FUNCTION 'ENQUEUE_E_TABLE'
+      EXPORTING
+        mode_rstable = 'E'
+        tabname      = 'ZLIFE_EMP'
+        varkey       = 'SAVE'
+        _wait        = abap_true
+      EXCEPTIONS
+        foreign_lock   = 1
+        system_failure = 2
+        OTHERS         = 3.
+    rv_ok = xsdbool( sy-subrc = 0 ).
+  ENDMETHOD.
+
   METHOD save_policy.
     DATA: ls_emp  TYPE zlife_emp,
           lt_fam  TYPE tt_fam,
@@ -278,6 +297,10 @@ CLASS zcl_life_ins_utils IMPLEMENTATION.
     DATA lv_user TYPE zuname.
     lv_user = to_lower( iv_user ).
     DATA(lv_change) = xsdbool( iv_reqno IS NOT INITIAL ).
+    IF lock_saves( ) = abap_false.
+      ev_error = 'Another request is being saved right now. Please try again in a moment.'.
+      RETURN.
+    ENDIF.
     IF lv_change = abap_true.
       SELECT SINGLE * FROM zlife_emp INTO @DATA(ls_old) WHERE reqno = @iv_reqno AND del_flag <> 'X'.
       IF sy-subrc <> 0.

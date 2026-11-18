@@ -2,8 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { getHubEmail } from '../lib/hubEmailLogin';
-import { fetchTermPolicyRole } from '../lib/hubAccessApi';
-import { api, IS_LIVE } from '../lib/termPolicyApi';
+import { api } from '../lib/termPolicyApi';
 import type { Profile, SapRole } from '../types/policy';
 
 interface AppContextValue {
@@ -15,9 +14,7 @@ interface AppContextValue {
   /** EDITOR or ADMIN: may apply for / change another employee's policy. */
   canActForOthers: boolean;
   loading: boolean;
-  error: string | null;
-  /** True while running against the browser mock instead of SAP. */
-  isMock: boolean;
+  error: Error | null;
   refresh: () => void;
 }
 
@@ -27,7 +24,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [email, setEmail] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Error | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
 
   const refresh = useCallback(() => setReloadToken((t) => t + 1), []);
@@ -42,11 +39,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    // Live: SAP's own table (ZMEDI_AUTH_USERS) decides the role. Mock: the hub's Manage Access grant stands in for it.
-    (IS_LIVE ? Promise.resolve(false) : fetchTermPolicyRole(hubEmail).then((r) => r === 'Admin'))
-      .then((hubIsAdmin) => api.getProfile(hubEmail, hubIsAdmin))
+    // SAP's own table (ZMEDI_AUTH_USERS) decides the role, not the hub's Admin role.
+    api
+      .getProfile(hubEmail)
       .then((p) => !cancelled && setProfile(p))
-      .catch((err) => !cancelled && setError(err instanceof Error ? err.message : 'Could not load your details.'))
+      .catch((err) => !cancelled && setError(err instanceof Error ? err : new Error('Could not load your details.')))
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
@@ -57,7 +54,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const role: SapRole = profile?.role ?? 'USER';
     return {
       email, profile, role, isAdmin: role === 'ADMIN', canActForOthers: role === 'ADMIN' || role === 'EDITOR',
-      loading, error, isMock: !IS_LIVE, refresh,
+      loading, error, refresh,
     };
   }, [email, profile, loading, error, refresh]);
 

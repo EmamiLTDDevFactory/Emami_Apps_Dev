@@ -29,7 +29,7 @@ function Detail({ label, value }: { label: string; value: string | number }) {
 }
 
 export default function TermPolicyPage() {
-  const { email, profile, canActForOthers, isAdmin, isMock, loading: appLoading, error: appError } = useApp();
+  const { email, profile, canActForOthers, isAdmin, loading: appLoading } = useApp();
 
   const [empIdInput, setEmpIdInput] = useState('');
   const [employee, setEmployee] = useState<EmployeeInfo | null>(null);
@@ -131,15 +131,9 @@ export default function TermPolicyPage() {
   const invalid = (f: string) => (fieldError?.field === f ? 'border-red' : '');
 
   if (appLoading) return <Spinner />;
-  if (appError) return <Banner banner={{ type: 'error', message: appError }} onClose={() => undefined} />;
 
   return (
     <div>
-      {isMock && (
-        <div className="mb-3 rounded-xl border border-amber/30 bg-amberBg px-3 py-2 text-[12px] font-semibold text-amber">
-          Demo mode: the SAP service ZLIFE_INS_SRV is not switched on for this build, so data is kept only in this browser.
-        </div>
-      )}
       {banner && <Banner banner={banner} onClose={() => setBanner(null)} />}
 
       <div className="glass-card mb-3 p-4">
