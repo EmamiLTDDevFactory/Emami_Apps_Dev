@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react';
 import { Menu } from 'lucide-react';
 import { getHubEmail, hasHubSession } from '../lib/hubEmailLogin';
-import { AppProvider } from '../context/AppContext';
+import { AppProvider, useApp } from '../context/AppContext';
 import SidePane from './SidePane';
+import ServiceUnavailable from './ServiceUnavailable';
 
 const WIDE_BREAKPOINT = 768; // matches every sibling embedded app's own SidePane breakpoint
 
@@ -17,6 +18,19 @@ function useIsWideScreen() {
     return () => window.removeEventListener('resize', check);
   }, []);
   return wide;
+}
+
+function Content({ children }: { children: React.ReactNode }) {
+  const { ctx, loading, error, refresh } = useApp();
+  if (loading) {
+    return (
+      <div className="flex justify-center py-16">
+        <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-rust border-t-transparent" />
+      </div>
+    );
+  }
+  if (!ctx) return <ServiceUnavailable error={error ?? new Error('Your Mediclaim details could not be read from SAP.')} onRetry={refresh} />;
+  return <>{children}</>;
 }
 
 function Gate({ children }: { children: React.ReactNode }) {
@@ -55,10 +69,12 @@ function Gate({ children }: { children: React.ReactNode }) {
             >
               <Menu size={16} />
             </button>
-            <span className="text-[12.5px] font-extrabold text-ink">Mediclaim Policy</span>
+            <span className="text-[12.5px] font-extrabold text-ink">Mediclaim</span>
           </header>
         )}
-        <main className="mx-auto w-full max-w-6xl flex-1 p-3 sm:p-4">{children}</main>
+        <main className="mx-auto w-full max-w-6xl flex-1 p-3 sm:p-4">
+          <Content>{children}</Content>
+        </main>
       </div>
     </div>
   );

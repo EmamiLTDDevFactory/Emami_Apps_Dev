@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { HeartPulse, BarChart3, ArrowLeft, X } from 'lucide-react';
+import { HeartPulse, History, ClipboardList, CalendarClock, ShieldBan, Download, ArrowLeft, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { nameFromEmail } from '../lib/hubEmailLogin';
 import { goBack } from '../lib/goBack';
@@ -13,8 +13,17 @@ import { goBack } from '../lib/goBack';
 // embedded-apps/timesheet/src/components/gates/BASE_PATH.ts).
 const BASE_PATH = '/apps/mediclaim';
 
-const NAV_ITEMS = [{ href: '/', label: 'My Mediclaim Policy', icon: HeartPulse }];
-const ADMIN_NAV_ITEM = { href: '/admin/', label: 'Admin Reports', icon: BarChart3 };
+const NAV_ITEMS = [
+  { href: '/', label: 'My Mediclaim', icon: HeartPulse },
+  { href: '/last-year/', label: 'Last year application', icon: History },
+];
+// Admin menu: roles come from SAP (ContextSet.IsAuthUser / IsHrAdmin), not from the hub's Admin role.
+const AUTH_NAV_ITEMS = [{ href: '/admin/', label: 'Policies', icon: ClipboardList }];
+const HR_NAV_ITEMS = [
+  { href: '/admin/cutoff/', label: 'Cut-off date & insurer mail', icon: CalendarClock },
+  { href: '/admin/blocked/', label: 'Blocked employees', icon: ShieldBan },
+  { href: '/admin/download/', label: 'HR download', icon: Download },
+];
 
 export default function SidePane({
   isOpen,
@@ -26,8 +35,8 @@ export default function SidePane({
   isWideScreen: boolean;
 }) {
   const pathname = usePathname();
-  const { email, isAdmin } = useApp();
-  const items = isAdmin ? [...NAV_ITEMS, ADMIN_NAV_ITEM] : NAV_ITEMS;
+  const { email, ctx, canAdmin, isHrAdmin } = useApp();
+  const items = [...NAV_ITEMS, ...(canAdmin ? AUTH_NAV_ITEMS : []), ...(isHrAdmin ? HR_NAV_ITEMS : [])];
 
   const paneClasses = isWideScreen
     ? 'relative w-56 shrink-0'
@@ -57,18 +66,19 @@ export default function SidePane({
                 if (!isWideScreen) onClose();
               }}
               className="flex flex-col items-center gap-1"
-              aria-label="Go to Mediclaim Policy home"
+              aria-label="Go to Mediclaim home"
             >
               <span className="text-center text-[12.5px] font-bold leading-tight tracking-tight text-ink">
-                Mediclaim Policy
+                Mediclaim
               </span>
+              {ctx && <span className="text-center text-[10.5px] font-semibold text-inkSoft">Policy year {ctx.YearText}</span>}
             </Link>
           </div>
         </div>
 
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-2.5">
           {items.map((item) => {
-            const active = pathname === item.href || (item.href !== '/' && pathname?.startsWith(item.href));
+            const active = pathname === item.href;
             const Icon = item.icon;
             return (
               <Link

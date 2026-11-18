@@ -26,8 +26,8 @@ const plexSerif = localFont({
 });
 
 export const metadata: Metadata = {
-  title: 'Mediclaim Policy — Emami Apps',
-  description: 'Submit and manage your Mediclaim policy details.',
+  title: 'Mediclaim — Emami Apps',
+  description: 'Enrol in, view and manage the Emami Mediclaim policy.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

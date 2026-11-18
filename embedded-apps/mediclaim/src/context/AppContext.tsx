@@ -1,21 +1,22 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { getHubEmail } from '../lib/hubEmailLogin';
-import { fetchMediclaimRole, type MediclaimRole } from '../lib/hubAccessApi';
-import { fetchEmployeeOrgDetails } from '../lib/orgService';
-import { getMyMediclaimSubmission, submitMediclaimPolicy } from '../lib/policyService';
-import type { EmployeeOrgDetails, MediclaimDraft, MediclaimSubmission } from '../types/policy';
+import { getContext } from '../lib/mediclaim';
+import { SapError } from '../lib/sap';
+import type { MediclaimContext } from '../lib/types';
 
 interface AppContextValue {
   email: string | null;
-  employee: EmployeeOrgDetails | null;
-  role: MediclaimRole;
-  isAdmin: boolean;
-  myMediclaim: MediclaimSubmission | null;
+  /** ContextSet: caller identity, roles, active period and cut-off. Null until loaded / when the service is not reachable. */
+  ctx: MediclaimContext | null;
   loading: boolean;
-  error: string | null;
-  submitMediclaim: (data: MediclaimDraft) => Promise<MediclaimSubmission>;
+  error: SapError | Error | null;
+  /** Roles come from SAP (ZMEDI_AUTH_USERS), not from the hub's Admin role. */
+  isAuthUser: boolean;
+  isHrAdmin: boolean;
+  /** Admin menu: IsAuthUser or IsHrAdmin. */
+  canAdmin: boolean;
   refresh: () => void;
 }
 
@@ -23,13 +24,12 @@ const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [email, setEmail] = useState<string | null>(null);
-  const [employee, setEmployee] = useState<EmployeeOrgDetails | null>(null);
-  const [role, setRole] = useState<MediclaimRole>('User');
-  const [myMediclaim, setMyMediclaim] = useState<MediclaimSubmission | null>(null);
+  const [ctx, setCtx] = useState<MediclaimContext | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<SapError | Error | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
 
+  const loadedOnce = useRef(false);
   const refresh = useCallback(() => setReloadToken((t) => t + 1), []);
 
   useEffect(() => {
@@ -39,65 +39,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return;
     }
-
     let cancelled = false;
-    setLoading(true);
+    // Only the first load (or a retry after a failure) blanks the screen; later refreshes update ctx silently.
+    if (!loadedOnce.current) setLoading(true);
     setError(null);
-
-    Promise.all([
-      fetchEmployeeOrgDetails(hubEmail),
-      fetchMediclaimRole(hubEmail),
-      getMyMediclaimSubmission(hubEmail),
-    ])
-      .then(([org, resolvedRole, mediclaim]) => {
+    getContext()
+      .then((c) => {
         if (cancelled) return;
-        setEmployee(org);
-        setRole(resolvedRole);
-        setMyMediclaim(mediclaim);
+        loadedOnce.current = true;
+        setCtx(c);
       })
       .catch((err) => {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : 'Could not load your details.');
+        if (loadedOnce.current) return; // a failed background refresh keeps the last good context
+        setCtx(null);
+        setError(err instanceof Error ? err : new Error('Could not load your details.'));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
-
     return () => {
       cancelled = true;
     };
   }, [reloadToken]);
 
-  const submitMediclaim = useCallback(
-    async (data: MediclaimDraft) => {
-      if (!employee) throw new Error('Employee details are not loaded yet.');
-      const saved = await submitMediclaimPolicy(employee, data);
-      setMyMediclaim(saved);
-      return saved;
-    },
-    [employee]
-  );
-
   const value = useMemo<AppContextValue>(
     () => ({
       email,
-      employee,
-      role,
-      isAdmin: role === 'Admin',
-      myMediclaim,
+      ctx,
       loading,
       error,
-      submitMediclaim,
+      isAuthUser: Boolean(ctx?.IsAuthUser),
+      isHrAdmin: Boolean(ctx?.IsHrAdmin),
+      canAdmin: Boolean(ctx?.IsAuthUser || ctx?.IsHrAdmin),
       refresh,
     }),
-    [email, employee, role, myMediclaim, loading, error, submitMediclaim, refresh]
+    [email, ctx, loading, error, refresh]
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
 
 export function useApp(): AppContextValue {
-  const ctx = useContext(AppContext);
-  if (!ctx) throw new Error('useApp must be used within an AppProvider');
-  return ctx;
+  const c = useContext(AppContext);
+  if (!c) throw new Error('useApp must be used within an AppProvider');
+  return c;
 }
