@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Star, Lock } from 'lucide-react';
 import type { AppItem, AppRole } from '../types';
 import { colors, fonts, fontWeights, radii, appColor, motion, focusRing } from '../theme/tokens';
@@ -34,10 +34,6 @@ export default function AppCard({ app, isFavorite, isTopUsed, locked = false, ro
   const stage = useAppStages().stageOf(app.id);
 
   const [focused, setFocused] = useState(false);
-  // A missing or broken preview image just drops the preview instead of leaving an empty frame.
-  const [previewFailed, setPreviewFailed] = useState(false);
-  useEffect(() => setPreviewFailed(false), [app.preview]);
-  const showPreview = !!app.preview && !previewFailed;
   const { ref, hovered, pressed, tiltTransform, handlers } = useTiltHover<HTMLAnchorElement>();
 
   const scale = pressed ? motion.pressScale : hovered ? motion.hoverScale : 1;
@@ -116,30 +112,6 @@ export default function AppCard({ app, isFavorite, isTopUsed, locked = false, ro
         </div>
       </div>
 
-      {showPreview && (
-        <div
-          style={{
-            position: 'relative',
-            marginTop: isMobile ? 8 : 12,
-            borderRadius: isMobile ? radii.md : radii.lg,
-            overflow: 'hidden',
-            border: `1px solid ${colors.border}`,
-            backgroundColor: colors.appBg,
-            aspectRatio: '16 / 9',
-          }}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={app.preview}
-            alt={`${app.name} preview`}
-            loading="lazy"
-            decoding="async"
-            onError={() => setPreviewFailed(true)}
-            style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top left', display: 'block', filter: locked ? 'grayscale(1)' : undefined }}
-          />
-        </div>
-      )}
-
       {/* Mobile shows the full app name (no truncation). Desktop/tablet wraps a long name onto a
           second line (e.g. "Change Control Board & CR Tracker") instead of cutting it off with an
           ellipsis; anything longer than two lines is clamped. */}
@@ -149,7 +121,7 @@ export default function AppCard({ app, isFavorite, isTopUsed, locked = false, ro
           fontFamily: fonts.sansSemiBold,
           fontWeight: fontWeights.sansSemiBold,
           color: locked ? colors.inkSoft : colors.ink,
-          marginTop: showPreview ? (isMobile ? 6 : 10) : isMobile ? 8 : 14,
+          marginTop: isMobile ? 8 : 14,
           marginBottom: 0,
           lineHeight: isMobile ? '16px' : '20px',
           ...(isMobile

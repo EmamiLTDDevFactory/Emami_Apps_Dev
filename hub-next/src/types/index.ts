@@ -19,9 +19,6 @@ export interface AppItem {
   /** Same-origin path or externally hosted web app URL. When set, AppDetail embeds it in an iframe
    * (cross-origin) or does a full-page navigation (same-origin, see isSameOriginRoute). */
   url?: string;
-  /** Screenshot of the app shown on its tile, above the title — a path under public/ such as
-   * '/app-previews/audit-capa.png'. Omit for a tile without a preview. */
-  preview?: string;
 }
 
 export interface RecentEntry {
