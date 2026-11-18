@@ -126,7 +126,7 @@ export function compareRows(mine: PkgGroup[], other: PkgGroup[] | null): Compare
 }
 
 export const finaliseCounts = (groups: PkgGroup[]) => { const m = groups.filter((g) => blocked(g.head)).length; return { n: groups.length - m, m }; };
-export const finaliseTarget = (werks: string) => (werks === 'HO00' || !werks ? 'ZCOMPONENT (India)' : `ZCOMPONENT (plant ${werks})`);
+export const finaliseTarget = (werks: string) => (werks === 'HO00' || !werks ? 'ZCOMPONENT (India) / ZCOMPONENT_N by plant country' : `ZCOMPONENT (plant ${werks})`);
 
 // ---- edits ------------------------------------------------------------------------------------------------------------
 export type RuleKey = 'set' | 'inc' | 'dec' | 'add' | 'sub';
@@ -171,7 +171,7 @@ export function resolveScope(kind: ScopeKind, c: ScopeCtx): Pick<PkgActionBody, 
 
 // ---- new scenario -----------------------------------------------------------------------------------------------------
 export function newScenarioDefaults(from = ''): NewScenarioForm {
-  return { werks: 'HO00', descr: '', validFrom: from, validTo: '', keyDate: '', budgetVersion: '', mtart: ['PKGN', 'VERP'], matkl: '', matnr: '', prio: [...PRIO_DEFAULT], norm: false };
+  return { werks: '', descr: '', validFrom: from, validTo: '', keyDate: '', budgetVersion: '', mtart: ['PKGN', 'VERP'], matkl: '', matnr: '', prio: [...PRIO_DEFAULT], norm: false };
 }
 export function validateNewScenario(f: NewScenarioForm): Partial<Record<keyof NewScenarioForm, string>> {
   const e: Partial<Record<keyof NewScenarioForm, string>> = {};
@@ -188,7 +188,7 @@ export function validateNewScenario(f: NewScenarioForm): Partial<Record<keyof Ne
 const list = (s: string) => Array.from(new Set(s.split(/[\s,;]+/).map((x) => x.trim().toUpperCase()).filter(Boolean))).join(',');
 export function createBody(f: NewScenarioForm): PkgActionBody {
   return {
-    action: 'CREATE', werks: f.werks.trim().toUpperCase() || 'HO00', descr: f.descr.trim(), validFrom: f.validFrom, validTo: f.validTo, keyDate: f.keyDate || f.validFrom,
+    action: 'CREATE', werks: f.werks.trim().toUpperCase(), descr: f.descr.trim(), validFrom: f.validFrom, validTo: f.validTo, keyDate: f.keyDate || f.validFrom,
     ...(f.budgetVersion.trim() ? { budgetVersion: Number(f.budgetVersion) } : {}),
     mtartSel: f.mtart.join(','), matklSel: list(f.matkl), matnrSel: list(f.matnr), prio: f.prio.join(','), norm: f.norm ? 'X' : '',
   };

@@ -50,6 +50,8 @@ CLASS zcl_zmm_bom_cost_mpc_ext IMPLEMENTATION.
     pkg_add_dec( io_et = lo_et iv_name = 'FrtRate4'    iv_field = 'FRT_RATE4' ).
     pkg_add_dec( io_et = lo_et iv_name = 'FrtTotal'    iv_field = 'FRT_TOTAL' ).
     pkg_add_str( io_et = lo_et iv_name = 'FrtCurr'     iv_field = 'FRT_CURR'     iv_len = 5 ).
+    pkg_add_dec( io_et = lo_et iv_name = 'NetQty'      iv_field = 'NET_QTY' ).
+    pkg_add_dec( io_et = lo_et iv_name = 'NetValue'    iv_field = 'NET_VALUE' ).
     pkg_add_dec( io_et = lo_et iv_name = 'LandedRate'  iv_field = 'LANDED_RATE' ).
     pkg_add_str( io_et = lo_et iv_name = 'LandedCurr'  iv_field = 'LANDED_CURR'  iv_len = 5 ).
   ENDMETHOD.

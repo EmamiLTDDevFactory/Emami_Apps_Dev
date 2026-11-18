@@ -10,7 +10,7 @@ const base: PkgItem = {
   ScenId: '0000000014', Matnr: 'M1', Idnrk: '', Maktx: 'Mat', Mtart: 'PKGN', Matkl: 'PK01', RateSrc: 'CONTRACT', BasicRateSap: 10, BasicRateUsed: 10, BudgetRateSap: 11, BudgetRate: 11, Variance: 1, VariancePct: 10,
   Waers: 'INR', Peinh: 1, Meins: 'KG', MsgFlags: '', PctSap: 0, PctUsed: 0, ZbudSap: 0, ZbudUsed: 0, CompBaseRate: 0, CompBudRate: 0,
   OriginGrp: '', ZbudMatnr: '', AltBomUsed: '', GroupCurr: 'INR', GroupValue: 0, FrtCond1: '', FrtCond2: '', FrtCond3: '', FrtCond4: '', FrtRate1: 0, FrtRate2: 0, FrtRate3: 0, FrtRate4: 0,
-  FrtTotal: 0, FrtCurr: 'INR', LandedRate: 0, LandedCurr: 'INR',
+  FrtTotal: 0, FrtCurr: 'INR', LandedRate: 0, LandedCurr: 'INR', NetQty: 0, NetValue: 0, Werks: '',
 };
 const head = (o: Partial<PkgItem> = {}): PkgItem => ({ ...base, ...o });
 const comp = (o: Partial<PkgItem> = {}): PkgItem => ({ ...base, Idnrk: 'C1', PctSap: 60, PctUsed: 60, ...o });
@@ -107,6 +107,8 @@ describe('new scenario', () => {
     expect(validateNewScenario({ ...ok, validFrom: '' }).validFrom).toBeTruthy();
   });
   it('body defaults the key date to the start and lists selections', () => {
+    expect(newScenarioDefaults('2027-04-01').werks).toBe('');
+    expect(createBody(ok).werks).toBe('');
     expect(createBody({ ...ok, matkl: 'pk01, pk02', norm: true })).toMatchObject({ action: 'CREATE', keyDate: '2027-04-01', mtartSel: 'PKGN,VERP', matklSel: 'PK01,PK02', prio: 'INFOREC,CONSUMP,MBEW', norm: 'X' });
   });
 });

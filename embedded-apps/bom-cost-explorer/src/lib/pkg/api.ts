@@ -26,6 +26,7 @@ const item = (r: Raw): PkgItem => ({
   FrtCond1: str(r.FrtCond1), FrtCond2: str(r.FrtCond2), FrtCond3: str(r.FrtCond3), FrtCond4: str(r.FrtCond4),
   FrtRate1: num(r.FrtRate1), FrtRate2: num(r.FrtRate2), FrtRate3: num(r.FrtRate3), FrtRate4: num(r.FrtRate4),
   FrtTotal: num(r.FrtTotal), FrtCurr: str(r.FrtCurr), LandedRate: num(r.LandedRate), LandedCurr: str(r.LandedCurr),
+  NetQty: num(r.NetQty), NetValue: num(r.NetValue), Werks: str(r.Werks),
 });
 const ovr = (r: Raw): PkgOvr => ({
   ScenId: str(r.ScenId), OvrDate: isoDate(r.OvrDate), OvrTime: timeText(r.OvrTime), OvrUser: str(r.OvrUser), Level: str(r.OvrLevel), Matnr: str(r.Matnr), Matkl: str(r.Matkl),

@@ -105,7 +105,21 @@ CLASS zcl_pkg_budget_calc DEFINITION
         meins      TYPE meins,
         werks      TYPE werks_d,
         hrkft      TYPE hrkft,
+        net_qty    TYPE ty_val,
+        net_val    TYPE ty_val,
       END OF ty_mat .
+    TYPES:
+      BEGIN OF ty_hist,
+        matnr      TYPE matnr,
+        werks      TYPE werks_d,
+        mtart      TYPE mtart,
+        matkl      TYPE matkl,
+        meins      TYPE meins,
+        net_qty    TYPE ty_val,
+        net_val    TYPE ty_val,
+      END OF ty_hist .
+    TYPES:
+      tt_hist TYPE STANDARD TABLE OF ty_hist WITH DEFAULT KEY .
     TYPES:
       BEGIN OF ty_txt,
         matnr TYPE matnr,
@@ -275,6 +289,11 @@ CLASS zcl_pkg_budget_calc DEFINITION
     METHODS create
       RAISING
         zcx_pkg_bud .
+    METHODS hist_rows
+      IMPORTING
+        !is_s          TYPE zpkg_bud_scen
+      RETURNING
+        VALUE(rt_hist) TYPE tt_hist .
     METHODS build_items
       IMPORTING
         !is_s  TYPE zpkg_bud_scen
@@ -376,7 +395,6 @@ CLASS zcl_pkg_budget_calc IMPLEMENTATION.
   METHOD execute.
     ms_act = cs_act.
     TRANSLATE ms_act-werks TO UPPER CASE.
-    IF ms_act-werks IS INITIAL. ms_act-werks = c_werks. ENDIF.
     CASE ms_act-action.
       WHEN 'CREATE'.   create( ).
       WHEN 'EDIT'.     edit( ).
@@ -425,7 +443,7 @@ CLASS zcl_pkg_budget_calc IMPLEMENTATION.
       ls_tag = tag_get( ls-origin_grp_sel ).
       lo-scen_id = ls-scen_id. lo-descr = ls-descr. lo-budget_year = ls-gjahr.
       lo-key_date = ls-key_date. lo-valid_from = ls-valid_from. lo-valid_to = ls-valid_to.
-      lo-werks = ls-plant_sel. IF lo-werks IS INITIAL. lo-werks = c_werks. ENDIF.
+      lo-werks = ls-plant_sel.                                  "blank = all plants
       lo-status = ls-status. lo-budget_version = ls-version.
       lo-base_scen_id = ls_tag-base. lo-norm = ls-normalize_pct.
       lo-prio = ls_tag-prio. IF lo-prio IS INITIAL. lo-prio = c_prio. ENDIF.
@@ -452,9 +470,14 @@ CLASS zcl_pkg_budget_calc IMPLEMENTATION.
   METHOD item_list.
     DATA: lt TYPE STANDARD TABLE OF zpkg_bud_item, ls TYPE zpkg_bud_item, lo TYPE zpkg_s_item,
           ls_s TYPE zpkg_bud_scen, lt_m TYPE STANDARD TABLE OF ty_mat, ls_m TYPE ty_mat,
-          lt_k TYPE STANDARD TABLE OF matnr, lv_k TYPE matnr, lv_f TYPE string.
+          lt_k TYPE STANDARD TABLE OF matnr, lv_k TYPE matnr, lv_f TYPE string,
+          lt_hs TYPE tt_hist.
+    FIELD-SYMBOLS <hs> TYPE ty_hist.
     SELECT SINGLE * FROM zpkg_bud_scen INTO ls_s WHERE scen_id = iv_id.
     SELECT * FROM zpkg_bud_item INTO TABLE lt WHERE scen_id = iv_id.
+    " net quantity / net value of the purchase history, summed over plants, per material
+    lt_hs = hist_rows( ls_s ).
+    SORT lt_hs BY matnr.
     LOOP AT lt INTO ls WHERE row_level = 'H'.
       APPEND ls-matnr TO lt_k.
     ENDLOOP.
@@ -480,6 +503,10 @@ CLASS zcl_pkg_budget_calc IMPLEMENTATION.
         CONDENSE lo-msg_base.
         lo-gjahr = ls_s-gjahr. lo-valid_from = ls_s-valid_from. lo-valid_to = ls_s-valid_to.
         lo-origin_grp = ls-origin_grp. lo-zbud_matnr = ls-zbud_matnr. lo-alt_bom_used = ls-alt_bom_used.
+        LOOP AT lt_hs ASSIGNING <hs> WHERE matnr = ls-matnr.
+          lo-net_qty = lo-net_qty + <hs>-net_qty.
+          lo-net_value = lo-net_value + <hs>-net_val.
+        ENDLOOP.
         lo-group_curr = ls-group_curr. lo-group_value = ls-group_value.
         lo-frt_cond1 = ls-frt_cond1. lo-frt_cond2 = ls-frt_cond2. lo-frt_cond3 = ls-frt_cond3. lo-frt_cond4 = ls-frt_cond4.
         lo-frt_rate1 = ls-frt_rate1. lo-frt_rate2 = ls-frt_rate2. lo-frt_rate3 = ls-frt_rate3. lo-frt_rate4 = ls-frt_rate4.
@@ -763,6 +790,42 @@ CLASS zcl_pkg_budget_calc IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD hist_rows.
+    " Purchase history of the packing materials: same view / filters as Raw Material "Load History"
+    " (country, posting date window, material type); plant blank = all plants.
+    " Window = 12 months up to the scenario key date.
+    DATA: lv_land TYPE land1, lv_hfrom TYPE d, lv_hto TYPE d, lt_wr TYPE RANGE OF werks_d,
+          lt_mt  TYPE RANGE OF mtart, ls_h TYPE ty_hist.
+    lv_land = 'IN'.
+    IF is_s-plant_sel IS NOT INITIAL.
+      SELECT SINGLE land1 FROM t001w INTO lv_land WHERE werks = is_s-plant_sel.
+      IF sy-subrc <> 0. lv_land = 'IN'. ENDIF.
+      lt_wr = VALUE #( ( sign = 'I' option = 'EQ' low = is_s-plant_sel ) ).
+    ENDIF.
+    lt_mt = VALUE #( ( sign = 'I' option = 'EQ' low = 'PKGN' ) ( sign = 'I' option = 'EQ' low = 'VERP' ) ).
+    lv_hto = is_s-key_date.
+    IF lv_hto IS INITIAL. lv_hto = is_s-valid_from. ENDIF.
+    lv_hfrom = lv_hto - 365.
+    SELECT matnr, land1, werks, mattype AS mtart, baseuom AS meins, matkl,
+           SUM( netqty )     AS net_qty,
+           SUM( netvaluelc ) AS net_val
+      FROM zi_bud_hist_purchase
+      WHERE land1       = @lv_land
+        AND postingdate BETWEEN @lv_hfrom AND @lv_hto
+        AND mattype IN @lt_mt
+        AND werks   IN @lt_wr
+      GROUP BY matnr, land1, werks, mattype, baseuom, matkl
+      INTO TABLE @DATA(lt_raw).
+    LOOP AT lt_raw INTO DATA(ls_raw).
+      CLEAR ls_h.
+      ls_h-matnr = ls_raw-matnr. ls_h-werks = ls_raw-werks. ls_h-mtart = ls_raw-mtart.
+      ls_h-matkl = ls_raw-matkl. ls_h-meins = ls_raw-meins.
+      ls_h-net_qty = ls_raw-net_qty. ls_h-net_val = ls_raw-net_val.
+      APPEND ls_h TO rt_hist.
+    ENDLOOP.
+  ENDMETHOD.
+
+
   METHOD build_items.
     DATA: lt_mtart TYPE RANGE OF mara-mtart, lt_matkl TYPE RANGE OF mara-matkl, lt_matnr TYPE RANGE OF mara-matnr,
           lt_mat   TYPE STANDARD TABLE OF ty_mat,  ls_mat TYPE ty_mat,
@@ -780,14 +843,12 @@ CLASS zcl_pkg_budget_calc IMPLEMENTATION.
           lt_frt   TYPE STANDARD TABLE OF ty_frt,  ls_f TYPE ty_frt,
           ls_h     TYPE ty_it, ls_i TYPE ty_it,
           lt_ci    TYPE STANDARD TABLE OF ty_it,
-          ls_tag   TYPE ty_tag, lv_werks TYPE werks_d,
+          ls_tag   TYPE ty_tag, lt_hist TYPE tt_hist, ls_hist TYPE ty_hist,
           lv_idx   TYPE i, lv_idx2 TYPE i, lv_flags TYPE string, lv_slot TYPE i, lv_rate TYPE ty_val,
           lv_from  TYPE d, lv_to TYPE d.
     FIELD-SYMBOLS <m> TYPE ty_mat.
 
     ls_tag = tag_get( is_s-origin_grp_sel ).
-    lv_werks = is_s-plant_sel.
-    IF lv_werks IS INITIAL. lv_werks = c_werks. ENDIF.
 
     to_range( EXPORTING iv_list = is_s-mtart_sel CHANGING ct_rng = lt_mtart ).
     DELETE lt_mtart WHERE low <> 'PKGN' AND low <> 'VERP'.
@@ -797,16 +858,35 @@ CLASS zcl_pkg_budget_calc IMPLEMENTATION.
     to_range( EXPORTING iv_list = ls_tag-matkl CHANGING ct_rng = lt_matkl ).
     to_range( EXPORTING iv_list = is_s-matnr_sel iv_mat = abap_true CHANGING ct_rng = lt_matnr ).
 
-    " 1. packing materials of the plant, with origin group (MBEW-HRKFT)
-    SELECT m~matnr, m~mtart, m~matkl, m~meins, c~werks, b~hrkft
-      FROM mara AS m INNER JOIN marc AS c ON c~matnr = m~matnr
-                     LEFT OUTER JOIN mbew AS b ON b~matnr = m~matnr AND b~bwkey = c~werks
-      WHERE c~werks = @lv_werks AND c~lvorm = @space AND m~lvorm = @space
-        AND m~mtart IN @lt_mtart AND m~matkl IN @lt_matkl AND m~matnr IN @lt_matnr
-      INTO CORRESPONDING FIELDS OF TABLE @lt_mat.
+    " 1. material list = purchase history (same view and selection as Budget > Raw Material > Load History)
+    "    plant blank = all plants; one row per material, plant = the one with the highest net quantity
+    lt_hist = hist_rows( is_s ).
+    DELETE lt_hist WHERE mtart NOT IN lt_mtart OR matkl NOT IN lt_matkl OR matnr NOT IN lt_matnr.
+    SORT lt_hist BY matnr net_qty DESCENDING.
+    LOOP AT lt_hist INTO ls_hist.
+      READ TABLE lt_mat ASSIGNING <m> WITH KEY matnr = ls_hist-matnr.
+      IF sy-subrc = 0.
+        <m>-net_qty = <m>-net_qty + ls_hist-net_qty.
+        <m>-net_val = <m>-net_val + ls_hist-net_val.
+      ELSE.
+        CLEAR ls_mat.
+        ls_mat-matnr = ls_hist-matnr. ls_mat-mtart = ls_hist-mtart. ls_mat-matkl = ls_hist-matkl.
+        ls_mat-meins = ls_hist-meins. ls_mat-werks = ls_hist-werks.
+        ls_mat-net_qty = ls_hist-net_qty. ls_mat-net_val = ls_hist-net_val.
+        APPEND ls_mat TO lt_mat.
+      ENDIF.
+    ENDLOOP.
     IF lt_mat IS INITIAL. RETURN. ENDIF.
+    " origin group (MBEW-HRKFT) of the main plant
+    SELECT matnr, bwkey, hrkft FROM mbew
+      FOR ALL ENTRIES IN @lt_mat
+      WHERE matnr = @lt_mat-matnr AND bwkey = @lt_mat-werks
+      INTO TABLE @DATA(lt_hk).
+    LOOP AT lt_mat ASSIGNING <m>.
+      READ TABLE lt_hk INTO DATA(ls_hk) WITH KEY matnr = <m>-matnr bwkey = <m>-werks.
+      IF sy-subrc = 0. <m>-hrkft = ls_hk-hrkft. ENDIF.
+    ENDLOOP.
     SORT lt_mat BY matnr.
-    DELETE ADJACENT DUPLICATES FROM lt_mat COMPARING matnr.
 
     " 2. basic rate: ZMM_MAT_RATE, priority INFOREC > CONSUMP > MBEW (plant level)
     lv_from = is_s-key_date.
@@ -1368,9 +1448,9 @@ CLASS zcl_pkg_budget_calc IMPLEMENTATION.
       ENDIF.
     ENDLOOP.
 
-    SELECT SINGLE land1 FROM t001w INTO lv_land WHERE werks = ms_s-plant_sel.
-    IF sy-subrc <> 0. SELECT SINGLE land1 FROM t001w INTO lv_land WHERE werks = c_werks. ENDIF.
     LOOP AT lt_h ASSIGNING <h>.
+      SELECT SINGLE land1 FROM t001w INTO lv_land WHERE werks = <h>-werks.
+      IF sy-subrc <> 0. lv_land = 'IN'. ENDIF.
       IF lv_land = 'IN'.
         write_in( <h> ).  lv_n1 = lv_n1 + 1.
       ELSE.

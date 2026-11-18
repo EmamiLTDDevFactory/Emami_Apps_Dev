@@ -48,7 +48,7 @@ function WhyDialog({ scen, matnr, descr, onClose }: { scen: PkgScen; matnr: stri
       <div className="relative flex max-h-[90vh] w-full max-w-3xl flex-col rounded-2xl border border-line bg-panel shadow-pop">
         <div className="flex items-start justify-between gap-3 border-b border-line px-4 py-3">
           <div className="min-w-0"><p className="text-sm font-bold">Why no rate — <span className="font-mono">{stripZeros(matnr)}</span> {descr}</p>
-            <p className="text-xs text-muted">Scenario key date {showDate(scen.KeyDate)} · plant {scen.Werks} · rate priority {scen.Prio || '—'}</p></div>
+            <p className="text-xs text-muted">Scenario key date {showDate(scen.KeyDate)} · plant {scen.Werks || 'all'} · rate priority {scen.Prio || '—'}</p></div>
           <Button size="sm" onClick={onClose}><X size={13} /> Close</Button>
         </div>
         <div className="overflow-auto p-4 text-sm">

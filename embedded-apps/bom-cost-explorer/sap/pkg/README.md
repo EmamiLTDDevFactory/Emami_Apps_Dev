@@ -1,4 +1,4 @@
-# Packing material budget rate - SAP side (EDS, client 900, transport EDSK9B0EJP)
+# Packing material budget rate - SAP side (EDS, client 900, transports EDSK9B0EJP (released) and EDSK9B0EL5 (open): history-based material list)
 
 Copies of what is active on EDS (2026-11-18). Tables `ZPKG_BUD_SCEN/ITEM/OVR/LOG` follow the PM Budget Rate spec;
 `ZPKG_BUD_ITEM` got an extra `BR` column (budgeted rate, missing in the spec table). No auth object / PFCG role is used:
@@ -14,3 +14,8 @@ Copies of what is active on EDS (2026-11-18). Tables `ZPKG_BUD_SCEN/ITEM/OVR/LOG
 
 Rules confirmed on EDS data: ZBUD KBETR is stored x10 (100.00 = 10 %), so factor = KBETR / 10. BOM share p(i) = STPO item quantity (BOM base 1, items sum to 100).
 BOM % can never be overridden. Packing materials live in the production plants (UN01, UN08 ...), ZBUD materials + BOMs in HO00.
+
+**Material list (2026-11-18):** built from `ZI_BUD_HIST_PURCHASE`, the same view and filters as Budget > Raw Material > Load History
+(land1, posting date window, mattype PKGN/VERP). Window = 12 months up to the scenario key date. Plant blank = all plants; one row
+per material, its plant is the one with the highest net quantity, Net Qty / Net Value are summed over the plants. Net Qty / Net Value
+are computed on read in `item_list` (not stored). Origin group (MBEW-HRKFT) and the 8-series ZBUD header material are shown in the grid.

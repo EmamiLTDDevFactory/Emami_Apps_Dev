@@ -14,7 +14,8 @@ import type { PkgGroup } from '@/lib/pkg/types';
 export const VIRTUAL_ABOVE = 300;
 const th = 'sticky top-0 z-20 whitespace-nowrap border-b border-line bg-panel px-2 py-1.5 text-left text-xs font-bold';
 const td = 'whitespace-nowrap px-2 py-1.5 text-xs';
-const COLS = 15;
+const COLS = 20;
+const fmtQty = (n: number) => (n ? n.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '-');
 
 export interface GridProps {
   groups: PkgGroup[]; loading: boolean; cell: Omit<CellApi, 'order' | 'editKey' | 'setEditKey'>;
@@ -37,13 +38,14 @@ export default function RatesGrid({ groups, loading, cell, editKey, setEditKey, 
 
   return (
     <div ref={scroller} className="max-h-[65vh] overflow-auto rounded-2xl border border-line bg-panel shadow-card">
-      <table className="w-full min-w-[1280px] border-collapse">
+      <table className="w-full min-w-[1700px] border-collapse">
         <thead>
           <tr>
             <th className={cx(th, 'left-0 w-9')}><input type="checkbox" aria-label="Select all shown materials" checked={allSel} onChange={(e) => onSelectAll(e.target.checked)} /></th>
             <th className={cx(th, 'left-9 w-8')}><span className="sr-only">Expand</span></th>
             <th className={cx(th, 'left-[68px]')}>Material</th>
-            <th className={th}>Description</th><th className={th}>Type / Grp</th><th className={th}>Src</th>
+            <th className={th}>Description</th><th className={th}>Type / Grp</th><th className={th}>Plant</th><th className={th}>Origin grp</th><th className={th}>ZBUD material</th>
+            <th className={cx(th, 'text-right')}>Net qty</th><th className={cx(th, 'text-right')}>Net value</th><th className={th}>Src</th>
             <th className={cx(th, 'text-right')}>Basic (SAP)</th><th className={cx(th, 'text-right')}>Basic (used)</th><th className={cx(th, 'text-right')}>Budgeted</th>
             <th className={cx(th, 'text-right')}>Variance</th><th className={cx(th, 'text-right')}>Var %</th><th className={cx(th, 'text-right')}>Freight / unit</th><th className={cx(th, 'text-right')}>Landed</th><th className={th}>Cur / per / UoM</th><th className={th}>Flags</th>
           </tr>
@@ -67,6 +69,11 @@ export default function RatesGrid({ groups, loading, cell, editKey, setEditKey, 
                 <td className={cx(td, sticky, 'left-[68px] font-bold')}>{stripZeros(m)}</td>
                 <td className={cx(td, 'max-w-[260px] truncate')} title={h.Maktx}>{h.Maktx}</td>
                 <td className={cx(td, 'text-muted')}>{h.Mtart} / {h.Matkl}</td>
+                <td className={cx(td, 'text-muted')}>{h.Werks || '-'}</td>
+                <td className={td}>{h.OriginGrp || '-'}</td>
+                <td className={td} title="8-series ZBUD header material of the origin group">{h.ZbudMatnr ? stripZeros(h.ZbudMatnr) : '-'}</td>
+                <td className={cx(td, 'text-right tabular-nums')} title={`Net quantity (${h.Meins}), 12 months to the key date`}>{fmtQty(h.NetQty)}</td>
+                <td className={cx(td, 'text-right tabular-nums')} title="Net value in local currency, 12 months to the key date">{fmtQty(h.NetValue)}</td>
                 <td className={td}><SrcChip src={h.RateSrc} /></td>
                 <td className={cx(td, 'text-right tabular-nums')}>{fmtRate4(h.BasicRateSap)}</td>
                 <td className={cx(td, 'text-right')}><NumEdit cell={api} k={`${m}|R`} level="R" matnr={m} value={h.BasicRateUsed} sap={h.BasicRateSap} fmt={fmtRate4} label={`basic rate of ${stripZeros(m)}`} /></td>

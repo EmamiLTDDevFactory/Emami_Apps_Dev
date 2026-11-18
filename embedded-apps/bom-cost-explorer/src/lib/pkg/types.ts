@@ -18,6 +18,10 @@ export interface PkgItem {
   OriginGrp: string; ZbudMatnr: string; AltBomUsed: string; GroupCurr: string; GroupValue: number;
   FrtCond1: string; FrtCond2: string; FrtCond3: string; FrtCond4: string; FrtRate1: number; FrtRate2: number; FrtRate3: number; FrtRate4: number;
   FrtTotal: number; FrtCurr: string; LandedRate: number; LandedCurr: string;
+  /** Purchase history (12 months to the key date, same source as Raw Material Load History), summed over plants */
+  NetQty: number; NetValue: number;
+  /** Main plant of the material (the plant with the highest net quantity) */
+  Werks: string;
 }
 
 export interface PkgOvr {

@@ -34,9 +34,9 @@ const stamp = (s: PkgScen | null) => `packing-budget-${s ? `v${s.BudgetVersion}-
 export function exportRates(scen: PkgScen | null, groups: PkgGroup[]) {
   const mat: Sheet = {
     name: 'Materials',
-    header: ['Material', 'Description', 'Type', 'Group', 'Rate source', 'Basic (SAP)', 'Basic (used)', 'Budgeted', 'Variance', 'Var %', 'Currency', 'Per', 'UoM', 'Flags', 'Freight / unit (INR)', 'Landed (INR)', 'Group value (INR)', 'Origin group'],
-    rows: groups.map(({ head: h }) => [stripZeros(h.Matnr), h.Maktx, h.Mtart, h.Matkl, h.RateSrc, h.BasicRateSap, h.BasicRateUsed, h.BudgetRate, h.Variance, h.VariancePct, h.Waers, h.Peinh, h.Meins, h.MsgFlags, h.FrtTotal, h.LandedRate, h.GroupValue, h.OriginGrp]),
-    dp: { 5: 4, 6: 4, 7: 4, 8: 4, 9: 2, 14: 4, 15: 4, 16: 4 },
+    header: ['Material', 'Description', 'Type', 'Group', 'Rate source', 'Basic (SAP)', 'Basic (used)', 'Budgeted', 'Variance', 'Var %', 'Currency', 'Per', 'UoM', 'Flags', 'Freight / unit (INR)', 'Landed (INR)', 'Group value (INR)', 'Origin group', 'ZBUD material', 'Plant', 'Net qty', 'Net value (INR)'],
+    rows: groups.map(({ head: h }) => [stripZeros(h.Matnr), h.Maktx, h.Mtart, h.Matkl, h.RateSrc, h.BasicRateSap, h.BasicRateUsed, h.BudgetRate, h.Variance, h.VariancePct, h.Waers, h.Peinh, h.Meins, h.MsgFlags, h.FrtTotal, h.LandedRate, h.GroupValue, h.OriginGrp, stripZeros(h.ZbudMatnr), h.Werks, h.NetQty, h.NetValue]),
+    dp: { 5: 4, 6: 4, 7: 4, 8: 4, 9: 2, 14: 4, 15: 4, 16: 4, 20: 2, 21: 2 },
   };
   const comp: Sheet = {
     name: 'Components',

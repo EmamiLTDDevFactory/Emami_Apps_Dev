@@ -29,7 +29,7 @@ export default function NewScenarioDrawer({ open, busy, error, onClose, onCreate
     <Drawer open={open} onClose={onClose} title="New scenario" width={520} trapFocus>
       <form className="flex flex-col gap-3" onSubmit={submit} noValidate>
         <p className="rounded-xl bg-sunken px-3 py-2 text-xs text-muted">Purchasing org <b>CPD</b>. ZBUD materials and BOMs are read in plant <b>HO00</b>.</p>
-        <Field label="Plant" hint="Plant whose packing materials are budgeted (default HO00)" error={errs.werks}>{(id) => <input id={id} maxLength={4} className={cx(inputCls, 'uppercase', errs.werks && 'border-bad')} value={f.werks} onChange={(e) => set('werks', e.target.value)} />}</Field>
+        <Field label="Plant" hint="Leave blank for all plants. The material list comes from the last 12 months of purchase history (as in Raw Material)" error={errs.werks}>{(id) => <input id={id} maxLength={4} className={cx(inputCls, 'uppercase', errs.werks && 'border-bad')} value={f.werks} onChange={(e) => set('werks', e.target.value)} />}</Field>
         <Field label="Description *" error={errs.descr}>{(id) => <input id={id} className={cx(inputCls, errs.descr && 'border-bad')} value={f.descr} onChange={(e) => set('descr', e.target.value)} />}</Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Validity from *" error={errs.validFrom}>{(id) => <input id={id} type="date" className={cx(inputCls, errs.validFrom && 'border-bad')} value={f.validFrom} onChange={(e) => set('validFrom', e.target.value)} />}</Field>
