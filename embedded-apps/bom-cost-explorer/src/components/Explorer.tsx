@@ -35,7 +35,8 @@ import { buildPivot } from '@/lib/cost/pivot';
 import { EMPTY_SIM, isIdentity, simulate, type SimSettings } from '@/lib/cost/simulate';
 import { dataQuality } from '@/lib/cost/analytics';
 import { fmtMs, fmtNum } from '@/lib/format';
-import { exportCostLines, exportPivot } from '@/lib/client/export';
+import { exportPivot } from '@/lib/client/export';
+import { bomTreeSheet, exportBomTree } from '@/lib/client/treeExport';
 import { exportAllTabs } from './exportAllTabs';
 import type { SapMessage } from '@/lib/sap/messages';
 import { AlertTriangle, Check, Download, FileSpreadsheet, FlaskConical, Link2, Printer } from 'lucide-react';
@@ -46,7 +47,7 @@ import type { SectionId } from '@/lib/nav/sections';
 import { FgStrips } from './price-context/slots';
 import { fgsOfLines, fgsOfSelection } from '@/lib/price-context/fgs';
 import { useScreenHistory } from '@/lib/useScreenHistory';
-import BomTree, { type NodeAgg } from './BomTree';
+import BomTree, { PRESETS as TREE_PRESETS, TREE_COLUMNS, type NodeAgg } from './BomTree';
 import RowDrawer from './RowDrawer';
 import ComparisonView from './ComparisonView';
 import PagedTable from './PagedTable';
@@ -269,9 +270,11 @@ export default function Explorer() {
     }
   };
 
+  /** The BOM tree columns the user has chosen (the tree keeps them in local storage); the Excel carries exactly these. */
+  const shownTreeCols = () => ls.get<string[]>('bce:tree-cols', TREE_PRESETS.Standard).filter((id) => TREE_COLUMNS.some((c) => c.id === id));
   const doExport = async (fmt: 'xlsx' | 'csv') => {
     if (!ranQuery || !result) return;
-    if (ranQuery.mode === 'B') await exportCostLines({ fmt, query: ranQuery, rows, sim: simRows, settings: effectiveSim, messages: result.messages });
+    if (ranQuery.mode === 'B' && tree && agg) await exportBomTree({ fmt, query: ranQuery, tree, sim: simRows, simOn, agg, colIds: shownTreeCols(), explQty: ranQuery.explQty, settings: effectiveSim, messages: result.messages });
     else if (pivot) await exportPivot({ fmt, query: ranQuery, pivot, messages: result.messages });
   };
 
@@ -290,7 +293,7 @@ export default function Explorer() {
         await new Promise((r) => setTimeout(r, 250));
       }
       const l = latest.current;
-      await exportAllTabs({ query: ranQuery, rows: l.rows, sim: l.simRows, settings: l.effectiveSim, messages: result.messages, rates: l.rates, scenarios: scen.list, plantNames, coverDays, groupCurr });
+      await exportAllTabs({ bomTree: tree && agg ? bomTreeSheet({ tree, sim: l.simRows, simOn, agg, colIds: shownTreeCols(), explQty: ranQuery.explQty }) : undefined, query: ranQuery, rows: l.rows, sim: l.simRows, settings: l.effectiveSim, messages: result.messages, rates: l.rates, scenarios: scen.list, plantNames, coverDays, groupCurr });
     } catch (e) {
       alert(`Excel export failed: ${(e as Error).message}`);
     } finally {
@@ -373,7 +376,7 @@ export default function Explorer() {
     <>
       {result && (
         <>
-          <Button size="sm" onClick={() => doExport('xlsx')} title="Excel (all columns + Parameters sheet)"><FileSpreadsheet size={14} /><span className="hidden lg:inline">Excel</span></Button>
+          <Button size="sm" onClick={() => doExport('xlsx')} title="Excel: the BOM tree columns shown on screen + Parameters sheet"><FileSpreadsheet size={14} /><span className="hidden lg:inline">Excel</span></Button>
           {ranQuery?.mode === 'B' && <Button size="sm" disabled={exportingAll} onClick={doExportAll} title="Excel with every tab: BOM tree, Cost breakup, Dashboard, Simulator, Data quality, Scenarios, Rate sources, Rate summary, Rate coverage"><FileSpreadsheet size={14} /><span className="hidden lg:inline">{exportingAll ? 'Preparing…' : 'Excel (all tabs)'}</span></Button>}
           <Button size="sm" onClick={() => doExport('csv')} title="CSV"><Download size={14} /><span className="hidden lg:inline">CSV</span></Button>
           <Button size="sm" onClick={doPrint} title="Print"><Printer size={14} /><span className="hidden lg:inline">Print</span></Button>
@@ -501,7 +504,7 @@ export default function Explorer() {
               Pick up to 50 header materials and the plants above, then press <strong>Run in SAP</strong>. SAP does all the costing; this app presents, compares and simulates.
             </Empty>
           ) : activeTab === 'tree' && tree && agg ? (
-            rows.length ? <BomTree tree={tree} sim={simRows} simOn={simOn} agg={agg} plantCurr={plantCurr} onOpen={setDrawer} focusRow={focusRow} freightRun={freightRun} /> : <Empty title="SAP returned no lines">Check the SAP messages above, or try other plants.</Empty>
+            rows.length ? <BomTree tree={tree} sim={simRows} simOn={simOn} agg={agg} plantCurr={plantCurr} onOpen={setDrawer} focusRow={focusRow} freightRun={freightRun} explQty={ranQuery?.explQty ?? '1'} /> : <Empty title="SAP returned no lines">Check the SAP messages above, or try other plants.</Empty>
           ) : activeTab === 'compare' && pivot ? (
             pivot.rows.length ? <ComparisonView pivot={pivot} plantNames={plantNames} /> : <Empty title="SAP returned no lines">Check the SAP messages above.</Empty>
           ) : activeTab === 'dash' ? (
