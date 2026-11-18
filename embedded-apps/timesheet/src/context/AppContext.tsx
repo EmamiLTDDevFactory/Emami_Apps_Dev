@@ -426,6 +426,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     upsertTimesheet(await api(`/timesheets/${timesheetId}/manager-times`, { method: 'POST', body: JSON.stringify({ times }) }));
   }
 
+  // Manager-only: correct Task / Task Description on a submitted timesheet's existing lines.
+  // `tasks` maps each changed entry id to its new { taskId, note }.
+  async function saveManagerTasks(timesheetId: string, tasks: Record<string, { taskId: string; note: string }>) {
+    upsertTimesheet(await api(`/timesheets/${timesheetId}/manager-tasks`, { method: 'POST', body: JSON.stringify({ tasks }) }));
+  }
+
   async function rejectTimesheet(timesheetId: string, comment: string) {
     const trimmed = comment.trim();
     if (!trimmed) throw new Error('A comment is required to reject a timesheet.');
@@ -775,6 +781,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     submitForApproval,
     approveTimesheet,
     saveManagerTimes,
+    saveManagerTasks,
     rejectTimesheet,
     bulkApprove,
     addProject,
