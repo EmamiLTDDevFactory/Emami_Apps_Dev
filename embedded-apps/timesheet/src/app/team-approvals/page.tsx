@@ -102,7 +102,7 @@ function ApprovalList() {
 
 function ApprovalDetail({ userId, month }: { userId: string; month: string }) {
   const router = useRouter();
-  const { getUserById, getTimesheet, getAssignedTasks, projects, approveTimesheet, rejectTimesheet, saveManagerTimes, workingDayOverridesSet } = useApp();
+  const { getUserById, getTimesheet, getAssignedTasks, projects, approveTimesheet, rejectTimesheet, saveManagerTimes, saveManagerTasks, workingDayOverridesSet } = useApp();
   const { showToast } = useToast();
   const [comment, setComment] = useState('');
   const [error, setError] = useState('');
@@ -147,9 +147,26 @@ function ApprovalDetail({ userId, month }: { userId: string; month: string }) {
     });
     return changed;
   }, [timesheet, gridEntries]);
-  const changedCount = Object.keys(changedTimes).length;
+  const timeChangedCount = Object.keys(changedTimes).length;
 
-  // Saves pending time edits; returns false (with the reason shown) if they couldn't be saved.
+  // Task / Task Description edits on the employee's existing lines, keyed by entry id. A line the
+  // grid no longer emits (manager emptied both fields) counts as cleared.
+  const changedTasks = useMemo(() => {
+    if (!timesheet || !gridEntries) return {};
+    const after = new Map(gridEntries.filter((e) => !e.leaveType).map((e) => [e.id, e]));
+    const changed: Record<string, { taskId: string; note: string }> = {};
+    timesheet.entries.forEach((b: any) => {
+      if (b.leaveType) return;
+      const a = after.get(b.id);
+      const next = { taskId: a?.taskId || '', note: (a?.note || '').trim() };
+      if (next.taskId !== (b.taskId || '') || next.note !== (b.note || '')) changed[b.id] = next;
+    });
+    return changed;
+  }, [timesheet, gridEntries]);
+  const taskChangedCount = Object.keys(changedTasks).length;
+  const changedCount = timeChangedCount + taskChangedCount;
+
+  // Saves pending time / task edits; returns false (with the reason shown) if they couldn't be saved.
   async function saveTimes() {
     if (changedCount === 0) return true;
     const invalid = Object.entries(changedTimes).find(([, t]) => t.inTime && t.outTime && hoursBetween(t.inTime, t.outTime) === 0);
@@ -159,8 +176,9 @@ function ApprovalDetail({ userId, month }: { userId: string; month: string }) {
     }
     setSavingTimes(true);
     try {
-      await saveManagerTimes(timesheet.id, changedTimes);
-      showToast(`Saved time changes for ${changedCount} day${changedCount === 1 ? '' : 's'}.`, 'success');
+      if (timeChangedCount > 0) await saveManagerTimes(timesheet.id, changedTimes);
+      if (taskChangedCount > 0) await saveManagerTasks(timesheet.id, changedTasks);
+      showToast(`Saved your changes (${changedCount}).`, 'success');
       return true;
     } catch (err: any) {
       showToast(err.message || 'Failed to save time changes.', 'error');
@@ -233,15 +251,16 @@ function ApprovalDetail({ userId, month }: { userId: string; month: string }) {
           {actionable && (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber/40 bg-amberBg px-4 py-3">
               <p className="text-sm text-ink">
-                You can correct <span className="font-semibold">Clock In</span> and <span className="font-semibold">Clock Out</span> times before approving. Hours update automatically.
+                You can correct <span className="font-semibold">Clock In</span>, <span className="font-semibold">Clock Out</span>, <span className="font-semibold">Task</span> and{' '}
+                <span className="font-semibold">Task Description</span> before approving. Hours update automatically.
                 {changedCount > 0 && (
                   <span className="ml-1 font-semibold text-amber">
-                    {changedCount} day{changedCount === 1 ? '' : 's'} changed - not saved yet.
+                    {changedCount} change{changedCount === 1 ? '' : 's'} - not saved yet.
                   </span>
                 )}
               </p>
               <button type="button" onClick={saveTimes} disabled={changedCount === 0 || savingTimes} className="btn-ghost disabled:cursor-not-allowed disabled:opacity-50">
-                {savingTimes ? 'Saving…' : 'Save time changes'}
+                {savingTimes ? 'Saving…' : 'Save changes'}
               </button>
             </div>
           )}
@@ -253,6 +272,7 @@ function ApprovalDetail({ userId, month }: { userId: string; month: string }) {
             initialEntries={timesheet.entries}
             readOnly
             timesEditable={!!actionable}
+            tasksEditable={!!actionable}
             onEntriesChange={(entries) => setGridEntries(entries)}
             workingDayOverrides={workingDayOverridesSet}
           />

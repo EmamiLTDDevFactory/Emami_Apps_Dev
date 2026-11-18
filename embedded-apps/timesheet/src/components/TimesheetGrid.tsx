@@ -252,6 +252,9 @@ interface TimesheetGridProps {
   // With readOnly: everything stays read-only except In / Out time, which become plain time
   // inputs - a manager correcting a submitted timesheet. Changes surface via onEntriesChange.
   timesEditable?: boolean;
+  // With readOnly: Task and Task Description of the existing lines also become editable (no
+  // adding/removing lines) - a manager correcting a submitted timesheet.
+  tasksEditable?: boolean;
   workingDayOverrides?: Set<string>;
   onEntriesChange?: (entries: AnyRecord[], totals: AnyRecord) => void;
   onAutosave?: (entries: AnyRecord[]) => void;
@@ -259,7 +262,7 @@ interface TimesheetGridProps {
 }
 
 const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }, TimesheetGridProps>(function TimesheetGrid(
-  { userId, tasks, monthStartDate, initialEntries, readOnly, timesEditable, workingDayOverrides, onEntriesChange, onAutosave, autosaveDelay = 700 },
+  { userId, tasks, monthStartDate, initialEntries, readOnly, timesEditable, tasksEditable, workingDayOverrides, onEntriesChange, onAutosave, autosaveDelay = 700 },
   ref
 ) {
   const days = useMemo(() => monthDays(monthStartDate).map((d) => toISODate(d)), [monthStartDate]);
@@ -588,6 +591,12 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
   // What the employee submitted, so a manager's changed times can be flagged as edited.
   const submittedMap = useMemo(() => entriesToDayMap(initialEntries), [initialEntries]);
 
+  // Whether a line's task / description differs from what the employee submitted (manager edits).
+  function lineEdited(dateIso: string, lineIndex: number, field: 'taskId' | 'description', line: Line) {
+    const original = submittedMap[dateIso]?.lines?.[lineIndex];
+    return (original?.[field] || '') !== (line[field] || '');
+  }
+
   function managerTimeInput(dateIso: string, row: DayRow, which: 'in' | 'out', compact?: boolean) {
     const field = which === 'in' ? 'inTime' : 'outTime';
     const location = which === 'in' ? row.inLocation : row.outLocation;
@@ -891,7 +900,7 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                     </>
                   )}
                   <td className="px-2 py-2 text-center align-top">
-                    {readOnly ? (
+                    {readOnly && !tasksEditable ? (
                       <span className={line.taskId ? 'font-medium text-rust' : 'text-inkSoft'}>{taskLabel(line.taskId)}</span>
                     ) : (
                       <select
@@ -900,7 +909,11 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                         disabled={locked}
                         onChange={(e) => updateLine(dateIso, lineIndex, { taskId: e.target.value })}
                         className={`w-full rounded-md border px-1.5 py-1.5 text-center text-xs font-medium focus:outline-none focus:ring-2 focus:ring-rust disabled:cursor-not-allowed disabled:bg-appBg disabled:opacity-60 ${
-                          line.taskId ? 'border-rustLight/40 bg-glassRust text-rustDeep' : 'border-border bg-white font-normal text-inkSoft'
+                          readOnly && lineEdited(dateIso, lineIndex, 'taskId', line)
+                            ? 'border-amber bg-amberBg text-ink'
+                            : line.taskId
+                              ? 'border-rustLight/40 bg-glassRust text-rustDeep'
+                              : 'border-border bg-white font-normal text-inkSoft'
                         }`}
                       >
                         <option value="">Select task</option>
@@ -913,7 +926,7 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                     )}
                   </td>
                   <td className="px-2 py-2 align-top">
-                    {readOnly ? (
+                    {readOnly && !tasksEditable ? (
                       <span className="text-inkSoft">{line.description || '-'}</span>
                     ) : (
                       <div className="flex items-center gap-1">
@@ -924,7 +937,9 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                           disabled={locked}
                           onChange={(e) => updateLine(dateIso, lineIndex, { description: e.target.value })}
                           placeholder="What did you work on?"
-                          className="w-full rounded-md border border-border bg-white px-2 py-1.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-rust disabled:cursor-not-allowed disabled:bg-appBg disabled:opacity-60"
+                          className={`w-full rounded-md border px-2 py-1.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-rust disabled:cursor-not-allowed disabled:bg-appBg disabled:opacity-60 ${
+                            readOnly && lineEdited(dateIso, lineIndex, 'description', line) ? 'border-amber bg-amberBg' : 'border-border bg-white'
+                          }`}
                         />
                         {!locked && lines.length > 1 && (
                           <button
@@ -1162,7 +1177,7 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                         </div>
                         <label className="block">
                           <span className="mb-1 block text-[11px] font-medium text-inkSoft">Task</span>
-                          {readOnly ? (
+                          {readOnly && !tasksEditable ? (
                             <span className={`block text-sm ${line.taskId ? 'font-medium text-rust' : 'text-inkSoft'}`}>{taskLabel(line.taskId)}</span>
                           ) : (
                             <select
@@ -1170,7 +1185,11 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                               disabled={locked}
                               onChange={(e) => updateLine(dateIso, lineIndex, { taskId: e.target.value })}
                               className={`w-full rounded-md border px-2 py-1.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-rust disabled:cursor-not-allowed disabled:bg-appBg disabled:opacity-60 ${
-                                line.taskId ? 'border-rustLight/40 bg-glassRust text-rustDeep' : 'border-border bg-white font-normal text-inkSoft'
+                                readOnly && lineEdited(dateIso, lineIndex, 'taskId', line)
+                                  ? 'border-amber bg-amberBg text-ink'
+                                  : line.taskId
+                                    ? 'border-rustLight/40 bg-glassRust text-rustDeep'
+                                    : 'border-border bg-white font-normal text-inkSoft'
                               }`}
                             >
                               <option value="">Select task</option>
@@ -1184,7 +1203,7 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                         </label>
                         <label className="block">
                           <span className="mb-1 block text-[11px] font-medium text-inkSoft">Task Description</span>
-                          {readOnly ? (
+                          {readOnly && !tasksEditable ? (
                             <span className="block text-sm text-inkSoft">{line.description || '-'}</span>
                           ) : (
                             <input
@@ -1193,7 +1212,9 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                               disabled={locked}
                               onChange={(e) => updateLine(dateIso, lineIndex, { description: e.target.value })}
                               placeholder="What did you work on?"
-                              className="w-full rounded-md border border-border bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-rust disabled:cursor-not-allowed disabled:bg-appBg disabled:opacity-60"
+                              className={`w-full rounded-md border px-2 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-rust disabled:cursor-not-allowed disabled:bg-appBg disabled:opacity-60 ${
+                                readOnly && lineEdited(dateIso, lineIndex, 'description', line) ? 'border-amber bg-amberBg' : 'border-border bg-white'
+                              }`}
                             />
                           )}
                         </label>

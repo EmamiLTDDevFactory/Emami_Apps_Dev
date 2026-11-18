@@ -349,6 +349,74 @@ router.post('/:id/manager-times', async (req, res, next) => {
   }
 })
 
+// Manager correction of Task / Task Description on a submitted timesheet's existing lines.
+// Body: { tasks: { '<entryId>': { taskId: '<id>' | '', note: '<description>' } } }. Hours, times
+// and leave are untouched; the project follows the chosen task.
+router.post('/:id/manager-tasks', async (req, res, next) => {
+  if (req.user.role !== 'manager') return res.status(403).json({ error: 'Only managers can edit tasks.' })
+  const { tasks } = req.body
+  if (!tasks || typeof tasks !== 'object' || Array.isArray(tasks)) {
+    return res.status(400).json({ error: 'tasks is required' })
+  }
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    const { rows } = await client.query(
+      `SELECT ts.*, u.manager_id FROM timesheets ts JOIN users u ON u.id = ts.user_id WHERE ts.id = $1 FOR UPDATE OF ts`,
+      [req.params.id],
+    )
+    const ts = rows[0]
+    if (!ts) {
+      await client.query('ROLLBACK')
+      return res.status(404).json({ error: 'Timesheet not found.' })
+    }
+    if (ts.manager_id !== req.user.userId) {
+      await client.query('ROLLBACK')
+      return res.status(403).json({ error: "You can only edit your own team's timesheets." })
+    }
+    if (ts.status !== 'Submitted' && ts.status !== 'Resubmitted') {
+      await client.query('ROLLBACK')
+      return res.status(400).json({ error: 'Tasks can only be edited while the timesheet is waiting for approval.' })
+    }
+
+    const { rows: entryRows } = await client.query('SELECT * FROM timesheet_entries WHERE timesheet_id = $1', [ts.id])
+    const byId = new Map(entryRows.map((e) => [e.id, e]))
+
+    let changed = 0
+    for (const [entryId, value] of Object.entries(tasks)) {
+      const entry = byId.get(entryId)
+      if (!entry) throw Object.assign(new Error('Unknown timesheet entry.'), { status: 400 })
+      if (entry.leave_type) throw Object.assign(new Error("A leave day has no task to edit."), { status: 400 })
+      const taskId = value?.taskId || null
+      const note = String(value?.note || '').trim() || null
+      let projectId = null
+      if (taskId) {
+        const { rows: taskRows } = await client.query('SELECT project_id FROM timesheet.tasks WHERE id = $1', [taskId])
+        if (!taskRows[0]) throw Object.assign(new Error('Unknown task.'), { status: 400 })
+        projectId = taskRows[0].project_id
+      }
+      if ((entry.task_id || null) === taskId && (entry.note || null) === note) continue
+      await client.query('UPDATE timesheet_entries SET task_id = $1, project_id = $2, note = $3 WHERE id = $4', [taskId, projectId, note, entryId])
+      changed += 1
+    }
+
+    if (changed > 0) {
+      await client.query(
+        'INSERT INTO timesheet_history (timesheet_id, status, occurred_at, comment, action) VALUES ($1, $2, now(), $3, $4)',
+        [ts.id, 'Edited', `Manager edited Task / Task Description on ${changed} line${changed === 1 ? '' : 's'}`, 'Tasks Edited'],
+      )
+    }
+    await client.query('COMMIT')
+    res.json(await loadTimesheet(pool, ts.id))
+  } catch (err) {
+    await client.query('ROLLBACK')
+    if (err.status) return res.status(err.status).json({ error: err.message })
+    next(err)
+  } finally {
+    client.release()
+  }
+})
+
 router.post('/:id/approve', async (req, res, next) => {
   const comment = (req.body.comment || '').trim()
   const client = await pool.connect()
