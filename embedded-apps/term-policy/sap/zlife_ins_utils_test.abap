@@ -18,7 +18,9 @@ CLASS ltc_life_ins DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHO
       user_cannot_download   FOR TESTING,
       user_cannot_save_limits FOR TESTING,
       user_cannot_mail       FOR TESTING,
-      bad_limit_row_rejected FOR TESTING.
+      bad_limit_row_rejected FOR TESTING,
+      cutoff_rule            FOR TESTING,
+      fetch_ignores_cutoff   FOR TESTING.
 ENDCLASS.
 
 CLASS ltc_life_ins IMPLEMENTATION.
@@ -51,6 +53,27 @@ CLASS ltc_life_ins IMPLEMENTATION.
 
   METHOD active_year_exists.
     cl_abap_unit_assert=>assert_not_initial( act = zcl_life_ins_utils=>active_year( ) msg = 'ZLIFE_PERIOD has no row with STATUS = X' ).
+  ENDMETHOD.
+
+  METHOD cutoff_rule.
+    " after the cut-off date in ZMEDI_DATE (slno 2) an ordinary user is refused, an admin or editor never is
+    SELECT SINGLE co_date FROM zmedi_date INTO @DATA(lv_co) WHERE slno = '2'.
+    DATA(lv_have_date) = xsdbool( sy-subrc = 0 ).
+    DATA(lv_user_err)  = zcl_life_ins_utils=>check_window( iv_pernr = '90000060' iv_user = 'nobody.here' ).
+    DATA(lv_admin_err) = zcl_life_ins_utils=>check_window( iv_pernr = '90000060' iv_user = 'sandip.das' ).
+    cl_abap_unit_assert=>assert_initial( act = lv_admin_err msg = 'an admin must never get the date error' ).
+    IF lv_have_date = abap_true AND sy-datum > lv_co.
+      cl_abap_unit_assert=>assert_equals( act = lv_user_err exp = 'You have exceeded the permissible date limit. Please contact HR department' ).
+    ELSE.
+      cl_abap_unit_assert=>assert_initial( act = lv_user_err ).
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD fetch_ignores_cutoff.
+    " the employee fetch (which fills the form) must not carry the date error: that comes on Submit
+    zcl_life_ins_utils=>get_employee( EXPORTING iv_pernr = '90000060' iv_user = 'nobody.here' IMPORTING es_emp = DATA(ls) ev_error = DATA(lv_err) ).
+    cl_abap_unit_assert=>assert_initial( act = lv_err ).
+    cl_abap_unit_assert=>assert_equals( act = ls-emp_id exp = '90000060' ).
   ENDMETHOD.
 
   METHOD employee_needs_id.

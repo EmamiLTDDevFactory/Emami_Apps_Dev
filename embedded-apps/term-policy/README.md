@@ -41,7 +41,7 @@ can reach the gateway (see `sap/README.md`).
 | `/mass/` | **Mass Upload**: one policy per Excel row, per-row results | ADMIN |
 
 All five tabs are shown to everyone, like the Web Dynpro; the HR-only ones show "Not authorised" to others, and SAP refuses the calls anyway.
-A user who is not in ZMEDI_AUTH_USERS (flag E or R) is a USER: after the cut-off date in ZMEDI_DATE (slno 2) SAP answers "You have exceeded the permissible date limit".
+A user who is not in ZMEDI_AUTH_USERS (flag E or R) is a USER: after the cut-off date in ZMEDI_DATE (slno 2) the form still loads, and clicking Submit shows SAP's "You have exceeded the permissible date limit". Submit always goes to SAP (no duplicate checks in the browser); SAP's message decides which field is highlighted.
 
 ## Files
 

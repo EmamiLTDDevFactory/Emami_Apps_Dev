@@ -57,6 +57,7 @@ CLASS zcl_life_ins_utils DEFINITION PUBLIC FINAL CREATE PUBLIC.
       is_editor        IMPORTING iv_user TYPE zuname RETURNING VALUE(rv_yes) TYPE abap_bool,
       find_pernr       IMPORTING iv_email TYPE string RETURNING VALUE(rv_pernr) TYPE zlife_emp-emp_id,
       active_year      RETURNING VALUE(rv_year) TYPE zlife_period-zyear,
+      check_window     IMPORTING iv_pernr TYPE zlife_emp-emp_id iv_user TYPE zuname RETURNING VALUE(rv_error) TYPE string,
       get_employee     IMPORTING iv_pernr TYPE zlife_emp-emp_id iv_user TYPE zuname
                        EXPORTING es_emp   TYPE ty_emp ev_error TYPE string,
       get_sum_options  IMPORTING iv_pernr TYPE zlife_emp-emp_id RETURNING VALUE(rt_amt) TYPE tt_amt,
@@ -212,6 +213,21 @@ CLASS zcl_life_ins_utils IMPLEMENTATION.
     es_emp-age_in_yrs = lv_years.
   ENDMETHOD.
 
+  METHOD check_window.
+    " cut-off date: after ZMEDI_DATE slno 2 only editors/admins, or employees in their first 30 days, may apply or change
+    CLEAR rv_error.
+    SELECT SINGLE co_date FROM zmedi_date INTO @DATA(lv_codate) WHERE slno = '2'.
+    IF sy-subrc = 0 AND sy-datum > lv_codate AND is_editor( iv_user ) = abap_false AND is_admin( iv_user ) = abap_false.
+      SELECT begda FROM pa0000 INTO @DATA(lv_joined) UP TO 1 ROWS
+        WHERE pernr = @iv_pernr AND massn IN ('EA', 'EB', 'EH', 'EI') ORDER BY begda DESCENDING.
+      ENDSELECT.
+      DATA(lv_grace_end) = lv_joined + 30.
+      IF sy-subrc <> 0 OR sy-datum > lv_grace_end.
+        rv_error = 'You have exceeded the permissible date limit. Please contact HR department'.
+      ENDIF.
+    ENDIF.
+  ENDMETHOD.
+
   METHOD get_employee.
     CLEAR: es_emp, ev_error.
     IF iv_pernr IS INITIAL.
@@ -223,18 +239,7 @@ CLASS zcl_life_ins_utils IMPLEMENTATION.
       ev_error = 'No active policy period is configured. Contact HR.'.
       RETURN.
     ENDIF.
-    " cut-off date: after ZMEDI_DATE slno 2 only editors, or employees in their first 30 days, may apply
-    SELECT SINGLE co_date FROM zmedi_date INTO @DATA(lv_codate) WHERE slno = '2'.
-    IF sy-subrc = 0 AND sy-datum > lv_codate AND is_editor( iv_user ) = abap_false AND is_admin( iv_user ) = abap_false.
-      SELECT begda FROM pa0000 INTO @DATA(lv_joined) UP TO 1 ROWS
-        WHERE pernr = @iv_pernr AND massn IN ('EA', 'EB', 'EH', 'EI') ORDER BY begda DESCENDING.
-      ENDSELECT.
-      DATA(lv_grace_end) = lv_joined + 30.
-      IF sy-subrc <> 0 OR sy-datum > lv_grace_end.
-        ev_error = 'You have exceeded the permissible date limit. Please contact HR department'.
-        RETURN.
-      ENDIF.
-    ENDIF.
+    " The cut-off date is NOT checked here: the employee and the form are shown anyway, and SAVE_POLICY raises the date error on Submit.
     read_hr( EXPORTING iv_pernr = iv_pernr IMPORTING es_emp = es_emp ev_error = ev_error ).
     IF ev_error IS NOT INITIAL.
       CLEAR es_emp.
@@ -324,6 +329,12 @@ CLASS zcl_life_ins_utils IMPLEMENTATION.
           RETURN.
         ENDIF.
       ENDIF.
+    ENDIF.
+
+    " ---- cut-off date (shown on Submit, not when the employee is fetched) -----------------------
+    ev_error = check_window( iv_pernr = is_input-emp_id iv_user = lv_user ).
+    IF ev_error IS NOT INITIAL.
+      RETURN.
     ENDIF.
 
     " ---- employee data from HR (never from the client) ---------------------------------------

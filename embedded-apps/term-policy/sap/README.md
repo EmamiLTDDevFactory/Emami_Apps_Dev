@@ -85,7 +85,8 @@ Dry run for tests: header `X-Life-Simulate: X` runs everything and rolls back on
    Identity from the hub mail: SAP user = USR21+ADR6 owner of that address (mail local parts are not user names: user
    `sandip.das`, mail `SANDIPD@...`); employee number = PA0105 subtype 0010 (stored UPPER case) restricted to employees active
    in PA0000 (stat2 3). If one address still maps to several active employees, nothing is returned and the person is told to contact HR.
-6. Nothing in the BL commits; the DPC commits once per request (`COMMIT WORK AND WAIT`) and rolls back on a business error.
+6. The cut-off date is checked on **Submit** (`check_window`, first thing in `save_policy`, for new and changed requests), not on the employee fetch: the form always loads and the date error appears when Submit is clicked. The Web Dynpro blocked the whole screen at fetch.
+7. Nothing in the BL commits; the DPC commits once per request (`COMMIT WORK AND WAIT`) and rolls back on a business error.
 
 ## Findings to act on (not changed)
 
