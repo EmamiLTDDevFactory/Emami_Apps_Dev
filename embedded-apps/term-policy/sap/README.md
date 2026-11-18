@@ -3,16 +3,42 @@
 Source of truth: Web Dynpro component **ZWD_MEDICAIM_NOMINEE** (package ZEMAMI_MEDICLAIM, EDS). It serves Mediclaim and Term Life;
 this app is the **Term Life** half (tables `ZLIFE_*`). Mediclaim is a separate app (`embedded-apps/mediclaim`).
 
-## What exists on EDS
+## What exists on EDS (built 2026-11-18 through ADT, no SEGW project; same technique as Mediclaim)
 
-| Object | State |
+Transport request EDSK9B0EKB (task EDSK9B0EKC), package ZEMAMI_MEDICLAIM. Nothing existing was changed.
+
+| Object | Role |
 |---|---|
 | Tables ZLIFE_EMP, ZLIFE_FAMILY, ZLIFE_AMT, ZLIFE_PERIOD, ZLIFE_INS_LIMIT, ZMEDI_AUTH_USERS, ZMEDI_DATE | existing, unchanged |
-| FMs ZLIFE_REQNO, ZLIFE_UPDATE_TABS (group ZFG_MEDI) | existing, unchanged (BL class does the same writes) |
-| **Class ZCL_LIFE_INS_UTILS** (`zcl_life_ins_utils.abap`) | **deployed and active on EDS** (package ZEMAMI_MEDICLAIM, 2026-11-18), business logic of every Web Dynpro function |
-| **Program ZLIFE_INS_UTILS_TEST** (`zlife_ins_utils_test.abap`) | deployed; 13 read-only ABAP Unit tests, all passing on EDS |
-| Class ZCL_LIFE_INS_UTILS_T | empty leftover from a failed first attempt at hosting the tests; safe to delete |
-| **SEGW project ZLIFE_INS + DPC_EXT** (`zcl_zlife_ins_dpc_ext.abap`) | **not created**: needs SEGW + /IWFND registration (Basis) |
+| FMs ZLIFE_REQNO, ZLIFE_UPDATE_TABS (group ZFG_MEDI) | existing, unchanged (the BL class does the same writes) |
+| `ZCL_LIFE_INS_UTILS` (`zcl_life_ins_utils.abap`) | business logic of every Web Dynpro function; no UI, no COMMIT |
+| `ZLIFE_INS_UTILS_TEST` (`zlife_ins_utils_test.abap`, program) | 13 read-only ABAP Unit tests, all passing |
+| `ZCL_LIFE_INS_TY` (`zcl_life_ins_ty.abap`) | the OData structure types (generated) |
+| `ZCL_ZLIFE_INS_MPC` (`zcl_zlife_ins_mpc.abap`) | code-based model provider, extends `/IWBEP/CL_MGW_ABS_MODEL` (generated) |
+| `ZCL_ZLIFE_INS_DPC` (`zcl_zlife_ins_dpc.abap`) | data provider, extends `/IWBEP/CL_MGW_ABS_DATA`, maps OData to the BL, commits/rolls back |
+| IWMO ZLIFE_INS_MDL, IWSV ZLIFE_INS_SRV (0001), IWSG ZLIFE_INS_SRV_0001, SICF node `/sap/opu/odata/sap/ZLIFE_INS_SRV`, system alias LOCAL | registered by ABAP, see below. `GET .../ZLIFE_INS_SRV/$metadata` answers 200 on EDS |
+| `ZCL_LIFE_INS_UTILS_T` | empty leftover of a failed first attempt at hosting the tests; ADT refuses to lock it (403), SAP team can delete it |
+
+The model is generated: edit `gen/spec.py`, run `python3 gen/gen.py`, deploy `zcl_life_ins_ty.abap` and `zcl_zlife_ins_mpc.abap`, and
+bump the timestamp constant in `ZCL_ZLIFE_INS_MPC>GET_LAST_MODIFIED` so the metadata cache refreshes.
+
+### Registration (what /IWFND/MAINT_SERVICE does, done from ABAP; sources in `registration/`)
+
+1. `zcl_life_ins_reg.abap` (classrun): `/IWBEP/CL_MGW_MED_REG_API` CREATE_MODEL, CREATE_SERVICE, ASSIGN_MODEL_TO_SERVICE.
+2. `zcl_life_ins_reg2.abap` (classrun): `/IWFND/CL_MED_REM_ACTIVATION->CREATE_GW_SERVICE` and `create_destination_assignment` (alias LOCAL).
+3. `zcl_life_ins_reg3.abap` (classrun): the SICF node. The API's own ICF step (`CREATE_GW_SERVICE_ICF_NODE`) fails on this system with
+   `/IWFND/CX_COS_ICF`, so the node is inserted with the same `CL_ICF_TREE->IF_ICF_TREE~INSERT_NODE` call, under the parent of ZMEDICLAIM_SRV.
+   These three helper classes were deleted from EDS after use.
+
+Note for ADT: activating a class needs its `source/main#type=CLAS/OSU` ref listed too, otherwise the activation call answers 200 and nothing happens.
+
+## Still to do on the SAP side
+
+- **Register `ZLIFE_INS_SRV` on the gateway hub NGD** (Basis, `/IWFND/MAINT_SERVICE` > Add Service, alias to the EDS backend; same as Mediclaim) and give
+  the gateway's technical user `S_SERVICE` for IWSG `ZLIFE_INS_SRV_0001`. The Azure gateway does not know a system "EDS" (`Invalid Landscape : EDS`);
+  it reaches EDS only through a hub. Today `NGD/ZLIFE_INS_SRV/$metadata` answers 403 "No service found".
+- Release transport EDSK9B0EKB, import into the NGQ/NWP backends, register on those hubs.
+- Mail (`SendSummary`) is untested: EDS has no SMTP (SCOT).
 
 ## Web Dynpro function → BL method → OData
 
@@ -30,7 +56,7 @@ this app is the **Term Life** half (tables `ZLIFE_*`). Mediclaim is a separate a
 
 The Azure gateway passes only GET and POST (Gate Entry finding), so there is no PUT/DELETE: change and delete are POSTs.
 
-## Entity model (SEGW)
+## Entity model (ZCL_ZLIFE_INS_MPC)
 
 All properties Edm.String unless noted. Keys in **bold**.
 
@@ -44,10 +70,12 @@ All properties Edm.String unless noted. Keys in **bold**.
 - **Result** (complex type returned by actions): Ok (Boolean)
 - Function imports (POST): `DeletePolicy(Reqno, Email)`, `SendSummary(Reqnos, Email)`, both returning Result
 
-Basis steps: create SEGW project, define the above, generate, paste `zcl_zlife_ins_dpc_ext.abap` over the DPC_EXT, register
-`ZLIFE_INS_SRV` in /IWFND/MAINT_SERVICE, expose it on the Azure gateway for system EDS, then check `SAP_SYSTEM` in
-`src/lib/config.ts` (EDS by default; or build with `NEXT_PUBLIC_TERM_POLICY_SAP_SYSTEM`). The app has no mock: until the service answers it
-shows "Term Life service not available (SAP)" with a Try again button, like Mediclaim.
+The app has no mock: until the service answers on the gateway it shows "Term Life service not available (SAP)" with a Try again button,
+like Mediclaim. `SAP_SYSTEM` is `NGD` in `src/lib/config.ts`.
+
+Notes from testing on EDS: `$format=json` must **not** be sent on an entity-create POST (SAP answers 400 "SystemQueryOptions not allowed"), the
+`Accept` header is enough; `Reqno` and nominee `SlNo` are strings; `EmpId` is `00000000` when the mail has no employee number.
+Dry run for tests: header `X-Life-Simulate: X` (or `simulate=X` on a function import) runs everything and rolls back.
 
 ## Differences from the Web Dynpro (deliberate)
 
@@ -66,8 +94,20 @@ shows "Term Life service not available (SAP)" with a Try again button, like Medi
 - **Identity is claimed by the caller.** The gateway signs in with a technical user, so `Email` in each request is the only
   identity. Anyone who can call the gateway can pass an admin's email. Same class of issue as Gate Entry F1/F2. Real fix: the
   gateway forwards the hub JWT and the DPC verifies it, or the gateway signs in as the person.
-- **DEV is not configured for the current year**: `ZLIFE_PERIOD` has only year 2018 active and `ZLIFE_AMT` has no 2018 slabs, so
-  nobody gets a sum-assured list until HR maintains the active period, slabs (`ZLIFE_AMT`) and limits (`ZLIFE_INS_LIMIT`).
+- EDS data checked 2026-11-18: active year 2025, slabs and limits exist for 2025 (for example employee 90000060, limit 400 LAKHS, 14 slabs).
+  The request number still uses the calendar year (2026...) while the policy year is the active year (2025): same as the Web Dynpro.
 - Request number (`ZLIFE_REQNO`) is `MAX(reqno)+1`. `save_policy` now takes an exclusive enqueue (`ENQUEUE_E_TABLE`, ZLIFE_EMP/SAVE) before reading anything, released by the caller's COMMIT/ROLLBACK, so two simultaneous saves can no longer collide or both pass the duplicate-employee check. **The DPC must COMMIT (or ROLLBACK) after every `save_policy`** or the lock is held until the session ends. A save that cannot get the lock answers "Another request is being saved right now. Please try again in a moment."
-- The cut-off date row (`ZMEDI_DATE` slno 2) is 2025-08-31, already past, so on DEV only editors can apply.
+- The cut-off date row (`ZMEDI_DATE` slno 2) is 2025-08-31, already past, so on DEV only editors/admins (or employees in their first 30 days) can apply.
+- The dry-run switch (`X-Life-Simulate`) never commits; decide whether production hubs should block it.
 - The Web Dynpro saved through `ZLIFE_UPDATE_TABS` in update task; the BL does the same three statements (MODIFY emp, DELETE family, MODIFY family) directly and the DPC commits.
+
+## Test evidence (EDS, over HTTPS, 2026-11-18)
+
+- `$metadata` 200: 8 entity sets, 2 associations, function imports DeletePolicy and SendSummary.
+- ProfileSet: admin (sourav.das) = ADMIN; unknown mail = USER, EmpId 00000000.
+- EmployeeSet 90000060 as admin: HR data, limit 400 LAKHS, year 2025. As an ordinary user for someone else: 403 "You can see only your own employee ID."
+- SumOptionSet follows the limit (14 slabs, premium/GST/total). PolicySet list with `$expand=Nominees`; `AllRows` as non-admin: 403.
+- Submit (dry run): validations answered with the legacy texts: share not 100%, duplicate employee, mobile not 10 digits, sum not allowed, limits row invalid, not authorised.
+- One real cycle on EDS (employee 90000060, nominees marked "ZZ TEST"): submit -> request 2026000001, change to 3 nominees, delete (soft). The row stays
+  in ZLIFE_EMP/ZLIFE_FAMILY with DEL_FLAG X, like the other test rows there. The save lock was released after each call (the next call got through).
+- 13/13 ABAP Unit tests (read-only) still pass.

@@ -7,18 +7,19 @@ Rebuild of the Term Life part of the SAP Web Dynpro **ZWD_MEDICAIM_NOMINEE** (pa
 calculation lives in SAP (`ZCL_LIFE_INS_UTILS`) behind the OData V2 service **ZLIFE_INS_SRV**; the app has no mock data, no localStorage data
 and no mock mode. Same pattern as Mediclaim.
 
-## Dependency: the SAP service is not registered yet
+## Dependency: the service is not on the gateway hub yet
 
-`ZCL_LIFE_INS_UTILS` is active on EDS (13 ABAP Unit tests pass). The OData service `ZLIFE_INS_SRV` still has to be created in SEGW and
-registered on the gateway (Basis, see `sap/README.md`). Until it answers, the app shows **"Term Life service not available (SAP)"** with a
-Try again button. Nothing else works without it.
+The whole SAP side is built on EDS without SEGW (code-based model and data provider, like Mediclaim): `ZCL_LIFE_INS_UTILS`, `ZCL_ZLIFE_INS_MPC`,
+`ZCL_ZLIFE_INS_DPC`, service `ZLIFE_INS_SRV` registered locally on EDS, `$metadata` 200, 13 ABAP Unit tests pass, and a real submit/change/delete
+cycle was run over HTTP (see `sap/README.md`). What is left is Basis registering `ZLIFE_INS_SRV` on the gateway hub **NGD** (alias to the EDS backend)
+and the technical user's `S_SERVICE`. Until it answers, the app shows **"Term Life service not available (SAP)"** with a Try again button.
 
 ## Config (one place: `src/lib/config.ts`)
 
 | Constant | Value |
 |---|---|
 | `SAP_GATEWAY` | shared Azure SAP gateway, browser calls it directly |
-| `SAP_SYSTEM` | `EDS` (where the business class lives); override at build time with `NEXT_PUBLIC_TERM_POLICY_SAP_SYSTEM` |
+| `SAP_SYSTEM` | `NGD` (the Azure gateway only knows the hubs NGD/NGQ/NWP; the hub reaches the EDS backend by alias). PRD switches to `NWP`. Override at build time with `NEXT_PUBLIC_TERM_POLICY_SAP_SYSTEM` |
 | `SAP_SERVICE` | `ZLIFE_INS_SRV` |
 
 No credentials or secrets are used or stored in this app.

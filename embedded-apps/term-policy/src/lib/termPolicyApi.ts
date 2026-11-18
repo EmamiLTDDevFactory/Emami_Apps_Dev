@@ -49,12 +49,13 @@ function sapError(status: number, text: string): TermPolicyError {
 }
 
 async function call(method: 'GET' | 'POST', path: string, params: Record<string, string> = {}, body?: unknown): Promise<any> {
-  const qs = Object.entries({ ...params, $format: 'json' })
+  // $format=json is not allowed on an entity-create POST (SAP answers 400); the Accept header asks for JSON on every call
+  const qs = Object.entries(method === 'GET' ? { ...params, $format: 'json' } : params)
     .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
     .join('&');
   let res: Response;
   try {
-    res = await fetch(`${BASE}${path}?${qs}`, {
+    res = await fetch(`${BASE}${path}${qs ? `?${qs}` : ''}`, {
       method,
       cache: 'no-store',
       headers: { Accept: 'application/json', ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
@@ -76,7 +77,8 @@ const sapDate = (v: any): string => {
   return ms ? new Date(Number(ms)).toISOString().slice(0, 10) : '';
 };
 const num = (v: any) => Number(v) || 0;
-const noLeadZeros = (v: any) => String(v ?? '').replace(/^0+(?=\d)/, '');
+const noLeadZeros = (v: any) => String(v ?? '').trim().replace(/^0+/, ''); // SAP sends 00000000 for "no employee number"
+const clean = (v: any) => String(v ?? '').replace(/\s+/g, ' ').trim();
 
 function toNominees(rows: any[] | undefined): Nominee[] {
   return (rows ?? []).map((n) => ({ name: n.Name ?? '', relation: (n.Relation ?? '').trim(), share: String(n.PerShare ?? '').trim() })) as Nominee[];
@@ -84,7 +86,7 @@ function toNominees(rows: any[] | undefined): Nominee[] {
 
 function toPolicy(r: any): Policy {
   return {
-    reqno: r.Reqno, year: r.Year, empId: noLeadZeros(r.EmpId), employeeName: r.EmployeeName ?? '', designation: r.Designation ?? '',
+    reqno: r.Reqno, year: r.Year, empId: noLeadZeros(r.EmpId), employeeName: clean(r.EmployeeName), designation: r.Designation ?? '',
     orgUnit: r.OrgUnit ?? '', locationText: r.LocationText ?? '', email: r.CompanyMail ?? '', personalEmail: r.PersonalMail ?? '',
     contact: r.Contact ?? '', sumAssured: r.SumText ?? '', premium: num(r.Premium), gst: num(r.Gst), total: num(r.Total),
     createdBy: r.CreatedBy ?? '', requestDate: sapDate(r.ReqDate), nominees: toNominees(r.Nominees?.results ?? r.Nominees),
@@ -99,7 +101,7 @@ export const api: TermPolicyApi = {
   async getEmployee(email, empId) {
     const r = await call('GET', `/EmployeeSet(EmpId=${q(empId)},Email=${q(email)})`);
     return {
-      empId: noLeadZeros(r.EmpId), firstName: r.FirstName, lastName: r.LastName, dob: sapDate(r.Dob), age: num(r.Age), gender: r.Gender,
+      empId: noLeadZeros(r.EmpId), firstName: clean(r.FirstName), lastName: clean(r.LastName), dob: sapDate(r.Dob), age: num(r.Age), gender: r.Gender,
       companyCode: r.CompanyCode, companyName: r.CompanyName, department: r.Department, orgUnit: r.OrgUnit, designation: r.Designation,
       location: r.Location, locationText: r.LocationText, email: r.CompanyMail ?? '', limitText: r.LimitText ?? '', year: r.Year,
     };
