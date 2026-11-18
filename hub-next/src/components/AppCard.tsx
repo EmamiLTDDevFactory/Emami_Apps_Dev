@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Star, Lock } from 'lucide-react';
 import type { AppItem, AppRole } from '../types';
 import { colors, fonts, fontWeights, radii, appColor, motion, focusRing } from '../theme/tokens';
@@ -37,8 +37,7 @@ export default function AppCard({ app, isFavorite, isTopUsed, locked = false, ro
   // A missing or broken preview image just drops the preview instead of leaving an empty frame.
   const [previewFailed, setPreviewFailed] = useState(false);
   useEffect(() => setPreviewFailed(false), [app.preview]);
-  const showLive = !!app.livePreview && !locked && !!app.url && app.url.startsWith('/');
-  const showPreview = showLive || (!!app.preview && !previewFailed);
+  const showPreview = !!app.preview && !previewFailed;
   const { ref, hovered, pressed, tiltTransform, handlers } = useTiltHover<HTMLAnchorElement>();
 
   const scale = pressed ? motion.pressScale : hovered ? motion.hoverScale : 1;
@@ -129,10 +128,7 @@ export default function AppCard({ app, isFavorite, isTopUsed, locked = false, ro
             aspectRatio: '16 / 9',
           }}
         >
-          {showLive ? (
-            <LivePreview url={app.url as string} title={`${app.name} preview`} />
-          ) : (
-          /* eslint-disable-next-line @next/next/no-img-element */
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={app.preview}
             alt={`${app.name} preview`}
@@ -141,7 +137,6 @@ export default function AppCard({ app, isFavorite, isTopUsed, locked = false, ro
             onError={() => setPreviewFailed(true)}
             style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top left', display: 'block', filter: locked ? 'grayscale(1)' : undefined }}
           />
-          )}
         </div>
       )}
 
@@ -239,40 +234,5 @@ export default function AppCard({ app, isFavorite, isTopUsed, locked = false, ro
         </p>
       )}
     </a>
-  );
-}
-
-/** The app itself, rendered at desktop size (1280x720) and scaled down to fit the tile. Read-only:
- * it ignores clicks (the tile opens the app), is skipped by keyboard and screen readers, and is
- * sandboxed so it can never navigate the hub page. Loads only when the tile scrolls into view. */
-const LIVE_W = 1280;
-const LIVE_H = 720;
-function LivePreview({ url, title }: { url: string; title: string }) {
-  const boxRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(0);
-  const [loaded, setLoaded] = useState(false);
-  useEffect(() => {
-    const el = boxRef.current;
-    if (!el) return;
-    const fit = () => setScale(el.clientWidth / LIVE_W);
-    fit();
-    const ro = new ResizeObserver(fit);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  return (
-    <div ref={boxRef} aria-hidden="true" style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
-      {scale > 0 && (
-        <iframe
-          src={url}
-          title={title}
-          loading="lazy"
-          tabIndex={-1}
-          sandbox="allow-scripts allow-same-origin allow-forms"
-          onLoad={() => setLoaded(true)}
-          style={{ width: LIVE_W, height: LIVE_H, border: 0, transform: `scale(${scale})`, transformOrigin: 'top left', opacity: loaded ? 1 : 0, transition: 'opacity 300ms ease' }}
-        />
-      )}
-    </div>
   );
 }
