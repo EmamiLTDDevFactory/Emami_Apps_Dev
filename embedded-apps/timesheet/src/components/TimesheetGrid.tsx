@@ -597,6 +597,11 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
     return (original?.[field] || '') !== (line[field] || '');
   }
 
+  // A manager can only edit lines the employee actually submitted - not blank days.
+  function lineLocked(dateIso: string, lineIndex: number, locked: boolean) {
+    return locked || (!!readOnly && !submittedMap[dateIso]?.lines?.[lineIndex]);
+  }
+
   function managerTimeInput(dateIso: string, row: DayRow, which: 'in' | 'out', compact?: boolean) {
     const field = which === 'in' ? 'inTime' : 'outTime';
     const location = which === 'in' ? row.inLocation : row.outLocation;
@@ -906,7 +911,7 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                       <select
                         aria-label={`Task ${lineIndex + 1} on ${formatDayNum(date)}`}
                         value={line.taskId}
-                        disabled={locked}
+                        disabled={lineLocked(dateIso, lineIndex, locked)}
                         onChange={(e) => updateLine(dateIso, lineIndex, { taskId: e.target.value })}
                         className={`w-full rounded-md border px-1.5 py-1.5 text-center text-xs font-medium focus:outline-none focus:ring-2 focus:ring-rust disabled:cursor-not-allowed disabled:bg-appBg disabled:opacity-60 ${
                           readOnly && lineEdited(dateIso, lineIndex, 'taskId', line)
@@ -934,14 +939,14 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                           type="text"
                           aria-label={`Task description ${lineIndex + 1} on ${formatDayNum(date)}`}
                           value={line.description}
-                          disabled={locked}
+                          disabled={lineLocked(dateIso, lineIndex, locked)}
                           onChange={(e) => updateLine(dateIso, lineIndex, { description: e.target.value })}
                           placeholder="What did you work on?"
                           className={`w-full rounded-md border px-2 py-1.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-rust disabled:cursor-not-allowed disabled:bg-appBg disabled:opacity-60 ${
                             readOnly && lineEdited(dateIso, lineIndex, 'description', line) ? 'border-amber bg-amberBg' : 'border-border bg-white'
                           }`}
                         />
-                        {!locked && lines.length > 1 && (
+                        {!readOnly && !locked && lines.length > 1 && (
                           <button
                             type="button"
                             onClick={() => removeLine(dateIso, lineIndex)}
@@ -951,7 +956,7 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                             <X size={13} />
                           </button>
                         )}
-                        {!locked && lineIndex === lines.length - 1 && (
+                        {!readOnly && !locked && lineIndex === lines.length - 1 && (
                           <button
                             type="button"
                             onClick={() => addLine(dateIso)}
@@ -1182,7 +1187,7 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                           ) : (
                             <select
                               value={line.taskId}
-                              disabled={locked}
+                              disabled={lineLocked(dateIso, lineIndex, locked)}
                               onChange={(e) => updateLine(dateIso, lineIndex, { taskId: e.target.value })}
                               className={`w-full rounded-md border px-2 py-1.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-rust disabled:cursor-not-allowed disabled:bg-appBg disabled:opacity-60 ${
                                 readOnly && lineEdited(dateIso, lineIndex, 'taskId', line)
@@ -1209,7 +1214,7 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                             <input
                               type="text"
                               value={line.description}
-                              disabled={locked}
+                              disabled={lineLocked(dateIso, lineIndex, locked)}
                               onChange={(e) => updateLine(dateIso, lineIndex, { description: e.target.value })}
                               placeholder="What did you work on?"
                               className={`w-full rounded-md border px-2 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-rust disabled:cursor-not-allowed disabled:bg-appBg disabled:opacity-60 ${
