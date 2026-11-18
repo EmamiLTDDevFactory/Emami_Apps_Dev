@@ -6,7 +6,7 @@ CLASS zcl_zlife_ins_dpc DEFINITION PUBLIC INHERITING FROM /iwbep/cl_mgw_abs_data
     METHODS /iwbep/if_mgw_appl_srv_runtime~get_entityset REDEFINITION.
     METHODS /iwbep/if_mgw_appl_srv_runtime~get_entity REDEFINITION.
     METHODS /iwbep/if_mgw_appl_srv_runtime~create_deep_entity REDEFINITION.
-    METHODS /iwbep/if_mgw_appl_srv_runtime~execute_action REDEFINITION.
+    METHODS /iwbep/if_mgw_appl_srv_runtime~create_entity REDEFINITION.
   PROTECTED SECTION.
     METHODS busi
       IMPORTING iv_text TYPE string iv_status TYPE /iwbep/mgw_http_status_code DEFAULT '400'
@@ -256,33 +256,41 @@ CLASS zcl_zlife_ins_dpc IMPLEMENTATION.
     ENDCASE.
   ENDMETHOD.
 
-  METHOD /iwbep/if_mgw_appl_srv_runtime~execute_action.
-    " Function imports (HTTP POST): DeletePolicy(Reqno, Email), SendSummary(Reqnos, Email)
-    DATA lv_err TYPE string.
-    DATA(lv_mail) = key_value( it_key = it_parameter iv_name = 'Email' ).
-    IF lv_mail IS INITIAL.
+  METHOD /iwbep/if_mgw_appl_srv_runtime~create_entity.
+    " POST CommandSet {Email, Action = DELETE | MAIL, Reqnos = 'a,b'}. These are entity creates, not function imports, because the
+    " gateway hub answers every function-import POST with an empty 404 while entity-create POSTs pass.
+    DATA: ls_cmd TYPE zcl_life_ins_ty=>ts_command,
+          lv_err TYPE string.
+    IF iv_entity_set_name <> 'CommandSet'.
+      super->/iwbep/if_mgw_appl_srv_runtime~create_entity(
+        EXPORTING iv_entity_name = iv_entity_name iv_entity_set_name = iv_entity_set_name iv_source_name = iv_source_name
+                  io_data_provider = io_data_provider it_key_tab = it_key_tab it_navigation_path = it_navigation_path
+                  io_tech_request_context = io_tech_request_context
+        IMPORTING er_entity = er_entity ).
+      RETURN.
+    ENDIF.
+    io_data_provider->read_entry_data( IMPORTING es_data = ls_cmd ).
+    IF ls_cmd-email IS INITIAL.
       busi( `Email is mandatory (every request carries the login email).` ).
     ENDIF.
-    DATA(lv_user) = zcl_life_ins_utils=>user_from_email( lv_mail ).
-    CASE iv_action_name.
-      WHEN 'DeletePolicy'.
-        zcl_life_ins_utils=>delete_policy( EXPORTING iv_user = lv_user iv_reqno = CONV #( key_value( it_key = it_parameter iv_name = 'Reqno' ) )
+    DATA(lv_user) = zcl_life_ins_utils=>user_from_email( CONV string( ls_cmd-email ) ).
+    CASE to_upper( condense( ls_cmd-action ) ).
+      WHEN 'DELETE'.
+        zcl_life_ins_utils=>delete_policy( EXPORTING iv_user = lv_user iv_reqno = CONV #( condense( ls_cmd-reqnos ) )
                                            IMPORTING ev_error = lv_err ).
-      WHEN 'SendSummary'.
-        SPLIT key_value( it_key = it_parameter iv_name = 'Reqnos' ) AT ',' INTO TABLE DATA(lt_split).
+      WHEN 'MAIL'.
+        SPLIT ls_cmd-reqnos AT ',' INTO TABLE DATA(lt_split).
         DATA lt_req TYPE zcl_life_ins_utils=>tt_reqno.
         LOOP AT lt_split INTO DATA(lv_s).
           APPEND CONV zlife_emp-reqno( condense( lv_s ) ) TO lt_req.
         ENDLOOP.
         zcl_life_ins_utils=>send_summary( EXPORTING iv_user = lv_user it_reqno = lt_req IMPORTING ev_error = lv_err ).
       WHEN OTHERS.
-        super->/iwbep/if_mgw_appl_srv_runtime~execute_action(
-          EXPORTING iv_action_name = iv_action_name it_parameter = it_parameter io_tech_request_context = io_tech_request_context
-          IMPORTING er_data = er_data ).
-        RETURN.
+        busi( `Unknown action. Use DELETE or MAIL.` ).
     ENDCASE.
     finish( iv_error = lv_err iv_simulate = is_simulate( ) ).
-    copy_data_to_ref( EXPORTING is_data = VALUE zcl_life_ins_ty=>ts_result( email = lv_mail ok = 'X' ) CHANGING cr_data = er_data ).
+    ls_cmd-ok = 'X'.
+    copy_data_to_ref( EXPORTING is_data = ls_cmd CHANGING cr_data = er_entity ).
   ENDMETHOD.
 
 ENDCLASS.

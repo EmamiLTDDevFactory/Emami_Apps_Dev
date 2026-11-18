@@ -28,8 +28,11 @@ ENT = [
   ('Email','email',S,241,True,'c'),('Count','count',I,0,False,'i')]),
  dict(name='LimitRow', set='LimitRowSet', create=False, props=[
   ('Email','email',S,241,True,'c'),('EmpId','empid',S,8,True,'c'),('Limit','limit',S,20,False,'c')]),
- dict(name='Result', set='ResultSet', create=False, props=[
-  ('Email','email',S,241,True,'c'),('Ok','ok',S,1,False,'c'),('Message','message',S,255,False,'c')]),
+ # DELETE / MAIL commands are entity creates: the gateway hub answers every function-import POST with an empty 404 (also for Mediclaim),
+ # while entity-create POSTs pass.
+ dict(name='Command', set='CommandSet', create=True, props=[
+  ('Email','email',S,241,True,'c'),('Action','action',S,10,False,'c'),('Reqnos','reqnos',S,1000,False,'c'),
+  ('Ok','ok',S,1,False,'c'),('Message','message',S,255,False,'c')]),
 ]
 # (assoc name, left type, right type, left set, right set, nav prop, nav field, ref constraint props)
 ASSOC = [
@@ -37,7 +40,4 @@ ASSOC = [
  ('LimitUpload_Rows','LimitUpload','LimitRow','LimitUploadSet','LimitRowSet','Rows','ROWS',['Email']),
 ]
 # function imports: name, return entity type, return set, [(param, field, kind, len)]
-ACT = [
- ('DeletePolicy','Result','ResultSet',[('Reqno','reqno',S,10),('Email','email',S,241)]),
- ('SendSummary','Result','ResultSet',[('Reqnos','reqnos',S,1000),('Email','email',S,241)]),
-]
+ACT = []

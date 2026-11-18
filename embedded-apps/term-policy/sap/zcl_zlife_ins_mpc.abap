@@ -19,7 +19,7 @@ CLASS zcl_zlife_ins_mpc IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD get_last_modified.
-    CONSTANTS lc_gen_date_time TYPE timestamp VALUE '20261118180000'.
+    CONSTANTS lc_gen_date_time TYPE timestamp VALUE '20261118200000'.
     rv_last_modified = super->get_last_modified( ).
     IF rv_last_modified < lc_gen_date_time.
       rv_last_modified = lc_gen_date_time.
@@ -320,21 +320,27 @@ CLASS zcl_zlife_ins_mpc IMPLEMENTATION.
     lo_entity_set->set_subscribable( abap_false ).
     lo_entity_set->set_filter_required( abap_false ).
 
-    lo_entity_type = model->create_entity_type( iv_entity_type_name = 'Result' iv_def_entity_set = abap_false ).
+    lo_entity_type = model->create_entity_type( iv_entity_type_name = 'Command' iv_def_entity_set = abap_false ).
     lo_property = lo_entity_type->create_property( iv_property_name = 'Email' iv_abap_fieldname = 'EMAIL' ).
     lo_property->set_is_key( ).
     lo_property->set_type_edm_string( ).
     lo_property->set_maxlength( iv_max_length = 241 ).
     lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Action' iv_abap_fieldname = 'ACTION' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 10 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Reqnos' iv_abap_fieldname = 'REQNOS' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 1000 ).
     lo_property = lo_entity_type->create_property( iv_property_name = 'Ok' iv_abap_fieldname = 'OK' ).
     lo_property->set_type_edm_string( ).
     lo_property->set_maxlength( iv_max_length = 1 ).
     lo_property = lo_entity_type->create_property( iv_property_name = 'Message' iv_abap_fieldname = 'MESSAGE' ).
     lo_property->set_type_edm_string( ).
     lo_property->set_maxlength( iv_max_length = 255 ).
-    lo_entity_type->bind_structure( iv_structure_name = 'ZCL_LIFE_INS_TY=>TS_RESULT' iv_bind_conversions = abap_false ).
-    lo_entity_set = lo_entity_type->create_entity_set( 'ResultSet' ).
-    lo_entity_set->set_creatable( abap_false ).
+    lo_entity_type->bind_structure( iv_structure_name = 'ZCL_LIFE_INS_TY=>TS_COMMAND' iv_bind_conversions = abap_false ).
+    lo_entity_set = lo_entity_type->create_entity_set( 'CommandSet' ).
+    lo_entity_set->set_creatable( abap_true ).
     lo_entity_set->set_updatable( abap_false ).
     lo_entity_set->set_deletable( abap_false ).
     lo_entity_set->set_pageable( abap_false ).
@@ -371,30 +377,6 @@ CLASS zcl_zlife_ins_mpc IMPLEMENTATION.
   METHOD define_actions.
     DATA: lo_action TYPE REF TO /iwbep/if_mgw_odata_action,
           lo_parameter TYPE REF TO /iwbep/if_mgw_odata_parameter.
-
-    lo_action = model->create_action( 'DeletePolicy' ).
-    lo_action->set_return_entity_type( 'Result' ).
-    lo_action->set_return_entity_set( 'ResultSet' ).
-    lo_action->set_return_multiplicity( '1' ).
-    lo_action->set_http_method( 'POST' ).
-    lo_parameter = lo_action->create_input_parameter( iv_parameter_name = 'Reqno' iv_abap_fieldname = 'REQNO' ).
-    lo_parameter->/iwbep/if_mgw_odata_property~set_type_edm_string( ).
-    lo_parameter->set_maxlength( iv_max_length = 10 ).
-    lo_parameter = lo_action->create_input_parameter( iv_parameter_name = 'Email' iv_abap_fieldname = 'EMAIL' ).
-    lo_parameter->/iwbep/if_mgw_odata_property~set_type_edm_string( ).
-    lo_parameter->set_maxlength( iv_max_length = 241 ).
-
-    lo_action = model->create_action( 'SendSummary' ).
-    lo_action->set_return_entity_type( 'Result' ).
-    lo_action->set_return_entity_set( 'ResultSet' ).
-    lo_action->set_return_multiplicity( '1' ).
-    lo_action->set_http_method( 'POST' ).
-    lo_parameter = lo_action->create_input_parameter( iv_parameter_name = 'Reqnos' iv_abap_fieldname = 'REQNOS' ).
-    lo_parameter->/iwbep/if_mgw_odata_property~set_type_edm_string( ).
-    lo_parameter->set_maxlength( iv_max_length = 1000 ).
-    lo_parameter = lo_action->create_input_parameter( iv_parameter_name = 'Email' iv_abap_fieldname = 'EMAIL' ).
-    lo_parameter->/iwbep/if_mgw_odata_property~set_type_edm_string( ).
-    lo_parameter->set_maxlength( iv_max_length = 241 ).
 
   ENDMETHOD.
 ENDCLASS.

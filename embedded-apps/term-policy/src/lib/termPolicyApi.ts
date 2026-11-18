@@ -118,7 +118,7 @@ export const api: TermPolicyApi = {
     return { reqno: r.Reqno };
   },
   async deletePolicy(email, reqno) {
-    await call('POST', '/DeletePolicy', { Reqno: q(reqno), Email: q(email) });
+    await call('POST', '/CommandSet', {}, { Email: email, Action: 'DELETE', Reqnos: reqno });
   },
   async listPolicies(email, query) {
     const parts = [`Email eq ${q(email)}`];
@@ -132,7 +132,7 @@ export const api: TermPolicyApi = {
     return { count: num(r?.Count) || rows.length };
   },
   async sendSummary(email, reqnos) {
-    await call('POST', '/SendSummary', { Reqnos: q(reqnos.join(',')), Email: q(email) });
+    await call('POST', '/CommandSet', {}, { Email: email, Action: 'MAIL', Reqnos: reqnos.join(',') });
   },
 };
 

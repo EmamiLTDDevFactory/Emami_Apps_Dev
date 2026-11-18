@@ -34,11 +34,9 @@ Note for ADT: activating a class needs its `source/main#type=CLAS/OSU` ref liste
 
 ## Still to do on the SAP side
 
-- **Register `ZLIFE_INS_SRV` on the gateway hub NGD** (Basis, `/IWFND/MAINT_SERVICE` > Add Service, alias to the EDS backend; same as Mediclaim) and give
-  the gateway's technical user `S_SERVICE` for IWSG `ZLIFE_INS_SRV_0001`. The Azure gateway does not know a system "EDS" (`Invalid Landscape : EDS`);
-  it reaches EDS only through a hub. Today `NGD/ZLIFE_INS_SRV/$metadata` answers 403 "No service found".
+- ~~Register `ZLIFE_INS_SRV` on the gateway hub NGD~~ **Done by Basis (2026-11-18)**; tested through the Azure gateway, see below.
 - Release transport EDSK9B0EKB, import into the NGQ/NWP backends, register on those hubs.
-- Mail (`SendSummary`) is untested: EDS has no SMTP (SCOT).
+- Mail (`CommandSet` Action MAIL) is untested: EDS has no SMTP (SCOT).
 
 ## Web Dynpro function → BL method → OData
 
@@ -48,11 +46,11 @@ Note for ADT: activating a class needs its `source/main#type=CLAS/OSU` ref liste
 | MAIN / FETCH_DET (HR read, cut-off date, company 1000, "already exists") | `get_employee` | `GET EmployeeSet(EmpId='…',Email='…')` |
 | MAIN / BPOLICY (sum slabs ≤ limit, premium) | `get_sum_options` | `GET SumOptionSet?$filter=EmpId eq '…' and Email eq '…'` |
 | MAIN / SUBMIT and CHANGE | `save_policy` | `POST PolicySet` (deep insert with `Nominees`; `Reqno` filled = change) |
-| MAIN / DELETE (flag R, soft delete) | `delete_policy` | `POST DeletePolicy?Reqno='…'&Email='…'` |
+| MAIN / DELETE (flag R, soft delete) | `delete_policy` | `POST CommandSet {Email, Action:'DELETE', Reqnos:'…'}` |
 | DISPLAY / SEARCH, V_DOWNLOAD | `search_policies` | `GET PolicySet?$filter=Email eq '…' [and EmpId eq '…'] [and AllRows eq 'X']&$expand=Nominees` |
 | V_LIMIT_UP (save limits) | `save_limits` | `POST LimitUploadSet` (deep insert with `Rows`) |
 | MASS_UPLOAD | `save_policy` per row | the app posts one `PolicySet` per Excel row |
-| V_SEND_MAIL | `send_summary` | `POST SendSummary?Reqnos='a,b'&Email='…'` |
+| V_SEND_MAIL | `send_summary` | `POST CommandSet {Email, Action:'MAIL', Reqnos:'a,b'}` |
 
 The Azure gateway passes only GET and POST (Gate Entry finding), so there is no PUT/DELETE: change and delete are POSTs.
 
@@ -67,15 +65,15 @@ All properties Edm.String unless noted. Keys in **bold**.
 - **Nominee**: **Reqno**, **SlNo**, Name, Relation (3 Father, 4 Mother, 5 Spouse, 6 Son), PerShare
 - **LimitUpload**: **Email**, Count (Int32); NavigationProperty `Rows` → LimitRow
 - **LimitRow**: **EmpId**, Limit (e.g. `50 LAKHS`)
-- **Result** (complex type returned by actions): Ok (Boolean)
-- Function imports (POST): `DeletePolicy(Reqno, Email)`, `SendSummary(Reqnos, Email)`, both returning Result
+- **Command**: **Email**, Action (`DELETE` or `MAIL`), Reqnos (comma separated), Ok, Message. Creatable only: `POST CommandSet` runs the action.
+- No function imports: the gateway hub answers every function-import POST with an empty 404 (Mediclaim's `DeletePolicy` too), so delete and mail are entity creates.
 
 The app has no mock: until the service answers on the gateway it shows "Term Life service not available (SAP)" with a Try again button,
 like Mediclaim. `SAP_SYSTEM` is `NGD` in `src/lib/config.ts`.
 
 Notes from testing on EDS: `$format=json` must **not** be sent on an entity-create POST (SAP answers 400 "SystemQueryOptions not allowed"), the
 `Accept` header is enough; `Reqno` and nominee `SlNo` are strings; `EmpId` is `00000000` when the mail has no employee number.
-Dry run for tests: header `X-Life-Simulate: X` (or `simulate=X` on a function import) runs everything and rolls back.
+Dry run for tests: header `X-Life-Simulate: X` runs everything and rolls back on EDS. **The gateway drops this header**, so a "dry run" sent through it commits for real (it created a test policy once); use it only against EDS directly.
 
 ## Differences from the Web Dynpro (deliberate)
 
@@ -103,7 +101,7 @@ Dry run for tests: header `X-Life-Simulate: X` (or `simulate=X` on a function im
 
 ## Test evidence (EDS, over HTTPS, 2026-11-18)
 
-- `$metadata` 200: 8 entity sets, 2 associations, function imports DeletePolicy and SendSummary.
+- `$metadata` 200: 8 entity sets (incl. CommandSet), 2 associations, no function imports.
 - ProfileSet: admin (sourav.das) = ADMIN; unknown mail = USER, EmpId 00000000.
 - EmployeeSet 90000060 as admin: HR data, limit 400 LAKHS, year 2025. As an ordinary user for someone else: 403 "You can see only your own employee ID."
 - SumOptionSet follows the limit (14 slabs, premium/GST/total). PolicySet list with `$expand=Nominees`; `AllRows` as non-admin: 403.
@@ -111,3 +109,13 @@ Dry run for tests: header `X-Life-Simulate: X` (or `simulate=X` on a function im
 - One real cycle on EDS (employee 90000060, nominees marked "ZZ TEST"): submit -> request 2026000001, change to 3 nominees, delete (soft). The row stays
   in ZLIFE_EMP/ZLIFE_FAMILY with DEL_FLAG X, like the other test rows there. The save lock was released after each call (the next call got through).
 - 13/13 ABAP Unit tests (read-only) still pass.
+
+## Test evidence through the Azure gateway (NGD, 2026-11-18)
+
+- ProfileSet, EmployeeSet, SumOptionSet (with `$orderby`), PolicySet with `$expand=Nominees`: 200, same data as on EDS.
+- Entity-create POSTs pass: a failing validation returns the legacy text (400); submit, change and delete (`CommandSet`) worked in one cycle with
+  employee 90000060 (test nominees "ZZ TEST"); the test policies 2026000002 to 2026000004 are soft-deleted.
+- **Function-import POSTs fail on the hub with an empty-message 404** (also Mediclaim's `DeletePolicy`; GET answers 405, so the hub knows the operation).
+  Basis can look up the transaction id in `/IWFND/ERROR_LOG` on NGD (for example 86E79F2A03010060E006AD53A2B9B175). Worked around with `CommandSet`.
+- `GET .../$metadata` through the Azure gateway answers 400 "System query options ... not allowed" (gateway quirk, same for Mediclaim); not needed by the app.
+- Not tested through a browser yet.

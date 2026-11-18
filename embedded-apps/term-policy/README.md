@@ -7,12 +7,11 @@ Rebuild of the Term Life part of the SAP Web Dynpro **ZWD_MEDICAIM_NOMINEE** (pa
 calculation lives in SAP (`ZCL_LIFE_INS_UTILS`) behind the OData V2 service **ZLIFE_INS_SRV**; the app has no mock data, no localStorage data
 and no mock mode. Same pattern as Mediclaim.
 
-## Dependency: the service is not on the gateway hub yet
+## SAP side
 
-The whole SAP side is built on EDS without SEGW (code-based model and data provider, like Mediclaim): `ZCL_LIFE_INS_UTILS`, `ZCL_ZLIFE_INS_MPC`,
-`ZCL_ZLIFE_INS_DPC`, service `ZLIFE_INS_SRV` registered locally on EDS, `$metadata` 200, 13 ABAP Unit tests pass, and a real submit/change/delete
-cycle was run over HTTP (see `sap/README.md`). What is left is Basis registering `ZLIFE_INS_SRV` on the gateway hub **NGD** (alias to the EDS backend)
-and the technical user's `S_SERVICE`. Until it answers, the app shows **"Term Life service not available (SAP)"** with a Try again button.
+Built on EDS without SEGW (code-based model and data provider, like Mediclaim) and registered on the gateway hub NGD by Basis. Tested over HTTP on EDS and
+through the Azure gateway (see `sap/README.md`). Delete and mail are entity creates on `CommandSet`, because the hub rejects function-import POSTs.
+If the service does not answer, the app shows **"Term Life service not available (SAP)"** with a Try again button.
 
 ## Config (one place: `src/lib/config.ts`)
 
