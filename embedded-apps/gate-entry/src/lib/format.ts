@@ -58,3 +58,22 @@ export const fmtTime = (t: string | null) => (t ? t.slice(0, 5) : '');
 export const fmtQty = (n: number) => n.toLocaleString('en-IN', { maximumFractionDigits: 3 });
 /** Days between two ISO dates (b - a). */
 export const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86_400_000);
+
+// ---- month / week grouping (Monday-start weeks, ISO week numbers) ----
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const isoOf = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+const utcMs = (iso: string) => Date.parse(`${iso}T00:00:00Z`);
+export const monthKey = (iso: string) => iso.slice(0, 7);
+export const monthLabel = (key: string) => `${MONTHS[Number(key.slice(5, 7)) - 1]} ${key.slice(0, 4)}`;
+/** Monday of the week containing iso. */
+export const weekStart = (iso: string) => isoOf(utcMs(iso) - ((new Date(utcMs(iso)).getUTCDay() + 6) % 7) * 86_400_000);
+export const isoWeekNo = (iso: string) => {
+  const thu = utcMs(weekStart(iso)) + 3 * 86_400_000;
+  const jan1 = Date.UTC(new Date(thu).getUTCFullYear(), 0, 1);
+  return Math.floor((thu - jan1) / (7 * 86_400_000)) + 1;
+};
+/** '16 Nov - 22 Nov' for the week starting at the given Monday. */
+export const weekRange = (monday: string) => {
+  const f = (ms: number) => `${new Date(ms).getUTCDate()} ${MONTHS[new Date(ms).getUTCMonth()].slice(0, 3)}`;
+  return `${f(utcMs(monday))} - ${f(utcMs(monday) + 6 * 86_400_000)}`;
+};
