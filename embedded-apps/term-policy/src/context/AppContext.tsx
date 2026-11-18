@@ -2,20 +2,22 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { getHubEmail } from '../lib/hubEmailLogin';
-import { fetchTermPolicyRole, type TermPolicyRole } from '../lib/hubAccessApi';
-import { fetchEmployeeOrgDetails } from '../lib/orgService';
-import { getMyTermPolicySubmission, submitTermPolicy } from '../lib/policyService';
-import type { EmployeeOrgDetails, TermPolicyDraft, TermPolicySubmission } from '../types/policy';
+import { fetchTermPolicyRole } from '../lib/hubAccessApi';
+import { api, IS_LIVE } from '../lib/termPolicyApi';
+import type { Profile, SapRole } from '../types/policy';
 
 interface AppContextValue {
   email: string | null;
-  employee: EmployeeOrgDetails | null;
-  role: TermPolicyRole;
+  profile: Profile | null;
+  role: SapRole;
+  /** ADMIN: download, delete, limit upload, mass upload, mail. */
   isAdmin: boolean;
-  myTermPolicy: TermPolicySubmission | null;
+  /** EDITOR or ADMIN: may apply for / change another employee's policy. */
+  canActForOthers: boolean;
   loading: boolean;
   error: string | null;
-  submitTermPolicy: (data: TermPolicyDraft) => Promise<TermPolicySubmission>;
+  /** True while running against the browser mock instead of SAP. */
+  isMock: boolean;
   refresh: () => void;
 }
 
@@ -23,9 +25,7 @@ const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [email, setEmail] = useState<string | null>(null);
-  const [employee, setEmployee] = useState<EmployeeOrgDetails | null>(null);
-  const [role, setRole] = useState<TermPolicyRole>('User');
-  const [myTermPolicy, setMyTermPolicy] = useState<TermPolicySubmission | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
@@ -39,59 +39,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return;
     }
-
     let cancelled = false;
     setLoading(true);
     setError(null);
-
-    Promise.all([
-      fetchEmployeeOrgDetails(hubEmail),
-      fetchTermPolicyRole(hubEmail),
-      getMyTermPolicySubmission(hubEmail),
-    ])
-      .then(([org, resolvedRole, term]) => {
-        if (cancelled) return;
-        setEmployee(org);
-        setRole(resolvedRole);
-        setMyTermPolicy(term);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setError(err instanceof Error ? err.message : 'Could not load your details.');
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
+    // Live: SAP's own table (ZMEDI_AUTH_USERS) decides the role. Mock: the hub's Manage Access grant stands in for it.
+    (IS_LIVE ? Promise.resolve(false) : fetchTermPolicyRole(hubEmail).then((r) => r === 'Admin'))
+      .then((hubIsAdmin) => api.getProfile(hubEmail, hubIsAdmin))
+      .then((p) => !cancelled && setProfile(p))
+      .catch((err) => !cancelled && setError(err instanceof Error ? err.message : 'Could not load your details.'))
+      .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
   }, [reloadToken]);
 
-  const submitTermPolicyFn = useCallback(
-    async (data: TermPolicyDraft) => {
-      if (!employee) throw new Error('Employee details are not loaded yet.');
-      const saved = await submitTermPolicy(employee, data);
-      setMyTermPolicy(saved);
-      return saved;
-    },
-    [employee]
-  );
-
-  const value = useMemo<AppContextValue>(
-    () => ({
-      email,
-      employee,
-      role,
-      isAdmin: role === 'Admin',
-      myTermPolicy,
-      loading,
-      error,
-      submitTermPolicy: submitTermPolicyFn,
-      refresh,
-    }),
-    [email, employee, role, myTermPolicy, loading, error, submitTermPolicyFn, refresh]
-  );
+  const value = useMemo<AppContextValue>(() => {
+    const role: SapRole = profile?.role ?? 'USER';
+    return {
+      email, profile, role, isAdmin: role === 'ADMIN', canActForOthers: role === 'ADMIN' || role === 'EDITOR',
+      loading, error, isMock: !IS_LIVE, refresh,
+    };
+  }, [email, profile, loading, error, refresh]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

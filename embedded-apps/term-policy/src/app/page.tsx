@@ -1,218 +1,248 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Plus, X, ShieldCheck } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ShieldCheck, Search, Trash2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import OrgDetailsStrip from '../components/OrgDetailsStrip';
 import Banner, { type BannerState } from '../components/Banner';
-import YesNoToggle from '../components/YesNoToggle';
-import type { Nominee } from '../types/policy';
+import { api, TermPolicyError } from '../lib/termPolicyApi';
+import { checkPolicyForm, inr, shareTotal } from '../lib/validate';
+import { MAX_NOMINEES, RELATIONS, type EmployeeInfo, type Nominee, type Policy, type SumOption } from '../types/policy';
 
-const SUM_ASSURED_OPTIONS = ['₹25,00,000', '₹50,00,000', '₹75,00,000', '₹1,00,00,000'];
-const MAX_NOMINEES = 2;
-const EMPTY_NOMINEE: Nominee = { name: '', relationship: '', dob: '', contactNumber: '', sharePercent: 100 };
+const blankNominees = (): Nominee[] => Array.from({ length: MAX_NOMINEES }, () => ({ name: '', relation: '', share: '' }));
+const padNominees = (n: Nominee[]) => [...n, ...blankNominees()].slice(0, MAX_NOMINEES);
+
+function Spinner() {
+  return (
+    <div className="flex justify-center py-16">
+      <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-rust border-t-transparent" />
+    </div>
+  );
+}
+
+function Detail({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div>
+      <div className="field-label">{label}</div>
+      <div className="text-[12.5px] font-semibold text-ink">{value || '—'}</div>
+    </div>
+  );
+}
 
 export default function TermPolicyPage() {
-  const { employee, loading, myTermPolicy, submitTermPolicy } = useApp();
+  const { email, profile, canActForOthers, isAdmin, isMock, loading: appLoading, error: appError } = useApp();
 
-  const [sumAssured, setSumAssured] = useState(SUM_ASSURED_OPTIONS[1]);
-  const [nominees, setNominees] = useState<Nominee[]>([{ ...EMPTY_NOMINEE }]);
-  const [isSmoker, setIsSmoker] = useState(false);
-  const [hasCriticalIllness, setHasCriticalIllness] = useState(false);
-  const [criticalIllnessDetails, setCriticalIllnessDetails] = useState('');
-  const [hasExistingTermCover, setHasExistingTermCover] = useState(false);
-  const [existingTermCoverAmount, setExistingTermCoverAmount] = useState('');
-  const [heightCm, setHeightCm] = useState('');
-  const [weightKg, setWeightKg] = useState('');
-  const [effectiveDate, setEffectiveDate] = useState('');
-  const [declared, setDeclared] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const [empIdInput, setEmpIdInput] = useState('');
+  const [employee, setEmployee] = useState<EmployeeInfo | null>(null);
+  const [options, setOptions] = useState<SumOption[]>([]);
+  const [existing, setExisting] = useState<Policy | null>(null);
+  const [sumAssured, setSumAssured] = useState('');
+  const [contact, setContact] = useState('');
+  const [personalEmail, setPersonalEmail] = useState('');
+  const [nominees, setNominees] = useState<Nominee[]>(blankNominees());
+  const [busy, setBusy] = useState(false);
   const [banner, setBanner] = useState<BannerState | null>(null);
-  const [shareError, setShareError] = useState<string | null>(null);
+  const [fieldError, setFieldError] = useState<{ field: string; message: string } | null>(null);
 
+  const fail = (e: unknown) => setBanner({ type: 'error', message: e instanceof Error ? e.message : 'Something went wrong.' });
+
+  /** Fetch step of the Web Dynpro: HR data, the sum-assured slabs the limit allows, and any request already filed. */
+  const loadEmployee = useCallback(
+    async (empId: string) => {
+      if (!email) return;
+      setBusy(true);
+      setBanner(null);
+      setFieldError(null);
+      try {
+        const emp = await api.getEmployee(email, empId);
+        const [opts, policies] = await Promise.all([api.getSumOptions(email, empId), api.listPolicies(email, { empId })]);
+        const policy = policies[0] ?? null;
+        setEmployee(emp);
+        setOptions(opts);
+        setExisting(policy);
+        setSumAssured(policy?.sumAssured ?? '');
+        setContact(policy?.contact ?? '');
+        setPersonalEmail(policy?.personalEmail ?? '');
+        setNominees(policy ? padNominees(policy.nominees) : blankNominees());
+        if (opts.length === 0) setBanner({ type: 'error', message: 'No insurance limit is set for this employee. Contact HR.' });
+      } catch (e) {
+        setEmployee(null);
+        setOptions([]);
+        setExisting(null);
+        fail(e);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [email]
+  );
+
+  // An ordinary employee applies for themselves: fetch straight away, no ID to type.
   useEffect(() => {
-    if (!myTermPolicy) return;
-    setSumAssured(myTermPolicy.sumAssured);
-    setNominees(myTermPolicy.nominees);
-    setIsSmoker(myTermPolicy.isSmoker);
-    setHasCriticalIllness(myTermPolicy.hasCriticalIllness);
-    setCriticalIllnessDetails(myTermPolicy.criticalIllnessDetails);
-    setHasExistingTermCover(myTermPolicy.hasExistingTermCover);
-    setExistingTermCoverAmount(myTermPolicy.existingTermCoverAmount);
-    setHeightCm(myTermPolicy.heightCm);
-    setWeightKg(myTermPolicy.weightKg);
-    setEffectiveDate(myTermPolicy.effectiveDate);
-  }, [myTermPolicy]);
+    if (appLoading || !profile || canActForOthers) return;
+    if (profile.empId) {
+      setEmpIdInput(profile.empId);
+      void loadEmployee(profile.empId);
+    }
+  }, [appLoading, profile, canActForOthers, loadEmployee]);
 
-  function updateNominee(index: number, patch: Partial<Nominee>) {
-    setNominees((rows) => rows.map((r, i) => (i === index ? { ...r, ...patch } : r)));
-  }
+  const slab = useMemo(() => options.find((o) => o.text === sumAssured), [options, sumAssured]);
+  const total = shareTotal(nominees);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!declared || !employee) return;
-    const totalShare = nominees.reduce((sum, n) => sum + (Number(n.sharePercent) || 0), 0);
-    if (totalShare !== 100) {
-      setShareError(`Nominee share must total 100% (currently ${totalShare}%).`);
+    if (!email || !employee) return;
+    const problem = checkPolicyForm({ personalEmail, contact, hasCompanyEmail: !!employee.email, sumAssured, nominees });
+    if (problem) {
+      setFieldError(problem);
+      setBanner({ type: 'error', message: problem.message });
       return;
     }
-    setShareError(null);
-    setSubmitting(true);
+    setFieldError(null);
+    setBusy(true);
     setBanner(null);
     try {
-      await submitTermPolicy({
-        sumAssured, nominees, isSmoker, hasCriticalIllness, criticalIllnessDetails,
-        hasExistingTermCover, existingTermCoverAmount, heightCm, weightKg, effectiveDate,
-      });
-      setBanner({ type: 'success', message: 'Term policy details submitted successfully.' });
+      const { reqno } = await api.savePolicy(email, { reqno: existing?.reqno, empId: employee.empId, sumAssured, personalEmail, contact, nominees });
+      setBanner({ type: 'success', message: existing ? `Request ${reqno} changed successfully.` : `Request ${reqno} saved successfully.` });
+      await loadEmployee(employee.empId);
     } catch (err) {
-      setBanner({ type: 'error', message: err instanceof Error ? err.message : 'Submission failed.' });
+      if (err instanceof TermPolicyError && err.field) setFieldError({ field: err.field, message: err.message });
+      fail(err);
     } finally {
-      setSubmitting(false);
+      setBusy(false);
     }
   }
 
-  if (loading || !employee) {
-    return (
-      <div className="flex justify-center py-16">
-        <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-rust border-t-transparent" />
-      </div>
-    );
+  async function remove() {
+    if (!email || !existing || !employee) return;
+    if (!window.confirm(`Delete request ${existing.reqno}? This cannot be undone.`)) return;
+    setBusy(true);
+    try {
+      await api.deletePolicy(email, existing.reqno);
+      setBanner({ type: 'success', message: 'Request Deleted.' });
+      await loadEmployee(employee.empId);
+    } catch (err) {
+      fail(err);
+    } finally {
+      setBusy(false);
+    }
   }
+
+  const setNominee = (i: number, patch: Partial<Nominee>) => setNominees((rows) => rows.map((r, k) => (k === i ? { ...r, ...patch } : r)));
+  const invalid = (f: string) => (fieldError?.field === f ? 'border-red' : '');
+
+  if (appLoading) return <Spinner />;
+  if (appError) return <Banner banner={{ type: 'error', message: appError }} onClose={() => undefined} />;
 
   return (
     <div>
-      <OrgDetailsStrip employee={employee} />
+      {isMock && (
+        <div className="mb-3 rounded-xl border border-amber/30 bg-amberBg px-3 py-2 text-[12px] font-semibold text-amber">
+          Demo mode: the SAP service ZLIFE_INS_SRV is not switched on for this build, so data is kept only in this browser.
+        </div>
+      )}
       {banner && <Banner banner={banner} onClose={() => setBanner(null)} />}
 
-      <div className="glass-card p-4">
+      <div className="glass-card mb-3 p-4">
         <div className="mb-3 flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-glassRust text-rust">
-            <ShieldCheck size={14} />
-          </div>
-          <h2 className="text-[13.5px] font-bold text-ink">Term Life Policy</h2>
-          {myTermPolicy && (
-            <span className="ml-auto text-[11px] font-semibold text-inkSoft">
-              Last submitted {new Date(myTermPolicy.submittedAt).toLocaleDateString()}
-            </span>
-          )}
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-glassRust text-rust"><ShieldCheck size={14} /></div>
+          <h2 className="text-[13.5px] font-bold text-ink">Term Life Policy{profile ? ` — ${profile.activeYear}` : ''}</h2>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {canActForOthers ? (
+          <form
+            className="flex flex-wrap items-end gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (empIdInput.trim()) void loadEmployee(empIdInput.trim());
+            }}
+          >
             <div>
-              <label className="field-label">Sum Assured</label>
-              <select className="select mt-1" value={sumAssured} onChange={(e) => setSumAssured(e.target.value)}>
-                {SUM_ASSURED_OPTIONS.map((opt) => (
-                  <option key={opt} value={opt}>{opt}</option>
-                ))}
-              </select>
+              <label className="field-label">Employee ID</label>
+              <input className="input mt-1 w-44" inputMode="numeric" value={empIdInput} onChange={(e) => setEmpIdInput(e.target.value.replace(/\D/g, ''))} placeholder="e.g. 90000618" />
             </div>
-            <div>
-              <label className="field-label">Height (cm)</label>
-              <input required type="number" className="input mt-1" value={heightCm} onChange={(e) => setHeightCm(e.target.value)} />
-            </div>
-            <div>
-              <label className="field-label">Weight (kg)</label>
-              <input required type="number" className="input mt-1" value={weightKg} onChange={(e) => setWeightKg(e.target.value)} />
-            </div>
-            <div>
-              <label className="field-label">Effective Date</label>
-              <input required type="date" className="input mt-1" value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} />
-            </div>
-          </div>
-
-          <div>
-            <div className="mb-1.5 flex items-center justify-between">
-              <label className="field-label">Nominees (share must total 100%)</label>
-              {nominees.length < MAX_NOMINEES && (
-                <button
-                  type="button"
-                  onClick={() => setNominees((rows) => [...rows, { ...EMPTY_NOMINEE, sharePercent: 0 }])}
-                  className="flex items-center gap-1 text-[11.5px] font-bold text-rust hover:underline"
-                >
-                  <Plus size={12} /> Add Nominee
-                </button>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              {nominees.map((nom, i) => (
-                <div key={i} className="grid grid-cols-[1fr_1fr_1fr_1fr_70px_auto] items-center gap-1.5">
-                  <input required placeholder="Name" className="input" value={nom.name} onChange={(e) => updateNominee(i, { name: e.target.value })} />
-                  <input required placeholder="Relationship" className="input" value={nom.relationship} onChange={(e) => updateNominee(i, { relationship: e.target.value })} />
-                  <input required type="date" className="input" value={nom.dob} onChange={(e) => updateNominee(i, { dob: e.target.value })} />
-                  <input required placeholder="Contact Number" className="input" value={nom.contactNumber} onChange={(e) => updateNominee(i, { contactNumber: e.target.value })} />
-                  <input
-                    required
-                    type="number"
-                    min={0}
-                    max={100}
-                    placeholder="%"
-                    className="input"
-                    value={nom.sharePercent ?? ''}
-                    onChange={(e) => updateNominee(i, { sharePercent: Number(e.target.value) })}
-                  />
-                  {nominees.length > 1 ? (
-                    <button
-                      type="button"
-                      onClick={() => setNominees((rows) => rows.filter((_, idx) => idx !== i))}
-                      aria-label="Remove nominee"
-                      className="text-inkSoft hover:text-red"
-                    >
-                      <X size={15} />
-                    </button>
-                  ) : (
-                    <span />
-                  )}
-                </div>
-              ))}
-            </div>
-            {shareError && <p className="mt-1 text-[11.5px] font-semibold text-red">{shareError}</p>}
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div>
-              <label className="field-label mb-1 block">Smoker?</label>
-              <YesNoToggle value={isSmoker} onChange={setIsSmoker} />
-            </div>
-            <div>
-              <label className="field-label mb-1 block">Any Critical Illness?</label>
-              <YesNoToggle value={hasCriticalIllness} onChange={setHasCriticalIllness} />
-              {hasCriticalIllness && (
-                <textarea
-                  required
-                  placeholder="Describe the critical illness"
-                  className="input mt-1.5 h-14 resize-none"
-                  value={criticalIllnessDetails}
-                  onChange={(e) => setCriticalIllnessDetails(e.target.value)}
-                />
-              )}
-            </div>
-            <div>
-              <label className="field-label mb-1 block">Existing Term Cover Elsewhere?</label>
-              <YesNoToggle value={hasExistingTermCover} onChange={setHasExistingTermCover} />
-              {hasExistingTermCover && (
-                <input
-                  required
-                  placeholder="Cover Amount"
-                  className="input mt-1.5"
-                  value={existingTermCoverAmount}
-                  onChange={(e) => setExistingTermCoverAmount(e.target.value)}
-                />
-              )}
-            </div>
-          </div>
-
-          <label className="flex items-start gap-2 text-[12px] text-ink">
-            <input required type="checkbox" className="mt-0.5 h-3.5 w-3.5 accent-rust" checked={declared} onChange={(e) => setDeclared(e.target.checked)} />
-            I declare that the information provided above is true and correct to the best of my knowledge.
-          </label>
-
-          <button type="submit" disabled={!declared || submitting} className="btn-primary">
-            {submitting ? 'Submitting…' : myTermPolicy ? 'Update Submission' : 'Submit'}
-          </button>
-        </form>
+            <button type="submit" className="btn btn-primary" disabled={busy || !empIdInput}><Search size={13} /> Fetch</button>
+          </form>
+        ) : !profile?.empId ? (
+          <p className="text-[12.5px] text-inkSoft">Your employee number could not be found from your company mail id. Please contact the HR department.</p>
+        ) : null}
       </div>
+
+      {busy && !employee && <Spinner />}
+
+      {employee && (
+        <>
+          <div className="glass-card mb-3 grid grid-cols-2 gap-3 p-4 sm:grid-cols-4">
+            <Detail label="Employee ID" value={employee.empId} />
+            <Detail label="Name" value={`${employee.firstName} ${employee.lastName}`} />
+            <Detail label="Designation" value={employee.designation} />
+            <Detail label="Org Unit" value={employee.orgUnit} />
+            <Detail label="Location" value={employee.locationText} />
+            <Detail label="Age (as at 1 Aug)" value={employee.age} />
+            <Detail label="Gender" value={employee.gender} />
+            <Detail label="Insurance limit" value={employee.limitText} />
+          </div>
+
+          <form onSubmit={submit} className="glass-card space-y-4 p-4">
+            {existing && (
+              <div className="rounded-xl bg-blueBg px-3 py-2 text-[12px] font-semibold text-blue">
+                Request {existing.reqno} filed on {existing.requestDate} by {existing.createdBy}. You can change it below.
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div>
+                <label className="field-label">Sum Assured</label>
+                <select className={`select mt-1 ${invalid('sumAssured')}`} value={sumAssured} onChange={(e) => setSumAssured(e.target.value)}>
+                  <option value="">Select…</option>
+                  {options.map((o) => <option key={o.text} value={o.text}>{o.text}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="field-label">Mobile</label>
+                <input className={`input mt-1 ${invalid('contact')}`} inputMode="numeric" maxLength={10} value={contact} onChange={(e) => setContact(e.target.value.replace(/\D/g, ''))} placeholder="10 digits" />
+              </div>
+              <div>
+                <label className="field-label">Personal Mail{employee.email ? ' (optional)' : ''}</label>
+                <input className={`input mt-1 ${invalid('personalEmail')}`} type="email" value={personalEmail} onChange={(e) => setPersonalEmail(e.target.value)} placeholder={employee.email || 'name@example.com'} />
+              </div>
+            </div>
+
+            {slab && (
+              <div className="grid grid-cols-3 gap-3 rounded-xl bg-glassRust p-3">
+                <Detail label="Base premium" value={inr(slab.premium)} />
+                <Detail label="GST" value={inr(slab.gst)} />
+                <Detail label="Total premium" value={inr(slab.total)} />
+              </div>
+            )}
+
+            <div>
+              <div className="mb-1.5 flex items-center justify-between">
+                <label className="field-label">Nominees</label>
+                <span className={`text-[11.5px] font-bold ${total === 100 ? 'text-green' : 'text-amber'}`}>Share total: {total}% / 100%</span>
+              </div>
+              <div className="space-y-1.5">
+                {nominees.map((n, i) => (
+                  <div key={i} className={`grid grid-cols-[1fr_120px_72px] gap-1.5 ${fieldError?.field === 'nominees' ? 'rounded-lg ring-1 ring-red/30' : ''}`}>
+                    <input className="input" placeholder={`Nominee ${i + 1} name`} value={n.name} onChange={(e) => setNominee(i, { name: e.target.value })} />
+                    <select className="select" value={n.relation} onChange={(e) => setNominee(i, { relation: e.target.value as Nominee['relation'] })}>
+                      <option value="">Relation</option>
+                      {RELATIONS.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}
+                    </select>
+                    <input className="input" inputMode="numeric" maxLength={3} placeholder="%" value={n.share} onChange={(e) => setNominee(i, { share: e.target.value.replace(/\D/g, '') })} />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="submit" className="btn btn-primary" disabled={busy || options.length === 0}>{existing ? 'Save changes' : 'Submit'}</button>
+              {existing && isAdmin && (
+                <button type="button" className="btn btn-danger" onClick={remove} disabled={busy}><Trash2 size={13} /> Delete request</button>
+              )}
+            </div>
+          </form>
+        </>
+      )}
     </div>
   );
 }
