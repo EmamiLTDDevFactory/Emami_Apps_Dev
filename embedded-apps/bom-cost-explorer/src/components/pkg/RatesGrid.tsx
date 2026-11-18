@@ -14,7 +14,7 @@ import type { PkgGroup } from '@/lib/pkg/types';
 export const VIRTUAL_ABOVE = 300;
 const th = 'sticky top-0 z-20 whitespace-nowrap border-b border-line bg-panel px-2 py-1.5 text-left text-xs font-bold';
 const td = 'whitespace-nowrap px-2 py-1.5 text-xs';
-const COLS = 13;
+const COLS = 15;
 
 export interface GridProps {
   groups: PkgGroup[]; loading: boolean; cell: Omit<CellApi, 'order' | 'editKey' | 'setEditKey'>;
@@ -26,8 +26,8 @@ export default function RatesGrid({ groups, loading, cell, editKey, setEditKey, 
   const scroller = useRef<HTMLDivElement>(null);
   const virtual = groups.length > VIRTUAL_ABOVE;
   const virt = useVirtualizer({ count: virtual ? groups.length : 0, getScrollElement: () => scroller.current, estimateSize: () => 38, overscan: 8 });
-  // Tab order of the editable cells, in screen order: basic rate, then the % and ZBUD % of every open material.
-  const order = useMemo(() => groups.flatMap((g) => [`${g.head.Matnr}|R`, ...(expanded.has(g.head.Matnr) ? g.comps.flatMap((c) => [`${g.head.Matnr}|${c.Idnrk}|P`, `${g.head.Matnr}|${c.Idnrk}|Z`]) : [])]), [groups, expanded]);
+  // Tab order of the editable cells, in screen order: basic rate, then the ZBUD % of every open material.
+  const order = useMemo(() => groups.flatMap((g) => [`${g.head.Matnr}|R`, ...(expanded.has(g.head.Matnr) ? g.comps.map((c) => `${g.head.Matnr}|${c.Idnrk}|Z`) : [])]), [groups, expanded]);
   const api: CellApi = { ...cell, editKey, setEditKey, order };
 
   const vItems = virtual ? virt.getVirtualItems() : groups.map((_, index) => ({ index, start: 0, end: 0 }));
@@ -45,7 +45,7 @@ export default function RatesGrid({ groups, loading, cell, editKey, setEditKey, 
             <th className={cx(th, 'left-[68px]')}>Material</th>
             <th className={th}>Description</th><th className={th}>Type / Grp</th><th className={th}>Src</th>
             <th className={cx(th, 'text-right')}>Basic (SAP)</th><th className={cx(th, 'text-right')}>Basic (used)</th><th className={cx(th, 'text-right')}>Budgeted</th>
-            <th className={cx(th, 'text-right')}>Variance</th><th className={cx(th, 'text-right')}>Var %</th><th className={th}>Cur / per / UoM</th><th className={th}>Flags</th>
+            <th className={cx(th, 'text-right')}>Variance</th><th className={cx(th, 'text-right')}>Var %</th><th className={cx(th, 'text-right')}>Freight / unit</th><th className={cx(th, 'text-right')}>Landed</th><th className={th}>Cur / per / UoM</th><th className={th}>Flags</th>
           </tr>
         </thead>
         {loading && !groups.length && <SkeletonRows cols={COLS} />}
@@ -73,6 +73,8 @@ export default function RatesGrid({ groups, loading, cell, editKey, setEditKey, 
                 <td className={cx(td, 'text-right font-bold tabular-nums')}>{bl ? '-' : fmtRate4(h.BudgetRate)}</td>
                 <td className={cx(td, 'text-right tabular-nums', !bl && (h.Variance > 0 ? 'text-bad' : h.Variance < 0 ? 'text-good' : ''))}>{bl ? '-' : fmtRate4(h.Variance)}</td>
                 <td className={cx(td, 'text-right tabular-nums', !bl && (h.VariancePct > 0 ? 'text-bad' : h.VariancePct < 0 ? 'text-good' : ''))}>{bl ? '-' : fmtVar2(h.VariancePct)}</td>
+                <td className={cx(td, 'text-right tabular-nums')} title={[h.FrtCond1 && `${h.FrtCond1} ${fmtRate4(h.FrtRate1)}`, h.FrtCond2 && `${h.FrtCond2} ${fmtRate4(h.FrtRate2)}`, h.FrtCond3 && `${h.FrtCond3} ${fmtRate4(h.FrtRate3)}`, h.FrtCond4 && `${h.FrtCond4} ${fmtRate4(h.FrtRate4)}`].filter(Boolean).join(' · ') || 'No freight rate'}>{h.FrtTotal ? fmtRate4(h.FrtTotal) : '-'}</td>
+                <td className={cx(td, 'text-right tabular-nums')} title={`Budgeted in ${h.GroupCurr || 'INR'} + freight, per ${h.Peinh}`}>{bl || !h.LandedRate ? '-' : fmtRate4(h.LandedRate)}</td>
                 <td className={cx(td, 'text-muted')}>{h.Waers} / {h.Peinh} / {h.Meins}</td>
                 <td className={td}><FlagChips flags={h.MsgFlags} matnr={h.Matnr} descr={h.Maktx} /></td>
               </tr>

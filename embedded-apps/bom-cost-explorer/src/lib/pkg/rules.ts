@@ -56,12 +56,13 @@ export const SRC_META: Record<string, string> = {
   CONTRACT: 'bg-green-500/15 text-green-700', INFOREC: 'bg-yellow-500/20 text-yellow-700', MARKT: 'bg-cyan-500/15 text-cyan-700',
   CONSUMP: 'bg-orange-500/15 text-orange-700', MBEW: 'bg-red-500/15 text-red-700',
 };
-export const PRIO_DEFAULT = ['CONTRACT', 'INFOREC', 'CONSUMP', 'MBEW'];
-export const PRIO_ALL = ['CONTRACT', 'INFOREC', 'MARKT', 'CONSUMP', 'MBEW'];
+// Packing material rate sources (spec): info record, then consumption, then MBEW. CONTRACT / MARKT are not used for PKGN / VERP.
+export const PRIO_DEFAULT = ['INFOREC', 'CONSUMP', 'MBEW'];
+export const PRIO_ALL = ['INFOREC', 'CONSUMP', 'MBEW'];
 
 // ---- flags -----------------------------------------------------------------------------------------------------------
 export const BLOCKING = ['NOBOM', 'PCT100', 'NORATE'] as const;
-export const WARNING = ['NOZBUD', 'DUP'] as const;
+export const WARNING = ['NOZBUD', 'DUP', 'NOFRT'] as const;
 export const parseFlags = (s: string) => Array.from(new Set(String(s ?? '').split(/[\s,;|]+/).map((x) => x.trim().toUpperCase()).filter(Boolean)));
 export const isBlockingFlag = (f: string) => (BLOCKING as readonly string[]).includes(f);
 export const blocked = (h: Pick<PkgItem, 'MsgFlags'>) => parseFlags(h.MsgFlags).some(isBlockingFlag);
@@ -76,6 +77,7 @@ export function flagHint(flag: string, g: PkgGroup): string {
     case 'NORATE': return 'No valid ZBAS rate on key date';
     case 'NOZBUD': return 'No ZBUD condition, 0 % used';
     case 'DUP': return 'Overlapping ZBUD records';
+    case 'NOFRT': return 'No freight rate found for material + plant';
     default: return '';
   }
 }
@@ -129,7 +131,9 @@ export const finaliseTarget = (werks: string) => (werks === 'HO00' || !werks ? '
 // ---- edits ------------------------------------------------------------------------------------------------------------
 export type RuleKey = 'set' | 'inc' | 'dec' | 'add' | 'sub';
 export const RULE_LABEL: Record<RuleKey, string> = { set: 'Set to', inc: 'Increase by %', dec: 'Decrease by %', add: 'Add amount', sub: 'Subtract amount' };
+// BOM % (P) can never be overridden (spec): only the basic rate and the ZBUD factor are editable.
 export const LEVEL_LABEL: Record<EditLevel, string> = { R: 'Basic rate', Z: 'ZBUD %', P: 'BOM component %' };
+export const EDIT_LEVELS: EditLevel[] = ['R', 'Z'];
 export const LEVEL_NAME: Record<string, string> = { R: 'Basic rate', Z: 'ZBUD', P: 'BOM %' };
 export const RULE_NAME: Record<string, string> = { S: 'Set', P: 'Percent', A: 'Absolute', V: 'Revert to SAP' };
 
@@ -167,11 +171,12 @@ export function resolveScope(kind: ScopeKind, c: ScopeCtx): Pick<PkgActionBody, 
 
 // ---- new scenario -----------------------------------------------------------------------------------------------------
 export function newScenarioDefaults(from = ''): NewScenarioForm {
-  return { descr: '', validFrom: from, validTo: '', keyDate: '', budgetVersion: '', mtart: ['PKGN', 'VERP'], matkl: '', matnr: '', prio: [...PRIO_DEFAULT], norm: false };
+  return { werks: 'HO00', descr: '', validFrom: from, validTo: '', keyDate: '', budgetVersion: '', mtart: ['PKGN', 'VERP'], matkl: '', matnr: '', prio: [...PRIO_DEFAULT], norm: false };
 }
 export function validateNewScenario(f: NewScenarioForm): Partial<Record<keyof NewScenarioForm, string>> {
   const e: Partial<Record<keyof NewScenarioForm, string>> = {};
   if (!f.descr.trim()) e.descr = 'Enter a description';
+  if (f.werks.trim() && !/^[A-Za-z0-9]{4}$/.test(f.werks.trim())) e.werks = 'Plant is 4 characters';
   if (!f.validFrom) e.validFrom = 'Validity from is required';
   if (!f.validTo) e.validTo = 'Validity to is required';
   if (f.validFrom && f.validTo && f.validTo < f.validFrom) e.validTo = 'Validity to must not be before from';
@@ -183,7 +188,7 @@ export function validateNewScenario(f: NewScenarioForm): Partial<Record<keyof Ne
 const list = (s: string) => Array.from(new Set(s.split(/[\s,;]+/).map((x) => x.trim().toUpperCase()).filter(Boolean))).join(',');
 export function createBody(f: NewScenarioForm): PkgActionBody {
   return {
-    action: 'CREATE', descr: f.descr.trim(), validFrom: f.validFrom, validTo: f.validTo, keyDate: f.keyDate || f.validFrom,
+    action: 'CREATE', werks: f.werks.trim().toUpperCase() || 'HO00', descr: f.descr.trim(), validFrom: f.validFrom, validTo: f.validTo, keyDate: f.keyDate || f.validFrom,
     ...(f.budgetVersion.trim() ? { budgetVersion: Number(f.budgetVersion) } : {}),
     mtartSel: f.mtart.join(','), matklSel: list(f.matkl), matnrSel: list(f.matnr), prio: f.prio.join(','), norm: f.norm ? 'X' : '',
   };

@@ -22,6 +22,10 @@ const item = (r: Raw): PkgItem => ({
   BasicRateSap: num(r.BasicRateSap), BasicRateUsed: num(r.BasicRateUsed), BudgetRateSap: num(r.BudgetRateSap), BudgetRate: num(r.BudgetRate), Variance: num(r.Variance), VariancePct: num(r.VariancePct),
   Waers: str(r.Waers), Peinh: num(r.Peinh), Meins: str(r.Meins), MsgFlags: str(r.MsgFlags),
   PctSap: num(r.PctSap), PctUsed: num(r.PctUsed), ZbudSap: num(r.ZbudSap), ZbudUsed: num(r.ZbudUsed), CompBaseRate: num(r.CompBaseRate), CompBudRate: num(r.CompBudRate),
+  OriginGrp: str(r.OriginGrp), ZbudMatnr: str(r.ZbudMatnr).trim(), AltBomUsed: str(r.AltBomUsed), GroupCurr: str(r.GroupCurr), GroupValue: num(r.GroupValue),
+  FrtCond1: str(r.FrtCond1), FrtCond2: str(r.FrtCond2), FrtCond3: str(r.FrtCond3), FrtCond4: str(r.FrtCond4),
+  FrtRate1: num(r.FrtRate1), FrtRate2: num(r.FrtRate2), FrtRate3: num(r.FrtRate3), FrtRate4: num(r.FrtRate4),
+  FrtTotal: num(r.FrtTotal), FrtCurr: str(r.FrtCurr), LandedRate: num(r.LandedRate), LandedCurr: str(r.LandedCurr),
 });
 const ovr = (r: Raw): PkgOvr => ({
   ScenId: str(r.ScenId), OvrDate: isoDate(r.OvrDate), OvrTime: timeText(r.OvrTime), OvrUser: str(r.OvrUser), Level: str(r.OvrLevel), Matnr: str(r.Matnr), Matkl: str(r.Matkl),
@@ -42,6 +46,7 @@ export function actionPayload(a: PkgActionBody, email: string) {
   return {
     Action: a.action, ScenId: a.scenId ? padScen(a.scenId) : '', Email: email.trim().toLowerCase(),
     Descr: a.descr ?? '', ValidFrom: dt(a.validFrom), ValidTo: dt(a.validTo), KeyDate: dt(a.keyDate),
+    Werks: (a.werks ?? '').trim().toUpperCase(),
     BudgetVersion: a.budgetVersion === undefined || a.budgetVersion === '' ? '' : String(a.budgetVersion),
     MtartSel: a.mtartSel ?? '', MatklSel: a.matklSel ?? '', MatnrSel: a.matnrSel ?? '', Prio: a.prio ?? '', Norm: a.norm ?? '',
     OvrLevel: a.level ?? '', OvrRule: a.rule ?? '', NewValue: a.value ?? '0', ScopeMatnr: a.scopeMatnr ?? '', ScopeMatkl: a.scopeMatkl ?? '', ScopeIdnrk: a.scopeIdnrk ?? '',

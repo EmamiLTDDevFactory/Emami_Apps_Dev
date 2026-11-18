@@ -9,6 +9,8 @@ import type { PkgItem } from '@/lib/pkg/types';
 const base: PkgItem = {
   ScenId: '0000000014', Matnr: 'M1', Idnrk: '', Maktx: 'Mat', Mtart: 'PKGN', Matkl: 'PK01', RateSrc: 'CONTRACT', BasicRateSap: 10, BasicRateUsed: 10, BudgetRateSap: 11, BudgetRate: 11, Variance: 1, VariancePct: 10,
   Waers: 'INR', Peinh: 1, Meins: 'KG', MsgFlags: '', PctSap: 0, PctUsed: 0, ZbudSap: 0, ZbudUsed: 0, CompBaseRate: 0, CompBudRate: 0,
+  OriginGrp: '', ZbudMatnr: '', AltBomUsed: '', GroupCurr: 'INR', GroupValue: 0, FrtCond1: '', FrtCond2: '', FrtCond3: '', FrtCond4: '', FrtRate1: 0, FrtRate2: 0, FrtRate3: 0, FrtRate4: 0,
+  FrtTotal: 0, FrtCurr: 'INR', LandedRate: 0, LandedCurr: 'INR',
 };
 const head = (o: Partial<PkgItem> = {}): PkgItem => ({ ...base, ...o });
 const comp = (o: Partial<PkgItem> = {}): PkgItem => ({ ...base, Idnrk: 'C1', PctSap: 60, PctUsed: 60, ...o });
@@ -105,7 +107,7 @@ describe('new scenario', () => {
     expect(validateNewScenario({ ...ok, validFrom: '' }).validFrom).toBeTruthy();
   });
   it('body defaults the key date to the start and lists selections', () => {
-    expect(createBody({ ...ok, matkl: 'pk01, pk02', norm: true })).toMatchObject({ action: 'CREATE', keyDate: '2027-04-01', mtartSel: 'PKGN,VERP', matklSel: 'PK01,PK02', prio: 'CONTRACT,INFOREC,CONSUMP,MBEW', norm: 'X' });
+    expect(createBody({ ...ok, matkl: 'pk01, pk02', norm: true })).toMatchObject({ action: 'CREATE', keyDate: '2027-04-01', mtartSel: 'PKGN,VERP', matklSel: 'PK01,PK02', prio: 'INFOREC,CONSUMP,MBEW', norm: 'X' });
   });
 });
 
@@ -117,6 +119,8 @@ describe('dates and payload', () => {
   it('action payload pads the scenario, lower-cases the email, sends datetimes', () => {
     const p = actionPayload({ action: 'CREATE', scenId: '14', validFrom: '2027-04-01' }, ' A@B.com ');
     expect(p).toMatchObject({ Action: 'CREATE', ScenId: '0000000014', Email: 'a@b.com', ValidFrom: '2027-04-01T00:00:00' });
+    expect(actionPayload({ action: 'CREATE', werks: ' un08 ' }, 'a@b.com').Werks).toBe('UN08');
+    expect(actionPayload({ action: 'CREATE' }, 'a@b.com').Werks).toBe('');
   });
   it('edit fields use the SAP names OvrLevel / OvrRule / NewValue', () => {
     const p = actionPayload({ action: 'EDIT', scenId: '14', level: 'Z', rule: 'P', value: '-10', scopeMatnr: 'A' }, 'a@b.com') as Record<string, unknown>;

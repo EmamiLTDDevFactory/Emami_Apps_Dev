@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { Spinner, Button, cx, inputCls } from '../ui';
-import { LEVEL_LABEL, RULE_LABEL, parseValue, resolveScope, ruleToApi, validateValue, type RuleKey, type ScopeCtx, type ScopeKind } from '@/lib/pkg/rules';
+import { EDIT_LEVELS, LEVEL_LABEL, RULE_LABEL, parseValue, resolveScope, ruleToApi, validateValue, type RuleKey, type ScopeCtx, type ScopeKind } from '@/lib/pkg/rules';
 import type { EditLevel, PkgActionBody } from '@/lib/pkg/types';
 
 /** Mass edit (amber, only for status D / C; grey and disabled otherwise). Apply -> EDIT, then the screen recalculates. */
@@ -31,7 +31,7 @@ export default function GlobalEditBar({ editable, busy, pending, scope, matkls, 
     <div className={cx('flex flex-col gap-2 rounded-2xl border px-3 py-2', editable ? 'border-warn/40 bg-warn/10' : 'border-line bg-sunken/50')} aria-label="Global edit">
       <div className="flex flex-wrap items-end gap-x-3 gap-y-2 text-xs font-semibold">
         <label className="flex flex-col gap-0.5">Change
-          <select className={sel} disabled={off} value={level} onChange={(e) => setLevel(e.target.value as EditLevel)}>{(Object.keys(LEVEL_LABEL) as EditLevel[]).map((l) => <option key={l} value={l}>{LEVEL_LABEL[l]}</option>)}</select>
+          <select className={sel} disabled={off} value={level} onChange={(e) => setLevel(e.target.value as EditLevel)}>{EDIT_LEVELS.map((l) => <option key={l} value={l}>{LEVEL_LABEL[l]}</option>)}</select>
         </label>
         <label className="flex flex-col gap-0.5">Rule
           <select className={sel} disabled={off} value={rule} onChange={(e) => setRule(e.target.value as RuleKey)}>{(Object.keys(RULE_LABEL) as RuleKey[]).map((r) => <option key={r} value={r}>{RULE_LABEL[r]}</option>)}</select>
