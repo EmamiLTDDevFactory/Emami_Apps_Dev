@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, ArrowLeft, Calendar, ClipboardList, Database, LogOut as OutIcon, Menu, PlusSquare, User, X, type LucideIcon } from 'lucide-react';
 import { BASE_PATH, SAP_SERVICE, SAP_SYSTEM } from '@/lib/config';
+import { isPhoneOrTablet } from '@/lib/device';
 import { getHubEmail, hasHubSession, nameFromEmail } from '@/lib/hub';
 import { useScreenHistory } from '@/lib/useScreenHistory';
 import { searchAsn } from '@/lib/gate';
@@ -18,7 +19,7 @@ const NAV: { id: View; label: string; hint: string; icon: LucideIcon }[] = [
 ];
 
 export default function App() {
-  const [state, setState] = useState<'checking' | 'ready' | 'nohub'>('checking');
+  const [state, setState] = useState<'checking' | 'ready' | 'nohub' | 'device'>('checking');
   const [email, setEmail] = useState('');
   const [view, setView] = useState<View>('new');
   const [menu, setMenu] = useState(false);
@@ -43,6 +44,7 @@ export default function App() {
 
   useEffect(() => {
     setToday(new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }));
+    if (isPhoneOrTablet()) return setState('device');
     if (!hasHubSession()) return setState('nohub');
     setEmail(getHubEmail());
     setState('ready');
@@ -55,6 +57,17 @@ export default function App() {
   };
 
   if (state === 'checking') return <div className="grid h-screen place-items-center bg-bg"><div className="h-9 w-9 animate-spin rounded-full border-[3px] border-accent border-t-transparent" /></div>;
+  if (state === 'device') {
+    return (
+      <div className="grid min-h-screen place-items-center bg-bg p-6">
+        <div className="max-w-sm text-center">
+          <AlertTriangle className="mx-auto h-10 w-10 text-amber-500" />
+          <h1 className="mt-4 text-lg font-bold text-ink">Gate Entry is not available on phones or tablets</h1>
+          <p className="mt-2 text-sm text-muted">Please open Emami Apps on a desktop or laptop computer to use Gate Entry.</p>
+        </div>
+      </div>
+    );
+  }
   if (state === 'nohub') {
     return (
       <div className="flex min-h-screen flex-col bg-bg">
