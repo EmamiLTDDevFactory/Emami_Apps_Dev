@@ -4,6 +4,7 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'Gate Entry',
   description: 'Inward truck gate entry against PO or ASN on SAP',
+  icons: { icon: '/apps/gate-entry/favicon.png' },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
