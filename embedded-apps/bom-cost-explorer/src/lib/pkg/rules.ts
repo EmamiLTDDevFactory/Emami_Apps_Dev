@@ -105,6 +105,31 @@ export function kpis(groups: PkgGroup[]): Kpis {
   return { materials: groups.length, blocked: groups.length - ok.length, warnings: groups.filter((g) => warned(g.head)).length, avgVarPct: avg, overridden: groups.filter(groupOverridden).length };
 }
 
+/** Which dashboard tile is active: it filters the material list (all = no tile filter). */
+export type KpiFilter = 'all' | 'blocked' | 'warnings' | 'overridden';
+export const matchKpi = (g: PkgGroup, f: KpiFilter) =>
+  f === 'all' || (f === 'blocked' && blocked(g.head)) || (f === 'warnings' && warned(g.head)) || (f === 'overridden' && groupOverridden(g));
+
+/** Origin group value of a material ('' = none) and the filter key used for "no origin group". */
+export const NO_ORIGIN = '__none';
+export const originKey = (g: PkgGroup) => g.head.OriginGrp || NO_ORIGIN;
+
+export interface OriginSummary { key: string; zbud: string; n: number; blocked: number; netQty: number; netValue: number; avgVarPct: number | null }
+/** One summary per origin group (sorted, "no origin group" last): count, blocked, net qty / value, average variance % of the unblocked rows. */
+export function originSummary(groups: PkgGroup[]): OriginSummary[] {
+  const by = new Map<string, PkgGroup[]>();
+  for (const g of groups) { const k = originKey(g); by.set(k, [...(by.get(k) ?? []), g]); }
+  return Array.from(by.entries()).sort(([a], [b]) => (a === NO_ORIGIN ? 1 : b === NO_ORIGIN ? -1 : a.localeCompare(b))).map(([key, gs]) => {
+    const ok = gs.filter((g) => !blocked(g.head));
+    return {
+      key, zbud: gs.find((g) => g.head.ZbudMatnr)?.head.ZbudMatnr ?? '', n: gs.length, blocked: gs.length - ok.length,
+      netQty: gs.reduce((s, g) => s.plus(String(g.head.NetQty)), new Decimal(0)).toNumber(),
+      netValue: gs.reduce((s, g) => s.plus(String(g.head.NetValue)), new Decimal(0)).toNumber(),
+      avgVarPct: ok.length ? ok.reduce((s, g) => s.plus(String(g.head.VariancePct)), new Decimal(0)).div(ok.length).toNumber() : null,
+    };
+  });
+}
+
 export interface CompareRow {
   Matnr: string; Maktx: string; basicThis: number; budThis: number; varThis: number;
   basicOther: number | null; budOther: number | null; varOther: number | null; delta: number | null;

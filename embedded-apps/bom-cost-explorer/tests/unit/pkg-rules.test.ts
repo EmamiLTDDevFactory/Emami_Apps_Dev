@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   blocked, canDelete, canEdit, canFinalise, canRecalc, canReopen, canSubmit, changed, compareRows, createBody, finaliseCounts, flagHint, groupItems, isoDate, kpis,
-  newScenarioDefaults, resolveScope, ruleToApi, showDate, timeText, validateNewScenario, validateValue, warned,
+  matchKpi, newScenarioDefaults, originSummary, NO_ORIGIN, resolveScope, ruleToApi, showDate, timeText, validateNewScenario, validateValue, warned,
 } from '@/lib/pkg/rules';
 import { actionPayload } from '@/lib/pkg/api';
 import type { PkgItem } from '@/lib/pkg/types';
@@ -132,5 +132,26 @@ describe('dates and payload', () => {
   it('BudgetVersion is always a string (SAP Edm.String): blank = next free', () => {
     expect(actionPayload({ action: 'CREATE' }, 'a@b.com').BudgetVersion).toBe('');
     expect(actionPayload({ action: 'COPY', scenId: '14', budgetVersion: 3 }, 'a@b.com').BudgetVersion).toBe('3');
+  });
+});
+
+describe('dashboard tile filter and origin group summary', () => {
+  const gs = groupItems([
+    head({ Matnr: 'A', OriginGrp: 'CAP', ZbudMatnr: '850001404', NetQty: 10, NetValue: 100, VariancePct: 2 }),
+    head({ Matnr: 'B', OriginGrp: 'CAP', MsgFlags: 'NORATE', NetQty: 5, NetValue: 50, VariancePct: 99 }),
+    head({ Matnr: 'C', OriginGrp: '', MsgFlags: 'NOFRT', NetQty: 1, NetValue: 7, VariancePct: 4 }),
+    head({ Matnr: 'D', OriginGrp: 'BOX', BasicRateUsed: 12, VariancePct: 6 }),
+  ]);
+  it('each tile keeps exactly its own materials', () => {
+    const pick = (f: Parameters<typeof matchKpi>[1]) => gs.filter((g) => matchKpi(g, f)).map((g) => g.head.Matnr);
+    expect(pick('all')).toEqual(['A', 'B', 'C', 'D']);
+    expect(pick('blocked')).toEqual(['B']);
+    expect(pick('warnings')).toEqual(['C']);
+    expect(pick('overridden')).toEqual(['D']);
+  });
+  it('origin summary: sorted, no-origin last, totals, blocked rows left out of the average', () => {
+    const s = originSummary(gs);
+    expect(s.map((x) => x.key)).toEqual(['BOX', 'CAP', NO_ORIGIN]);
+    expect(s[1]).toMatchObject({ zbud: '850001404', n: 2, blocked: 1, netQty: 15, netValue: 150, avgVarPct: 2 });
   });
 });
