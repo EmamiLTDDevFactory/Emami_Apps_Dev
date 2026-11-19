@@ -91,6 +91,8 @@ apiRouter.use('/me/mm-mdm', require('./mmMdm'));
 apiRouter.use('/me/mm-mdm-ph', require('./mmMdmPh'));
 // Auditee Response (replaces WD ZAUDIT_TOOL) -> SAP ZIT_MSD_TOOL_INTERNAL_AUDIT_SRV (server side). Rides /api/me; see auditeeResponse.js.
 apiRouter.use('/me/auditee', require('./auditeeResponse'));
+// SmarTruck TMS (rebuild of Instavans SmarTruck Shipper) -> own rules in tmsEngine.js, SAP ZTMS_SRV in tmsSap.js. Rides /api/me; see tms.js.
+apiRouter.use('/me/smartruck-tms', require('./tms'));
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /** First and last name from a request body — both required, trimmed, single-spaced, max 60 chars. */
