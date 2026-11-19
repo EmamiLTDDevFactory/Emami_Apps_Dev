@@ -102,25 +102,29 @@ test('attachments and comments: OData rows become screen items, dates as ISO', (
         { commentId: 'C1', text: 't', user: 'U', createdAt: '2026-10-29T00:00:00.000Z', level: 'L2' });
 });
 
-test('upload: the file goes to the media resource of the request with the Slug header; the client never supplies uploader, time or level', async () => {
+test('upload: the file goes as base64 text of AttachmentFileSet (the proxy drops raw bodies); the client never supplies uploader, time or level', async () => {
     process.env.MM_SAP_ODATA_BASE = 'https://gw.example/api/NGQ/ZMM_MDM_SRV';
     const calls = [];
     const realFetch = global.fetch;
     global.fetch = async (url, init = {}) => {
         calls.push({ url: String(url), method: init.method || 'GET', headers: init.headers || {}, body: init.body });
         if (String(url).includes('RequestSet?')) return new Response(JSON.stringify({ d: { results: [{ TransId: '0000000001', AppId: 'MC' }] } }), { status: 200 });
-        if (String(url).endsWith('/Attachments')) return new Response(JSON.stringify({ d: { AttachId: 'A1', FileName: 'My file.pdf', Size: 3 } }), { status: 201 });
+        if (String(url).endsWith('/AttachmentFileSet') && init.method === 'POST') return new Response(JSON.stringify({ d: { TransId: '0000000001', AttachId: 'A1', FileName: 'My file.pdf' } }), { status: 201 });
+        if (String(url).includes('AttachmentSet?')) return new Response(JSON.stringify({ d: { results: [{ TransId: '0000000001', AttachId: 'A1', FileName: 'My file.pdf', MimeType: 'application/pdf', Size: '3' }] } }), { status: 200 });
+        if (String(url).includes('AttachmentFileSet?')) return new Response(JSON.stringify({ d: { results: [{ AttachId: 'A1', Content: Buffer.from('abc').toString('base64'), MimeType: 'application/pdf' }] } }), { status: 200 });
         return new Response('{}', { status: 200, headers: { 'x-csrf-token': 't' } });
     };
     try {
         const out = await router._test.service.addAttachment({ user: 'a@b.c' }, '0000000001', Buffer.from('abc'), 'My file.pdf', 'application/pdf');
         assert.equal(out.attachId, 'A1');
-        const post = calls.find((c) => c.method === 'POST' && c.url.endsWith('/Attachments'));
-        assert.ok(decodeURIComponent(post.url).includes("RequestSet(TransId='0000000001',AppId='MC')/Attachments"));
-        assert.equal(post.headers.Slug, encodeURIComponent('My file.pdf'));
-        assert.equal(post.headers['Content-Type'], 'application/pdf');
-        assert.equal(Buffer.from(post.body).toString(), 'abc');
+        assert.equal(out.fileName, 'My file.pdf');
+        const post = calls.find((c) => c.method === 'POST' && c.url.endsWith('/AttachmentFileSet'));
+        assert.ok(post, 'the file is posted to AttachmentFileSet');
+        assert.deepEqual(JSON.parse(post.body), { TransId: '0000000001', FileName: 'My file.pdf', MimeType: 'application/pdf', Content: Buffer.from('abc').toString('base64') });
         assert.equal(JSON.stringify(post.headers).includes('UploadedBy'), false);
+        const back = await router._test.service.readAttachment({ user: 'a@b.c' }, '0000000001', 'A1');
+        assert.equal(Buffer.from(back.bytes).toString(), 'abc');
+        assert.equal(back.mimeType, 'application/pdf');
         await assert.rejects(router._test.service.addAttachment({ user: 'a@b.c' }, '0000000001', Buffer.from('abc'), 'run.exe', 'x'), (e) => e.status === 415);
     } finally { global.fetch = realFetch; delete process.env.MM_SAP_ODATA_BASE; }
 });
@@ -156,7 +160,7 @@ test('sequential writes (gateway without $batch): MERGE goes as PUT, a row remov
     global.fetch = async (url, init = {}) => { calls.push(`${init.method || 'GET'} ${String(url).replace('https://gw.example/api/NGD/ZMM_MDM_SRV_SRV/', '')}`); return new Response('{"d":{"results":[]}}', { status: 200, headers: { 'content-type': 'application/json' } }); };
     try {
         await sap.runWrites({ user: 'a@b.c' }, [{ method: 'MERGE', path: "MaterialSet(TransId='1')", body: { Mtart: 'FERT' } }, { method: 'POST', path: 'UnitOfMeasureSet', body: {} }, { method: 'POST', path: "Submit?TransId='1'" }]);
-        assert.deepEqual(calls.filter((c) => !c.endsWith('/')), ["PUT MaterialSet(TransId='1')", 'POST UnitOfMeasureSet', "POST Submit?TransId='1'"]);
+        assert.deepEqual(calls.filter((c) => !c.endsWith('/')), ["PUT MaterialSet(TransId='1')", 'POST UnitOfMeasureSet', "POST Submit%3FTransId%3D'1'"]);
         calls.length = 0;
         await assert.rejects(sap.runWrites({ user: 'a@b.c' }, [{ method: 'MERGE', path: 'X', body: {} }, { method: 'DELETE', path: "UnitOfMeasureSet(TransId='1',Meinh='PC')" }]), (e) => e.status === 501 && e.messages.length === 1);
         assert.equal(calls.filter((c) => c.startsWith('PUT')).length, 0); // nothing was written
@@ -168,4 +172,33 @@ test('an SAP error without a text still carries the transaction id for the SAP t
     assert.match(m.text, /HTTP 404 without a message \(SAP transaction ABC123, 20261103120015\.9\)/);
     assert.equal(m.messages.length, 1);
     assert.equal(m.messages[0].severity, 'E');
+});
+
+
+test('change and extension start: parameters go to the SAP function imports, posted materials are mapped', async () => {
+    const { service } = router._test;
+    const calls = [];
+    const real = { fn: sap.odata.fn, get: sap.odata.get };
+    sap.odata.get = async (c, url) => {
+        calls.push(['get', url]);
+        if (url.startsWith('PostedMaterialSet')) return { d: { results: [{ Matnr: '000000000100003660', Maktx: 'ZZ CLONE', Mtart: 'ROH', Matkl: '214', Meins: 'PC', Busy: 'X' }] } };
+        if (url.startsWith('ChangeScopeSet')) return { d: { results: [{ Kind: 'P', Werks: 'UN13', Lgort: 'CG13', WerksTxt: 'Plant' }, { Kind: 'S', Vkorg: '0000', Vtweg: '00' }] } };
+        return { d: { results: [{ TransId: '0000026700', AppId: 'MX', Status: '00' }] } };
+    };
+    sap.odata.fn = async (c, name, params) => { calls.push(['fn', name, params]); return { d: { [name]: { TransId: '0000026700', AppId: 'MX' } } }; };
+    try {
+        const found = await service.searchPosted({}, { text: "O'NEIL", materialType: 'ROH', top: '500' });
+        assert.equal(found[0].matnr, '100003660');
+        assert.equal(found[0].busy, true);
+        assert.match(calls[0][1], /PostedMaterialSet\?\$top=100&\$filter=Maktx%20eq%20'O''NEIL'%20and%20Mtart%20eq%20'ROH'/);
+        const sc = await service.scope({}, '100003660');
+        assert.deepEqual(sc.map((x) => x.kind), ['P', 'S']);
+        await service.startChange({}, { matnr: '100003660', plant: 'UN13', storageLocation: 'CG13', salesOrg: '0000', distributionChannel: '00' });
+        const fnCall = calls.find((x) => x[0] === 'fn' && x[1] === 'StartChange');
+        assert.deepEqual(fnCall[2], { Matnr: '100003660', Plant: 'UN13', StorageLocation: 'CG13', SalesOrg: '0000', DistributionChannel: '00' });
+        await service.startExtension({}, { matnr: '100003660', type: 'P', plant: 'UN13', storageLocation: 'ASH1' });
+        const ex = calls.find((x) => x[0] === 'fn' && x[1] === 'StartExtension');
+        assert.equal(ex[2].ExtType, 'P');
+        assert.equal(ex[2].StorageLocation, 'ASH1');
+    } finally { sap.odata.fn = real.fn; sap.odata.get = real.get; }
 });

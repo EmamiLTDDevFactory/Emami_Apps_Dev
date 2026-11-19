@@ -7,12 +7,13 @@ import { IconBox } from '../icons';
 
 export default function MaterialNav() {
   const path = usePathname();
-  const { waiting, user } = useMdm();
+  const { waiting } = useMdm();
   const tabs = [
     { href: '/master/material', label: 'Home', exact: true, count: waiting },
-    ...(user.level === null ? [{ href: '/master/material/new', label: 'New material request', exact: false, count: 0 }] : []),
+    { href: '/master/material/new', label: 'New material request', exact: false, count: 0 },
     { href: '/master/material/requests', label: 'Requests', exact: false, count: 0 },
-    { href: '/master/material/data', label: 'Material master data', exact: false, count: 0 },
+    // Change (MX) and extension (ME) start from a posted material
+    { href: '/master/material/data', label: 'Material master data', exact: false, count: 0, also: ['/master/material/change', '/master/material/extend'] },
   ];
   return (
     <div className="page-top">
@@ -25,7 +26,7 @@ export default function MaterialNav() {
       </div>
       <nav className="tabs page-tabs" aria-label="Material master">
         {tabs.map((t) => {
-          const active = t.exact ? path === t.href : path.startsWith(t.href);
+          const active = t.exact ? path === t.href : [t.href, ...(t.also ?? [])].some((p) => path.startsWith(p));
           return (
             <Link key={t.href} href={t.href} className={`tab ${active ? 'active' : ''}`} aria-current={active ? 'page' : undefined}>
               {t.label}

@@ -104,6 +104,7 @@ async function csrf(caller, force = false) {
     return s;
 }
 
+let preferPlainFn = false;
 const safeJson = (t) => { try { return JSON.parse(t); } catch { return { raw: t }; } };
 
 /** Maps an SAP Gateway error body to messages. One error with several details becomes several messages. */
@@ -125,7 +126,26 @@ function fail(status, json) {
     return new SapError(m.text, status === 401 || status === 403 ? status : status >= 500 ? 502 : status, m.messages);
 }
 
+/**
+ * The Azure proxy in front of the Gateway drops the query string of a POST: SAP then sees a function import without its parameters
+ * and answers 404 (/IWCOR/CX_DS_URI_NOT_MATCHING, empty text). Sent as an encoded path the proxy turns it back into a real query string.
+ * A direct Gateway URL takes the plain form, so whichever form is rejected falls back to the other (a 404 without text means the URI was
+ * refused before anything ran, so repeating it is safe).
+ */
 async function request(caller, method, path, body, retry = true) {
+    const q = path.indexOf('?');
+    if (method !== 'POST' || q < 0 || body !== undefined) return requestOnce(caller, method, path, body, retry);
+    const asPath = () => requestOnce(caller, method, `${path.slice(0, q)}%3F${encodeURIComponent(path.slice(q + 1))}`, body, retry);
+    const plain = () => requestOnce(caller, method, path, body, retry);
+    const uriRejected = (e) => e && e.status === 404 && /without a message/.test(String(e.message || ''));
+    return (preferPlainFn ? plain() : asPath()).catch((e) => {
+        if (!uriRejected(e)) throw e;
+        preferPlainFn = !preferPlainFn;
+        return preferPlainFn ? plain() : asPath();
+    });
+}
+
+async function requestOnce(caller, method, path, body, retry = true) {
     const write = method !== 'GET';
     const s = write ? await csrf(caller) : undefined;
     const headers = await headersFor(caller, { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(s ? { ...(s.token ? { 'x-csrf-token': s.token } : {}), ...(s.cookies ? { Cookie: s.cookies } : {}) } : {}) });
@@ -136,7 +156,7 @@ async function request(caller, method, path, body, retry = true) {
     if (res.status === 403 && write && retry && (res.headers.get('x-csrf-token') || '').toLowerCase() === 'required') {
         await res.arrayBuffer().catch(() => null);
         await csrf(caller, true);
-        return request(caller, method, path, body, false);
+        return requestOnce(caller, method, path, body, false);
     }
     const text = await res.text();
     const json = text ? safeJson(text) : {};
@@ -146,8 +166,12 @@ async function request(caller, method, path, body, retry = true) {
 
 /** Upload a file as the media resource of an entity set (AtomPub convention: body = the bytes, Slug = file name). Returns the created entry. */
 async function postStream(caller, path, bytes, { fileName, mimeType }, retry = true) {
+    // The proxy in front of the Gateway drops the Slug header, so the request number, file name and mime type also travel packed in the
+    // Content-Type (application/x-emami-att.<base64url of "<escaped slug>|<mime type>">), which SAP unpacks; Slug stays for a direct Gateway.
+    const mime = String(mimeType || 'application/octet-stream').split(';')[0].trim();
+    const packed = Buffer.from(`${encodeURIComponent(fileName)}|${mime}`, 'utf8').toString('base64url');
     const s = await csrf(caller);
-    const headers = await headersFor(caller, { 'Content-Type': mimeType || 'application/octet-stream', Slug: encodeURIComponent(fileName), 'x-csrf-token': s.token, ...(s.cookies ? { Cookie: s.cookies } : {}) });
+    const headers = await headersFor(caller, { 'Content-Type': `application/x-emami-att.${packed}`, Slug: encodeURIComponent(fileName), 'x-csrf-token': s.token, ...(s.cookies ? { Cookie: s.cookies } : {}) });
     let res;
     try {
         res = await fetch(`${baseUrl()}/${path}`, { method: 'POST', headers, body: bytes, cache: 'no-store' });

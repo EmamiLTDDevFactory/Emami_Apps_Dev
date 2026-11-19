@@ -1,45 +1,44 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { useMdm } from '@/lib/store';
-import { MdmRequest, StatusCode } from '@/lib/types';
-import { MATERIAL_TYPES } from '@/lib/valueHelps';
-import { STATUS } from '@/lib/workflowConfig';
-import { waitingFor } from '@/lib/service';
-import { RequestTable } from '../ui';
+import { useCallback, useEffect, useState } from 'react';
+import { RequestHeader, listRequests } from '@/lib/mmApi';
+import { useValueHelp } from '@/lib/mmValueHelp';
+import { STATUS, STATUS_CODES } from '@/lib/workflowConfig';
+import { StatusCode } from '@/lib/types';
+import { ErrorState, LoadingState, RequestTable } from '../ui';
 import { IconFilter, IconX } from '../icons';
 
-type Scope = 'all' | 'waiting' | 'mine';
+type Scope = '' | 'inbox' | 'mine';
 
-/** Search by scope, status, material type and text (replaces V_SEARCH) */
+/** Search by scope, status, material type and text, answered by SAP (GET /requests) */
 export default function RequestSearch() {
-  const { db, user } = useMdm();
-  const [scope, setScope] = useState<Scope>('all');
+  const [scope, setScope] = useState<Scope>('');
   const [status, setStatus] = useState<StatusCode | ''>('');
   const [type, setType] = useState('');
   const [q, setQ] = useState('');
+  const [text, setText] = useState('');
+  const [rows, setRows] = useState<RequestHeader[]>([]);
+  const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [error, setError] = useState('');
+  const types = useValueHelp('MTART');
 
-  // Everything except the status filter, so the chips can show counts per status
-  const base = useMemo(() => {
-    const waiting = new Set(waitingFor(db, user).map((r) => r.transId));
-    const s = q.trim().toLowerCase();
-    return db.requests
-      .filter((r) => scope === 'all' || (scope === 'waiting' ? waiting.has(r.transId) : user.level === null ? r.initiator === user.id : r.history.some((h) => h.by === user.name)))
-      .filter((r) => !type || r.data.materialType === type)
-      .filter((r) => !s || [r.transId, r.materialNumber, r.data.description].some((x) => x.toLowerCase().includes(s)))
-      .sort((a, b) => b.changedOn.localeCompare(a.changedOn));
-  }, [db, user, scope, type, q]);
+  // The text goes to SAP after a short pause; scope, status and type at once
+  useEffect(() => { const t = window.setTimeout(() => setText(q.trim()), 350); return () => window.clearTimeout(t); }, [q]);
 
-  const rows = status ? base.filter((r) => r.status === status) : base;
-  const count = (st: StatusCode) => base.filter((r: MdmRequest) => r.status === st).length;
-  const filtered = !!(q || type || status || scope !== 'all');
+  const load = useCallback(() => {
+    setState('loading');
+    listRequests({ scope, materialType: type, text })
+      .then((r) => { setRows(r); setError(''); setState('ready'); })
+      .catch((e: Error) => { setError(e.message); setState('error'); });
+  }, [scope, type, text]);
+  useEffect(() => { load(); }, [load]);
 
-  function clear() {
-    setQ('');
-    setType('');
-    setStatus('');
-    setScope('all');
-  }
+  const shown = status ? rows.filter((r) => r.status === status) : rows;
+  const count = (s: StatusCode) => rows.filter((r) => r.status === s).length;
+  const filtered = !!(q || type || status || scope);
+  const sorted = [...shown].sort((a, b) => b.startDate.localeCompare(a.startDate) || b.transId.localeCompare(a.transId));
+
+  function clear() { setQ(''); setText(''); setType(''); setStatus(''); setScope(''); }
 
   return (
     <section className="card card-flush">
@@ -48,27 +47,29 @@ export default function RequestSearch() {
         <div className="search-selects">
           <span className="filter-icon" aria-hidden><IconFilter size={15} /></span>
           <select value={scope} onChange={(e) => setScope(e.target.value as Scope)} aria-label="Scope">
-            <option value="all">All requests</option>
-            <option value="waiting">Waiting for me</option>
-            <option value="mine">{user.level === null ? 'My requests' : 'Worked on by me'}</option>
+            <option value="">All requests</option>
+            <option value="inbox">Waiting for me</option>
+            <option value="mine">My requests</option>
           </select>
           <select value={type} onChange={(e) => setType(e.target.value)} aria-label="Material type">
             <option value="">All material types</option>
-            {MATERIAL_TYPES.map((t) => <option key={t.value} value={t.value}>{t.value} – {t.label}</option>)}
+            {types.options.map((t) => <option key={t.value} value={t.value}>{t.value}{t.label ? ` – ${t.label}` : ''}</option>)}
           </select>
           {filtered && <button className="btn btn-ghost btn-sm" onClick={clear}><IconX size={14} /> Clear</button>}
         </div>
       </div>
       <div className="status-chips" role="group" aria-label="Status">
-        <button className={`schip ${status === '' ? 'on' : ''}`} onClick={() => setStatus('')}>All <span>{base.length}</span></button>
-        {(Object.keys(STATUS) as StatusCode[]).map((s) => (
+        <button className={`schip ${status === '' ? 'on' : ''}`} onClick={() => setStatus('')}>All <span>{rows.length}</span></button>
+        {STATUS_CODES.map((s) => (
           <button key={s} className={`schip schip-${STATUS[s].cls} ${status === s ? 'on' : ''}`} onClick={() => setStatus(status === s ? '' : s)} aria-pressed={status === s}>
             <i aria-hidden /> {STATUS[s].label} <span>{count(s)}</span>
           </button>
         ))}
-        <span className="muted count">{rows.length} of {db.requests.length} requests</span>
+        {state === 'ready' && <span className="muted count">{shown.length} request{shown.length === 1 ? '' : 's'}</span>}
       </div>
-      <RequestTable requests={rows} empty="No requests match these filters." />
+      {state === 'loading' && <LoadingState />}
+      {state === 'error' && <ErrorState message={error} onRetry={load} />}
+      {state === 'ready' && <RequestTable requests={sorted} empty="No requests match these filters." />}
     </section>
   );
 }

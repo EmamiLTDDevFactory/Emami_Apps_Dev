@@ -1347,3 +1347,25 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--accent); width
   .su-state { flex-basis: auto; padding: 2px 10px; }
   .su-size-box { width: 100%; }
 }
+
+/* Live data states */
+.empty-error { color: var(--text, #1f2937); }
+.empty-error .empty-icon { background: #fee4e2; color: #b42318; }
+.home-grid-single { grid-template-columns: minmax(0, 1fr); }
+.scope-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.radio-cards { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.radio-card { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--line, #e3e7ef); border-radius: 12px; padding: 12px 14px; cursor: pointer; background: #fff; }
+.radio-card.on { border-color: var(--accent, #3157e8); box-shadow: 0 0 0 2px rgba(49, 87, 232, 0.12); }
+.radio-card input { margin-top: 3px; }
+.radio-card small { display: block; color: var(--muted, #667085); }
+.view-pick { display: grid; gap: 6px; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
+.unbound-note { margin: 8px 0 0; }
+
+/* MX: fields changed against the live material */
+.field-changed { border-left: 3px solid var(--warn); background: var(--changed); padding-left: 10px; border-radius: var(--radius); }
+.field-changed .display-value { background: transparent; }
+.chg-chip { margin-left: 8px; padding: 1px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 600; color: var(--warn); background: var(--warn-soft); border: 1px solid #f6d79a; cursor: help; }
+.chg-filter { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--warn); background: var(--warn-soft); border: 1px solid #f6d79a; border-radius: 999px; padding: 4px 12px; cursor: pointer; }
+.chg-filter.on { background: var(--warn); color: #fff; border-color: var(--warn); }
+.vn-chg { display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--warn); vertical-align: middle; }
+.comments-bare h3 { font-size: 14px; margin: 0 0 8px; }

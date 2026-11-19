@@ -1,207 +1,156 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useEffect, useMemo, useState } from 'react';
 import { useMdm } from '@/lib/store';
-import { FieldKey, MaterialData, Message } from '@/lib/types';
-import { KEY_FIELDS, KEY_FIELD_BY_KEY, defaultsForType } from '@/lib/fieldConfig';
-import { HELP_PARENT, HelpId, getValueHelp, helpText, hierarchyText, isValidValue } from '@/lib/valueHelps';
-import { emptyMaterial } from '@/lib/mockData';
-import { APPS, LEVELS, WORKFLOW_DEFS } from '@/lib/workflowConfig';
+import { FieldKey, MaterialData } from '@/lib/types';
+import { DESCRIPTION_MAX, KEY_FIELDS, KEY_FIELD_BY_KEY, LONG_TEXT_MAX, KeyFieldDef } from '@/lib/keyFields';
+import { VIEWS } from '@/lib/materialViews';
+import { ALL_SAP_VIEWS, SAP_VIEWS_OF, buildBindings, fromBackend, knownFields, toPatch } from '@/lib/mmMap';
 import {
-  DESCRIPTION_MAX, DuplicateHit, LONG_TEXT_MAX, Result, checkDuplicate, saveDraft, startAndSubmit, startRequest, submit, validateKeyData,
-} from '@/lib/service';
+  DuplicateHit, buildDescription, checkDuplicates, saveRequest, startRequest, submitRequest,
+} from '@/lib/mmApi';
+import { useValueHelp } from '@/lib/mmValueHelp';
+import { hierarchyText } from '@/lib/valueHelps';
+import { vhText } from '@/lib/mmValueHelp';
 import { LongTextField, ProductHierarchyField, ValueHelpField } from '../ValueHelp';
+import KeyField from './KeyField';
+import { ErrorState } from '../ui';
 import {
-  IconAlert, IconArrowRight, IconBuilding, IconChart, IconCheck, IconCopy, IconDoc, IconLock, IconSearch, IconSparkle, IconTag, IconTruck,
+  IconAlert, IconArrowRight, IconBuilding, IconChart, IconCheck, IconDoc, IconSearch, IconSparkle, IconTag, IconTruck,
 } from '../icons';
 
-/** Key and organizational data taken over from a reference material (description is never copied) */
-const COPY_FROM_REFERENCE: FieldKey[] = KEY_FIELDS.map((f) => f.key).filter((k) => k !== 'description' && k !== 'longText');
-
-/** Fields whose list depends on another one, and what to tell the user until the parent is filled */
-const PARENT_HINT: Partial<Record<HelpId, string>> = {
-  storageLocation: 'Choose a plant first',
-  warehouseNo: 'Choose a plant first',
-  distChannel: 'Choose a sales org first',
-  storageType: 'Choose a warehouse first',
+const emptyData = (): MaterialData => {
+  const d = { materialNumber: '' } as MaterialData;
+  for (const f of KEY_FIELDS) d[f.key] = '';
+  return d;
 };
+
+/** Fields the description builder asks for (main / sub / sub-sub group of the old description tool) */
+const GROUPS = [
+  { key: 'mainGroup', label: 'Main group', tech: 'MGRP', name: 'MGRP' },
+  { key: 'subGroup', label: 'Sub group', tech: 'SGRP', name: 'SGRP' },
+  { key: 'subSubGroup', label: 'Sub-sub group', tech: 'SSGR', name: 'SSGR' },
+] as const;
+type GroupKey = (typeof GROUPS)[number]['key'];
 
 export default function NewRequest() {
   const router = useRouter();
-  const params = useSearchParams();
-  const { db, user, run, notify } = useMdm();
+  const { sessionState, sessionError, retrySession, notify, refreshInbox } = useMdm();
 
-  // ?id=MC...: the initiator corrects a draft or a sent-back request on this same screen
-  const editId = params.get('id') ?? '';
-  const editing = editId ? db.requests.find((x) => x.transId === editId) : undefined;
-  const canEdit = !!editing && editing.initiator === user.id && (editing.status === '00' || editing.status === '02');
-  const sentBackNote = editing?.status === '02' ? [...editing.history].reverse().find((h) => h.status === '02')?.comment : undefined;
-
-  const [data, setData] = useState<MaterialData>(emptyMaterial);
-  const loadedId = useRef('');
-  const [refNo, setRefNo] = useState(params.get('ref') ?? '');
-  const [copiedFrom, setCopiedFrom] = useState('');
+  const [data, setData] = useState<MaterialData>(emptyData);
+  const [groups, setGroups] = useState<Record<GroupKey, string>>({ mainGroup: '', subGroup: '', subSubGroup: '' });
+  const [mfrPart, setMfrPart] = useState('');
+  const [selectedViews, setSelectedViews] = useState<Set<string>>(() => new Set(VIEWS.map((v) => v.id)));
   const [dups, setDups] = useState<DuplicateHit[] | null>(null);
   const [dupAck, setDupAck] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [general, setGeneral] = useState('');
+  const [busy, setBusy] = useState<'' | 'dup' | 'desc' | 'draft' | 'submit'>('');
   const [tried, setTried] = useState(false);
 
-  const ref = refNo.trim() ? db.materials.find((x) => x.materialNumber === refNo.trim()) : undefined;
-
-  // Live check of the key data: Proceed stays disabled until this is clean
-  const liveErrors = useMemo(() => validateKeyData({ ...data, description: data.description.trim() }), [data]);
-  const complete = liveErrors.length === 0;
-
-  // Any change to the description invalidates the last duplicate check
-  useEffect(() => {
-    setDups(null);
-    setDupAck(false);
-  }, [data.description]);
-
-  // Load the request being corrected (once it is available from the store)
-  useEffect(() => {
-    if (editing && loadedId.current !== editing.transId) {
-      loadedId.current = editing.transId;
-      setData(editing.data);
-    }
-  }, [editing]);
-
-  // Copy from reference when opened with ?ref=
-  useEffect(() => {
-    if (params.get('ref') && ref) copyReference();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Any change to the description or type invalidates the last duplicate check
+  useEffect(() => { setDups(null); setDupAck(false); }, [data.description, data.materialType]);
 
   function set(k: FieldKey, v: string) {
     setData((d) => {
-      let next: MaterialData = { ...d, [k]: v };
-      if (k === 'materialType' && v !== d.materialType) next = { ...next, ...defaultsForType(v) };
-      // Clear dependent fields whose value is no longer allowed (plant > storage location, ...)
-      let changed = true;
-      while (changed) {
-        changed = false;
-        for (const [child, parent] of Object.entries(HELP_PARENT) as [HelpId, HelpId][]) {
-          const ck = child as FieldKey;
-          if (next[ck] && (!next[parent as FieldKey] || !isValidValue(child, next[ck], next))) {
-            next = { ...next, [ck]: '' };
-            changed = true;
-          }
-        }
-      }
+      const next: MaterialData = { ...d, [k]: v };
+      // A dependent list is no longer valid when its parent changes
+      if (k === 'plant') { next.storageLocation = ''; next.warehouseNo = ''; next.storageType = ''; }
+      if (k === 'salesOrg') next.distChannel = '';
+      if (k === 'warehouseNo') next.storageType = '';
       return next;
     });
-    setMessages((ms) => ms.filter((x) => x.field !== k));
+    setErrors((e) => { const { [k]: _gone, ...rest } = e; return rest; });
   }
 
-  function copyReference() {
-    if (!ref) return;
-    const { createdBy: _b, createdOn: _c, transId: _t, ...refData } = ref;
-    const copy: MaterialData = { ...emptyMaterial(), ...refData, materialNumber: '', description: '', longText: '' };
-    COPY_FROM_REFERENCE.forEach((k) => (copy[k] = ref[k]));
-    setData(copy);
-    setCopiedFrom(`${ref.materialNumber} – ${ref.description}`);
-    setMessages([]);
+  const required = KEY_FIELDS.filter((f) => f.required);
+  const missing = (k: FieldKey) => !data[k]?.trim();
+  const complete = required.every((f) => !missing(f.key));
+  const fieldMsg = (k: FieldKey) => errors[k] ?? (tried && KEY_FIELD_BY_KEY[k]?.required && missing(k) ? `${KEY_FIELD_BY_KEY[k]!.label} is required` : undefined);
+
+  async function runDuplicates(): Promise<DuplicateHit[] | null> {
+    setBusy('dup');
+    try {
+      const hits = await checkDuplicates(data.description.trim(), data.materialType);
+      setDups(hits);
+      return hits;
+    } catch (e) {
+      setGeneral(e instanceof Error ? e.message : 'The duplicate check failed.');
+      return null;
+    } finally { setBusy(''); }
   }
 
-  function runDuplicateCheck(): DuplicateHit[] {
-    const hits = checkDuplicate(db, data.description.trim(), editing?.transId);
-    setDups(hits);
-    return hits;
+  async function build() {
+    setBusy('desc');
+    setGeneral('');
+    try {
+      const r = await buildDescription({ ...groups, description: data.description.trim(), manufacturerPart: mfrPart.trim() });
+      set('description', r.text);
+      if (r.truncated) notify('warning', `The description was shortened to ${DESCRIPTION_MAX} characters`);
+    } catch (e) {
+      setGeneral(e instanceof Error ? e.message : 'The description could not be built.');
+    } finally { setBusy(''); }
   }
 
-  /** submitNow: send to level 1; otherwise keep it as a draft */
-  function start(submitNow: boolean) {
+  async function start(submitNow: boolean) {
     setTried(true);
+    setGeneral('');
     if (!complete) {
-      setMessages(liveErrors);
-      notify('error', liveErrors[0]?.text ?? 'Complete the key data first');
+      setGeneral('Complete the required key data first.');
       return;
     }
-    const hits = dups ?? runDuplicateCheck();
-    if (hits.length && !dupAck) {
-      setMessages([{ severity: 'E', text: 'Possible duplicates found. Review them and confirm before continuing.' }]);
-      return;
-    }
-    const res: Result = run((d) =>
-      canEdit
-        ? (submitNow ? submit(d, editing!.transId, data, user, '') : saveDraft(d, editing!.transId, data, user))
-        : (submitNow ? startAndSubmit(d, data, user) : startRequest(d, data, user)),
-    );
-    if (!res.ok) {
-      setMessages(res.messages);
-      notify('error', res.messages[0]?.text ?? 'Request could not be saved');
-      return;
-    }
-    const id = res.request!.transId;
-    notify('success', submitNow ? `Request ${id} ${editing?.status === '02' ? 'resubmitted' : 'submitted'} – sent to level 1 (Sales Team)` : `Draft ${id} saved`);
-    router.push(`/master/material/requests/view?id=${encodeURIComponent(id)}`);
+    const hits = dups ?? (await runDuplicates());
+    if (hits === null) return;
+    if (hits.length && !dupAck) { setGeneral('Possible duplicates found. Review them and confirm before continuing.'); return; }
+
+    setBusy(submitNow ? 'submit' : 'draft');
+    let transId = '';
+    try {
+      const views = ALL_SAP_VIEWS.filter((sv) => VIEWS.some((v) => selectedViews.has(v.id) && SAP_VIEWS_OF[v.id].includes(sv)));
+      const started = await startRequest({
+        materialType: data.materialType, industrySector: data.industrySector, description: data.description.trim(),
+        mainGroup: groups.mainGroup, subGroup: groups.subGroup, subSubGroup: groups.subSubGroup, manufacturerPart: mfrPart.trim(),
+        plant: data.plant, storageLocation: data.storageLocation, salesOrg: data.salesOrg, distributionChannel: data.distChannel, views, draft: true,
+      });
+      transId = started.header.transId;
+      // The start call carries the org data and the description; the rest of the key data is written to the new request
+      const b = buildBindings(knownFields(started.data));
+      const flat = fromBackend(started.data, b, started.header.objValue);
+      for (const k of ['materialGroup', 'division', 'businessVertical', 'scheme', 'prodHierarchy', 'longText'] as const) if (data[k]) flat[k] = data[k];
+      const patch = toPatch(flat, started.data, b);
+      const hasWork = Object.keys(patch.single).length > 0 || Object.keys(patch.multi).length > 0;
+      if (submitNow) {
+        await submitRequest(transId, patch);
+        notify('success', `Request ${transId} submitted for approval`);
+      } else {
+        if (hasWork) await saveRequest(transId, patch);
+        notify('success', `Draft ${transId} saved`);
+      }
+      void refreshInbox();
+      router.push(`/master/material/requests/view?id=${encodeURIComponent(transId)}`);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'The request could not be saved.';
+      if (transId) {
+        // The request exists as a draft: continue on its page where SAP's messages are mapped to fields
+        notify('error', `Request ${transId} was created as a draft, but: ${msg}`);
+        router.push(`/master/material/requests/view?id=${encodeURIComponent(transId)}`);
+      } else setGeneral(msg);
+    } finally { setBusy(''); }
   }
 
-  /** Error for a field: from the last action, or (after a first attempt) from the live check */
-  const fieldMsg = (k: FieldKey) => messages.find((x) => x.field === k)?.text ?? (tried ? liveErrors.find((x) => x.field === k)?.text : undefined);
-  const general = messages.filter((x) => !x.field);
-
-  const vh = (k: FieldKey) => {
-    const def = KEY_FIELD_BY_KEY[k]!;
-    const help = def.help!;
-    const parent = HELP_PARENT[help];
-    const options = getValueHelp(help, data);
-    const parentMissing = !!parent && !data[parent as FieldKey];
-    const noValues = !parentMissing && options.length === 0;
-    return (
-      <ValueHelpField
-        id={`k-${k}`}
-        label={def.label}
-        tech={def.tech}
-        required={def.required}
-        value={data[k]}
-        options={options}
-        onChange={(v) => set(k, v)}
-        disabled={parentMissing || noValues}
-        disabledHint={parentMissing ? PARENT_HINT[help] : noValues ? 'No values for this selection' : undefined}
-        error={fieldMsg(k)}
-        blockedReason={k === 'materialType' ? (v) => (WORKFLOW_DEFS[v] ? undefined : 'no workflow yet') : undefined}
-      />
-    );
+  const kf = (key: FieldKey) => {
+    const def = KEY_FIELD_BY_KEY[key] as KeyFieldDef;
+    return <KeyField def={def} data={data} onChange={(v) => set(key, v)} error={fieldMsg(key)} />;
   };
 
-  if (editId && !canEdit) {
-    return (
-      <div className="card gate-card">
-        <span className="gate-icon" aria-hidden><IconLock size={24} /></span>
-        <div>
-          <h2>Request {editId} cannot be changed here</h2>
-          <p className="muted">Only the initiator can change the key data, and only while the request is a draft or has been sent back.</p>
-        </div>
-        <Link href={editing ? `/master/material/requests/view?id=${encodeURIComponent(editId)}` : '/master/material'} className="btn btn-primary">{editing ? 'Open the request' : 'Go to my work'} <IconArrowRight size={15} /></Link>
-      </div>
-    );
-  }
-
-  if (user.level !== null) {
-    return (
-      <div className="card gate-card">
-        <span className="gate-icon" aria-hidden><IconLock size={24} /></span>
-        <div>
-          <h2>Only initiators start material requests</h2>
-          <p className="muted">You are signed in as a level {user.level} agent. Switch to an initiator in the top bar to start a request, or review the work waiting at your level.</p>
-        </div>
-        <Link href="/master/material" className="btn btn-primary">Go to my work <IconArrowRight size={15} /></Link>
-      </div>
-    );
-  }
-
   const descLen = data.description.length;
-  const required = KEY_FIELDS.filter((f) => f.required);
-  const fieldOk = (k: FieldKey) => !!data[k].trim() && !liveErrors.some((e) => e.field === k);
+  const fieldOk = (k: FieldKey) => !missing(k);
   const doneCount = required.filter((f) => fieldOk(f.key)).length;
   const pct = Math.round((doneCount / required.length) * 100);
   const hierarchy = data.prodHierarchy ? hierarchyText(data.prodHierarchy).split(' › ') : [];
-  const typeText = data.materialType ? helpText('materialType', data.materialType) : '';
-
-  // Progress per section (required fields only)
+  const typeText = data.materialType ? vhText('MTART', {}, data.materialType) : '';
   const sectionProgress = (section: 'key' | 'org') => {
     const req = required.filter((f) => f.section === section);
     return { done: req.filter((f) => fieldOk(f.key)).length, total: req.length };
@@ -216,13 +165,17 @@ export default function NewRequest() {
   const current = steps.find((s) => !s.done)?.n ?? 4;
   const goTo = (n: number) => document.getElementById(`sec-${n}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
+  if (sessionState === 'error') {
+    return <section className="card"><ErrorState title="Material master is not available" message={sessionError} onRetry={retrySession} /></section>;
+  }
+
   return (
     <>
       <section className="home-banner nr-banner">
         <div className="home-banner-text">
           <p className="eyebrow"><IconSparkle size={13} /> MC · Create material</p>
-          <h2>{canEdit ? `${editing!.status === '02' ? 'Correct' : 'Edit'} request ${editing!.transId}` : 'New material request'}</h2>
-          <p>Fill in the key and organizational data and submit. The material views are then maintained by the {LEVELS.length} approval levels before the material is posted in SAP.</p>
+          <h2>New material request</h2>
+          <p>Fill in the key and organizational data and submit. SAP routes the request through its approval workflow; the material views are maintained by the levels it assigns.</p>
         </div>
         <ol className="nr-steps" aria-label="Steps">
           {steps.map((s) => (
@@ -241,62 +194,45 @@ export default function NewRequest() {
 
       <div className="nr-layout">
         <div className="new-request">
-          {sentBackNote && (
-            <div className="alert alert-warn" role="status">
-              <p><IconAlert size={15} /> <strong>Sent back for correction</strong></p>
-              <p>{sentBackNote}</p>
-            </div>
-          )}
           <section className="card nr-card" id="sec-1">
-            <SectionHead n={1} title="Request type" text="Create is available now; change and extension follow in phase 2." done />
-            <div className="app-options">
-              {APPS.map((a) => (
-                <div key={a.id} className={`app-option ${a.enabled ? 'selected' : 'disabled'}`} aria-disabled={!a.enabled}>
-                  <span className="app-id">{a.id}</span>
-                  <span className="app-text">
-                    <strong>{a.label}</strong>
-                    <small>{a.phase}</small>
-                  </span>
-                  {a.enabled && <span className="app-check" aria-hidden><IconCheck size={14} /></span>}
-                </div>
-              ))}
-            </div>
+            <SectionHead n={1} title="Request type" text="This screen creates a new material. To change or extend a posted material, pick it in Material master data." done />
             <div className="ref-box">
-              <span className="ref-icon" aria-hidden><IconCopy size={18} /></span>
-              <label className="field">
-                <span className="field-label">Copy from reference material <span className="optional">optional – takes over key, org and view data</span></span>
-                <div className="input-row">
-                  <input value={refNo} onChange={(e) => setRefNo(e.target.value.trim())} placeholder="Material number, e.g. 100000101" maxLength={18} list="ref-materials" />
-                  <datalist id="ref-materials">
-                    {db.materials.map((m) => <option key={m.materialNumber} value={m.materialNumber}>{m.description}</option>)}
-                  </datalist>
-                  <button type="button" className="btn" onClick={copyReference} disabled={!ref}>Copy</button>
-                </div>
-                {refNo && !ref && <small className="err">Material {refNo} not found</small>}
-                {ref && !copiedFrom && <small className="muted">{ref.description}</small>}
-                {copiedFrom && <small className="ok"><IconCheck size={12} /> Copied from {copiedFrom}</small>}
-              </label>
+              <span className="muted small">Change (MX) and extension (ME) start from a posted material: </span>
+              <Link href="/master/material/data" className="btn btn-sm">Open posted materials <IconArrowRight size={14} /></Link>
             </div>
           </section>
 
           <section className="card nr-card" id="sec-2">
-            <SectionHead n={2} title="Material creation: key data" text="Type a code, or press F4 / the search button to pick from the list." progress={keyP} />
+            <SectionHead n={2} title="Material creation: key data" text="Type a code, or press F4 / the search button to pick from the list. Every list is read from SAP." progress={keyP} />
             <FieldGroup icon={<IconTag size={14} />} title="Classification">
               <div className="grid-form key-grid">
-                {vh('materialType')}
-                {vh('industrySector')}
-                {vh('materialGroup')}
-                {vh('division')}
+                {kf('materialType')}
+                {kf('industrySector')}
+                {kf('materialGroup')}
+                {kf('division')}
               </div>
             </FieldGroup>
             <FieldGroup icon={<IconChart size={14} />} title="Commercial">
               <div className="grid-form key-grid">
-                {vh('businessVertical')}
-                {vh('scheme')}
+                {kf('businessVertical')}
+                {kf('scheme')}
                 <ProductHierarchyField id="k-prodHierarchy" value={data.prodHierarchy} onChange={(v) => set('prodHierarchy', v)} error={fieldMsg('prodHierarchy')} />
               </div>
             </FieldGroup>
             <FieldGroup icon={<IconDoc size={14} />} title="Description" last>
+              <details className="desc-builder">
+                <summary>Build the description from the group hierarchy</summary>
+                <div className="grid-form key-grid">
+                  <GroupPick def={GROUPS[0]} value={groups.mainGroup} params={{}} enabled onChange={(v) => setGroups({ mainGroup: v, subGroup: '', subSubGroup: '' })} />
+                  <GroupPick def={GROUPS[1]} value={groups.subGroup} params={{ mainGroup: groups.mainGroup }} enabled={!!groups.mainGroup} onChange={(v) => setGroups((g) => ({ ...g, subGroup: v, subSubGroup: '' }))} />
+                  <GroupPick def={GROUPS[2]} value={groups.subSubGroup} params={{ mainGroup: groups.mainGroup, subGroup: groups.subGroup }} enabled={!!groups.subGroup} onChange={(v) => setGroups((g) => ({ ...g, subSubGroup: v }))} />
+                  <label className="field">
+                    <span className="field-label">Manufacturer part</span>
+                    <input id="k-mfrPart" value={mfrPart} onChange={(e) => setMfrPart(e.target.value)} maxLength={40} />
+                  </label>
+                </div>
+                <button type="button" className="btn btn-sm" onClick={() => void build()} disabled={busy === 'desc'}>{busy === 'desc' ? 'Building…' : 'Build description'}</button>
+              </details>
               <div className="grid-form key-grid">
                 <div className={`field field-wide ${fieldMsg('description') ? 'field-error' : ''}`}>
                   <label htmlFor="k-description" className="field-label">
@@ -319,20 +255,20 @@ export default function NewRequest() {
                 <LongTextField value={data.longText} onChange={(v) => set('longText', v)} max={LONG_TEXT_MAX} error={fieldMsg('longText')} />
               </div>
               <div className="dup-row">
-                <button type="button" className="btn" onClick={runDuplicateCheck} disabled={!data.description.trim()}><IconSearch size={15} /> Check duplicates</button>
+                <button type="button" className="btn" onClick={() => void runDuplicates()} disabled={!data.description.trim() || busy === 'dup'}><IconSearch size={15} /> {busy === 'dup' ? 'Checking…' : 'Check duplicates'}</button>
                 {dups && dups.length === 0 && <span className="pill pill-ok"><IconCheck size={13} /> No duplicates found</span>}
                 {!dups && data.description.trim() && <span className="muted small">Runs automatically when you proceed.</span>}
               </div>
               {dups && dups.length > 0 && (
                 <div className="alert alert-warn dup-alert">
-                  <p><IconAlert size={15} /> <strong>{dups.length} possible duplicate{dups.length > 1 ? 's' : ''}</strong> by phonetic match</p>
+                  <p><IconAlert size={15} /> <strong>{dups.length} possible duplicate{dups.length > 1 ? 's' : ''}</strong> found by SAP</p>
                   <ul className="dup-cards">
                     {dups.map((d) => (
-                      <li key={d.id}>
+                      <li key={d.matnr}>
                         <span className="dup-score" style={{ ['--s' as string]: d.score }}>{d.score}%</span>
                         <span className="dup-text">
                           <strong>{d.description}</strong>
-                          <small className="muted"><span className="matno">{d.id}</span> · {d.kind.toLowerCase()} · plant {d.plant}</small>
+                          <small className="muted"><span className="matno">{d.matnr.replace(/^0+/, '')}</span>{d.materialType && ` · ${d.materialType}`}</small>
                         </span>
                       </li>
                     ))}
@@ -350,25 +286,39 @@ export default function NewRequest() {
             <SectionHead n={3} title="Organizational data" text="Storage location and warehouse follow the plant; the channel follows the sales org." progress={orgP} />
             <FieldGroup icon={<IconBuilding size={14} />} title="Plant and storage">
               <div className="grid-form key-grid">
-                {vh('plant')}
-                {vh('storageLocation')}
-                {vh('warehouseNo')}
-                {vh('storageType')}
+                {kf('plant')}
+                {kf('storageLocation')}
+                {kf('warehouseNo')}
+                {kf('storageType')}
               </div>
             </FieldGroup>
             <FieldGroup icon={<IconTruck size={14} />} title="Sales" last>
               <div className="grid-form key-grid">
-                {vh('salesOrg')}
-                {vh('distChannel')}
+                {kf('salesOrg')}
+                {kf('distChannel')}
               </div>
             </FieldGroup>
           </section>
 
-
-          {general.length > 0 && (
-            <div className="alert alert-error" role="alert">
-              {general.map((g, i) => <p key={i}>{g.text}</p>)}
+          <section className="card nr-card" id="sec-4">
+            <SectionHead n={4} title="Views" text="The views this request carries. SAP shows each level only what its field control allows." done />
+            <div className="view-pick">
+              {VIEWS.map((v) => (
+                <label key={v.id} className="check">
+                  <input
+                    type="checkbox"
+                    checked={selectedViews.has(v.id)}
+                    disabled={!!v.mandatory}
+                    onChange={(e) => setSelectedViews((s) => { const n = new Set(s); if (e.target.checked) n.add(v.id); else n.delete(v.id); return n; })}
+                  />
+                  {v.label}
+                </label>
+              ))}
             </div>
+          </section>
+
+          {general && (
+            <div className="alert alert-error" role="alert"><p>{general}</p></div>
           )}
         </div>
 
@@ -412,31 +362,37 @@ export default function NewRequest() {
               {hierarchy.length > 1 && <p className="preview-ph">{hierarchy.join(' › ')}</p>}
             </div>
 
-            {!complete && doneCount === required.length && liveErrors[0] && <p className="err small">{liveErrors[0].text}</p>}
-
             <div className="side-actions">
-              <button type="button" className="btn btn-primary btn-block btn-lg" onClick={() => start(true)} disabled={!complete}>
-                {editing?.status === '02' ? 'Resubmit for approval' : 'Submit for approval'} <IconArrowRight size={16} />
+              <button type="button" className="btn btn-primary btn-block btn-lg" onClick={() => void start(true)} disabled={!complete || !!busy}>
+                {busy === 'submit' ? 'Submitting…' : 'Submit for approval'} <IconArrowRight size={16} />
               </button>
               <div className="side-actions-row">
-                <button type="button" className="btn" onClick={() => start(false)} disabled={!complete}>Save as draft</button>
-                <button type="button" className="btn btn-ghost" onClick={() => router.push(canEdit ? `/master/material/requests/view?id=${encodeURIComponent(editing!.transId)}` : '/master/material')}>Cancel</button>
+                <button type="button" className="btn" onClick={() => void start(false)} disabled={!complete || !!busy}>{busy === 'draft' ? 'Saving…' : 'Save as draft'}</button>
+                <button type="button" className="btn btn-ghost" onClick={() => router.push('/master/material')}>Cancel</button>
               </div>
-            </div>
-
-            <div className="next-flow">
-              <span className="preview-label">What happens next</span>
-              <ol className="flow-dots" aria-label="Approval path">
-                <li className="me" title="You: key data and submit">You</li>
-                {LEVELS.map((l) => <li key={l.level} title={`L${l.level} ${l.team}`}>L{l.level}</li>)}
-                <li className="end" title="Posted in SAP"><IconCheck size={11} /></li>
-              </ol>
-              <small className="muted">You only fill in this screen. After you submit, each level maintains or reviews the material views assigned to it, and the MDM team posts the material.</small>
             </div>
           </section>
         </aside>
       </div>
     </>
+  );
+}
+
+function GroupPick({ def, value, params, enabled, onChange }: {
+  def: (typeof GROUPS)[number]; value: string; params: Record<string, string>; enabled: boolean; onChange: (v: string) => void;
+}) {
+  const vh = useValueHelp(def.name, params, enabled);
+  return (
+    <ValueHelpField
+      id={`k-${def.key}`}
+      label={def.label}
+      tech={def.tech}
+      value={value}
+      options={vh.options}
+      onChange={onChange}
+      disabled={!enabled || vh.loading || !!vh.error || vh.options.length === 0}
+      disabledHint={!enabled ? 'Choose the level above first' : vh.loading ? 'Loading the list from SAP…' : vh.error || (vh.options.length === 0 ? 'SAP returned no values' : undefined)}
+    />
   );
 }
 
