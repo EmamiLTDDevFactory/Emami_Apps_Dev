@@ -11,12 +11,13 @@ import { canDisplay } from '../margin/roles';
 import { BUDGET_ENABLED } from '../budget/flag';
 import { BUDGET_RATE_MGMT_ENABLED } from '../budgetMgmt/flag';
 import { PKG_BUDGET_ENABLED } from '../pkg/flag';
+import { DASH_ENABLED } from '../dash/flag';
 import { BUDGET_RATES_ENABLED } from '../budgetRatesFlag';
 import { budgetNavItems } from '../budget/roles';
 import { MODE_LABEL, type Mode } from '../query/schema';
 
 /** Which screen of a route-based page is active (also the `active` prop of PlanFrame). */
-export type PlanNav = 'plans' | 'upload' | 'watch' | 'freight' | 'freight-analysis' | 'wac' | 'ck' | 'so' | 'psum' | 'psum-report' | 'margin' | 'margin-whatif' | 'margin-alerts' | 'margin-portfolio' | 'margin-history' | 'margin-data' | 'budget' | 'budget-rates' | 'budget-rate-mgmt' | 'pkg-budget' | 'section';
+export type PlanNav = 'plans' | 'upload' | 'watch' | 'freight' | 'freight-analysis' | 'wac' | 'ck' | 'so' | 'psum' | 'psum-report' | 'margin' | 'margin-whatif' | 'margin-alerts' | 'margin-portfolio' | 'margin-history' | 'margin-data' | 'budget' | 'budget-rates' | 'budget-rate-mgmt' | 'pkg-budget' | 'dash' | 'section';
 export type SectionId = 'costing' | 'analysis' | 'margin' | 'budget' | 'plan' | 'monitoring';
 
 export interface NavItem {
@@ -62,6 +63,7 @@ export function navSections(f: NavFlags): NavSection[] {
     { id: 'margin-history', label: 'History', hint: 'Cost scenarios over time', icon: Calendar, path: '/margin/history/', plan: 'margin-history' },
     { id: 'margin-data', label: 'Data', hint: 'Prices, rules, volumes, budgets, targets', icon: Tags, path: '/margin/data/', plan: 'margin-data' },
   ] : [];
+  const dash: NavItem[] = DASH_ENABLED ? [{ id: 'dash', label: 'Costing dashboard', hint: 'COGM budget vs actual by brand, margin, notes', icon: LineChart, path: '/dashboard/', plan: 'dash' }] : [];
   const budget: NavItem[] = budgetNavItems(BUDGET_ENABLED, f.budgetRole).map((n) => ({ id: 'budget', label: n.label, hint: 'Run, brand / product / SKU, BOM checklist, approvals', icon: Calculator, path: n.path, plan: 'budget' as PlanNav }));
   if (BUDGET_RATES_ENABLED) budget.push({ id: 'budget-rates', label: 'Component rates', hint: 'Domestic / international rates from SAP, Excel upload, recalculate', icon: Tags, path: '/budget-rates/', plan: 'budget-rates' });
   if (BUDGET_RATE_MGMT_ENABLED) budget.push({ id: 'budget-rate-mgmt', label: 'Raw Material (Budget Rate Preparation)', hint: 'History and A/B/C classes, Raw Material / Perfume, edit rates, submit, approve', icon: Scale, path: '/budget-rate-management/', plan: 'budget-rate-mgmt' });
@@ -73,7 +75,7 @@ export function navSections(f: NavFlags): NavSection[] {
   const monitoring: NavItem[] = AI_ENABLED && WATCH_ENABLED ? [{ id: 'watch', label: 'Cost watch', hint: 'Daily 06:00 cost alerts and digest', icon: BellRing, path: '/watch/', plan: 'watch' }] : [];
   const all: NavSection[] = [
     { id: 'costing', label: 'Costing', hint: 'Cost a finished good', icon: Layers, items: [modeItem('B'), modeItem('C')] },
-    { id: 'analysis', label: 'Analysis', hint: 'Rates, freight, actual cost, standard cost and prices', icon: LineChart, items: analysis },
+    { id: 'analysis', label: 'Analysis', hint: 'Rates, freight, actual cost, standard cost and prices', icon: LineChart, items: [...analysis, ...dash] },
     { id: 'margin', label: 'Margin', hint: 'Cost against selling price', icon: Scale, items: margin },
     { id: 'budget', label: 'Budget', hint: 'Budget cost of finished goods', icon: Calculator, items: budget },
     { id: 'plan', label: 'Production Plan', hint: 'Plans, breakup and cost', icon: ClipboardList, items: plan },

@@ -1,0 +1,20 @@
+@EndUserText.label : 'Costing dashboard: MIS brand row'
+@AbapCatalog.enhancementCategory : #NOT_EXTENSIBLE
+define type zdash_s_mis {
+  zbrand      : zpbrand;
+  werks       : werks_d;
+  date_to     : dats;
+  gjahr       : gjahr;
+  version     : zcostversion;
+  fg_cnt      : abap.int4;
+  fg_nobud    : abap.int4;
+  ftm_qty     : abap.dec(23,3);
+  ftm_budget  : abap.dec(23,6);
+  ftm_actual  : abap.dec(23,6);
+  ftm_actual_cmp : abap.dec(23,6);
+  ytm_qty     : abap.dec(23,3);
+  ytm_budget  : abap.dec(23,6);
+  ytm_actual  : abap.dec(23,6);
+  ytm_actual_cmp : abap.dec(23,6);
+  msg         : abap.char(120);
+}

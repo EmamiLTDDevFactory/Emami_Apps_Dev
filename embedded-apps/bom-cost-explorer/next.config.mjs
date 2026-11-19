@@ -51,6 +51,8 @@ const DEPLOYED_BUDGET_RATES_ENABLED = 'true';
 const DEPLOYED_BUDGET_RATE_MGMT_ENABLED = 'true';
 // Packing material budget rate (PkgScenSet / PkgItemSet / PkgOvrSet / PkgActionSet, assumed contract, not yet checked against the live $metadata): on for deployed builds; the screen shows SAP's own message until the sets are published. PKG_BUDGET_ENABLED / NEXT_PUBLIC_PKG_BUDGET_ENABLED win.
 const DEPLOYED_PKG_BUDGET_ENABLED = 'true';
+// Costing dashboard (DashMisSet, MIS: COGM budget vs actual by brand): on for deployed builds; the screen shows SAP's own message until the set is published. DASH_ENABLED / NEXT_PUBLIC_DASH_ENABLED win.
+const DEPLOYED_DASH_ENABLED = 'true';
 const pick = (k, d = '') => process.env[`NEXT_PUBLIC_${k}`] ?? process.env[k] ?? d;
 const sapEnv = isBuild
   ? {
@@ -88,6 +90,7 @@ const nextConfig = {
     NEXT_PUBLIC_BUDGET_RATES_ENABLED: pick('BUDGET_RATES_ENABLED') || (isBuild ? DEPLOYED_BUDGET_RATES_ENABLED : 'false'),
     NEXT_PUBLIC_BUDGET_RATE_MGMT_ENABLED: pick('BUDGET_RATE_MGMT_ENABLED') || (isBuild ? DEPLOYED_BUDGET_RATE_MGMT_ENABLED : 'false'),
     NEXT_PUBLIC_PKG_BUDGET_ENABLED: pick('PKG_BUDGET_ENABLED') || (isBuild ? DEPLOYED_PKG_BUDGET_ENABLED : 'false'),
+    NEXT_PUBLIC_DASH_ENABLED: pick('DASH_ENABLED') || (isBuild ? DEPLOYED_DASH_ENABLED : 'false'),
     NEXT_PUBLIC_BUDGET_ENABLED: pick('BUDGET_ENABLED') || (isBuild ? DEPLOYED_BUDGET_ENABLED : 'false'),
     NEXT_PUBLIC_PSUM_ENABLED: pick('PSUM_ENABLED') || (isBuild ? DEPLOYED_PSUM_ENABLED : 'false'),
     NEXT_PUBLIC_PLANT_WIDE_ENABLED: pick('PLANT_WIDE_ENABLED') || (isBuild ? DEPLOYED_PLANT_WIDE_ENABLED : 'false'),
