@@ -14,16 +14,18 @@ const localIso = (t: number, plusH = 0) => new Date(t + plusH * 3600_000 - new D
 export default function PostOrder() {
   const t = useTms(); const router = useRouter();
   const [mode, setMode] = useState<'FTL' | 'BID'>('FTL');
-  const [f, setF] = useState({ basis: 'Vehicle' as Basis, vehicleType: 'CONT15MT', vehicles: 1, material: 'Navratna Cool Talc', qty: 12, uom: 'MT', packages: 400, po: '', so: '', project: '', segment: 'General Trade', odc: false, tolerance: 2, comments: '', customerId: t.db.customers[0].id });
-  const [stops, setStops] = useState<Stop[]>([{ type: 'P', locId: 'GAU', at: localIso(t.now, 8) }, { type: 'D', locId: 'CCU', at: localIso(t.now, 40) }]);
+  const [f, setF] = useState({ basis: 'Vehicle' as Basis, vehicleType: 'CONT15MT', vehicles: 1, material: 'Navratna Cool Talc', qty: 12, uom: 'MT', packages: 400, po: '', so: '', project: '', segment: 'General Trade', odc: false, tolerance: 2, comments: '', customerId: t.db.customers[0]?.id ?? '' });
+  const [stops, setStops] = useState<Stop[]>([{ type: 'P', locId: t.db.locs[0]?.id ?? '', at: localIso(t.now, 8) }, { type: 'D', locId: t.db.locs[1]?.id ?? '', at: localIso(t.now, 40) }]);
   const [bid, setBid] = useState({ expiresAt: localIso(t.now, 4), startPrice: 32000, diffType: 'Percentage' as 'Percentage' | 'Amount', diffValue: 1, paymentTerms: 'Net 30', vendors: t.db.carriers.filter((c) => !c.blocked).map((c) => c.id) });
   const [err, setErr] = useState('');
   const [poMsg, setPoMsg] = useState(''); const [poOk, setPoOk] = useState(true);
   const set = (k: string, v: unknown) => setF((p) => ({ ...p, [k]: v }));
   const label = (i: number) => `${stops[i].type}${stops.slice(0, i + 1).filter((s) => s.type === stops[i].type).length}`;
-  const p0 = t.db.locs.find((l) => l.id === stops[0].locId)!; const d0 = t.db.locs.find((l) => l.id === stops[stops.length - 1].locId)!;
+  const p0 = t.db.locs.find((l) => l.id === stops[0].locId); const d0 = t.db.locs.find((l) => l.id === stops[stops.length - 1].locId);
+  const needSetup = t.db.locs.length < 2 || t.db.customers.length === 0;
 
   async function submit() {
+    if (needSetup) return setErr('Locations and customers are not set up yet. See the notice at the top of this page.');
     if (!t.can('order.create')) return setErr('Your role does not have the "Post Order" permission. Use "Act as" to switch to an Allocation Executive.');
     if (!stops.some((s) => s.type === 'P') || !stops.some((s) => s.type === 'D')) return setErr('Add at least one pickup and one delivery stop');
     if (stops[0].locId === stops[stops.length - 1].locId) return setErr('Pickup and delivery locations must differ');
@@ -37,6 +39,7 @@ export default function PostOrder() {
   return (
     <div>
       <PageHead title="Post Order" sub={`Booking against ${t.db.units.find((u) => u.id === t.unitId)?.name}`} />
+      {needSetup && <div className="mb-4 rounded-xl bg-amberBg px-4 py-3 text-sm font-semibold text-amber">Locations and customers are not set up yet, so an order cannot be posted. An administrator can sync customers and carriers from SAP and load the standard locations in Settings &rarr; Integrations.</div>}
       <div className="mb-4 inline-flex overflow-hidden rounded-xl border border-border bg-white text-sm font-bold">{(['FTL', 'BID'] as const).map((m) => <button key={m} onClick={() => setMode(m)} className={`px-6 py-2 ${mode === m ? 'bg-rust text-white' : 'text-inkSoft'}`}>{m === 'FTL' ? 'FTL' : 'Bid Order'}</button>)}</div>
       <div className="grid gap-4 xl:grid-cols-3">
         <div className="space-y-4 xl:col-span-2">
@@ -83,8 +86,8 @@ export default function PostOrder() {
           {err && <div className="rounded-xl bg-redBg px-4 py-2.5 text-sm font-bold text-red">{err}</div>}
           <div className="flex justify-end gap-2"><button className="btn-ghost" onClick={() => router.push('/orders/')}>Cancel</button><button className="btn-primary" onClick={submit}>{mode === 'BID' ? 'Post bid order' : 'Post order'}</button></div>
         </div>
-        <Card title="Route preview" pad={false} className="self-start"><div className="aspect-square p-2"><IndiaMap locs={t.db.locs} shipments={[{ sin: 'preview', fromLocId: p0.id, toLocId: d0.id, progress: 0.5, delayH: 0, status: 'In Transit', vehicleNo: 'Preview', driver: '' } as never]} /></div>
-          <div className="border-t border-border px-4 py-2 text-xs font-bold text-inkSoft">{p0.city} → {d0.city}</div></Card>
+        <Card title="Route preview" pad={false} className="self-start"><div className="aspect-square p-2"><IndiaMap locs={t.db.locs} shipments={p0 && d0 ? [{ sin: 'preview', fromLocId: p0.id, toLocId: d0.id, progress: 0.5, delayH: 0, status: 'In Transit', vehicleNo: 'Preview', driver: '' } as never] : []} /></div>
+          <div className="border-t border-border px-4 py-2 text-xs font-bold text-inkSoft">{p0?.city ?? '—'} → {d0?.city ?? '—'}</div></Card>
       </div>
     </div>
   );

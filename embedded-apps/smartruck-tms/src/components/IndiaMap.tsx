@@ -16,6 +16,7 @@ export default function IndiaMap({ locs, shipments, selected, onSelect, showRout
   locs: Loc[]; shipments: Shipment[]; selected?: string; onSelect?: (sin: string) => void; showRoutes?: boolean;
 }) {
   const L = (id: string) => locs.find((l) => l.id === id)!;
+  shipments = shipments.filter((s) => locs.some((l) => l.id === s.fromLocId) && locs.some((l) => l.id === s.toLocId));
   const path = OUTLINE.map(([lo, la], i) => `${i ? 'L' : 'M'}${project(la, lo).join(' ')}`).join(' ') + 'Z';
   const color = (s: Shipment) => s.anomaly ? '#C0392B' : s.delayH > 8 ? '#B45309' : s.delayH > 0 ? '#E0A100' : '#1F7A4D';
   return (
