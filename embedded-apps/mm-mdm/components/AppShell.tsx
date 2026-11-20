@@ -5,7 +5,14 @@ import { usePathname, useRouter } from 'next/navigation';
 import { FormEvent, ReactNode, useState } from 'react';
 import { useMdm } from '@/lib/store';
 import { DOMAINS, SETUP_PATH, SETUP_TCODE, resolveTcode } from '@/lib/tcodes';
-import { DOMAIN_ICONS, IconHome, IconMenu, IconTree } from './icons';
+import { DOMAIN_ICONS, IconChart, IconClock, IconHome, IconLayers, IconMenu, IconTree } from './icons';
+
+const ADMIN_LINKS = [
+  { href: '/admin/dashboard', label: 'Dashboard', tcode: 'MDM_DB', Icon: IconChart },
+  { href: '/admin/worklist', label: 'Workflow visibility', tcode: 'UWL', Icon: IconClock },
+  { href: '/admin/workflow', label: 'Workflow maintenance', tcode: 'ROLE_MAIN', Icon: IconLayers },
+  { href: '/admin/rules', label: 'Rules maintenance', tcode: 'MDM_CONFIG', Icon: IconTree },
+];
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -66,6 +73,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
               </Link>
             );
           })}
+          <div className="nav-group">Administration</div>
+          {ADMIN_LINKS.map((a) => (
+            <Link key={a.href} href={a.href} className={`nav-item ${pathname.startsWith(a.href) ? 'active' : ''}`} onClick={() => setNavOpen(false)}>
+              <span className="nav-icon"><a.Icon /></span>
+              <span className="nav-label">{a.label}</span>
+              <span className="nav-tcode">{a.tcode}</span>
+            </Link>
+          ))}
         </div>
 
         <div className="nav-foot">

@@ -44,9 +44,18 @@ CLASS zcl_zmm_mdm_srv_mpc_ext DEFINITION PUBLIC INHERITING FROM zcl_zmm_mdm_srv_
         attachid TYPE c LENGTH 10,
         filename TYPE c LENGTH 255,
         mimetype TYPE c LENGTH 100,
+        doctype  TYPE c LENGTH 50,
         content  TYPE string,
       END OF ts_attachmentfile,
       tt_attachmentfile TYPE STANDARD TABLE OF ts_attachmentfile WITH EMPTY KEY,
+      BEGIN OF ts_admincall,
+        area    TYPE c LENGTH 20,
+        op      TYPE c LENGTH 40,
+        actor   TYPE c LENGTH 241,
+        payload TYPE string,
+        result  TYPE string,
+      END OF ts_admincall,
+      tt_admincall TYPE STANDARD TABLE OF ts_admincall WITH EMPTY KEY,
       BEGIN OF ts_comment,
         transid   TYPE c LENGTH 10,
         commentid TYPE c LENGTH 10,
@@ -203,10 +212,28 @@ CLASS ZCL_ZMM_MDM_SRV_MPC_EXT IMPLEMENTATION.
     prop( io_type = lo_t iv_name = 'AttachId' iv_len = 10 iv_key = abap_true ).
     prop( io_type = lo_t iv_name = 'FileName' iv_len = 255 ).
     prop( io_type = lo_t iv_name = 'MimeType' iv_len = 100 ).
+    prop( io_type = lo_t iv_name = 'DocType' iv_len = 50 ).
     DATA(lo_pc) = lo_t->create_property( iv_property_name = 'Content' iv_abap_fieldname = 'CONTENT' ).
     lo_pc->set_type_edm_string( ).
     lo_pc->set_creatable( abap_true ).  lo_pc->set_updatable( abap_false ).  lo_pc->set_nullable( abap_true ).
     lo_pc->set_filterable( abap_false ).  lo_pc->set_sortable( abap_false ).
+
+    "Generic call of the admin screens (rules, workflow maintenance, worklist, dashboard): JSON in Payload, JSON out in Result (create = call).
+    lo_t = model->create_entity_type( iv_entity_type_name = 'AdminCall' iv_def_entity_set = abap_false ).
+    lo_t->bind_structure( iv_structure_name = 'ZCL_ZMM_MDM_SRV_MPC_EXT=>TS_ADMINCALL' ).
+    lo_s = lo_t->create_entity_set( 'AdminCallSet' ).
+    lo_s->set_creatable( abap_true ).  lo_s->set_updatable( abap_false ).  lo_s->set_deletable( abap_false ).
+    lo_s->set_pageable( abap_false ).  lo_s->set_addressable( abap_true ).  lo_s->set_has_ftxt_search( abap_false ).
+    lo_s->set_subscribable( abap_false ).  lo_s->set_filter_required( abap_false ).
+    prop( io_type = lo_t iv_name = 'Area' iv_len = 20 iv_key = abap_true ).
+    prop( io_type = lo_t iv_name = 'Op' iv_len = 40 iv_key = abap_true ).
+    prop( io_type = lo_t iv_name = 'Actor' iv_len = 241 ).
+    DATA(lo_pp) = lo_t->create_property( iv_property_name = 'Payload' iv_abap_fieldname = 'PAYLOAD' ).
+    lo_pp->set_type_edm_string( ).  lo_pp->set_creatable( abap_true ).  lo_pp->set_updatable( abap_false ).  lo_pp->set_nullable( abap_true ).
+    lo_pp->set_filterable( abap_false ).  lo_pp->set_sortable( abap_false ).
+    DATA(lo_pr) = lo_t->create_property( iv_property_name = 'Result' iv_abap_fieldname = 'RESULT' ).
+    lo_pr->set_type_edm_string( ).  lo_pr->set_creatable( abap_true ).  lo_pr->set_updatable( abap_false ).  lo_pr->set_nullable( abap_true ).
+    lo_pr->set_filterable( abap_false ).  lo_pr->set_sortable( abap_false ).
 
     "Upload path RequestSet(TransId,AppId)/Attachments: the request number travels in the path, which the proxy in front of the
     "Gateway keeps (it drops the Slug header and the query string of a POST).

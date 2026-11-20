@@ -129,12 +129,20 @@ CLASS ZCL_ZMM_MDM_SRV_DPC_EXT IMPLEMENTATION.
           ENDIF.
           DATA(lv_af_id) = zcl_mm_mdm_attach=>add( iv_transid = lv_af_tid iv_app_id = ls_af_hdr-app_id iv_file_name = CONV string( ls_af-filename )
                              iv_mime_type = COND string( WHEN ls_af-mimetype IS NOT INITIAL THEN CONV string( ls_af-mimetype ) ELSE `application/octet-stream` )
-                             iv_content = lv_af_bin iv_user = sy-uname ).
+                             iv_doc_type = CONV string( ls_af-doctype ) iv_content = lv_af_bin iv_user = sy-uname ).
         CATCH zcx_mm_mdm INTO DATA(lx_af).
           raise_messages( lx_af->mt_msg ).
       ENDTRY.
       ls_af-transid = lv_af_tid.  ls_af-attachid = lv_af_id.  CLEAR ls_af-content.
       copy_data_to_ref( EXPORTING is_data = ls_af CHANGING cr_data = er_entity ).
+      RETURN.
+    ENDIF.
+    IF iv_entity_set_name = 'AdminCallSet'.
+      DATA ls_ac TYPE zcl_zmm_mdm_srv_mpc_ext=>ts_admincall.
+      io_data_provider->read_entry_data( IMPORTING es_data = ls_ac ).
+      ls_ac-result = zcl_mm_mdm_admin=>call( iv_area = ls_ac-area iv_op = ls_ac-op iv_actor = ls_ac-actor iv_payload = ls_ac-payload ).
+      CLEAR ls_ac-payload.
+      copy_data_to_ref( EXPORTING is_data = ls_ac CHANGING cr_data = er_entity ).
       RETURN.
     ENDIF.
     IF iv_entity_set_name = 'CommentSet'.
