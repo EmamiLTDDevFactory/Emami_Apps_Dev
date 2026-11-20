@@ -9,7 +9,7 @@ export interface Domain {
 
 /** The seven master data objects governed by the portal. Only Material is live for now. */
 export const DOMAINS: Domain[] = [
-  { id: 'material', tcode: 'ZMDM_M', label: 'Material Master', short: 'MM', description: 'Create (MC) with 7-level approval; change and extension in phase 2', enabled: true },
+  { id: 'material', tcode: 'ZMDM_M', label: 'Material Master', short: 'MM', description: 'Create (MC), change (MX) and extension (ME) of material master with SAP approval workflow', enabled: true },
   { id: 'customer', tcode: 'ZMDM_C', label: 'Customer Master', short: 'CU', description: 'Sold-to, ship-to and payer accounts', enabled: false },
   { id: 'vendor', tcode: 'ZMDM_V', label: 'Vendor Master', short: 'VE', description: 'Supplier general, company code and purchasing data', enabled: false },
   { id: 'glaccount', tcode: 'ZMDM_G', label: 'GL Account Master', short: 'GL', description: 'Chart of accounts and company code segments', enabled: false },
@@ -22,11 +22,16 @@ export const DOMAINS: Domain[] = [
 /** Set-up transaction done before material creation */
 export const SETUP_TCODE = 'ZMDM_PH';
 export const SETUP_PATH = '/master/hierarchy';
+/** Change (MX) and extension (ME) start from the posted materials list */
+export const CHANGE_TCODE = 'ZMDM_MX';
+export const EXTEND_TCODE = 'ZMDM_ME';
+export const POSTED_PATH = '/master/material/data';
 
 export function resolveTcode(raw: string): { code: string; home?: boolean; domain?: Domain; path?: string } {
   let code = raw.trim().toUpperCase();
   if (code.startsWith('/N') || code.startsWith('/O')) code = code.slice(2);
   if (code === '' || code === 'HOME' || code === 'SESSION_MANAGER' || code === 'SMEN') return { code, home: true };
   if (code === SETUP_TCODE) return { code, path: SETUP_PATH };
+  if (code === CHANGE_TCODE || code === EXTEND_TCODE) return { code, path: POSTED_PATH };
   return { code, domain: DOMAINS.find((d) => d.tcode === code) };
 }

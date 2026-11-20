@@ -6,6 +6,7 @@ import { allExpandableIds, visibleNodes, type CostTree, type TreeNode } from '@/
 import type { SimRow } from '@/lib/cost/simulate';
 import { minCover, UNLIMITED_COVER } from '@/lib/cost/analytics';
 import { D, ZERO, type Decimal } from '@/lib/cost/decimal';
+import { categoryTotals, perUnit, type CatTotals } from '@/lib/cost/catTotals';
 import { fmtNum, fmtPct, fmtQty, fmtRate, fmtSigned } from '@/lib/format';
 import { ls } from '@/lib/client/storage';
 import { Button, cx, Modal, SimTag, SourceBadge, inputBase, inputCls } from './ui';
@@ -22,7 +23,7 @@ export interface NodeAgg {
 }
 
 interface LineCtx { r: CostLine; s: SimRow; leaf: boolean; simOn: boolean; frun?: FreightRun | null }
-interface GroupCtx { n: TreeNode; i: number; agg: NodeAgg; locCurr: string; simOn: boolean }
+interface GroupCtx { n: TreeNode; i: number; agg: NodeAgg; locCurr: string; simOn: boolean; cat?: CatTotals; explQty?: Decimal | null }
 
 interface Col {
   id: string;
@@ -59,6 +60,23 @@ const ALL_COST_COLUMNS: Col[] = [
   },
   { id: 'bomSrc', label: 'BOM source', width: 110, line: ({ r }) => (r.BomSrc ? <span className="text-xs text-muted" title={r.BomSrcDate ? `BOM of ${r.BomSrcDate}` : undefined}>{r.BomSrc}{r.BomPlant ? ` · ${r.BomPlant}` : ''}</span> : null) },
 ];
+
+const CAT_TITLE = 'RM = ROH (not group 106) · PM = PKGN and VERP · Perfume = ROH group 106. Leaf cost of this FG; per unit = total / explosion quantity.';
+const catCol = (id: string, label: string, pick: keyof CatTotals, per: boolean): Col => ({
+  id, label, width: per ? 136 : 150, right: true, title: CAT_TITLE, line: () => null,
+  group: ({ n, i, cat, explQty }) => {
+    if (n.kind !== 'header' || !cat) return null;
+    const v = per ? perUnit(cat[pick][i], explQty) : cat[pick][i];
+    return v ? <Amt v={v} curr="INR" dp={per ? 4 : 2} /> : null;
+  },
+});
+/** FG rows: RM, PM and Perfume cost, total and per unit. */
+const CAT_COLUMNS: Col[] = [
+  catCol('rmTot', 'RM total INR', 'rm', false), catCol('rmPc', 'RM / unit INR', 'rm', true),
+  catCol('pmTot', 'PM total INR', 'pm', false), catCol('pmPc', 'PM / unit INR', 'pm', true),
+  catCol('perfTot', 'Perfume total INR', 'perf', false), catCol('perfPc', 'Perfume / unit INR', 'perf', true),
+];
+const CAT_IDS = CAT_COLUMNS.map((c) => c.id);
 
 export const TREE_COLUMNS: Col[] = [
   { id: 'level', label: 'Lvl', width: 44, right: true, line: ({ r }) => <span className="num text-muted">{r.Level}</span> },
@@ -132,6 +150,7 @@ export const TREE_COLUMNS: Col[] = [
       );
     },
   },
+  ...CAT_COLUMNS,
   ...(ALL_COSTS_ENABLED ? ALL_COST_COLUMNS : []),
   { id: 'donor', label: 'Donor', width: 70, line: ({ r }) => (r.Donor ? <span className="rounded bg-warn/15 px-1 text-2xs font-semibold text-warn" title={`Costed from donor plant ${r.Donor}`}>{r.Donor}</span> : null) },
   { id: 'matkl', label: 'Mat. group', width: 100, line: ({ r }) => <span className="text-xs text-muted">{r.Matkl}</span> },
@@ -165,7 +184,7 @@ const SIM_COL: Col = {
 };
 
 export const PRESETS: Record<string, string[]> = {
-  Standard: ['level', 'qty', 'skusize', 'compOgrp', 'source', 'vendor', 'ratePc', 'fx', 'ratePcLoc', 'frtPc', 'totLoc', 'totInr', 'budget', 'cover'],
+  Standard: ['level', 'qty', 'skusize', 'compOgrp', 'source', 'vendor', 'ratePc', 'fx', 'ratePcLoc', 'frtPc', 'totLoc', 'totInr', ...CAT_IDS, 'budget', 'cover'],
   Rates: ['level', 'qty', 'source', 'vendor', 'ratePc', 'fx', 'ratePcLoc', 'ratePcInr', 'donor'],
   Freight: ['level', 'qty', 'source', 'frtPc', 'frtPcInr', 'totPcInr', 'totInr'],
   ...(ALL_COSTS_ENABLED ? { 'All costs': ['level', 'qty', 'source', 'selRate', 'selRateInr', 'ratePc', 'ratePcLoc', 'ratePcInr', 'actRatePc', 'actRatePcInr', 'frtPc', 'frtPcInr', 'totPcLoc', 'totPcInr', 'compCost', 'totLoc', 'totInr', 'budget', 'budAmt'] } : {}),
@@ -183,13 +202,15 @@ const KIND_STYLE: Record<string, string> = {
 const ROW_H = 30;
 
 export default function BomTree({
-  tree, sim, simOn, agg, plantCurr, onOpen, focusRow, freightRun, preset,
+  tree, sim, simOn, agg, plantCurr, onOpen, focusRow, freightRun, preset, explQty,
 }: {
   tree: CostTree; sim: SimRow[]; simOn: boolean; agg: NodeAgg; plantCurr: Record<string, string>; onOpen: (row: number) => void; focusRow?: number | null;
   /** FreightDays / StdFrt of the run that produced the rows: enables the freight break-up on freight values (omitted = as before) */
   freightRun?: FreightRun | null;
   /** Embedded use (Plant production summary, Standard cost, Sales price): start on this column preset instead of the saved choice. Not saved. */
   preset?: string;
+  /** Explosion quantity of the run: the per-unit RM / PM / Perfume cost of an FG row is its total divided by it (omitted = per unit left blank) */
+  explQty?: string;
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(allExpandableIds(tree, 2)));
   const [colIds, setColIds] = useState<string[]>(PRESETS.Standard);
@@ -197,6 +218,8 @@ export default function BomTree({
   const [chooser, setChooser] = useState(false);
   const [focus, setFocus] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const cat = useMemo(() => categoryTotals(tree), [tree]);
+  const qtyD = useMemo(() => (explQty ? D(explQty) : null), [explQty]);
 
   useEffect(() => {
     let saved = ls.get<string[]>('bce:tree-cols', PRESETS.Standard);
@@ -210,6 +233,16 @@ export default function BomTree({
         ls.set('bce:tree-cols', saved);
       }
       ls.set('bce:tree-cols-v2', true);
+    }
+    // One-time: the RM / PM / Perfume FG columns joined the Standard columns; add them after Total INR to a saved choice.
+    if (!ls.get('bce:tree-cols-v3', false)) {
+      const add = CAT_IDS.filter((id) => !saved.includes(id));
+      if (add.length) {
+        const at = saved.indexOf('totInr') + 1 || saved.length;
+        saved = [...saved.slice(0, at), ...add, ...saved.slice(at)];
+        ls.set('bce:tree-cols', saved);
+      }
+      ls.set('bce:tree-cols-v3', true);
     }
     setColIds(preset && PRESETS[preset] ? PRESETS[preset] : saved);
     setPresets(ls.get('bce:tree-presets', {}));
@@ -346,6 +379,8 @@ export default function BomTree({
                   sim={sim}
                   simOn={simOn}
                   agg={agg}
+                  cat={cat}
+                  explQty={qtyD}
                   cols={cols}
                   template={template}
                   open={expanded.has(tree.nodes[ni].id)}
@@ -404,9 +439,9 @@ function ColumnChooser({ colIds, setCols, presets, setPresets }: { colIds: strin
 }
 
 const TreeRow = memo(function TreeRow({
-  vi, top, ni, node: n, tree, sim, simOn, agg, cols, template, open, focused, locCurr, onToggle, onOpen, onFocus, frun,
+  vi, top, ni, node: n, tree, sim, simOn, agg, cat, explQty, cols, template, open, focused, locCurr, onToggle, onOpen, onFocus, frun,
 }: {
-  vi: number; top: number; ni: number; node: TreeNode; tree: CostTree; sim: SimRow[]; simOn: boolean; agg: NodeAgg; cols: Col[]; template: string;
+  vi: number; top: number; ni: number; node: TreeNode; tree: CostTree; sim: SimRow[]; simOn: boolean; agg: NodeAgg; cat: CatTotals; explQty: Decimal | null; cols: Col[]; template: string;
   open: boolean; focused: boolean; locCurr: string; onToggle: (id: string, open?: boolean) => void; onOpen: (row: number) => void; onFocus: (i: number) => void;
   frun?: FreightRun | null;
 }) {
@@ -453,7 +488,7 @@ const TreeRow = memo(function TreeRow({
       </div>
       {cols.map((c) => (
         <div role="gridcell" key={c.id} className={cx('min-w-0 truncate px-2', c.right && 'text-right')}>
-          {r && s ? c.line({ r, s, leaf, simOn, frun }) : c.group?.({ n, i: ni, agg, locCurr, simOn })}
+          {r && s ? c.line({ r, s, leaf, simOn, frun }) : c.group?.({ n, i: ni, agg, locCurr, simOn, cat, explQty })}
         </div>
       ))}
     </div>

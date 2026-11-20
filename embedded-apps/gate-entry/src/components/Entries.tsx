@@ -1,28 +1,81 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
-import { Ban, Clock, LogOut as OutIcon, Printer, RefreshCw, Search, ShieldAlert, Trash2 } from 'lucide-react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { Ban, ChevronDown, ChevronRight, Clock, LogOut as OutIcon, Printer, RefreshCw, Search, ShieldAlert, Trash2 } from 'lucide-react';
 import { cancelEntry, deleteLine, getEntry, recordOutTime, searchEntries, zeroLine } from '@/lib/gate';
-import { fmtDate, fmtQty, fmtTime } from '@/lib/format';
+import { fmtDate, fmtQty, fmtTime, isoWeekNo, monthKey, monthLabel, weekRange, weekStart } from '@/lib/format';
 import type { EntryDetail, EntryItem, EntrySummary } from '@/lib/types';
 import { Button, Card, cx, Drawer, Empty, Field, inputCls, Modal, Pill, Skeleton, Spinner } from './ui';
 import { openPdf } from './print';
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong');
 
-interface Filters { year: string; reqNo: string; poNo: string; asnNo: string; truckNo: string }
+interface Filters { year: string; reqNo: string; poNo: string; asnNo: string; truckNo: string; reqFrom: string; reqTo: string; inFrom: string; inTo: string }
+type GroupBy = 'reqDate' | 'truckDate';
+
+const blank = (): Filters => ({ year: String(new Date().getFullYear()), reqNo: '', poNo: '', asnNo: '', truckNo: '', reqFrom: '', reqTo: '', inFrom: '', inTo: '' });
+
+/** SAP is searched per year, so a date range makes us read every year it touches (capped at 5). */
+function yearsFor(q: Filters): string[] {
+  const now = new Date().getFullYear();
+  const ys: number[] = [];
+  for (const [from, to] of [[q.reqFrom, q.reqTo], [q.inFrom, q.inTo]]) {
+    if (from) ys.push(Number(from.slice(0, 4)), to ? Number(to.slice(0, 4)) : now);
+    else if (to) ys.push(Number(to.slice(0, 4)));
+  }
+  if (!ys.length) return [q.year];
+  const hi = Math.max(...ys);
+  const lo = Math.max(Math.min(...ys), hi - 4);
+  return Array.from({ length: hi - lo + 1 }, (_, i) => String(hi - i));
+}
+
+const inRange = (d: string | null, from: string, to: string) => (!from && !to) || (!!d && (!from || d >= from) && (!to || d <= to));
+
+interface Week { key: string; label: string; rows: EntrySummary[] }
+interface Month { key: string; label: string; count: number; weeks: Week[] }
+
+/** Newest first; rows without the grouping date go to a trailing "No date" month. */
+function group(rows: EntrySummary[], by: GroupBy): Month[] {
+  const months = new Map<string, Map<string, EntrySummary[]>>();
+  for (const r of rows) {
+    const d = r[by];
+    const m = d ? monthKey(d) : 'none';
+    const w = d ? weekStart(d) : 'none';
+    if (!months.has(m)) months.set(m, new Map());
+    const wk = months.get(m)!;
+    wk.set(w, [...(wk.get(w) ?? []), r]);
+  }
+  return [...months.entries()]
+    .sort(([a], [b]) => (a === 'none' ? 1 : b === 'none' ? -1 : b.localeCompare(a)))
+    .map(([key, wk]) => {
+      const weeks = [...wk.entries()]
+        .sort(([a], [b]) => (a === 'none' ? 1 : b === 'none' ? -1 : b.localeCompare(a)))
+        .map(([w, rs]) => ({ key: `${key}|${w}`, label: w === 'none' ? 'No date' : `Week ${isoWeekNo(w)} · ${weekRange(w)}`, rows: rs }));
+      return { key, label: key === 'none' ? 'No date' : monthLabel(key), count: weeks.reduce((n, w) => n + w.rows.length, 0), weeks };
+    });
+}
 
 export default function Entries({ mode, openReq, onCloseReq }: { mode: 'all' | 'out'; openReq: string | null; onCloseReq: () => void }) {
-  const [f, setF] = useState<Filters>({ year: String(new Date().getFullYear()), reqNo: openReq ?? '', poNo: '', asnNo: '', truckNo: '' });
+  const [f, setF] = useState<Filters>({ ...blank(), reqNo: openReq ?? '' });
+  const [applied, setApplied] = useState<Filters>(f);
   const [rows, setRows] = useState<EntrySummary[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [sel, setSel] = useState<EntrySummary | { reqNo: string } | null>(openReq ? { reqNo: openReq } : null);
+  const [by, setBy] = useState<GroupBy>('reqDate');
+  const [toggled, setToggled] = useState<Record<string, boolean>>({});
+  const [bulk, setBulk] = useState<boolean | null>(null);
 
   const load = useCallback(async (q: Filters) => {
     setBusy(true);
     setErr('');
     try {
-      setRows(await searchEntries({ year: q.year || undefined, reqNo: q.reqNo.trim() || undefined, poNo: q.poNo.trim() || undefined, asnNo: q.asnNo.trim() || undefined, truckNo: q.truckNo.trim() || undefined }));
+      const base = { reqNo: q.reqNo.trim() || undefined, poNo: q.poNo.trim() || undefined, asnNo: q.asnNo.trim() || undefined, truckNo: q.truckNo.trim() || undefined };
+      const all = (await Promise.all(yearsFor(q).map((year) => searchEntries({ year: year || undefined, ...base })))).flat();
+      const seen = new Set<string>();
+      setRows(all.filter((r) => !seen.has(r.reqNo) && !!seen.add(r.reqNo)));
+      setApplied(q);
+      setToggled({});
+      setBulk(null);
     } catch (e) {
       setErr(errText(e));
       setRows(null);
@@ -36,24 +89,38 @@ export default function Entries({ mode, openReq, onCloseReq }: { mode: 'all' | '
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load, mode]);
 
-  const shown = (rows ?? []).filter((r) => (mode === 'out' ? !r.truckOutDat : true));
+  const shown = useMemo(
+    () => (rows ?? []).filter((r) => (mode === 'out' ? !r.truckOutDat : true) && inRange(r.reqDate, applied.reqFrom, applied.reqTo) && inRange(r.truckDate, applied.inFrom, applied.inTo)),
+    [rows, mode, applied],
+  );
+  const months = useMemo(() => group(shown, by), [shown, by]);
+  // Default: the newest month is open (everything when the list is short); the user's clicks override it.
+  const isOpen = (m: Month, i: number) => toggled[m.key] ?? bulk ?? (i === 0 || shown.length <= 25);
   const closeDetail = () => {
     setSel(null);
     onCloseReq();
   };
+  const dateInput = (label: string, key: 'reqFrom' | 'reqTo' | 'inFrom' | 'inTo') => (
+    <Field label={label}>{(id) => <input id={id} type="date" className={inputCls} value={f[key]} onChange={(e) => setF({ ...f, [key]: e.target.value })} />}</Field>
+  );
 
   return (
     <div className="flex flex-col gap-3">
       <Card title={mode === 'out' ? 'Trucks inside - record the out time' : 'Gate entries'}>
         <form className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6" onSubmit={(e) => { e.preventDefault(); void load(f); }}>
-          <Field label="Year">{(id) => <input id={id} className={inputCls} inputMode="numeric" maxLength={4} value={f.year} onChange={(e) => setF({ ...f, year: e.target.value.replace(/\D/g, '') })} />}</Field>
+          <Field label="Year" hint={f.reqFrom || f.reqTo || f.inFrom || f.inTo ? 'Taken from the dates' : undefined}>{(id) => <input id={id} className={inputCls} inputMode="numeric" maxLength={4} value={f.year} onChange={(e) => setF({ ...f, year: e.target.value.replace(/\D/g, '') })} />}</Field>
           <Field label="Request number">{(id) => <input id={id} className={cx(inputCls, 'uppercase')} maxLength={12} value={f.reqNo} onChange={(e) => setF({ ...f, reqNo: e.target.value.toUpperCase() })} />}</Field>
           <Field label="PO number">{(id) => <input id={id} className={inputCls} inputMode="numeric" maxLength={10} value={f.poNo} onChange={(e) => setF({ ...f, poNo: e.target.value.replace(/\D/g, '') })} />}</Field>
           <Field label="ASN number">{(id) => <input id={id} className={inputCls} inputMode="numeric" value={f.asnNo} onChange={(e) => setF({ ...f, asnNo: e.target.value.replace(/\D/g, '') })} />}</Field>
           <Field label="Vehicle number">{(id) => <input id={id} className={cx(inputCls, 'uppercase')} maxLength={20} placeholder="MH12* or *5521" value={f.truckNo} onChange={(e) => setF({ ...f, truckNo: e.target.value.toUpperCase() })} />}</Field>
-          <div className="flex items-end gap-2">
+          <div className="hidden lg:block" />
+          {dateInput('Requested from', 'reqFrom')}
+          {dateInput('Requested to', 'reqTo')}
+          {dateInput('In date from', 'inFrom')}
+          {dateInput('In date to', 'inTo')}
+          <div className="flex items-end gap-2 lg:col-span-2">
             <Button variant="primary" type="submit" className="flex-1" disabled={busy}>{busy ? <Spinner /> : <Search size={14} />} Search</Button>
-            <Button aria-label="Clear filters" onClick={() => { const c = { year: String(new Date().getFullYear()), reqNo: '', poNo: '', asnNo: '', truckNo: '' }; setF(c); void load(c); }}><RefreshCw size={14} /></Button>
+            <Button aria-label="Clear filters" onClick={() => { const c = blank(); setF(c); void load(c); }}><RefreshCw size={14} /></Button>
           </div>
         </form>
       </Card>
@@ -64,31 +131,68 @@ export default function Entries({ mode, openReq, onCloseReq }: { mode: 'all' | '
         <Empty title={mode === 'out' ? 'No trucks inside' : 'No gate entries'} icon="🚚">{mode === 'out' ? 'Every entry found already has its out time.' : 'Nothing matches these filters.'}</Empty>
       )}
       {shown.length > 0 && (
-        <Card title={`${shown.length} ${mode === 'out' ? 'truck(s) inside' : 'entr' + (shown.length === 1 ? 'y' : 'ies')}`} bodyClass="p-0">
+        <Card
+          title={`${shown.length} ${mode === 'out' ? 'truck(s) inside' : 'entr' + (shown.length === 1 ? 'y' : 'ies')}`}
+          actions={
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <label className="flex items-center gap-1.5 font-semibold text-muted">
+                Group by
+                <select className="h-8 rounded-lg border border-line bg-panel px-2 text-xs font-semibold text-ink" value={by} onChange={(e) => { setBy(e.target.value as GroupBy); setToggled({}); }}>
+                  <option value="reqDate">Requested date</option>
+                  <option value="truckDate">In date</option>
+                </select>
+              </label>
+              <Button size="sm" onClick={() => { setToggled({}); setBulk(true); }}>Expand all</Button>
+              <Button size="sm" onClick={() => { setToggled({}); setBulk(false); }}>Collapse all</Button>
+            </div>
+          }
+          bodyClass="p-0"
+        >
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-[13px]">
               <thead className="bg-sunken text-left text-2xs font-bold uppercase tracking-wide text-muted">
                 <tr><th className="px-4 py-2">Request</th><th>Requested</th><th>Truck</th><th>In</th><th>ASN</th><th>By</th><th className="px-4">Out</th></tr>
               </thead>
               <tbody>
-                {shown.map((r) => (
-                  <tr key={r.reqNo} className="cursor-pointer border-t border-line hover:bg-sunken/70" onClick={() => setSel(r)}>
-                    <td className="px-4 py-2.5 font-mono font-bold text-accent">{r.reqNo}</td>
-                    <td className="num">{fmtDate(r.reqDate)} {fmtTime(r.reqTime)}</td>
-                    <td className="font-semibold">{r.truckNo}</td>
-                    <td className="num">{fmtDate(r.truckDate)} {fmtTime(r.truckTim)}</td>
-                    <td className="font-mono text-xs">{r.asnNo || '-'}</td>
-                    <td className="text-xs text-muted">{r.reqBy}</td>
-                    <td className="px-4">{r.truckOutDat ? <span className="num text-xs">{fmtDate(r.truckOutDat)} {fmtTime(r.truckOutTim)}</span> : <Pill tone="warn">inside</Pill>}</td>
-                  </tr>
-                ))}
+                {months.map((m, i) => {
+                  const open = isOpen(m, i);
+                  return (
+                    <Fragment key={m.key}>
+                      <tr className="cursor-pointer border-t border-line bg-accent/[0.06] hover:bg-accent/10" onClick={() => setToggled({ ...toggled, [m.key]: !open })}>
+                        <td colSpan={7} className="px-4 py-2 text-sm font-extrabold">
+                          <button type="button" className="flex w-full items-center gap-2 text-left" aria-expanded={open}>
+                            {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                            {m.label}
+                            <span className="rounded-full bg-panel px-2 py-0.5 text-2xs font-bold text-muted">{m.count} {m.count === 1 ? 'entry' : 'entries'}</span>
+                          </button>
+                        </td>
+                      </tr>
+                      {open && m.weeks.map((w) => (
+                        <Fragment key={w.key}>
+                          <tr className="border-t border-line bg-sunken/70"><td colSpan={7} className="px-4 py-1.5 text-xs font-bold text-muted">{w.label} <span className="font-normal">· {w.rows.length}</span></td></tr>
+                          {w.rows.map((r) => (
+                            <tr key={r.reqNo} className="cursor-pointer border-t border-line hover:bg-sunken/70" onClick={() => setSel(r)}>
+                              <td className="px-4 py-2.5 font-mono font-bold text-accent">{r.reqNo}</td>
+                              <td className="num">{fmtDate(r.reqDate)} {fmtTime(r.reqTime)}</td>
+                              <td className="font-semibold">{r.truckNo}</td>
+                              <td className="num">{fmtDate(r.truckDate)} {fmtTime(r.truckTim)}</td>
+                              <td className="font-mono text-xs">{r.asnNo || '-'}</td>
+                              <td className="text-xs text-muted">{r.reqBy}</td>
+                              <td className="px-4">{r.truckOutDat ? <span className="num text-xs">{fmtDate(r.truckOutDat)} {fmtTime(r.truckOutTim)}</span> : <Pill tone="warn">inside</Pill>}</td>
+                            </tr>
+                          ))}
+                        </Fragment>
+                      ))}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </Card>
       )}
 
-      <Detail summary={sel} onClose={closeDetail} onChanged={() => void load(f)} />
+      <Detail summary={sel} onClose={closeDetail} onChanged={() => void load(applied)} />
     </div>
   );
 }

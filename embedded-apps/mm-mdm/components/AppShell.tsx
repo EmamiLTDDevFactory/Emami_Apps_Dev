@@ -5,13 +5,19 @@ import { usePathname, useRouter } from 'next/navigation';
 import { FormEvent, ReactNode, useState } from 'react';
 import { useMdm } from '@/lib/store';
 import { DOMAINS, SETUP_PATH, SETUP_TCODE, resolveTcode } from '@/lib/tcodes';
-import { USERS } from '@/lib/workflowConfig';
-import { DOMAIN_ICONS, IconHome, IconMenu, IconRefresh, IconTree } from './icons';
+import { DOMAIN_ICONS, IconChart, IconClock, IconHome, IconLayers, IconMenu, IconTree } from './icons';
+
+const ADMIN_LINKS = [
+  { href: '/admin/dashboard', label: 'Dashboard', tcode: 'MDM_DB', Icon: IconChart },
+  { href: '/admin/worklist', label: 'Workflow visibility', tcode: 'UWL', Icon: IconClock },
+  { href: '/admin/workflow', label: 'Workflow maintenance', tcode: 'ROLE_MAIN', Icon: IconLayers },
+  { href: '/admin/rules', label: 'Rules maintenance', tcode: 'MDM_CONFIG', Icon: IconTree },
+];
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, setUserId, message, notify, clearMessage, waiting, resetDemo } = useMdm();
+  const { user, sessionState, sessionError, retrySession, message, notify, clearMessage, waiting } = useMdm();
   const [cmd, setCmd] = useState('');
   const [navOpen, setNavOpen] = useState(false);
 
@@ -29,8 +35,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
     setNavOpen(false);
   }
 
-  const initials = user.name.split(' ').map((p) => p[0]).join('');
-  const role = user.level === null ? 'Initiator' : `Level ${user.level} · ${user.department}`;
+  const initials = user.name.split(' ').filter(Boolean).map((p) => p[0]).join('').slice(0, 3) || '?';
+  const role = sessionState === 'loading' ? 'Signing in…' : sessionState === 'error' ? 'Not connected' : user.department || user.roles.join(', ') || 'Signed in';
 
   return (
     <div className="shell">
@@ -67,17 +73,24 @@ export default function AppShell({ children }: { children: ReactNode }) {
               </Link>
             );
           })}
+          <div className="nav-group">Administration</div>
+          {ADMIN_LINKS.map((a) => (
+            <Link key={a.href} href={a.href} className={`nav-item ${pathname.startsWith(a.href) ? 'active' : ''}`} onClick={() => setNavOpen(false)}>
+              <span className="nav-icon"><a.Icon /></span>
+              <span className="nav-label">{a.label}</span>
+              <span className="nav-tcode">{a.tcode}</span>
+            </Link>
+          ))}
         </div>
 
         <div className="nav-foot">
           <div className="user-card">
             <span className="avatar" aria-hidden>{initials}</span>
             <span className="user-text">
-              <strong>{user.name}</strong>
+              <strong>{user.name || (sessionState === 'error' ? 'Unknown user' : '…')}</strong>
               <small>{role}</small>
             </span>
           </div>
-          <button className="nav-reset" onClick={resetDemo}><IconRefresh size={15} /> Reset demo data</button>
         </div>
       </nav>
       {navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} aria-hidden />}
@@ -99,28 +112,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
             <button type="submit" className="tcode-go" aria-label="Run transaction">Go</button>
           </form>
           <div className="topbar-right">
-            <label className="role-switch">
-              <span className="role-switch-label">Acting as</span>
-              <select value={user.id} onChange={(e) => setUserId(e.target.value)} aria-label="Signed in as (demo user switch)">
-                <optgroup label="Initiator">
-                  {USERS.filter((u) => u.level === null).map((u) => (
-                    <option key={u.id} value={u.id}>{u.name} – Initiator</option>
-                  ))}
-                </optgroup>
-                <optgroup label="Workflow levels">
-                  {USERS.filter((u) => u.level !== null).map((u) => (
-                    <option key={u.id} value={u.id}>L{u.level} {u.department} – {u.name}</option>
-                  ))}
-                </optgroup>
-              </select>
-            </label>
             <span className="avatar avatar-top" title={user.name}>{initials}</span>
           </div>
         </header>
 
         <main className="main">{children}</main>
 
-        <footer className={`statusbar ${message ? `status-${message.type}` : ''}`} role="status" aria-live="polite">
+        <footer className={`statusbar ${message ? `status-${message.type}` : sessionState === 'error' ? 'status-error' : ''}`} role="status" aria-live="polite">
           {message ? (
             <>
               <span className="status-icon" aria-hidden>{message.type === 'success' ? '✓' : message.type === 'error' ? '✕' : message.type === 'warning' ? '!' : 'i'}</span>
@@ -128,7 +126,15 @@ export default function AppShell({ children }: { children: ReactNode }) {
               <button className="status-close" onClick={clearMessage} aria-label="Dismiss message">×</button>
             </>
           ) : (
-            <span className="status-text muted"><span className="status-dot" aria-hidden /> Ready – signed in as {user.name} ({role})</span>
+            sessionState === 'error' ? (
+              <>
+                <span className="status-icon" aria-hidden>✕</span>
+                <span className="status-text">SAP is not reachable: {sessionError}</span>
+                <button className="status-close" onClick={retrySession} aria-label="Try again" title="Try again">↻</button>
+              </>
+            ) : (
+              <span className="status-text muted"><span className="status-dot" aria-hidden /> {sessionState === 'loading' ? 'Connecting to SAP…' : `Connected to SAP – signed in as ${user.name} (${role})`}</span>
+            )
           )}
         </footer>
       </div>

@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { Menu } from 'lucide-react';
 import { getHubEmail, hasHubSession } from '../lib/hubEmailLogin';
-import { AppProvider } from '../context/AppContext';
+import { AppProvider, useApp } from '../context/AppContext';
+import ServiceUnavailable from './ServiceUnavailable';
 import SidePane from './SidePane';
 
 const WIDE_BREAKPOINT = 768; // matches every sibling embedded app's own SidePane breakpoint
@@ -23,6 +24,7 @@ function Gate({ children }: { children: React.ReactNode }) {
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const isWideScreen = useIsWideScreen();
   const [menuOpen, setMenuOpen] = useState(false);
+  const { error, refresh } = useApp();
 
   useEffect(() => {
     getHubEmail();
@@ -58,7 +60,7 @@ function Gate({ children }: { children: React.ReactNode }) {
             <span className="text-[12.5px] font-extrabold text-ink">Term Life Policy</span>
           </header>
         )}
-        <main className="mx-auto w-full max-w-6xl flex-1 p-3 sm:p-4">{children}</main>
+        <main className="mx-auto w-full max-w-6xl flex-1 p-3 sm:p-4">{error ? <ServiceUnavailable error={error} onRetry={refresh} /> : children}</main>
       </div>
     </div>
   );

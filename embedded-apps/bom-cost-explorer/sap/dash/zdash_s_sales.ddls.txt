@@ -1,0 +1,25 @@
+@EndUserText.label : 'Costing dashboard: sales view row'
+@AbapCatalog.enhancementCategory : #NOT_EXTENSIBLE
+define type zdash_s_sales {
+  grain       : abap.char(1);
+  zbrand      : zpbrand;
+  matnr       : matnr;
+  maktx       : maktx;
+  matkl       : matkl;
+  vtweg       : vtweg;
+  vtweg_txt   : abap.char(20);
+  werks       : werks_d;
+  date_from   : dats;
+  date_to     : dats;
+  sold_qty    : abap.dec(23,3);
+  gsv         : abap.dec(23,6);
+  deductions  : abap.dec(23,6);
+  nsv         : abap.dec(23,6);
+  cogm_qty    : abap.dec(23,3);
+  nsv_cmp     : abap.dec(23,6);
+  cogm        : abap.dec(23,6);
+  cogm_pc     : abap.dec(23,6);
+  sku_cnt     : abap.int4;
+  sku_nocogm  : abap.int4;
+  msg         : abap.char(120);
+}

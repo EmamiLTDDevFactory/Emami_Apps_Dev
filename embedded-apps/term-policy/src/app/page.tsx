@@ -5,7 +5,7 @@ import { ShieldCheck, Search, Trash2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import Banner, { type BannerState } from '../components/Banner';
 import { api, TermPolicyError } from '../lib/termPolicyApi';
-import { checkPolicyForm, inr, shareTotal } from '../lib/validate';
+import { fieldFor, inr, shareTotal } from '../lib/validate';
 import { MAX_NOMINEES, RELATIONS, type EmployeeInfo, type Nominee, type Policy, type SumOption } from '../types/policy';
 
 const blankNominees = (): Nominee[] => Array.from({ length: MAX_NOMINEES }, () => ({ name: '', relation: '', share: '' }));
@@ -29,7 +29,7 @@ function Detail({ label, value }: { label: string; value: string | number }) {
 }
 
 export default function TermPolicyPage() {
-  const { email, profile, canActForOthers, isAdmin, isMock, loading: appLoading, error: appError } = useApp();
+  const { email, profile, canActForOthers, isAdmin, loading: appLoading } = useApp();
 
   const [empIdInput, setEmpIdInput] = useState('');
   const [employee, setEmployee] = useState<EmployeeInfo | null>(null);
@@ -91,12 +91,6 @@ export default function TermPolicyPage() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!email || !employee) return;
-    const problem = checkPolicyForm({ personalEmail, contact, hasCompanyEmail: !!employee.email, sumAssured, nominees });
-    if (problem) {
-      setFieldError(problem);
-      setBanner({ type: 'error', message: problem.message });
-      return;
-    }
     setFieldError(null);
     setBusy(true);
     setBanner(null);
@@ -105,7 +99,7 @@ export default function TermPolicyPage() {
       setBanner({ type: 'success', message: existing ? `Request ${reqno} changed successfully.` : `Request ${reqno} saved successfully.` });
       await loadEmployee(employee.empId);
     } catch (err) {
-      if (err instanceof TermPolicyError && err.field) setFieldError({ field: err.field, message: err.message });
+      if (err instanceof Error) setFieldError({ field: (err instanceof TermPolicyError && err.field) || fieldFor(err.message), message: err.message });
       fail(err);
     } finally {
       setBusy(false);
@@ -131,15 +125,9 @@ export default function TermPolicyPage() {
   const invalid = (f: string) => (fieldError?.field === f ? 'border-red' : '');
 
   if (appLoading) return <Spinner />;
-  if (appError) return <Banner banner={{ type: 'error', message: appError }} onClose={() => undefined} />;
 
   return (
     <div>
-      {isMock && (
-        <div className="mb-3 rounded-xl border border-amber/30 bg-amberBg px-3 py-2 text-[12px] font-semibold text-amber">
-          Demo mode: the SAP service ZLIFE_INS_SRV is not switched on for this build, so data is kept only in this browser.
-        </div>
-      )}
       {banner && <Banner banner={banner} onClose={() => setBanner(null)} />}
 
       <div className="glass-card mb-3 p-4">
@@ -235,7 +223,7 @@ export default function TermPolicyPage() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <button type="submit" className="btn btn-primary" disabled={busy || options.length === 0}>{existing ? 'Save changes' : 'Submit'}</button>
+              <button type="submit" className="btn btn-primary" disabled={busy}>{existing ? 'Save changes' : 'Submit'}</button>
               {existing && isAdmin && (
                 <button type="button" className="btn btn-danger" onClick={remove} disabled={busy}><Trash2 size={13} /> Delete request</button>
               )}

@@ -40,6 +40,8 @@ export interface AllTabsInput {
   plantNames: Record<string, string>;
   coverDays: number;
   groupCurr: string;
+  /** the BOM tree sheet exactly as the tree shows it (chosen columns); omitted = every CostLine field */
+  bomTree?: XSheet;
 }
 
 const num = (v: { toString(): string } | null | undefined) => (v === null || v === undefined ? null : Number(v.toString()));
@@ -60,7 +62,7 @@ export async function buildAllTabSheets(x: AllTabsInput): Promise<{ sheets: XShe
 
   // ---- BOM tree + rate options
   const cl = costLineSheets({ query, rows, sim, settings });
-  sheets.push({ name: 'BOM tree', cols: cl.cols, count: rows.length });
+  sheets.push(x.bomTree ?? { name: 'BOM tree', cols: cl.cols, count: rows.length });
   if (cl.options.count) sheets.push(cl.options);
 
   // ---- Cost breakup (needs SAP's activity and process-order data sets; either may be missing)

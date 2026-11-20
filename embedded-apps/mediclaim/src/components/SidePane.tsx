@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { HeartPulse, History, ClipboardList, CalendarClock, ShieldBan, Download, ArrowLeft, X } from 'lucide-react';
+import { HeartPulse, History, ClipboardList, CalendarClock, ShieldBan, Download, IndianRupee, CalendarRange, Users, ArrowLeft, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { nameFromEmail } from '../lib/hubEmailLogin';
 import { goBack } from '../lib/goBack';
@@ -23,6 +23,9 @@ const HR_NAV_ITEMS = [
   { href: '/admin/cutoff/', label: 'Cut-off date & insurer mail', icon: CalendarClock },
   { href: '/admin/blocked/', label: 'Blocked employees', icon: ShieldBan },
   { href: '/admin/download/', label: 'HR download', icon: Download },
+  { href: '/admin/rates/', label: 'Premium rates', icon: IndianRupee },
+  { href: '/admin/periods/', label: 'Policy periods', icon: CalendarRange },
+  { href: '/admin/users/', label: 'Authorised users', icon: Users },
 ];
 
 export default function SidePane({

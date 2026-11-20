@@ -137,6 +137,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // puts the correct URL in the address bar; nothing extra is needed here.
     setIsLoggedIn(true);
     storage.setItem(AUTH_STORAGE_KEY, 'true');
+    // Fresh session = fresh activity clock. A timestamp left over from a previous session that
+    // ended without logout() (expired token found at startup) would otherwise trip the 12-hour
+    // inactivity check the moment this login lands and sign the person straight back out.
+    storage.setItem(LAST_ACTIVITY_STORAGE_KEY, String(Date.now()));
     resetInstallOfferForNewLogin();
     if (email) {
       setUserEmail(email);
@@ -218,7 +222,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // gets a fresh token instead of a hub that looks signed in but whose token every
       // embedded app rejects (see hubTokenExpired).
       if (persistedLoggedIn && (hubTokenExpired() || (persistedEmail && !(await checkStillAuthorized(persistedEmail))))) {
-        storage.removeItems([AUTH_STORAGE_KEY, AUTH_EMAIL_STORAGE_KEY, AUTH_TOKEN_STORAGE_KEY, AUTH_METHOD_STORAGE_KEY]);
+        storage.removeItems([AUTH_STORAGE_KEY, AUTH_EMAIL_STORAGE_KEY, AUTH_TOKEN_STORAGE_KEY, AUTH_METHOD_STORAGE_KEY, LAST_ACTIVITY_STORAGE_KEY]);
         restoredLoggedIn = false;
         restoredEmail = null;
       }

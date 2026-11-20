@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   blocked, canDelete, canEdit, canFinalise, canRecalc, canReopen, canSubmit, changed, compareRows, createBody, finaliseCounts, flagHint, groupItems, isoDate, kpis,
-  newScenarioDefaults, resolveScope, ruleToApi, showDate, timeText, validateNewScenario, validateValue, warned,
+  matchKpi, newScenarioDefaults, originSummary, NO_ORIGIN, resolveScope, ruleToApi, showDate, timeText, validateNewScenario, validateValue, warned,
 } from '@/lib/pkg/rules';
 import { actionPayload } from '@/lib/pkg/api';
 import type { PkgItem } from '@/lib/pkg/types';
@@ -9,6 +9,8 @@ import type { PkgItem } from '@/lib/pkg/types';
 const base: PkgItem = {
   ScenId: '0000000014', Matnr: 'M1', Idnrk: '', Maktx: 'Mat', Mtart: 'PKGN', Matkl: 'PK01', RateSrc: 'CONTRACT', BasicRateSap: 10, BasicRateUsed: 10, BudgetRateSap: 11, BudgetRate: 11, Variance: 1, VariancePct: 10,
   Waers: 'INR', Peinh: 1, Meins: 'KG', MsgFlags: '', PctSap: 0, PctUsed: 0, ZbudSap: 0, ZbudUsed: 0, CompBaseRate: 0, CompBudRate: 0,
+  OriginGrp: '', ZbudMatnr: '', AltBomUsed: '', GroupCurr: 'INR', GroupValue: 0, FrtCond1: '', FrtCond2: '', FrtCond3: '', FrtCond4: '', FrtRate1: 0, FrtRate2: 0, FrtRate3: 0, FrtRate4: 0,
+  FrtTotal: 0, FrtCurr: 'INR', LandedRate: 0, LandedCurr: 'INR', NetQty: 0, NetValue: 0, Werks: '',
 };
 const head = (o: Partial<PkgItem> = {}): PkgItem => ({ ...base, ...o });
 const comp = (o: Partial<PkgItem> = {}): PkgItem => ({ ...base, Idnrk: 'C1', PctSap: 60, PctUsed: 60, ...o });
@@ -105,7 +107,9 @@ describe('new scenario', () => {
     expect(validateNewScenario({ ...ok, validFrom: '' }).validFrom).toBeTruthy();
   });
   it('body defaults the key date to the start and lists selections', () => {
-    expect(createBody({ ...ok, matkl: 'pk01, pk02', norm: true })).toMatchObject({ action: 'CREATE', keyDate: '2027-04-01', mtartSel: 'PKGN,VERP', matklSel: 'PK01,PK02', prio: 'CONTRACT,INFOREC,CONSUMP,MBEW', norm: 'X' });
+    expect(newScenarioDefaults('2027-04-01').werks).toBe('');
+    expect(createBody(ok).werks).toBe('');
+    expect(createBody({ ...ok, matkl: 'pk01, pk02', norm: true })).toMatchObject({ action: 'CREATE', keyDate: '2027-04-01', mtartSel: 'PKGN,VERP', matklSel: 'PK01,PK02', prio: 'INFOREC,CONSUMP,MBEW', norm: 'X' });
   });
 });
 
@@ -117,6 +121,8 @@ describe('dates and payload', () => {
   it('action payload pads the scenario, lower-cases the email, sends datetimes', () => {
     const p = actionPayload({ action: 'CREATE', scenId: '14', validFrom: '2027-04-01' }, ' A@B.com ');
     expect(p).toMatchObject({ Action: 'CREATE', ScenId: '0000000014', Email: 'a@b.com', ValidFrom: '2027-04-01T00:00:00' });
+    expect(actionPayload({ action: 'CREATE', werks: ' un08 ' }, 'a@b.com').Werks).toBe('UN08');
+    expect(actionPayload({ action: 'CREATE' }, 'a@b.com').Werks).toBe('');
   });
   it('edit fields use the SAP names OvrLevel / OvrRule / NewValue', () => {
     const p = actionPayload({ action: 'EDIT', scenId: '14', level: 'Z', rule: 'P', value: '-10', scopeMatnr: 'A' }, 'a@b.com') as Record<string, unknown>;
@@ -126,5 +132,26 @@ describe('dates and payload', () => {
   it('BudgetVersion is always a string (SAP Edm.String): blank = next free', () => {
     expect(actionPayload({ action: 'CREATE' }, 'a@b.com').BudgetVersion).toBe('');
     expect(actionPayload({ action: 'COPY', scenId: '14', budgetVersion: 3 }, 'a@b.com').BudgetVersion).toBe('3');
+  });
+});
+
+describe('dashboard tile filter and origin group summary', () => {
+  const gs = groupItems([
+    head({ Matnr: 'A', OriginGrp: 'CAP', ZbudMatnr: '850001404', NetQty: 10, NetValue: 100, VariancePct: 2 }),
+    head({ Matnr: 'B', OriginGrp: 'CAP', MsgFlags: 'NORATE', NetQty: 5, NetValue: 50, VariancePct: 99 }),
+    head({ Matnr: 'C', OriginGrp: '', MsgFlags: 'NOFRT', NetQty: 1, NetValue: 7, VariancePct: 4 }),
+    head({ Matnr: 'D', OriginGrp: 'BOX', BasicRateUsed: 12, VariancePct: 6 }),
+  ]);
+  it('each tile keeps exactly its own materials', () => {
+    const pick = (f: Parameters<typeof matchKpi>[1]) => gs.filter((g) => matchKpi(g, f)).map((g) => g.head.Matnr);
+    expect(pick('all')).toEqual(['A', 'B', 'C', 'D']);
+    expect(pick('blocked')).toEqual(['B']);
+    expect(pick('warnings')).toEqual(['C']);
+    expect(pick('overridden')).toEqual(['D']);
+  });
+  it('origin summary: sorted, no-origin last, totals, blocked rows left out of the average', () => {
+    const s = originSummary(gs);
+    expect(s.map((x) => x.key)).toEqual(['BOX', 'CAP', NO_ORIGIN]);
+    expect(s[1]).toMatchObject({ zbud: '850001404', n: 2, blocked: 1, netQty: 15, netValue: 150, avgVarPct: 2 });
   });
 });

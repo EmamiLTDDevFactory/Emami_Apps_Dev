@@ -3,13 +3,13 @@
  * "Material Master : Initial Screen" (Web Dynpro) of the old app: every heading,
  * block and field in the same order.
  *
- * - Which level sees and maintains which view is NOT set here: it comes from the backend
- *   (View Visibility), see getViewVisibility in lib/service.ts and the mock lib/viewVisibility.ts.
+ * - Which fields a level sees, may change or must fill comes from SAP (GET /fieldcontrol), never from here.
  * - `ref` fields show a value maintained elsewhere (base unit, material group, ...),
  *   display-only, exactly like the greyed fields on the SAP screen.
- * - Value lists are MOCK data, to be replaced by SAP value helps.
+ * - Select fields carry no value list: the list is read live from SAP (value help named like the field, see lib/mmValueHelp.ts).
  */
-import { Opt, PLANTS } from './valueHelps';
+
+export interface Opt { value: string; label: string }
 
 export type FieldType = 'text' | 'number' | 'select' | 'checkbox' | 'date' | 'textarea' | 'ref' | 'table' | 'attachments';
 
@@ -17,7 +17,8 @@ export interface ColumnDef {
   key: string;
   label: string;
   type: 'text' | 'number' | 'select' | 'checkbox' | 'readonly';
-  options?: Opt[];
+  /** Select column: name of the SAP value help that lists the values */
+  help?: string;
   required?: boolean;
 }
 
@@ -26,7 +27,8 @@ export interface FieldDef {
   label: string;
   tech: string;
   type: FieldType;
-  options?: Opt[];
+  /** Select field: SAP value help name; defaults to `tech` */
+  help?: string;
   required?: boolean;
   maxLength?: number;
   integer?: boolean;
@@ -39,6 +41,8 @@ export interface FieldDef {
   columns?: ColumnDef[];
   /** Table: rows are given, only cells can change */
   fixedRows?: boolean;
+  /** Table: SAP keeps at most this many rows */
+  maxRows?: number;
   wide?: boolean;
 }
 
@@ -65,84 +69,16 @@ export interface ViewDef {
 /* Field helpers                                                        */
 /* ------------------------------------------------------------------ */
 
-const o = (pairs: [string, string][]): Opt[] => pairs.map(([value, label]) => ({ value, label }));
 type X = Partial<FieldDef>;
 const T = (key: string, label: string, tech: string, x: X = {}): FieldDef => ({ key, label, tech, type: 'text', ...x });
 const N = (key: string, label: string, tech: string, x: X = {}): FieldDef => ({ key, label, tech, type: 'number', ...x });
 const D = (key: string, label: string, tech: string, x: X = {}): FieldDef => ({ key, label, tech, type: 'date', ...x });
 const C = (key: string, label: string, tech: string, x: X = {}): FieldDef => ({ key, label, tech, type: 'checkbox', ...x });
-const S = (key: string, label: string, tech: string, options: Opt[], x: X = {}): FieldDef => ({ key, label, tech, type: 'select', options, ...x });
+const S = (key: string, label: string, tech: string, x: X = {}): FieldDef => ({ key, label, tech, type: 'select', ...x });
 const TA = (key: string, label: string, tech: string, x: X = {}): FieldDef => ({ key, label, tech, type: 'textarea', wide: true, ...x });
 /** Display of a value maintained in another view or on the key data screen */
 const R = (key: string, label: string): FieldDef => ({ key, label, tech: '', type: 'ref' });
 
-/* ------------------------------------------------------------------ */
-/* Value lists (mock)                                                   */
-/* ------------------------------------------------------------------ */
-
-export const UOM = o([['PC', 'pieces'], ['EA', 'each'], ['CS', 'case'], ['KG', 'Kilogram'], ['G', 'Gram'], ['L', 'Litre'], ['ML', 'Millilitre']]);
-const WEIGHT_UNITS = o([['KG', 'Kilogram'], ['G', 'Gram']]);
-const VOLUME_UNITS = o([['L', 'Litre'], ['ML', 'Millilitre'], ['M3', 'Cubic metre']]);
-const MATL_STATUS = o([['01', 'Blocked for procurement'], ['02', 'Blocked for production'], ['Z1', 'Phase-out']]);
-const ITEM_CAT = o([['NORM', 'Standard item'], ['NOR', 'Standard item'], ['ERLA', 'Structure / main item'], ['LEIS', 'Service']]);
-const EAN_CAT = o([['HE', 'Manufacturer EAN'], ['IE', 'In-store EAN']]);
-const DIST_CHAINS = o([['00', 'Internal Distribution'], ['10', 'General Trade'], ['20', 'Modern Trade'], ['30', 'E-Commerce'], ['40', 'Export']]);
-const TAX_CLASS = o([['0', 'Taxable under GST / exempt'], ['1', 'Taxable']]);
-const STATS_GRP = o([['1', "'A' Material"], ['2', "'B' Material"], ['3', "'C' Material"]]);
-const PRICING_GRP = o([['01', 'Standard'], ['02', 'Premium']]);
-const REBATE_GRP = o([['01', 'Standard rebate'], ['02', 'Special rebate']]);
-const ACCT_ASSIGN = o([['01', 'Domestic revenues'], ['02', 'Foreign revenues'], ['05', 'Finished Goods']]);
-const REPLACEMENT = o([['', 'No'], ['A', 'Replacement part']]);
-const DISCOUNT_KIND = o([['', 'Not eligible for discount in kind'], ['1', 'Eligible']]);
-const AVAIL_CHECK = o([['02', 'Individual requirements'], ['KP', 'No check']]);
-const TRANS_GRP = o([['0001', 'On pallets'], ['0002', 'In cartons']]);
-const LOADING_GRP = o([['0001', 'Crane'], ['0002', 'Forklift'], ['0003', 'Manual']]);
-export const PROFIT_CENTERS = o([['UN08', 'VAPI'], ['UN13', 'PANTNAGAR'], ['UN05', 'GUWAHATI']]);
-const SERIAL_LEVEL = o([['', 'Serialization at stock level'], ['1', 'Serialization at equipment level']]);
-const EXEMPT_CERT = o([['', 'Not Relevant'], ['A', 'Manufacturer declaration'], ['B', 'Supplier certificate']]);
-const COUNTRIES = o([['IN', 'India'], ['AE', 'Utd.Arab Emir.'], ['BD', 'Bangladesh'], ['LK', 'Sri Lanka'], ['NP', 'Nepal'], ['US', 'United States']]);
-const REGIONS = o([['WB', 'West Bengal'], ['AS', 'Assam'], ['UK', 'Uttarakhand'], ['HP', 'Himachal Pradesh'], ['GJ', 'Gujarat']]);
-const VAR_ORDER_UNIT = o([['', 'Not active'], ['1', 'Active']]);
-export const PURCH_GROUPS = o([['001', 'Herbs & Extracts'], ['002', 'Chemicals & Oils'], ['003', 'Packaging']]);
-const TAX_IND = o([['0', 'Material 0%'], ['1', 'Material 5%'], ['2', 'Material 18%']]);
-const FREE_GOODS = o([['', 'Not eligible for free goods discount'], ['1', 'Eligible']]);
-const SCHED_PROFILE = o([['PI01', 'Finished Product - UN13'], ['PI02', 'Semi-finished - UN13']]);
-const MRP_TYPES = o([['PD', 'MRP'], ['VB', 'Reorder point'], ['ND', 'No planning']]);
-export const MRP_CONTROLLERS = o([['001', 'PERSON 1'], ['002', 'PERSON 2'], ['003', 'PERSON 3']]);
-const LOT_SIZES = o([['EX', 'Lot-for-lot order quantity'], ['FX', 'Fixed order quantity'], ['WB', 'Weekly lot size']]);
-const ABC = o([['A', 'Important part'], ['B', 'Less important part'], ['C', 'Relatively unimportant']]);
-const PROC_TYPES = o([['', 'No procurement'], ['E', 'In-house production'], ['F', 'External procurement'], ['X', 'Both procurement types']]);
-const BATCH_ENTRY = o([['', 'Batch in goods receipt'], ['1', 'Batch at order release'], ['2', 'Batch at order creation']]);
-const BACKFLUSH = o([['1', 'Always backflush'], ['2', 'Work center decides']]);
-const JIT = o([['', 'No JIT'], ['1', 'JIT schedules']]);
-const SAFETY_TIME = o([['', 'Ignore safety time'], ['1', 'For independent requirements'], ['2', 'For all requirements']]);
-const SCHED_MARGIN = o([['000', 'No float'], ['001', 'Float 1 day']]);
-const CALENDARS = o([['PCL', 'Planning Calendar'], ['MON', 'Monthly calendar']]);
-const PERIOD_IND = o([['M', 'Monthly'], ['W', 'Weekly'], ['D', 'Daily'], ['P', 'Posting period']]);
-const STRATEGY = o([['10', 'Make-to-stock production'], ['11', 'Make-to-stock / gross reqmts'], ['40', 'Planning with final assembly']]);
-const CONSUMPTION = o([['1', 'Backward consumption only'], ['2', 'Backward / forward'], ['3', 'Forward consumption only'], ['4', 'Forward/backward consumption']]);
-const MIXED_MRP = o([['', 'No mixed MRP'], ['1', 'Subassembly planning'], ['2', 'Gross requirements planning']]);
-const CROSS_PROJECT = o([['', 'Check individual'], ['1', 'Cross-project']]);
-const SELECTION = o([['1', 'Selection by order quantity'], ['2', 'Selection by production version'], ['3', 'Selection by explosion date']]);
-const INDIV_COLL = o([['', 'Individual and collective'], ['1', 'Individual only'], ['2', 'Collective only']]);
-const DEP_REQ = o([['1', 'Materials for dependent reqmts'], ['2', 'No dependent requirements']]);
-const DISCONTIN = o([['', 'Not discontinued'], ['1', 'Single discontinuation'], ['2', 'Simultaneous']]);
-const PUSH = o([['', 'Pull'], ['X', 'Push']]);
-const FORECAST_MODEL = o([['J', 'Automatic model selection'], ['D', 'Constant model'], ['T', 'Trend model'], ['S', 'Seasonal model']]);
-const TIME_UNIT = o([['D', 'Day'], ['M', 'Month']]);
-const SLED_PERIOD = o([['M', 'Month'], ['D', 'Day'], ['W', 'Week']]);
-const ROUNDING_RULE = o([['+', 'End of chosen period'], ['-', 'Start of chosen period'], ['', 'No rounding']]);
-const STORAGE_COND = o([['01', 'Normal'], ['02', 'Cool and dry'], ['03', 'Hazardous goods store']]);
-const TWO_STEP = o([['', '2-step not relevant'], ['1', '2-step picking']]);
-const PROPOSED_UOM = o([['', 'Base unit of measure'], ['A', 'Alternative unit']]);
-const QM_CONTROL = o([['0000', 'Del. release, no certificate'], ['0001', 'Release with certificate']]);
-const CERT_TYPES = o([['COA', 'Certificate of analysis'], ['GMP', 'GMP certificate']]);
-export const VAL_CLASSES = o([['7920', 'Finished products'], ['7900', 'Semi-finished products'], ['3000', 'Raw materials']]);
-const PRICE_CONTROL = o([['S', 'Standard price'], ['V', 'Moving average price']]);
-const CURRENCIES = o([['INR', 'Indian Rupee'], ['USD', 'US Dollar'], ['EUR', 'Euro']]);
-const CLASS_TYPES = o([['023', 'Batch'], ['001', 'Material class']]);
-const DOC_TYPES = o([['SPEC', 'Specification'], ['ART', 'Artwork'], ['COA', 'Certificate'], ['OTH', 'Other']]);
-const LANGUAGES = o([['EN', 'English'], ['HI', 'Hindi']]);
 
 /* ------------------------------------------------------------------ */
 /* Views                                                                */
@@ -157,75 +93,104 @@ const RAW_VIEWS: RawView[] = [
       {
         title: 'General Data',
         fields: [
-          S('baseUom', 'Base UOM', 'MEINS', UOM, { required: true }),
+          S('baseUom', 'Base UOM', 'MEINS', { required: true }),
           T('extMatlGroup', 'Ext. Matl Group', 'EXTWG', { maxLength: 18 }),
           R('materialGroup', 'Material Group'),
           T('oldMaterialNo', 'Old material number', 'BISMT', { maxLength: 40 }),
           R('division', 'Division'),
           T('labOffice', 'Lab/Office', 'LABOR', { maxLength: 3 }),
           T('productAllocation', 'Product allocation', 'KOSCH'),
-          S('xPlantStatus', 'X-plant matl status', 'MSTAE', MATL_STATUS),
+          S('xPlantStatus', 'X-plant matl status', 'MSTAE'),
           D('xPlantValidFrom', 'Valid from', 'MSTDE'),
           C('assignEffVals', 'Assign effect. vals', 'KZEFF'),
-          S('genItemCatGroup', 'GenItemCatGroup', 'MTPOS_MARA', ITEM_CAT),
+          S('genItemCatGroup', 'GenItemCatGroup', 'MTPOS_MARA'),
           T('authGroup', 'Authorization Group', 'BEGRU', { maxLength: 4 }),
           R('prodHierarchy', 'Product Hierarchy'),
-          T('uniqueCode', 'Unique Code', 'ZZUNIQUE'),
+          T('uniqueCode', 'Unique Code', 'ZCODE'),
         ],
       },
       {
         title: 'Dimension/EANs Data',
         fields: [
           N('grossWeight', 'Gross Weight', 'BRGEW'),
-          S('weightUnit', 'Weight unit', 'GEWEI', WEIGHT_UNITS),
+          S('weightUnit', 'Weight unit', 'GEWEI'),
           N('netWeight', 'Net Weight', 'NTGEW'),
           T('matlGrpPackMatls', 'Matl Grp Pack. Matls', 'MAGRV', { maxLength: 4 }),
           N('volume', 'Volume', 'VOLUM'),
-          S('volumeUnit', 'Volume Unit', 'VOLEH', VOLUME_UNITS),
+          S('volumeUnit', 'Volume Unit', 'VOLEH'),
           T('sizeDimensions', 'Size/dimensions', 'GROES', { maxLength: 32 }),
           T('ean', 'EAN/UPC', 'EAN11', { maxLength: 18 }),
-          S('eanCategory', 'EAN Category', 'NUMTP', EAN_CAT),
+          S('eanCategory', 'EAN Category', 'NUMTP'),
         ],
       },
-      { title: 'Basic Data Texts', fields: [S('textLanguage', 'Language', 'SPRAS', LANGUAGES)] },
+      { title: 'Basic Data Texts', fields: [S('textLanguage', 'Language', 'SPRAS')] },
       {
         title: 'Emami Business Specific Data',
         fields: [
-          N('skuSize', 'SKU Size', 'ZZSKUSIZE'),
+          N('skuSize', 'SKU Size', 'ZSKUSIZE'),
           R('businessVertical', 'Business Vertical'),
-          T('skuGrCode', 'SKU GR Code', 'ZZSKUGR'),
-          T('skuGroup', 'SKU Group', 'ZZSKUGRP'),
-          T('brandCode', 'Brand Code', 'ZZBRAND'),
-          T('salesBrand', 'Sales Brand', 'ZZSBRAND'),
-          T('crsSkuGrCode', 'CRS SKU GR Code', 'ZZCRSSKUGR'),
-          T('crsSkuGroup', 'CRS SKU Group', 'ZZCRSSKUGRP'),
-          T('sCode', 'S. Code', 'ZZSCODE'),
+          T('skuGrCode', 'SKU GR Code', 'ZSKUGRCODE'),
+          T('skuGroup', 'SKU Group', 'ZSKUGROUP'),
+          T('brandCode', 'Product Code', 'ZBRANDCODE'),
+          T('salesBrand', 'Product Description', 'ZSALESBRAND'),
+          T('crsSkuGrCode', 'CRS SKU Group Code', 'ZSKUGRCODECRS'),
+          T('crsSkuGroup', 'CRS SKU Group Description', 'ZSKUGROUPCRS'),
+          T('sCode', 'S. Code', 'ZMVGR5'),
           R('scheme', 'Scheme'),
-          N('schemePct', 'Scheme %', 'ZZSCHPCT', { unit: '%' }),
+          N('schemePct', 'Scheme %', 'ZZSCHEMEP', { unit: '%' }),
           T('materialCategory', 'Material Category', 'ZZMATCAT'),
-          T('crsProducts', 'CRS Products', 'ZZCRSPROD'),
-          T('productGroup', 'Product Group', 'ZZPRODGRP'),
-          T('skuGroupCode', 'SKU Group (code)', 'ZZSKUGRPC'),
+          T('zzMtypeCode', 'Material Type (Emami)', 'ZZMTYPE_CODE'),
+          T('zzMstypeCode', 'Material Sub Type', 'ZZMSTYPE_CODE'),
+          T('zzRmType', 'RM Sub Type', 'ZZRM_TYPE'),
+          T('zzDistCode', 'Distribution', 'ZZDIST_CODE'),
+          T('zzMsource', 'Source', 'ZZMSOURCE'),
+          T('zzCountry', 'Country', 'ZZRMPM_COUNTRY'),
+          T('zzOriginCode', 'Origin Group', 'ZZORIGIN_CODE'),
+          T('zzMatGrp', 'Material Group (Emami)', 'ZZMAT_GRP'),
+          T('zzPackCode', 'Pack Size', 'ZZPACK_CODE'),
+          T('zzPackUnit', 'Pack Unit', 'ZZPACK_UNIT'),
+          T('zzBrandCode', 'Brand', 'ZZBRAND_CODE'),
+          T('zzSubBrand', 'Sub-Brand', 'ZZSUB_BRAND'),
+          T('zzProdForm', 'Product Form', 'ZZPROD_FORM'),
+          T('zzPromoBrand', 'Promo Brand', 'ZZPROMO_BRAND'),
+          T('zzPromoSubBrand', 'Promo Sub-Brand', 'ZZPROMO_SUB_BRAND'),
+          T('zzPromoPack', 'Promo Pack Size', 'ZZPROMO_PACK'),
+          T('zzPromoPackUnit', 'Promo Pack Unit', 'ZZPROMO_PACK_UNIT'),
+          T('zzFreeText', 'Free Text to Material Description', 'ZZFREE_TEXT'),
+          T('zzParentCode', 'Parent Code', 'ZZPARENT_CODE'),
+          T('zzParentMat', 'Parent Material', 'ZZPARENT_MAT'),
+          T('zzVersion', 'Version Number', 'ZZP_VERSION'),
         ],
       },
       {
         title: 'Emami - Mold Management',
         fields: [
-          T('moldDesignCode', 'Mold Design Code', 'ZZMOLD', { maxLength: 10 }),
-          T('planningCode', 'Planning Code', 'ZZPLANCODE'),
-          T('designCode', 'Design Code', 'ZZDESIGN'),
+          T('zzCompPart', 'Component Part', 'ZZCOMP_PART'),
+          T('zzRunner', 'Runner Type', 'ZZRUNNER'),
+          T('zzGran', 'Granules Grade', 'ZZGRAN'),
+          T('zzMach', 'Machine Master Code', 'ZZMACH'),
+          N('zzCavityNo', 'No. of Cavity', 'ZZCAVITY_NO'),
+          N('zzRunCavity', 'Running Cavity', 'ZZRUN_CAVITY'),
+          N('zzCycTime', 'Cycle Time in Sec.', 'ZZCYC_TIME'),
+          N('zzFacProd', 'Factor Production Efficiency', 'ZZFAC_PROD'),
+          N('zzHoursDay', 'Hours Day', 'ZZHOURS_DAY'),
+          T('zzMdsCode', 'Design Code', 'ZZMDS_CODE'),
+          N('zzMoldLife', 'Mold Life in Years', 'ZZMOLD_LIFE'),
+          N('zzMoldShots', 'Shots in Million', 'ZZMOLD_SHOTS'),
+          T('zzPlanCode', 'Planning Code', 'ZZPLAN_CODE'),
+          T('zzFgCode', 'FG Design Code', 'ZZFG_CODE'),
         ],
       },
       {
         title: 'Emami - IMD Data',
         fields: [
-          T('imdProductName', 'Product Name', 'ZZIMDPROD'),
-          T('imdBrandCode', 'Brand Code', 'ZZIMDBRAND'),
-          T('imdMaterialCategory', 'Material Category', 'ZZIMDMATCAT'),
-          T('imdSegment', 'Segment', 'ZZIMDSEG'),
-          T('imdSeasonCode', 'Season Code', 'ZZIMDSEASON'),
-          T('imdSchemeCode', 'Scheme Code', 'ZZIMDSCHEME'),
-          T('imdRange', 'Range', 'ZZIMDRANGE'),
+          T('imdProductName', 'Product Name', 'ZPRODC'),
+          T('imdBrandCode', 'Brand Code', 'BRAND'),
+          T('imdMaterialCategory', 'Material Category', 'CATAG'),
+          T('imdSegment', 'Segment', 'SEGMN'),
+          T('imdSeasonCode', 'Season Code', 'SEASON'),
+          T('imdSchemeCode', 'Scheme Code', 'SCHEME'),
+          T('imdRange', 'Range', 'RANGE'),
         ],
       },
       {
@@ -263,16 +228,15 @@ const RAW_VIEWS: RawView[] = [
       {
         title: 'Classification',
         fields: [
-          S('classType', 'Class Type', 'KLART', CLASS_TYPES),
+          S('classType', 'Class Type', 'KLART'),
           {
-            key: 'classAssignments', label: 'Assignment', tech: 'KSSK', type: 'table', wide: true,
+            key: 'classAssignments', label: 'Assignment', tech: 'KSSK', type: 'table', wide: true, fixedRows: true,
             columns: [
-              { key: 'cls', label: 'Class', type: 'text' },
-              { key: 'desc', label: 'Description', type: 'text' },
-              { key: 'std', label: 'Std. Class', type: 'checkbox' },
-              { key: 'status', label: 'Status', type: 'text' },
-              { key: 'icon', label: 'Icon', type: 'readonly' },
-              { key: 'item', label: 'Item', type: 'number' },
+              { key: 'klart', label: 'Class type', type: 'readonly' },
+              { key: 'cls', label: 'Class', type: 'readonly' },
+              { key: 'kltxt', label: 'Class text', type: 'readonly' },
+              { key: 'char', label: 'Characteristic', type: 'readonly' },
+              { key: 'value', label: 'Value', type: 'text' },
             ],
           },
           {
@@ -292,17 +256,17 @@ const RAW_VIEWS: RawView[] = [
       {
         title: 'General Data',
         fields: [
-          S('so1DistChannel', 'Distribu. Channel', 'VTWEG', DIST_CHAINS),
+          S('so1DistChannel', 'Distribu. Channel', 'VTWEG'),
           R('baseUom', 'Base Unit'),
           R('division', 'Division'),
-          S('salesUnit', 'Sales Unit', 'VRKME', UOM),
+          S('salesUnit', 'Sales Unit', 'VRKME'),
           C('salesUnitNotVar', 'Sales Unit not var.', 'SCHME'),
           T('so1UomGroup', 'UoM Group', 'MEGRU', { maxLength: 4 }),
-          S('xDistChainStatus', 'X-distr.chain Stat', 'MSTAV', MATL_STATUS),
+          S('xDistChainStatus', 'X-distr.chain Stat', 'MSTAV'),
           D('xDistChainValidFrom', 'Valid From', 'MSTDV'),
-          S('dchainSpecStatus', 'DChain-spec', 'VMSTA', MATL_STATUS),
+          S('dchainSpecStatus', 'DChain-spec', 'VMSTA'),
           D('dchainSpecValidFrom', 'Valid From', 'VMSTD'),
-          S('deliveringPlant', 'Delivery Plant', 'DWERK', PLANTS),
+          S('deliveringPlant', 'Delivery Plant', 'DWERK', { help: 'WERKS' }),
           R('materialGroup', 'Material Group'),
           C('cashDiscount', 'Cash Discount', 'SKTOF'),
         ],
@@ -313,7 +277,7 @@ const RAW_VIEWS: RawView[] = [
           N('minOrderQty', 'Min.Order Qty', 'AUMNG'),
           N('minDelyQty', 'Min. Dely Qty', 'LFMNG'),
           N('deliveryUnit', 'Delivery Unit', 'SCMNG'),
-          S('deliveryUnitUom', 'Unit of Measure', 'SCHME', UOM),
+          S('deliveryUnitUom', 'Unit of Measure', 'SCHME'),
           T('so1RoundingProfile', 'Rnding Profile', 'RDPRF', { maxLength: 4 }),
         ],
       },
@@ -332,7 +296,7 @@ const RAW_VIEWS: RawView[] = [
               { key: 'countryName', label: 'Country Name', type: 'readonly' },
               { key: 'taxCat', label: 'Tax category', type: 'readonly' },
               { key: 'taxCatName', label: 'Tax Category Name', type: 'readonly' },
-              { key: 'taxClass', label: 'Tax classific.', type: 'select', options: TAX_CLASS, required: true },
+              { key: 'taxClass', label: 'Tax classific.', type: 'select', help: 'TAXKD', required: true },
             ],
           },
         ],
@@ -345,12 +309,12 @@ const RAW_VIEWS: RawView[] = [
       {
         title: 'Grouping Data',
         fields: [
-          S('matlStatsGroup', 'Matl Stats Grp', 'VERSG', STATS_GRP),
-          S('materialPricingGroup', 'Mat. Pricing Grp', 'KONDM', PRICING_GRP),
-          S('volRebateGroup', 'Vol Rebate Grp', 'BONUS', REBATE_GRP),
-          S('accountAssignmentGroup', 'Acct Asgnmt Grp', 'KTGRM', ACCT_ASSIGN),
+          S('matlStatsGroup', 'Matl Stats Grp', 'VERSG'),
+          S('materialPricingGroup', 'Mat. Pricing Grp', 'KONDM'),
+          S('volRebateGroup', 'Vol Rebate Grp', 'BONUS'),
+          S('accountAssignmentGroup', 'Acct Asgnmt Grp', 'KTGRM'),
           R('genItemCatGroup', 'GenItemCatGroup'),
-          S('itemCategoryGroup', 'Item Cat Group', 'MTPOS', ITEM_CAT),
+          S('itemCategoryGroup', 'Item Cat Group', 'MTPOS'),
           T('prRefMatl', 'Pr. Ref Matl', 'PMATN', { maxLength: 40 }),
           R('prodHierarchy', 'Prod.Hierarchy'),
           T('commissionGroup', 'Commision Grp', 'PROVG', { maxLength: 2 }),
@@ -374,13 +338,13 @@ const RAW_VIEWS: RawView[] = [
         title: 'General Data',
         fields: [
           R('baseUom', 'Base Unit'),
-          S('replacementPart', 'Replacemt part', 'ATPKZ', REPLACEMENT),
+          S('replacementPart', 'Replacemt part', 'ATPKZ'),
           R('grossWeight', 'Gross Weight'),
           R('weightUnit', 'Weight unit'),
-          S('discountInKind', 'Discount in kind', 'NRFHG', DISCOUNT_KIND),
+          S('discountInKind', 'Discount in kind', 'NRFHG'),
           R('netWeight', 'Net Weight'),
           T('materialFreightGroup', 'Material frieght grp', 'MFRGR', { maxLength: 8 }),
-          S('availabilityCheck', 'Availity check', 'MTVFP', AVAIL_CHECK),
+          S('availabilityCheck', 'Availity check', 'MTVFP'),
           C('approvedBatchRec', 'Aprovd Batch rec. req.', 'KZECH'),
           C('batchManagement', 'BatchManagement', 'XCHPF'),
         ],
@@ -388,17 +352,17 @@ const RAW_VIEWS: RawView[] = [
       {
         title: 'Shiping Data',
         fields: [
-          S('transportGroup', 'Trans. Group', 'TRAGR', TRANS_GRP),
-          S('loadingGroup', 'Loading Group', 'LADGR', LOADING_GRP),
+          S('transportGroup', 'Trans. Group', 'TRAGR'),
+          S('loadingGroup', 'Loading Group', 'LADGR'),
           N('setupTime', 'Setup time', 'VRVEZ'),
           N('processingTime', 'Processing time', 'VBEAZ'),
           N('baseQuantity', 'Base quantity', 'VBAMG'),
           T('matlGrpPckmat', 'Matl Grp Pckmat', 'MAGRV', { maxLength: 4 }),
           C('negStocks', 'Neg. stocks', 'XMCNG'),
-          S('profitCenter', 'Profit Center', 'PRCTR', PROFIT_CENTERS),
+          S('profitCenter', 'Profit Center', 'PRCTR'),
           T('serialNoProfile', 'SerialNoProfile', 'SERNP', { maxLength: 4 }),
           T('distProfile', 'Dist.prof', 'FPRFM', { maxLength: 3 }),
-          S('serializLevel', 'SerializLevel', 'SERLV', SERIAL_LEVEL),
+          S('serializLevel', 'SerializLevel', 'SERLV'),
         ],
       },
     ],
@@ -414,7 +378,7 @@ const RAW_VIEWS: RawView[] = [
           T('casNo', 'CAS no.(pharm)', 'CASNR', { maxLength: 15 }),
           T('prodcomNo', 'PRODCOM no', 'GPNUM', { maxLength: 9 }),
           T('controlCode', 'Control code', 'STEUC', { maxLength: 16 }),
-          S('exemptionCert', 'ExemptionCert', 'PREFE', EXEMPT_CERT),
+          S('exemptionCert', 'ExemptionCert', 'PREFE'),
           T('exemptCertNo', 'Exempt.cert.no', 'PRENO', { maxLength: 8 }),
           D('exemptCertDate', 'Iss.date of ex.cert', 'PREND'),
           C('militaryGoods', 'Military goods', 'ITARK'),
@@ -423,8 +387,8 @@ const RAW_VIEWS: RawView[] = [
       {
         title: 'Market Organization Data',
         fields: [
-          S('countryOfOrigin', 'Country of origin', 'HERKL', COUNTRIES),
-          S('regionOfOrigin', 'Region. of origin', 'HERKR', REGIONS),
+          S('countryOfOrigin', 'Country of origin', 'HERKL'),
+          S('regionOfOrigin', 'Region. of origin', 'HERKR'),
           T('capProdListNo', 'CAP prod.list.no', 'MOWNR', { maxLength: 12 }),
           T('capProdGroup', 'CAP prod.group', 'MOGRU', { maxLength: 6 }),
           T('vendorDeclStatus', 'Vendr decl.status', 'PREND_V', { maxLength: 1 }),
@@ -440,14 +404,14 @@ const RAW_VIEWS: RawView[] = [
         title: 'General Data',
         fields: [
           R('baseUom', 'Base Unit'),
-          S('orderUnit', 'Order Unit', 'BSTME', UOM),
-          S('varOrderUnit', 'Var. Order Unit', 'VABME', VAR_ORDER_UNIT),
-          S('purchasingGroup', 'Purchsing Group', 'EKGRP', PURCH_GROUPS),
+          S('orderUnit', 'Order Unit', 'BSTME'),
+          S('varOrderUnit', 'Var. Order Unit', 'VABME'),
+          S('purchasingGroup', 'Purchsing Group', 'EKGRP'),
           R('materialGroup', 'Material Group'),
-          S('plantMatlStatus', 'Plant-sp.matl status', 'MMSTA', MATL_STATUS),
+          S('plantMatlStatus', 'Plant-sp.matl status', 'MMSTA'),
           D('plantMatlValidFrom', 'Valid From', 'MMSTD'),
-          S('taxIndicator', 'Tax Indicator for material', 'TAXIM', TAX_IND),
-          S('qualFreeGoods', 'Qual.f.FreeGoodsDis.', 'NRFHG_P', FREE_GOODS),
+          S('taxIndicator', 'Tax Indicator for material', 'TAXIM'),
+          S('qualFreeGoods', 'Qual.f.FreeGoodsDis.', 'NRFHG_P'),
           T('matFreightGroup', 'Mat. Freight grp', 'MFRGR_P', { maxLength: 8 }),
           C('autoPO', 'Autom. PO', 'KAUTB'),
           R('batchManagement', 'BatchManagement'),
@@ -486,12 +450,12 @@ const RAW_VIEWS: RawView[] = [
         title: 'General Data',
         fields: [
           R('baseUom', 'Base UOM'),
-          S('unitOfIssue', 'Unit of Issue', 'AUSME', UOM),
-          S('productionUnit', 'Production Unit', 'FRTME', UOM),
-          S('psMatlStatus', 'PS Matl. Status', 'MMSTA_PS', MATL_STATUS),
+          S('unitOfIssue', 'Unit of Issue', 'AUSME'),
+          S('productionUnit', 'Production Unit', 'FRTME'),
+          S('psMatlStatus', 'PS Matl. Status', 'MMSTA_PS'),
           T('prodSupervisor', 'Prodn Supervisor', 'FEVOR', { maxLength: 3 }),
           T('prodStorLoc', 'Prod.Stor.Loc', 'LGPRO', { maxLength: 4 }),
-          S('prodSchedProfile', 'Prod.Sched.Prof', 'SFCPF', SCHED_PROFILE, { required: true }),
+          S('prodSchedProfile', 'Prod.Sched.Prof', 'SFCPF', { required: true }),
           T('matGrouping', 'Mat. Grouping', 'MATGR', { maxLength: 20 }),
           T('overallProfile', 'Overall Profile', 'UEPRF', { maxLength: 7 }),
           C('inspStock', 'Insp. Stock', 'INSMK_WS'),
@@ -499,7 +463,7 @@ const RAW_VIEWS: RawView[] = [
           C('versionIndicator', 'Version Indicator', 'VERKZ'),
           C('batchRecReq', 'Batch rec. req', 'KZECH_WS'),
           R('batchManagement', 'Batch Management'),
-          S('batchEntry', 'Batch Entry', 'KZECH_E', BATCH_ENTRY),
+          S('batchEntry', 'Batch Entry', 'KZECH_E'),
         ],
       },
     ],
@@ -519,7 +483,7 @@ const RAW_VIEWS: RawView[] = [
           R('exemptCertNo', 'Exemption.cert.no'),
           R('exemptCertDate', 'Iss.date of ex.cert.'),
           R('militaryGoods', 'Military goods'),
-          S('importCountry', 'Country', 'LAND1', COUNTRIES),
+          S('importCountry', 'Country', 'LAND1'),
         ],
       },
       {
@@ -544,21 +508,21 @@ const RAW_VIEWS: RawView[] = [
           R('baseUom', 'Base Unit'),
           T('mrpGroup', 'MRP group', 'DISGR', { maxLength: 4 }),
           R('purchasingGroup', 'Purch.Group'),
-          S('abcIndicator', 'ABC Indicator', 'MAABC', ABC),
+          S('abcIndicator', 'ABC Indicator', 'MAABC'),
           R('plantMatlValidFrom', 'Valid From'),
           R('plantMatlStatus', 'Plant-sp.matl status'),
-          S('mrpType', 'MRP Type', 'DISMM', MRP_TYPES),
+          S('mrpType', 'MRP Type', 'DISMM'),
           N('reorderPoint', 'Reorder Point', 'MINBE'),
           N('planningTimeFence', 'Plng time fence', 'FXHOR', { integer: true }),
           T('planningCycle', 'Planning cycle', 'LFRHY', { maxLength: 3 }),
-          S('mrpController', 'MRP Controller', 'DISPO', MRP_CONTROLLERS, { required: true }),
+          S('mrpController', 'MRP Controller', 'DISPO', { required: true }),
           T('commCode', 'Comm Code', 'STAWN_M', { maxLength: 17 }),
         ],
       },
       {
         title: 'Lot Size Data',
         fields: [
-          S('lotSize', 'Lot size', 'DISLS', LOT_SIZES, { required: true }),
+          S('lotSize', 'Lot size', 'DISLS', { required: true }),
           N('minLotSize', 'Min.Lot size', 'BSTMI'),
           N('maxLotSize', 'Max.Lot size', 'BSTMA'),
           N('fixedLotSize', 'Fixed lot size', 'BSTFE'),
@@ -580,22 +544,22 @@ const RAW_VIEWS: RawView[] = [
       {
         title: 'Procurement / Scheduling',
         fields: [
-          S('procurementType', 'Procurement type', 'BESKZ', PROC_TYPES),
+          S('procurementType', 'Procurement type', 'BESKZ'),
           R('batchEntry', 'Batch Entry'),
           T('specialProcurement', 'SpecProcurement', 'SOBSL', { maxLength: 2 }),
           R('prodStorLoc', 'Prod.stor.location'),
           R('quotaArrUsage', 'Quota arr.usage'),
           T('defaultSupplyArea', 'Default supply area', 'VSPVB', { maxLength: 10 }),
-          S('backflush', 'Backflush', 'RGEKZ', BACKFLUSH),
+          S('backflush', 'Backflush', 'RGEKZ'),
           T('storageLocForEp', 'Storage loc. for EP', 'LGFSB', { maxLength: 4 }),
-          S('jitDeliverySched', 'JIT DeliverSched.', 'FABKZ_M', JIT),
+          S('jitDeliverySched', 'JIT DeliverSched.', 'FABKZ_M'),
           T('stockDetGroup', 'Stock det. grp', 'EPRIO', { maxLength: 4 }),
           C('bulkMaterial', 'Bulk Material', 'SCHGT'),
           N('inHouseProduction', 'In-house productin', 'DZEIT', { integer: true, unit: 'Days' }),
           N('plannedDeliveryDays', 'Pland.Deliv.Time', 'PLIFZ', { integer: true, unit: 'Days' }),
           R('grProcessingTime', 'GR Proc Time'),
-          S('planningCalendar', 'Planig calendar', 'MRPPP', CALENDARS),
-          S('schedMarginKey', 'SchedMargin key', 'FHORI', SCHED_MARGIN, { required: true }),
+          S('planningCalendar', 'Planig calendar', 'MRPPP'),
+          S('schedMarginKey', 'SchedMargin key', 'FHORI', { required: true }),
         ],
       },
       {
@@ -607,7 +571,7 @@ const RAW_VIEWS: RawView[] = [
           T('coverageProfile', 'Coverage profile', 'RWPRO', { maxLength: 3 }),
           T('safetyTimePeriodProfile', 'STime period profile', 'SHPRO', { maxLength: 3 }),
           N('safetyTime', 'Safety time/act.cov.', 'SHZET', { integer: true, unit: 'Days' }),
-          S('safetyTimeInd', 'Safety time ind', 'SHFLG', SAFETY_TIME),
+          S('safetyTimeInd', 'Safety time ind', 'SHFLG'),
         ],
       },
     ],
@@ -618,18 +582,18 @@ const RAW_VIEWS: RawView[] = [
       {
         title: 'Forecast Req./ Planning Data',
         fields: [
-          S('periodIndicator', 'Period Indicator', 'PERKZ', PERIOD_IND),
+          S('periodIndicator', 'Period Indicator', 'PERKZ'),
           T('fiscalYearVariant', 'Fiscal.Year Variant', 'PERIV', { maxLength: 2 }),
           T('splittingIndicator', 'Splitting Indicator', 'AUFTL', { maxLength: 1 }),
-          S('strategyGroup', 'Strategy group', 'STRGR', STRATEGY),
-          S('consumptionMode', 'Consumption mode', 'VRMOD', CONSUMPTION),
+          S('strategyGroup', 'Strategy group', 'STRGR'),
+          S('consumptionMode', 'Consumption mode', 'VRMOD'),
           N('bwdConsumption', 'BWD consumption per.', 'VINT1', { integer: true }),
           N('fwdConsumption', 'Fwd consumption per.', 'VINT2', { integer: true }),
-          S('mixedMrp', 'Mixed MRP', 'MISKZ', MIXED_MRP),
+          S('mixedMrp', 'Mixed MRP', 'MISKZ'),
           T('planningMaterial', 'Planing material', 'VPMAT', { maxLength: 40 }),
-          S('planningPlant', 'Planning plant', 'VPWRK', PLANTS),
+          S('planningPlant', 'Planning plant', 'VPWRK', { help: 'WERKS' }),
           N('planningConvFactor', 'PlngConvFactor', 'UMREF'),
-          S('planningMatlBaseUnit', 'Plng matl BUnit', 'VPBME', UOM),
+          S('planningMatlBaseUnit', 'Plng matl BUnit', 'VPBME'),
         ],
       },
       {
@@ -637,7 +601,7 @@ const RAW_VIEWS: RawView[] = [
         fields: [
           R('availabilityCheck', 'Availability.check'),
           N('totalReplLeadTime', 'Tot. repl. lead time', 'WZEIT', { integer: true, unit: 'Days' }),
-          S('crossProject', 'Cross-project', 'KZPSP', CROSS_PROJECT),
+          S('crossProject', 'Cross-project', 'KZPSP'),
           T('configurableMatl', 'Confble matl', 'STDPD', { maxLength: 40 }),
           C('variantInd', 'Variant', 'KZVAR'),
           C('planningVariant', 'PlanningVariant', 'KZPLV'),
@@ -651,14 +615,14 @@ const RAW_VIEWS: RawView[] = [
       {
         title: 'Bom explosions/dependend Req. & Discontin. Ind',
         fields: [
-          S('selectionMethod', 'Selection Method', 'ALTSL', SELECTION),
+          S('selectionMethod', 'Selection Method', 'ALTSL'),
           N('compScrap', 'Comp scrap (%)', 'KAUSF', { unit: '%' }),
-          S('indivColl', 'Indiv./coll.', 'SBDKZ', INDIV_COLL),
+          S('indivColl', 'Indiv./coll.', 'SBDKZ'),
           T('reqmtsGrouping', 'Reqmts grouping', 'KZBED', { maxLength: 1 }),
           C('mrpVersion', 'Version', 'VERKZ_M'),
           C('remAllowed', 'REM allowed', 'SAUFT'),
-          S('mrpDepRequirements', 'MRP Dep.Requirements', 'AHDIS', DEP_REQ),
-          S('discontinuationInd', 'Discontin. Indictor', 'KZAUS', DISCONTIN),
+          S('mrpDepRequirements', 'MRP Dep.Requirements', 'AHDIS'),
+          S('discontinuationInd', 'Discontin. Indictor', 'KZAUS'),
           D('effOut', 'Eff.-out', 'AUSDT'),
           T('followUpMatl', 'Follow-Up Matl', 'NFMAT', { maxLength: 40 }),
         ],
@@ -669,7 +633,7 @@ const RAW_VIEWS: RawView[] = [
           C('repetitiveMfg', 'Repetative mfg', 'SAUFT_R'),
           T('remProfile', 'REM Profile', 'SFEPR', { maxLength: 4 }),
           T('actionControl', 'Action Control', 'MDACH', { maxLength: 2 }),
-          S('pushDistribution', 'Push Distribution', 'SHFLG_P', PUSH),
+          S('pushDistribution', 'Push Distribution', 'SHFLG_P'),
           N('deploymentHorizon', 'Deployment horizon', 'DPLHO', { integer: true }),
           T('fairShareRule', 'Fair share rule', 'DPLFS', { maxLength: 1 }),
           T('slocMrpIndicator', 'SLoc MRP Indicator', 'DISKZ', { maxLength: 1 }),
@@ -688,12 +652,12 @@ const RAW_VIEWS: RawView[] = [
         title: 'General / No. of period req. Data',
         fields: [
           R('baseUom', 'Base Unit'),
-          S('forecastModel', 'Forecast Model', 'PRMOD', FORECAST_MODEL, { required: true }),
+          S('forecastModel', 'Forecast Model', 'PRMOD', { required: true }),
           R('periodIndicator', 'Period Indicator'),
           D('lastForecast', 'Last forecast', 'PRDAT'),
           R('fiscalYearVariant', 'Fi.Year Variant'),
           T('refMatlCons', 'Ref. matl: cons.', 'VRBMT', { maxLength: 40 }),
-          S('refPlantCons', 'Ref.plant: cons.', 'VRBWK', PLANTS),
+          S('refPlantCons', 'Ref.plant: cons.', 'VRBWK', { help: 'WERKS' }),
           D('dateTo', 'Date to', 'VRBDT'),
           N('multiplier', 'Multiplier', 'VRBFK'),
           N('histPeriods', 'Hist. periods', 'PERAN', { integer: true }),
@@ -734,7 +698,7 @@ const RAW_VIEWS: RawView[] = [
           T('storageBin', 'Storage Bin', 'LGPBE', { maxLength: 10 }),
           T('pickingArea', 'Picking area', 'LWMKB', { maxLength: 3 }),
           T('tempConditions', 'Temperature', 'TEMPB', { maxLength: 2 }),
-          S('storageConditions', 'Storage conditions', 'RAUBE', STORAGE_COND),
+          S('storageConditions', 'Storage conditions', 'RAUBE'),
           T('containerReq', 'Container Req.', 'BEHVO', { maxLength: 2 }),
           T('hazMaterialNo', 'Haz. material No.', 'STOFF', { maxLength: 18 }),
           T('ccPhysInvInd', 'CC phys.inv.ind', 'ABCIN', { maxLength: 1 }),
@@ -750,12 +714,12 @@ const RAW_VIEWS: RawView[] = [
         title: 'Shelf life Data',
         fields: [
           N('maxStoragePeriod', 'Max. Storage', 'MAXLZ', { integer: true }),
-          S('storageTimeUnit', 'Time unit', 'LZEIH', TIME_UNIT),
+          S('storageTimeUnit', 'Time unit', 'LZEIH'),
           N('minRemainingShelfLife', 'Min. Rem. Shelf Life', 'MHDRZ', { integer: true }),
           N('storagePct', 'Storage %', 'MHDLP', { unit: '%' }),
           N('totalShelfLife', 'Total shelf life', 'MHDHB', { integer: true }),
-          S('periodIndSled', 'Period Ind. for SLED', 'IPRKZ', SLED_PERIOD),
-          S('roundingRuleSled', 'Rounding rule', 'RDMHD', ROUNDING_RULE),
+          S('periodIndSled', 'Period Ind. for SLED', 'IPRKZ'),
+          S('roundingRuleSled', 'Rounding rule', 'RDMHD'),
         ],
       },
     ],
@@ -797,13 +761,13 @@ const RAW_VIEWS: RawView[] = [
           R('warehouseNo', 'Warehouse No.'),
           R('baseUom', 'Base Unit'),
           R('hazMaterialNo', 'Haz. Material no.'),
-          S('wmUnit', 'WM unit', 'LVSME', UOM),
+          S('wmUnit', 'WM unit', 'LVSME'),
           R('grossWeight', 'Gross Weight'),
           R('weightUnit', 'Unit of Weight'),
           R('unitOfIssue', 'Unit of Issue'),
           R('volume', 'Volume'),
           R('volumeUnit', 'Volume Unit'),
-          S('proposedUom', 'Proposed UoM from material', 'VOMEM', PROPOSED_UOM),
+          S('proposedUom', 'Proposed UoM from material', 'VOMEM'),
           N('capacityUsage', 'Capacity usage', 'KZKUP'),
           T('capConsUnit', 'Cap. cons. unit', 'KZKUP_U', { maxLength: 3 }),
           T('pickingStorageType', 'Picking storage type', 'PLKPT', { maxLength: 3 }),
@@ -819,7 +783,7 @@ const RAW_VIEWS: RawView[] = [
           T('bulkStorage', 'Bulk storage', 'BLOCK', { maxLength: 2 }),
           T('specialMovement', 'Special movement', 'BSSKZ', { maxLength: 1 }),
           C('messageToIm', 'Message to IM', 'KZMBF'),
-          S('twoStepPicking', '2-step picking', 'L2SKR', TWO_STEP),
+          S('twoStepPicking', '2-step picking', 'L2SKR'),
           C('allowAddnToStock', 'Allow addn to stock', 'KZZUL'),
         ],
       },
@@ -846,9 +810,9 @@ const RAW_VIEWS: RawView[] = [
       {
         title: 'Palletization Data',
         fields: [
-          N('leQty1', 'LE Qty', 'LHMG1'), S('leUom1', 'Unit Of Measure', 'LHME1', UOM), T('suType1', 'Stor. Unit type', 'LETY1', { maxLength: 3 }),
-          N('leQty2', 'LE Qty2', 'LHMG2'), S('leUom2', 'Unit Of Measure2', 'LHME2', UOM), T('suType2', 'Stor. Unit type2', 'LETY2', { maxLength: 3 }),
-          N('leQty3', 'LE Qty3', 'LHMG3'), S('leUom3', 'Unit Of Measure3', 'LHME3', UOM), T('suType3', 'Stor. Unit type3', 'LETY3', { maxLength: 3 }),
+          N('leQty1', 'LE Qty', 'LHMG1'), S('leUom1', 'Unit Of Measure', 'LHME1'), T('suType1', 'Stor. Unit type', 'LETY1', { maxLength: 3 }),
+          N('leQty2', 'LE Qty2', 'LHMG2'), S('leUom2', 'Unit Of Measure2', 'LHME2'), T('suType2', 'Stor. Unit type2', 'LETY2', { maxLength: 3 }),
+          N('leQty3', 'LE Qty3', 'LHMG3'), S('leUom3', 'Unit Of Measure3', 'LHME3'), T('suType3', 'Stor. Unit type3', 'LETY3', { maxLength: 3 }),
         ],
       },
     ],
@@ -872,10 +836,10 @@ const RAW_VIEWS: RawView[] = [
       {
         title: 'Procurement Data',
         fields: [
-          S('psMatlStatusQm', 'P-S matl status', 'MMSTA_Q', MATL_STATUS),
+          S('psMatlStatusQm', 'P-S matl status', 'MMSTA_Q'),
           C('qmProcActive', 'QM procurement', 'QMPUR'),
-          S('qmControlKey', 'QM Control Key', 'SSQSS', QM_CONTROL),
-          S('certificateType', 'CertificateType', 'QZGTP', CERT_TYPES),
+          S('qmControlKey', 'QM Control Key', 'SSQSS'),
+          S('certificateType', 'CertificateType', 'QZGTP'),
           T('targetQmSystem', 'Target QM sys.', 'QSSYS', { maxLength: 4 }),
           T('techDelTerms', 'Tech.del.terms', 'QSSYS_T', { maxLength: 4 }),
           C('inspSetup', 'Insp. setup', 'QMATV'),
@@ -893,11 +857,11 @@ const RAW_VIEWS: RawView[] = [
           R('baseUom', 'Base Unit'),
           T('valuationCat', 'Valuation Cat.', 'BWTTY', { maxLength: 1 }),
           T('valuationType', 'Valuation Type', 'BWTAR', { maxLength: 10 }),
-          S('currency', 'Currency', 'WAERS', CURRENCIES),
+          S('currency', 'Currency', 'WAERS'),
           T('currentPeriod', 'Current Period', 'LFMON', { maxLength: 2 }),
           R('division', 'Division'),
           T('priceDeterm', 'Price Determ.', 'MLAST', { maxLength: 1 }),
-          S('valuationClass', 'Valuat Class', 'BKLAS', VAL_CLASSES, { required: true }),
+          S('valuationClass', 'Valuat Class', 'BKLAS', { required: true }),
           C('mlActive', 'ML act.', 'MLMAA'),
         ],
       },
@@ -906,7 +870,7 @@ const RAW_VIEWS: RawView[] = [
         fields: [
           T('vcSalesOrderStock', 'VC: Sal. Ord. Stk', 'EKLAS', { maxLength: 4 }),
           T('projectStockVc', 'Project stk Val. cl.', 'QKLAS', { maxLength: 4 }),
-          S('priceControl', 'Price Control', 'VPRSV', PRICE_CONTROL, { required: true }),
+          S('priceControl', 'Price Control', 'VPRSV', { required: true }),
           N('priceUnit', 'Price Unit', 'PEINH', { integer: true }),
           N('movingPrice', 'Moving Price', 'VERPR'),
           N('standardPrice', 'Standard Price', 'STPRS'),
@@ -1024,9 +988,9 @@ const RAW_VIEWS: RawView[] = [
         title: 'Descriptions',
         fields: [
           {
-            key: 'descriptions', label: 'Descriptions per language', tech: 'MAKT', type: 'table', wide: true,
+            key: 'descriptions', label: 'Descriptions per language', tech: 'MAKT', type: 'table', wide: true, maxRows: 1,
             columns: [
-              { key: 'lang', label: 'Language', type: 'select', options: LANGUAGES, required: true },
+              { key: 'lang', label: 'Language', type: 'select', help: 'SPRAS', required: true },
               { key: 'text', label: 'Description', type: 'text', required: true },
             ],
           },
@@ -1040,7 +1004,7 @@ const RAW_VIEWS: RawView[] = [
             key: 'uomConversions', label: 'Alternative units of measure', tech: 'MARM', type: 'table', wide: true,
             columns: [
               { key: 'denominator', label: 'Denominator', type: 'number' },
-              { key: 'altUnit', label: 'AlternativeUnit', type: 'select', options: UOM },
+              { key: 'altUnit', label: 'AlternativeUnit', type: 'select', help: 'MEINS' },
               { key: 'numerator', label: 'Y', type: 'number' },
               { key: 'baseUnit', label: 'Base Unit', type: 'readonly' },
             ],
@@ -1052,7 +1016,7 @@ const RAW_VIEWS: RawView[] = [
       { title: 'Sales Text', fields: [TA('salesText', 'Sales text', '0001')] },
       {
         title: 'Attachment Details',
-        fields: [{ key: 'attachments', label: 'Uploaded files', tech: 'GOS', type: 'attachments', wide: true, options: DOC_TYPES }],
+        fields: [{ key: 'attachments', label: 'Uploaded files', tech: 'GOS', type: 'attachments', wide: true }],
       },
       { title: 'Comments', fields: [TA('initiatorComments', 'Comments', 'ZCOMMENT')] },
     ],
@@ -1065,44 +1029,3 @@ export const VIEWS: ViewDef[] = RAW_VIEWS.map((v) => ({
 }));
 
 export const VIEW_CATEGORIES: ViewCategory[] = ['Basic', 'Sales', 'Foreign trade', 'Purchasing', 'Production and MRP', 'Plant and storage', 'Warehouse', 'Quality', 'Accounting and costing', 'Texts'];
-
-/** Fixed rows of the tax table (countries and tax categories of the sales org, MLAN) */
-export const TAX_ROWS = [
-  { country: 'AE', countryName: 'Utd.Arab Emir.', taxCat: 'UTXJ', taxCatName: 'Tax Jurisdict.Code', taxClass: '1' },
-  { country: 'BD', countryName: 'Bangladesh', taxCat: 'UTXJ', taxCatName: 'Tax Jurisdict.Code', taxClass: '1' },
-  { country: 'IN', countryName: 'India', taxCat: 'JOIG', taxCatName: 'IN: Integrated GST', taxClass: '0' },
-  { country: 'IN', countryName: 'India', taxCat: 'JTC1', taxCatName: 'IN: 206C(1H) Goods', taxClass: '0' },
-  { country: 'LK', countryName: 'Sri Lanka', taxCat: 'UTXJ', taxCatName: 'Tax Jurisdict.Code', taxClass: '1' },
-];
-
-/** Batch class (023) assignment and characteristics */
-export const CLASS_ROWS = [{ cls: 'Z_PRD_DATE', desc: 'MANUFACTURING DATE', std: '', status: '1', icon: 'Released', item: '10' }];
-export const CHAR_ROWS = [
-  { desc: 'Date when Batch Was Produced', value: '' },
-  { desc: 'Deletion Ind. for Batches', value: '' },
-  { desc: 'Country of Origin', value: '' },
-];
-
-/** Rule-engine defaults for FERT / FRT2 / WIP (fields marked (R) on the SAP screen) */
-export function viewDefaults(type: string): Record<string, string> {
-  return {
-    baseUom: 'PC', weightUnit: 'KG', textLanguage: 'EN', genItemCatGroup: 'NORM', classType: '023',
-    classAssignments: JSON.stringify(CLASS_ROWS), classCharacteristics: JSON.stringify(CHAR_ROWS),
-    so1DistChannel: '00', cashDiscount: 'X',
-    taxData: JSON.stringify(TAX_ROWS),
-    matlStatsGroup: '1', accountAssignmentGroup: '05', itemCategoryGroup: 'NORM',
-    availabilityCheck: '02', transportGroup: '0001', loadingGroup: '0001', profitCenter: 'UN08',
-    varOrderUnit: '', taxIndicator: '0', autoPO: 'X', stdValDelivDateVar: '0',
-    prodSchedProfile: 'PI01',
-    mrpType: 'PD', mrpController: '001', lotSize: 'EX',
-    backflush: '2', planningCalendar: 'PCL', schedMarginKey: '000',
-    periodIndicator: 'M', strategyGroup: '11', consumptionMode: '4', bwdConsumption: '14', fwdConsumption: '14', mixedMrp: '2',
-    selectionMethod: '2', mrpDepRequirements: '1',
-    forecastModel: 'J',
-    periodIndSled: 'M', roundingRuleSled: '+',
-    qmControlKey: '0000', inspSetup: 'X',
-    valuationClass: type === 'WIP' ? '7900' : '7920', priceControl: 'S', currency: 'INR', currentPeriod: '00', priceUnit: '1',
-    withQtyStructure: 'X', varianceKey: '000001',
-    uomConversions: JSON.stringify([{ denominator: '1', altUnit: 'KG', numerator: '1', baseUnit: 'PC' }]),
-  };
-}

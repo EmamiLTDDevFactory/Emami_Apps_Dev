@@ -4,7 +4,10 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { DragEvent, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useMdm } from '@/lib/store';
-import { phError, phLive, phLoad, phSubscribe, phTick } from '@/lib/phApi';
+import {
+  PhRequest, PhTask, fetchRequests, fetchTasks, phApprove, phAssignCostCenter, phError, phFieldsOf, phInitiate, phLive, phLoad,
+  phReject, phReset, phSendBack, phSubscribe, phTick, phValidate,
+} from '@/lib/phApi';
 import { BUSINESS_VERTICALS, Opt, PH_LENGTH, PH_LEVELS, getHierarchyOptions, helpText, phSegLen } from '@/lib/valueHelps';
 import {
   CRS_CODE_LEN, CRS_UNITS, CrsFile, CrsHelp, createCrs, createHierarchy, crsGroupingKey, crsOptions, listCrs, listHierarchies,
@@ -12,6 +15,7 @@ import {
 import { SETUP_PATH, SETUP_TCODE } from '@/lib/tcodes';
 import { fmtAgo } from '@/lib/format';
 import { ValueHelpDialog, ValueHelpField } from '../ValueHelp';
+import CrsLive from './CrsLive';
 import { IconArrowRight, IconBox, IconCheck, IconFile, IconGrid, IconRefresh, IconSparkle, IconTrash, IconTree, IconUpload } from '../icons';
 
 type Mode = 'hierarchy' | 'crs';
@@ -83,7 +87,9 @@ export default function HierarchyCrs() {
 
       {mode === 'hierarchy'
         ? <HierarchyForm key="ph" version={version} mounted={mounted} onCreated={() => setVersion((v) => v + 1)} />
-        : <CrsForm key="crs" version={version} mounted={mounted} onCreated={() => setVersion((v) => v + 1)} />}
+        : mounted && phLive()
+          ? <CrsLive key="crs-live" />
+          : <CrsForm key="crs" version={version} mounted={mounted} onCreated={() => setVersion((v) => v + 1)} />}
     </div>
   );
 }
@@ -266,10 +272,28 @@ function HierarchyForm({ version, mounted, onCreated }: { version: number; mount
     setLevels((ls) => ls.map((l, j) => (j === i ? { code: c, text: t } : j > i && ls[i].code !== c ? { code: '', text: '' } : l)));
   }
 
+  const [busy, setBusy] = useState(false);
+  const [liveError, setLiveError] = useState('');
+
+  async function submitLive() {
+    setLiveError(''); setBusy(true);
+    try {
+      const f = phFieldsOf(rows.map((r) => ({ code: r.code, text: r.isNew ? r.text.trim() : r.text })));
+      await phValidate(f, 'I');
+      const res = await phInitiate(f);
+      notify('success', res.message || 'Product hierarchy request raised');
+      setLast(`${res.transactionId.replace(/^0+/, '')} (waiting for approval)`);
+      setLevels(emptyLevels()); setTried(false); phReset(); onCreated();
+    } catch (e) {
+      setLiveError(e instanceof Error ? e.message : 'The request could not be submitted.');
+    } finally { setBusy(false); }
+  }
+
   function submit() {
     setTried(true);
     if (!complete) { notify('error', 'Fill every level of the product hierarchy'); return; }
     if (exists) { notify('error', `Product hierarchy ${code} already exists`); return; }
+    if (phLive()) { void submitLive(); return; }
     const rec = createHierarchy(rows.map((r) => ({ code: r.code, text: r.isNew ? r.text.trim() : r.text, isNew: r.isNew })), user.name);
     notify('success', `Product hierarchy ${rec.code} created (${rec.newLevels.length} new node${rec.newLevels.length === 1 ? '' : 's'})`);
     setLast(rec.code);
@@ -286,6 +310,7 @@ function HierarchyForm({ version, mounted, onCreated }: { version: number; mount
         <FormBanner title="MDM Product Hierarchy Creation" sub="Pick an existing code with F4 or type a new one – everything below a new level is new as well." />
         <h3 id="ph-form-title" className="sr-only">Product hierarchy levels</h3>
         {loadErrors.length > 0 && <p className="err su-msg" role="alert">{loadErrors[0]}</p>}
+        {liveError && <p className="err su-msg" role="alert" style={{ whiteSpace: 'pre-line' }}>{liveError}</p>}
         <div className="su-rows">
           {rows.map((r, i) => (
             <CodeRow
@@ -321,7 +346,7 @@ function HierarchyForm({ version, mounted, onCreated }: { version: number; mount
         </div>
         <div className="su-actions">
           <button type="button" className="btn btn-ghost" onClick={() => { setLevels(emptyLevels()); setTried(false); }}><IconRefresh size={15} /> Clear</button>
-          <button type="button" className="btn btn-primary btn-lg" onClick={submit} disabled={exists}><IconCheck size={16} /> Submit</button>
+          <button type="button" className="btn btn-primary btn-lg" onClick={submit} disabled={exists || busy}><IconCheck size={16} /> {busy ? 'Submitting…' : 'Submit'}</button>
         </div>
       </section>
 
@@ -342,6 +367,8 @@ function HierarchyForm({ version, mounted, onCreated }: { version: number; mount
             ))}
           </ol>
         </div>
+
+        {phLive() && <PhInbox version={version} onChanged={() => { phReset(); onCreated(); }} />}
 
         {last && (
           <div className="card su-done">
@@ -371,6 +398,82 @@ function HierarchyForm({ version, mounted, onCreated }: { version: number; mount
           )}
         </div>
       </aside>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Live: waiting for me (approve, assign cost centre, reject, send back) */
+/* ------------------------------------------------------------------ */
+
+function PhInbox({ version, onChanged }: { version: number; onChanged: () => void }) {
+  const { notify } = useMdm();
+  const [tasks, setTasks] = useState<PhTask[]>([]);
+  const [reqs, setReqs] = useState<PhRequest[]>([]);
+  const [cost, setCost] = useState<Record<string, string>>({});
+  const [acting, setActing] = useState('');
+  const [error, setError] = useState('');
+
+  const load = () => {
+    fetchTasks().then(setTasks).catch((e: Error) => setError(e.message));
+    fetchRequests({ top: 50 }).then(setReqs).catch(() => undefined);
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(load, [version]);
+
+  async function run(t: PhTask, what: 'approve' | 'cost' | 'reject' | 'back') {
+    const r = reqs.find((x) => x.transactionId === t.transactionId);
+    setActing(t.wiId); setError('');
+    try {
+      let res: PhRequest;
+      if (what === 'approve') {
+        if (!r) throw new Error('The request details are not loaded yet. Refresh and try again.');
+        res = await phApprove(t.wiId, phFieldsOf([
+          { code: r.banner, text: r.bannerDesc }, { code: r.brand, text: r.brandDesc }, { code: r.product, text: r.productDesc },
+          { code: r.sku, text: r.skuDesc }, { code: r.variant, text: r.variantDesc }, { code: r.scheme, text: r.schemeDesc }]));
+      } else if (what === 'cost') {
+        const cc = (cost[t.wiId] || '').trim().toUpperCase();
+        if (!cc) throw new Error('Enter the cost centre first.');
+        res = await phAssignCostCenter(t.wiId, cc);
+      } else res = what === 'reject' ? await phReject(t.wiId) : await phSendBack(t.wiId);
+      notify('success', res.message || 'Done');
+      load(); onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'The action failed.');
+    } finally { setActing(''); }
+  }
+
+  return (
+    <div className="card su-recent">
+      <h4>Waiting for my action {tasks.length > 0 && <span className="su-tag">{tasks.length}</span>}</h4>
+      {error && <p className="err small" role="alert" style={{ whiteSpace: 'pre-line' }}>{error}</p>}
+      {tasks.length === 0 ? <p className="muted small">Nothing is waiting for you.</p> : (
+        <ul>
+          {tasks.map((t) => {
+            const r = reqs.find((x) => x.transactionId === t.transactionId);
+            return (
+              <li key={t.wiId}>
+                <span className="mono su-recent-code">{t.transactionId.replace(/^0+/, '')}</span>
+                <span className="su-recent-text">{r ? [r.bannerDesc, r.brandDesc, r.productDesc, r.skuDesc].filter(Boolean).join(' › ') : t.text}</span>
+                <small className="muted">{t.mode === 'C' ? 'Assign cost centre' : 'Approve'} · {t.initiator}</small>
+                {t.mode === 'C' ? (
+                  <span className="su-actions" style={{ justifyContent: 'flex-start', gap: 8, marginTop: 6 }}>
+                    <input aria-label="Cost centre" placeholder="BEH0000000" maxLength={10} value={cost[t.wiId] ?? ''} style={{ width: 130 }}
+                      onChange={(e) => setCost((c) => ({ ...c, [t.wiId]: e.target.value }))} />
+                    <button type="button" className="btn btn-primary btn-sm" disabled={acting === t.wiId} onClick={() => run(t, 'cost')}>Assign</button>
+                  </span>
+                ) : (
+                  <span className="su-actions" style={{ justifyContent: 'flex-start', gap: 8, marginTop: 6 }}>
+                    <button type="button" className="btn btn-primary btn-sm" disabled={acting === t.wiId} onClick={() => run(t, 'approve')}>Approve</button>
+                    <button type="button" className="btn btn-ghost btn-sm" disabled={acting === t.wiId} onClick={() => run(t, 'back')}>Send back</button>
+                    <button type="button" className="btn btn-ghost btn-sm btn-danger-ghost" disabled={acting === t.wiId} onClick={() => run(t, 'reject')}>Reject</button>
+                  </span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }

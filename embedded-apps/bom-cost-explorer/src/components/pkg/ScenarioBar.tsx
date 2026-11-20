@@ -37,7 +37,7 @@ export default function ScenarioBar({ scens, scen, pending, onSelect, onNew, onA
           <StatusChip status={scen.Status} />
           <Pill tone="accent">v{scen.BudgetVersion}</Pill>
           <span className="font-semibold text-ink">{scen.Descr}</span>
-          <span>Plant {scen.Werks}</span>
+          <span>Plant {scen.Werks || 'All'}</span>
           <span>{showDate(scen.ValidFrom)} to {showDate(scen.ValidTo)}</span>
           <span>FY {scen.BudgetYear}</span>
           <span>Key date {showDate(scen.KeyDate)}</span>

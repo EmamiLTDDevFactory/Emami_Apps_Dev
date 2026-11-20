@@ -56,12 +56,13 @@ export const SRC_META: Record<string, string> = {
   CONTRACT: 'bg-green-500/15 text-green-700', INFOREC: 'bg-yellow-500/20 text-yellow-700', MARKT: 'bg-cyan-500/15 text-cyan-700',
   CONSUMP: 'bg-orange-500/15 text-orange-700', MBEW: 'bg-red-500/15 text-red-700',
 };
-export const PRIO_DEFAULT = ['CONTRACT', 'INFOREC', 'CONSUMP', 'MBEW'];
-export const PRIO_ALL = ['CONTRACT', 'INFOREC', 'MARKT', 'CONSUMP', 'MBEW'];
+// Packing material rate sources (spec): info record, then consumption, then MBEW. CONTRACT / MARKT are not used for PKGN / VERP.
+export const PRIO_DEFAULT = ['INFOREC', 'CONSUMP', 'MBEW'];
+export const PRIO_ALL = ['INFOREC', 'CONSUMP', 'MBEW'];
 
 // ---- flags -----------------------------------------------------------------------------------------------------------
 export const BLOCKING = ['NOBOM', 'PCT100', 'NORATE'] as const;
-export const WARNING = ['NOZBUD', 'DUP'] as const;
+export const WARNING = ['NOZBUD', 'DUP', 'NOFRT'] as const;
 export const parseFlags = (s: string) => Array.from(new Set(String(s ?? '').split(/[\s,;|]+/).map((x) => x.trim().toUpperCase()).filter(Boolean)));
 export const isBlockingFlag = (f: string) => (BLOCKING as readonly string[]).includes(f);
 export const blocked = (h: Pick<PkgItem, 'MsgFlags'>) => parseFlags(h.MsgFlags).some(isBlockingFlag);
@@ -76,6 +77,7 @@ export function flagHint(flag: string, g: PkgGroup): string {
     case 'NORATE': return 'No valid ZBAS rate on key date';
     case 'NOZBUD': return 'No ZBUD condition, 0 % used';
     case 'DUP': return 'Overlapping ZBUD records';
+    case 'NOFRT': return 'No freight rate found for material + plant';
     default: return '';
   }
 }
@@ -103,6 +105,31 @@ export function kpis(groups: PkgGroup[]): Kpis {
   return { materials: groups.length, blocked: groups.length - ok.length, warnings: groups.filter((g) => warned(g.head)).length, avgVarPct: avg, overridden: groups.filter(groupOverridden).length };
 }
 
+/** Which dashboard tile is active: it filters the material list (all = no tile filter). */
+export type KpiFilter = 'all' | 'blocked' | 'warnings' | 'overridden';
+export const matchKpi = (g: PkgGroup, f: KpiFilter) =>
+  f === 'all' || (f === 'blocked' && blocked(g.head)) || (f === 'warnings' && warned(g.head)) || (f === 'overridden' && groupOverridden(g));
+
+/** Origin group value of a material ('' = none) and the filter key used for "no origin group". */
+export const NO_ORIGIN = '__none';
+export const originKey = (g: PkgGroup) => g.head.OriginGrp || NO_ORIGIN;
+
+export interface OriginSummary { key: string; zbud: string; n: number; blocked: number; netQty: number; netValue: number; avgVarPct: number | null }
+/** One summary per origin group (sorted, "no origin group" last): count, blocked, net qty / value, average variance % of the unblocked rows. */
+export function originSummary(groups: PkgGroup[]): OriginSummary[] {
+  const by = new Map<string, PkgGroup[]>();
+  for (const g of groups) { const k = originKey(g); by.set(k, [...(by.get(k) ?? []), g]); }
+  return Array.from(by.entries()).sort(([a], [b]) => (a === NO_ORIGIN ? 1 : b === NO_ORIGIN ? -1 : a.localeCompare(b))).map(([key, gs]) => {
+    const ok = gs.filter((g) => !blocked(g.head));
+    return {
+      key, zbud: gs.find((g) => g.head.ZbudMatnr)?.head.ZbudMatnr ?? '', n: gs.length, blocked: gs.length - ok.length,
+      netQty: gs.reduce((s, g) => s.plus(String(g.head.NetQty)), new Decimal(0)).toNumber(),
+      netValue: gs.reduce((s, g) => s.plus(String(g.head.NetValue)), new Decimal(0)).toNumber(),
+      avgVarPct: ok.length ? ok.reduce((s, g) => s.plus(String(g.head.VariancePct)), new Decimal(0)).div(ok.length).toNumber() : null,
+    };
+  });
+}
+
 export interface CompareRow {
   Matnr: string; Maktx: string; basicThis: number; budThis: number; varThis: number;
   basicOther: number | null; budOther: number | null; varOther: number | null; delta: number | null;
@@ -124,12 +151,14 @@ export function compareRows(mine: PkgGroup[], other: PkgGroup[] | null): Compare
 }
 
 export const finaliseCounts = (groups: PkgGroup[]) => { const m = groups.filter((g) => blocked(g.head)).length; return { n: groups.length - m, m }; };
-export const finaliseTarget = (werks: string) => (werks === 'HO00' || !werks ? 'ZCOMPONENT (India)' : `ZCOMPONENT (plant ${werks})`);
+export const finaliseTarget = (werks: string) => (werks === 'HO00' || !werks ? 'ZCOMPONENT (India) / ZCOMPONENT_N by plant country' : `ZCOMPONENT (plant ${werks})`);
 
 // ---- edits ------------------------------------------------------------------------------------------------------------
 export type RuleKey = 'set' | 'inc' | 'dec' | 'add' | 'sub';
 export const RULE_LABEL: Record<RuleKey, string> = { set: 'Set to', inc: 'Increase by %', dec: 'Decrease by %', add: 'Add amount', sub: 'Subtract amount' };
+// BOM % (P) can never be overridden (spec): only the basic rate and the ZBUD factor are editable.
 export const LEVEL_LABEL: Record<EditLevel, string> = { R: 'Basic rate', Z: 'ZBUD %', P: 'BOM component %' };
+export const EDIT_LEVELS: EditLevel[] = ['R', 'Z'];
 export const LEVEL_NAME: Record<string, string> = { R: 'Basic rate', Z: 'ZBUD', P: 'BOM %' };
 export const RULE_NAME: Record<string, string> = { S: 'Set', P: 'Percent', A: 'Absolute', V: 'Revert to SAP' };
 
@@ -167,11 +196,12 @@ export function resolveScope(kind: ScopeKind, c: ScopeCtx): Pick<PkgActionBody, 
 
 // ---- new scenario -----------------------------------------------------------------------------------------------------
 export function newScenarioDefaults(from = ''): NewScenarioForm {
-  return { descr: '', validFrom: from, validTo: '', keyDate: '', budgetVersion: '', mtart: ['PKGN', 'VERP'], matkl: '', matnr: '', prio: [...PRIO_DEFAULT], norm: false };
+  return { werks: '', descr: '', validFrom: from, validTo: '', keyDate: '', budgetVersion: '', mtart: ['PKGN', 'VERP'], matkl: '', matnr: '', prio: [...PRIO_DEFAULT], norm: false };
 }
 export function validateNewScenario(f: NewScenarioForm): Partial<Record<keyof NewScenarioForm, string>> {
   const e: Partial<Record<keyof NewScenarioForm, string>> = {};
   if (!f.descr.trim()) e.descr = 'Enter a description';
+  if (f.werks.trim() && !/^[A-Za-z0-9]{4}$/.test(f.werks.trim())) e.werks = 'Plant is 4 characters';
   if (!f.validFrom) e.validFrom = 'Validity from is required';
   if (!f.validTo) e.validTo = 'Validity to is required';
   if (f.validFrom && f.validTo && f.validTo < f.validFrom) e.validTo = 'Validity to must not be before from';
@@ -183,7 +213,7 @@ export function validateNewScenario(f: NewScenarioForm): Partial<Record<keyof Ne
 const list = (s: string) => Array.from(new Set(s.split(/[\s,;]+/).map((x) => x.trim().toUpperCase()).filter(Boolean))).join(',');
 export function createBody(f: NewScenarioForm): PkgActionBody {
   return {
-    action: 'CREATE', descr: f.descr.trim(), validFrom: f.validFrom, validTo: f.validTo, keyDate: f.keyDate || f.validFrom,
+    action: 'CREATE', werks: f.werks.trim().toUpperCase(), descr: f.descr.trim(), validFrom: f.validFrom, validTo: f.validTo, keyDate: f.keyDate || f.validFrom,
     ...(f.budgetVersion.trim() ? { budgetVersion: Number(f.budgetVersion) } : {}),
     mtartSel: f.mtart.join(','), matklSel: list(f.matkl), matnrSel: list(f.matnr), prio: f.prio.join(','), norm: f.norm ? 'X' : '',
   };

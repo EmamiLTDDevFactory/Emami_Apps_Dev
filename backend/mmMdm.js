@@ -47,7 +47,7 @@ const ENTITY_SETS = {
     ConsumptionData: { set: 'ConsumptionDataSet', keys: ['TransId', 'Priod'], multi: true },
     LongText: { set: 'LongTextSet', keys: ['TransId', 'Matnr', 'Fid'], multi: true },
 };
-const FN = { startRequest: 'StartRequest', validate: 'Validate', saveDraft: 'SaveDraft', submit: 'Submit', approve: 'Approve', sendBack: 'SendBack', reject: 'Reject', forward: 'Forward', deleteDraft: 'DeleteDraft', checkDuplicate: 'CheckDuplicate', buildDescription: 'BuildDescription', relatedHsn: 'GetRelatedHsn', fieldControl: 'GetFieldControl', session: 'GetSession' };
+const FN = { startChange: 'StartChange', startExtension: 'StartExtension', startRequest: 'StartRequest', validate: 'Validate', saveDraft: 'SaveDraft', submit: 'Submit', approve: 'Approve', sendBack: 'SendBack', reject: 'Reject', forward: 'Forward', deleteDraft: 'DeleteDraft', checkDuplicate: 'CheckDuplicate', buildDescription: 'BuildDescription', relatedHsn: 'GetRelatedHsn', fieldControl: 'GetFieldControl', session: 'GetSession' };
 const VALUE_HELP_SETS = { MTART: 'MaterialTypeVhSet', MGRP: 'MainGroupSet', SGRP: 'SubGroupSet', SSGR: 'SubSubGroupSet' };
 const GENERIC_VALUE_HELP = 'GenericValueHelpSet';
 const STATUS_TEXT = { '00': 'Saved as draft', '01': 'Requested', '02': 'In progress', '03': 'Completed', '04': 'Sent back', '05': 'Rejected' };
@@ -83,7 +83,7 @@ function toOData(entity, row) {
     const o = {};
     for (const [name, v] of Object.entries(row)) {
         if (name === 'TRANSID') continue;
-        o[toProp(name)] = isDate(entity, name) && typeof v === 'string' && v ? toSapDate(v) : v;
+        o[toProp(name)] = isDate(entity, name) ? (typeof v === 'string' && v ? toSapDate(v) : null) : v;   // an empty date is null: SAP rejects ''
     }
     return o;
 }
@@ -108,7 +108,7 @@ function header(o, extra = {}) {
 const EXPAND = [...Object.keys(ENTITY_SETS), 'History', 'ViewSelection'].join(',');
 
 // The allowed actions are SAP's answer for this request and this user; nothing is inferred from the status.
-const asAllowed = (o) => ({ edit: !!o.CanEdit, validate: !!o.CanValidate, saveDraft: !!o.CanSaveDraft, submit: !!o.CanSubmit, approve: !!o.CanApprove, sendBack: !!o.CanSendBack, reject: !!o.CanReject, forward: !!o.CanForward, deleteDraft: !!o.CanDeleteDraft, attach: !!o.CanAttach, comment: !!o.CanComment });
+const asAllowed = (o) => ({ edit: !!o.CanEdit, validate: !!o.CanValidate, saveDraft: !!o.CanSaveDraft, submit: !!o.CanSubmit, approve: !!o.CanApprove, sendBack: !!o.CanSendBack, reject: !!o.CanReject, forward: !!o.CanForward, deleteDraft: !!o.CanDeleteDraft, attach: o.CanAttach !== undefined ? !!o.CanAttach : !!(o.CanEdit || o.CanApprove || o.CanSendBack), comment: o.CanComment !== undefined ? !!o.CanComment : !!(o.CanEdit || o.CanApprove || o.CanSendBack || o.CanReject) });
 
 function fnResults(json) {
     const r = sap.results(json);
@@ -126,9 +126,22 @@ const toMessages = (rows) => rows.map((m) => ({ code: String(m.Code ?? ''), mess
 
 // ------------------------------------------------------------------ the service (screen model <-> OData)
 async function load(c, id) {
-    const json = await sap.odata.get(c, `${SET.request}?$filter=TransId eq ${enc(id)}&$expand=${EXPAND}`);
+    // One collection read per entity set instead of a single $expand: key reads and $expand over the 20 sets are rejected by the
+    // service on the dev system, collection reads with $filter are not, and they run side by side.
+    const json = await sap.odata.get(c, `${SET.request}?$filter=TransId eq ${enc(id)}`);
     const o = sap.results(json)[0];
     if (!o) throw new sap.SapError(`Request ${id} not found`, 404);
+    const byId = `?$filter=TransId eq ${enc(o.TransId || id)}`;
+    const parts = await Promise.all([
+        ...Object.entries(ENTITY_SETS).map(async ([entity, cfg]) => [entity, sap.results(await sap.odata.get(c, `${cfg.set}${byId}`))]),
+        (async () => ['History', sap.results(await sap.odata.get(c, `RequestHistorySet${byId}`))])(),
+        (async () => ['ViewSelection', sap.results(await sap.odata.get(c, `${SET.viewSelection}${byId}`))])(),
+    ]);
+    for (const [name, rows] of parts) {
+        if (name === 'History') o.History = { results: rows };
+        else if (name === 'ViewSelection') o.ViewSelection = rows[0];
+        else o[name] = ENTITY_SETS[name].multi ? { results: rows } : rows[0];
+    }
     const data = { single: {}, multi: {}, views: [] };
     for (const [entity, cfg] of Object.entries(ENTITY_SETS)) {
         const part = o[entity];
@@ -147,9 +160,27 @@ async function load(c, id) {
     return { header: header(o, { materialType: String(mat.MTART ?? ''), description: String(desc.MAKTX ?? '') }), data, history, allowed: asAllowed(o), level: String(o.Level ?? 'L0') };
 }
 
+/**
+ * The base snapshot of a change request (MX): the live values the request started from, kept by SAP under transid + 5,000,000,000.
+ * The screen compares it with the request to mark the fields that were changed. Only the data rows (no header, no history).
+ */
+async function loadBase(c, id) {
+    const baseId = String(Number(id) + 5000000000).padStart(10, '0');
+    const byId = `?$filter=TransId eq ${enc(baseId)}`;
+    const parts = await Promise.all(Object.entries(ENTITY_SETS).map(async ([entity, cfg]) => [entity, cfg, sap.results(await sap.odata.get(c, `${cfg.set}${byId}`))]));
+    const data = { single: {}, multi: {} };
+    for (const [entity, cfg, rows] of parts) {
+        if (cfg.multi) data.multi[entity] = rows.map((r) => fromOData(entity, r));
+        else if (rows[0]) data.single[entity] = fromOData(entity, rows[0]);
+    }
+    return { baseId, data, exists: Object.keys(data.single).length > 0 };
+}
+
+// The Gateway entities are written whole: a field left out of the body comes back blank. A single-row entity is therefore sent as the row
+// SAP holds now with the changed fields on top (the app sends only what the user changed; Material type / industry sector were wiped).
 function writeOps(transId, data, existing) {
     const ops = [];
-    for (const [entity, row] of Object.entries(data.single || {})) if (ENTITY_SETS[entity]) ops.push({ method: 'MERGE', path: key(entity, transId), body: toOData(entity, row) });
+    for (const [entity, row] of Object.entries(data.single || {})) if (ENTITY_SETS[entity]) ops.push({ method: 'MERGE', path: key(entity, transId), body: toOData(entity, { ...((existing && existing.single && existing.single[entity]) || {}), ...row }) });
     for (const [entity, rows] of Object.entries(data.multi || {})) {
         const cfg = ENTITY_SETS[entity];
         if (!cfg) continue;
@@ -183,7 +214,7 @@ const isoOf = (v) => {
     const m = typeof v === 'string' ? /\/Date\((-?\d+)/.exec(v) : null;
     return m ? new Date(Number(m[1])).toISOString() : typeof v === 'string' ? v : '';
 };
-const toAttachment = (o) => ({ attachId: String(o.AttachId ?? ''), fileName: String(o.FileName ?? ''), mimeType: String(o.MimeType ?? ''), size: Number(o.Size ?? 0), uploadedBy: String(o.UploadedBy ?? ''), uploadedAt: isoOf(o.UploadedAt), level: String(o.Lvl ?? '') });
+const toAttachment = (o) => ({ attachId: String(o.AttachId ?? ''), fileName: String(o.FileName ?? ''), mimeType: String(o.MimeType ?? ''), docType: String(o.DocType ?? ''), size: Number(o.Size ?? 0), uploadedBy: String(o.UploadedBy ?? ''), uploadedAt: isoOf(o.UploadedAt), level: String(o.Lvl ?? '') });
 const toComment = (o) => ({ commentId: String(o.CommentId ?? ''), text: String(o.Text ?? ''), user: String(o.UserId ?? ''), createdAt: isoOf(o.CreatedAt), level: String(o.Lvl ?? '') });
 const extOf = (n) => (n.lastIndexOf('.') < 0 ? '' : n.slice(n.lastIndexOf('.') + 1).toLowerCase());
 const safeName = (n) => String(n || '').replace(/[\u0000-\u001f]/g, '').trim();
@@ -217,6 +248,40 @@ const service = {
         return sap.results(await sap.odata.get(c, url)).map((o) => header(o));
     },
     get: (c, id) => load(c, id),
+    /** Posted materials to change or extend; `busy` = an open change or extension request exists */
+    async searchPosted(c, q = {}) {
+        const f = [];
+        if (q.text) f.push(`Maktx eq ${enc(String(q.text).slice(0, 40))}`);
+        if (q.materialType) f.push(`Mtart eq ${enc(String(q.materialType).slice(0, 4))}`);
+        const top = Math.min(Math.max(parseInt(q.top, 10) || 50, 1), 100);
+        const url = `PostedMaterialSet?$top=${top}${f.length ? `&$filter=${encodeURIComponent(f.join(' and '))}` : ''}`;
+        return sap.results(await sap.odata.get(c, url)).map((o) => ({
+            matnr: String(o.Matnr ?? '').replace(/^0+/, ''), description: String(o.Maktx ?? ''), materialType: String(o.Mtart ?? ''),
+            materialGroup: String(o.Matkl ?? ''), unit: String(o.Meins ?? ''), busy: o.Busy === 'X',
+        }));
+    },
+    /** Plants with storage locations and sales areas the material exists in */
+    async scope(c, matnr) {
+        const rows = sap.results(await sap.odata.get(c, `ChangeScopeSet?$filter=${encodeURIComponent(`Matnr eq ${enc(matnr)}`)}`));
+        return rows.map((o) => ({
+            kind: String(o.Kind ?? ''), plant: String(o.Werks ?? ''), plantText: String(o.WerksTxt ?? ''), storageLocation: String(o.Lgort ?? ''), storageLocationText: String(o.LgortTxt ?? ''),
+            salesOrg: String(o.Vkorg ?? ''), salesOrgText: String(o.VkorgTxt ?? ''), distributionChannel: String(o.Vtweg ?? ''), distributionChannelText: String(o.VtwegTxt ?? ''),
+        }));
+    },
+    async startChange(c, i) {
+        const o = fnSingle(await sap.odata.fn(c, FN.startChange, {
+            Matnr: i.matnr, Plant: i.plant || '', StorageLocation: i.storageLocation || '', SalesOrg: i.salesOrg || '', DistributionChannel: i.distributionChannel || '',
+        }));
+        return load(c, String(o.TransId));
+    },
+    /** type P new plant or storage location, S new sales area, V new valuation type */
+    async startExtension(c, i) {
+        const o = fnSingle(await sap.odata.fn(c, FN.startExtension, {
+            Matnr: i.matnr, ExtType: i.type, Plant: i.plant || '', StorageLocation: i.storageLocation || '', SalesOrg: i.salesOrg || '', DistributionChannel: i.distributionChannel || '',
+            ValuationType: i.valuationType || '', SourcePlant: i.sourcePlant || '', SourceSalesOrg: i.sourceSalesOrg || '', SourceDistributionChannel: i.sourceDistributionChannel || '',
+        }));
+        return load(c, String(o.TransId));
+    },
     async start(c, i) {
         const o = fnSingle(await sap.odata.fn(c, FN.startRequest, {
             MaterialType: i.materialType || '', IndustrySector: i.industrySector || '', Description: i.description || '', MainGroup: i.mainGroup || '', SubGroup: i.subGroup || '', SubSubGroup: i.subSubGroup || '',
@@ -232,8 +297,11 @@ const service = {
     async validate(c, id, data) {
         return toMessages(fnResults(await withWrites(c, id, data, FN.validate, {}, true)));
     },
-    async submit(c, id, data) {
+    async submit(c, id, data, comment) {
         const json = await withWrites(c, id, data, FN.submit);
+        // Submit has no comment parameter in SAP: the comment is kept as a request comment (a failure here never undoes the submit)
+        const text = String(comment || '').trim().slice(0, 1000);
+        if (text) { try { await sap.odata.post(c, 'CommentSet', { TransId: id, Text: text }); } catch (e) { console.error('[mm-mdm] submit comment not stored:', e.message); } }
         return { request: await load(c, id), messages: toMessages(fnResults(json)) };
     },
     async act(c, id, action, body) {
@@ -256,9 +324,11 @@ const service = {
     async valueHelp(c, name, params) {
         const set = VALUE_HELP_SETS[name.toUpperCase()];
         const f = Object.entries(params).map(([k, v]) => `${k[0].toUpperCase()}${k.slice(1)} eq ${enc(v)}`);
+        // The generic list entity has only Name, Key and Text: the values of the fields it depends on (WERKS, VKORG ...) travel inside the name
+        const generic = [name.toUpperCase(), Object.entries(params).map(([k, v]) => `${k.toUpperCase()}=${String(v).replace(/[|;=]/g, '')}`).join(';')].filter(Boolean).join('|');
         const url = set
             ? `${set}${f.length ? `?$filter=${encodeURIComponent(f.join(' and '))}` : ''}`
-            : `${GENERIC_VALUE_HELP}?$filter=${encodeURIComponent([`Name eq ${enc(name.toUpperCase())}`, ...f].join(' and '))}`;
+            : `${GENERIC_VALUE_HELP}?$filter=${encodeURIComponent(`Name eq ${enc(generic)}`)}`;
         return sap.results(await sap.odata.get(c, url)).map((o) => ({ key: String(o.Key ?? ''), text: String(o.Text ?? '') }));
     },
     async duplicates(c, i) {
@@ -272,21 +342,34 @@ const service = {
     async listAttachments(c, id) {
         return sap.results(await sap.odata.get(c, `AttachmentSet?$filter=TransId eq ${enc(id)}&$orderby=AttachId`)).map(toAttachment);
     },
-    async addAttachment(c, id, bytes, fileName, mimeType) {
+    async addAttachment(c, id, bytes, fileName, mimeType, docType) {
         const bad = checkUpload(fileName, bytes.length);
         if (bad) throw bad;
         // TransId travels in the path of the navigation, never the uploader / time / level: SAP sets those.
-        const json = await sap.postStream(c, `RequestSet(TransId=${enc(id)},AppId=${enc(await appIdOf(c, id))})/Attachments`, bytes, { fileName, mimeType });
+        // the request number travels in the slug (SAP reads <request number>|<file name>); the uploader, date and level are SAP's
+        // The proxy in front of the Gateway passes JSON entities but drops raw request bodies, the Slug header and $value: the file travels
+        // as base64 text of the AttachmentFileSet entity, and the metadata (size, uploader, level) is read back from AttachmentSet.
+        const made = await sap.odata.post(c, 'AttachmentFileSet', { TransId: String(id), FileName: String(fileName), MimeType: String(mimeType || 'application/octet-stream'), DocType: String(docType || '').slice(0, 50), Content: Buffer.from(bytes).toString('base64') });
+        const attachId = String(((made && made.d) || {}).AttachId || '');
+        const meta = attachId ? sap.results(await sap.odata.get(c, `AttachmentSet?$filter=TransId eq ${enc(id)} and AttachId eq ${enc(attachId)}`))[0] : undefined;
+        const json = { d: meta || { TransId: String(id), AttachId: attachId, FileName: String(fileName), MimeType: String(mimeType || '') } };
         return toAttachment((json && json.d) || {});
+    },
+    async base(c, id) {
+        const r = await load(c, id);          // the caller may only read a request it can open
+        if (String(r.header.appId) !== 'MX') return { exists: false, data: { single: {}, multi: {} } };
+        return loadBase(c, id);
     },
     async readAttachment(c, id, attachId) {
         const meta = sap.results(await sap.odata.get(c, `AttachmentSet?$filter=TransId eq ${enc(id)} and AttachId eq ${enc(attachId)}`))[0];
         if (!meta) throw new sap.SapError('Attachment not found', 404);
-        const file = await sap.getStream(c, `AttachmentSet(TransId=${enc(id)},AttachId=${enc(attachId)})/$value`);
-        return { fileName: String(meta.FileName ?? 'attachment'), mimeType: String(meta.MimeType || file.mimeType), bytes: file.bytes };
+        const got = sap.results(await sap.odata.get(c, `AttachmentFileSet?$filter=TransId eq ${enc(id)} and AttachId eq ${enc(attachId)}`))[0];
+        if (!got) throw new sap.SapError('Attachment not found', 404);
+        return { fileName: String(meta.FileName ?? 'attachment'), mimeType: String(meta.MimeType || got.MimeType || 'application/octet-stream'), bytes: Buffer.from(String(got.Content || ''), 'base64') };
     },
     async deleteAttachment(c, id, attachId) {
-        await sap.odata.del(c, `AttachmentSet(TransId=${enc(id)},AttachId=${enc(attachId)})`);
+        // the Gateway in front passes no DELETE: removal is a function import
+        await sap.odata.fn(c, 'DeleteAttachment', { TransId: String(id), AttachId: String(attachId) });
     },
     async listComments(c, id) {
         return sap.results(await sap.odata.get(c, `CommentSet?$filter=TransId eq ${enc(id)}&$orderby=CommentId`)).map(toComment);
@@ -353,8 +436,18 @@ router.get('/health', handle('health', async () => {
 }));
 router.get('/session', handle('session', (req) => service.session(req.caller)));
 router.get('/requests', handle('list', (req) => service.list(req.caller, { scope: req.query.scope, status: req.query.status, materialType: req.query.materialType, text: req.query.text })));
+const matnrOf = (v) => { const m = String(v || '').trim(); if (!/^[0-9A-Za-z]{1,18}$/.test(m)) throw new sap.SapError('matnr must be a material number (up to 18 letters or digits)', 400); return m; };
+router.get('/posted', handle('posted', (req) => service.searchPosted(req.caller, req.query || {})));
+router.get('/posted/:matnr/scope', handle('scope', (req) => service.scope(req.caller, matnrOf(req.params.matnr))));
+router.post('/change', handle('change-start', async (req) => ({ __status: 201, body: await service.startChange(req.caller, { ...(req.body || {}), matnr: matnrOf((req.body || {}).matnr) }) })));
+router.post('/extension', handle('extension-start', async (req) => {
+    const b = req.body || {};
+    if (!['P', 'S', 'V'].includes(String(b.type))) throw new sap.SapError('type must be P (plant or storage location), S (sales area) or V (valuation type)', 400);
+    return { __status: 201, body: await service.startExtension(req.caller, { ...b, matnr: matnrOf(b.matnr) }) };
+}));
 router.post('/requests', handle('start', async (req) => ({ __status: 201, body: await service.start(req.caller, req.body || {}) })));
 router.get('/requests/:id', handle('get', (req) => service.get(req.caller, req.params.id)));
+router.get('/requests/:id/base', handle('base', (req) => service.base(req.caller, req.params.id)));
 router.put('/requests/:id', handle('save', (req) => service.save(req.caller, req.params.id, (req.body || {}).data)));
 router.delete('/requests/:id', handle('delete', async (req) => { await service.deleteDraft(req.caller, req.params.id); return { ok: true }; }));
 // Attachments: the file travels as the raw request body (Slug = URL-encoded file name, Content-Type = MIME type), like the OData media resource.
@@ -363,7 +456,7 @@ router.get('/requests/:id/attachments', handle('attachments', (req) => service.l
 router.post('/requests/:id/attachments', express.raw({ type: () => true, limit: MAX_UPLOAD_BYTES + 1 }), handle('attachment-add', async (req) => {
     const bytes = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
     const name = safeName((() => { try { return decodeURIComponent(req.get('slug') || ''); } catch { return ''; } })());
-    return { __status: 201, body: await service.addAttachment(req.caller, req.params.id, bytes, name, req.get('content-type') || 'application/octet-stream') };
+    return { __status: 201, body: await service.addAttachment(req.caller, req.params.id, bytes, name, req.get('content-type') || 'application/octet-stream', String(req.query.docType || '')) };
 }));
 router.get('/requests/:id/attachments/:attId', async (req, res) => {
     const t0 = Date.now();
@@ -390,7 +483,7 @@ router.post('/requests/:id/:action', handle('action', async (req) => {
     }
     if (action === 'submit') {
         if (!body.data) throw new sap.SapError('data is required', 400);
-        return service.submit(req.caller, id, body.data);
+        return service.submit(req.caller, id, body.data, body.comment);
     }
     if (WORKFLOW[action]) return service.act(req.caller, id, action, body);
     throw new sap.SapError(`Unknown action ${action}`, 404);

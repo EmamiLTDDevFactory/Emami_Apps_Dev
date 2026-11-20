@@ -9,7 +9,7 @@ import type { PkgGroup } from '@/lib/pkg/types';
 const th = 'whitespace-nowrap border-b border-line px-2 py-1 text-right text-2xs font-bold text-muted';
 const td = 'whitespace-nowrap px-2 py-1 text-right text-xs tabular-nums';
 
-/** Components of one material: % and ZBUD % are editable (used column), everything else is SAP's. */
+/** Components of one material: only the ZBUD % is editable. The BOM % is SAP's and can never be overridden. */
 export default function ComponentTable({ g, cell }: { g: PkgGroup; cell: CellApi }) {
   const m = g.head.Matnr;
   const totalPct = g.comps.reduce((s, c) => s.plus(String(c.PctUsed)), new Decimal(0));
@@ -30,7 +30,7 @@ export default function ComponentTable({ g, cell }: { g: PkgGroup; cell: CellApi
             <td className="whitespace-nowrap px-2 py-1 font-semibold">{stripZeros(c.Idnrk)}</td>
             <td className="max-w-[260px] truncate px-2 py-1 text-muted" title={c.Maktx}>{c.Maktx}</td>
             <td className={td}>{fmtPct3(c.PctSap)}</td>
-            <td className={td}><NumEdit cell={cell} k={`${m}|${c.Idnrk}|P`} level="P" matnr={m} idnrk={c.Idnrk} value={c.PctUsed} sap={c.PctSap} fmt={fmtPct3} label={`% of ${stripZeros(c.Idnrk)}`} /></td>
+            <td className={td}>{fmtPct3(c.PctUsed)}</td>
             <td className={td}>{fmtSigned3(c.ZbudSap)}</td>
             <td className={td}><NumEdit cell={cell} k={`${m}|${c.Idnrk}|Z`} level="Z" matnr={m} idnrk={c.Idnrk} value={c.ZbudUsed} sap={c.ZbudSap} fmt={fmtSigned3} label={`ZBUD % of ${stripZeros(c.Idnrk)}`} /></td>
             <td className={td}>{fmtRate4(c.CompBaseRate)}</td>

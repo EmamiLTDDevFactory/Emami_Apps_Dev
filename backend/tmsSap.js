@@ -1,0 +1,130 @@
+/*
+   SAP side of SmarTruck TMS (embedded-apps/smartruck-tms): OData V2 client of ZTMS_SRV and the ONE mapping module between that
+   service and the app's JSON (section MAPPING). Server only; the browser never calls SAP. Same transport rules as mmMdmSap.js /
+   auditeeResponseSap.js: the Azure SAP gateway signs in as its technical user, the verified hub user's e-mail travels in X-Emami-User.
+   Contract and ABAP: embedded-apps/smartruck-tms/docs/ZTMS_SAP_BACKEND.md and docs/sap-eds/. NOT yet created on any SAP system.
+
+   Settings (backend .env):
+     TMS_SAP_ODATA_BASE   https://<azure gateway>/api/<SID>/ZTMS_SRV  - when empty the client runs SIMULATED (deterministic fake
+                          documents, flagged simulated:true) so the whole app works before SAP exists.
+     TMS_SAP_CLIENT       sap-client                                   (optional)
+     TMS_SAP_AUTH         gateway (default) | basic    TMS_SAP_USER / TMS_SAP_PASSWORD (basic, development only)
+     TMS_SAP_USER_HEADER  default X-Emami-User
+*/
+const env = (k, d = '') => String(process.env[k] ?? d).trim();
+
+class SapError extends Error { constructor(message, status = 502) { super(message); this.status = status; } }
+
+const config = () => ({ base: env('TMS_SAP_ODATA_BASE').replace(/\/+$/, ''), client: env('TMS_SAP_CLIENT'), mode: env('TMS_SAP_AUTH', 'gateway').toLowerCase(), user: env('TMS_SAP_USER'), password: env('TMS_SAP_PASSWORD'), userHeader: env('TMS_SAP_USER_HEADER', 'X-Emami-User') || 'X-Emami-User' });
+const isConfigured = () => !!config().base;
+
+const enc = (s) => `'${String(s).replace(/'/g, "''")}'`;
+const str = (v) => (v === null || v === undefined ? '' : String(v).trim());
+const isX = (v) => v === true || v === 'X' || v === 'x';
+const sapDate = (v) => { const m = /\/Date\((-?\d+)/.exec(str(v)); if (m) return new Date(Number(m[1])).toISOString().slice(0, 10); const s = str(v); return /^\d{8}$/.test(s) && s !== '00000000' ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}` : ''; };
+const toSapDate = (iso) => `/Date(${Date.parse(`${String(iso).slice(0, 10)}T00:00:00Z`)})/`;
+
+function url(path, caller) {
+    const { base, client } = config();
+    if (!base) throw new SapError('The SAP connection for SmarTruck TMS is not configured (TMS_SAP_ODATA_BASE).', 503);
+    let u = `${base}/${path}`;
+    const add = (k, v) => { u += `${u.includes('?') ? '&' : '?'}${k}=${encodeURIComponent(v)}`; };
+    if (client) add('sap-client', client);
+    if (caller && caller.email) add('emamiuser', caller.email);
+    return u;
+}
+function headersFor(caller, extra = {}) {
+    const c = config();
+    const h = { Accept: 'application/json', ...(c.client ? { 'sap-client': c.client } : {}), ...(caller && caller.email ? { [c.userHeader]: caller.email } : {}), ...extra };
+    if (c.mode === 'basic' && c.user) h.Authorization = `Basic ${Buffer.from(`${c.user}:${c.password}`).toString('base64')}`;
+    return h;
+}
+const sessions = new Map();
+async function csrf(caller, force = false) {
+    const key = (caller && caller.email) || '-';
+    const cur = sessions.get(key);
+    if (!force && cur && Date.now() - cur.at < 15 * 60000) return cur;
+    let res;
+    try { res = await fetch(url('', caller), { headers: headersFor(caller, { 'x-csrf-token': 'Fetch' }), cache: 'no-store' }); } catch (e) { throw new SapError(`SAP is not reachable: ${e.message}`); }
+    await res.arrayBuffer().catch(() => null);
+    const s = { token: res.headers.get('x-csrf-token') || '', cookies: (typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : []).map((x) => x.split(';')[0]).join('; '), at: Date.now() };
+    sessions.set(key, s); return s;
+}
+function mapError(body, status) {
+    const e = body && body.error;
+    const given = (e && e.message && (typeof e.message === 'string' ? e.message : e.message.value)) || '';
+    const message = given || `SAP returned HTTP ${status} without a message.`;
+    const code = /already (posted|exists)|duplicate/i.test(message) ? 409 : /blocked|not authori[sz]ed/i.test(message) ? 403 : /not found/i.test(message) ? 404 : status >= 500 ? 502 : status === 401 || status === 403 ? status : 400;
+    return { status: code, message };
+}
+async function request(caller, method, path, body, retry = true) {
+    const write = method !== 'GET';
+    const s = write ? await csrf(caller) : undefined;
+    const headers = headersFor(caller, { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(s && s.token ? { 'x-csrf-token': s.token } : {}), ...(s && s.cookies ? { Cookie: s.cookies } : {}) });
+    let res;
+    try { res = await fetch(url(path, caller), { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined, cache: 'no-store' }); } catch (e) { throw new SapError(`SAP is not reachable: ${e.message}`); }
+    if (res.status === 403 && write && retry && (res.headers.get('x-csrf-token') || '').toLowerCase() === 'required') { await res.arrayBuffer().catch(() => null); await csrf(caller, true); return request(caller, method, path, body, false); }
+    const text = await res.text();
+    let json = {}; try { json = text ? JSON.parse(text) : {}; } catch { json = { raw: text }; }
+    if (!res.ok) { const m = mapError(json, res.status); throw new SapError(m.message, m.status); }
+    return json;
+}
+const results = (j) => (j && j.d && (j.d.results || (Array.isArray(j.d) ? j.d : null))) || [];
+
+// ===================================================================================================================== MAPPING
+// Everything below knows the SAP names. Adjust here (and only here) when the contract changes.
+const SET = { vendor: 'VendorSet', customer: 'CustomerSet', poso: 'PoSoCheckSet', invoice: 'FreightInvoiceSet', payment: 'PaymentStatusSet' };
+
+const map = {
+    vendor: (r) => ({ code: str(r.Lifnr), name: str(r.Name1), paymentTerms: str(r.Zterm) ? `Net ${parseInt(str(r.Zterm).replace(/\D/g, ''), 10) || 30}` : '', blocked: isX(r.Sperr) || isX(r.Loevm) }),
+    customer: (r) => ({ code: str(r.Kunnr), name: str(r.Name1), zone: str(r.Zone) }),
+    /** The app's invoice -> FreightInvoiceSet. ExtRef is the idempotency key: SAP returns the existing document for a repeat. */
+    invoiceBody: (i) => ({ ExtRef: str(i.extRef), Lifnr: str(i.vendor), Amount: Number(i.amount).toFixed(2), Waers: 'INR', InvDate: toSapDate(i.invoiceDate), Werks: str(i.unit), Sin: str(i.sin), Miro: str(i.miro) }),
+    invoiceResult: (r) => ({ docNo: str(r.BelnrFi || r.Belnr), fiscalYear: str(r.Gjahr), companyCode: str(r.Bukrs) }),
+    payment: (r) => ({ doc: str(r.Belnr), cleared: isX(r.Cleared) || !!str(r.Augbl), clearingDoc: str(r.Augbl), clearedOn: sapDate(r.Augdt) }),
+};
+
+// ===================================================================================================================== SIMULATED
+const sim = {
+    vendors: [['100200', 'Elite Roadways Pvt. Ltd.'], ['100207', 'Gati Freight Carriers'], ['100214', 'Shree Maruti Courier']],
+    docNo: (extRef) => `19${String([...String(extRef)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7)).padStart(8, '0').slice(-8)}`,
+};
+
+// ===================================================================================================================== service (what tmsEngine calls as deps.sap)
+const service = {
+    simulated: () => !isConfigured(),
+    async vendors(caller) {
+        if (!isConfigured()) return sim.vendors.map(([code, name]) => ({ code, name, paymentTerms: 'Net 30', blocked: false }));
+        return results(await request(caller, 'GET', `${SET.vendor}?$filter=${encodeURIComponent("Transporter eq 'X'")}`)).map(map.vendor).filter((v) => v.code);
+    },
+    async customers(caller) {
+        if (!isConfigured()) return [{ code: 'R40010', name: 'Reliance Retail', zone: 'West' }];
+        return results(await request(caller, 'GET', SET.customer)).map(map.customer).filter((k) => k.code);
+    },
+    async checkPoSo(q, caller) {
+        if (!isConfigured()) return { valid: true, simulated: true, message: 'SAP not connected - PO/SO not verified.' };
+        const f = [q.po && `Po eq ${enc(q.po)}`, q.so && `So eq ${enc(q.so)}`].filter(Boolean).join(' and ');
+        if (!f) return { valid: true, message: '' };
+        const r = results(await request(caller, 'GET', `${SET.poso}?$filter=${encodeURIComponent(f)}`))[0];
+        return { valid: !r || isX(r.Valid), message: str(r && r.Message) };
+    },
+    /** Idempotent by extRef on the SAP side too; here a repeat call returns whatever SAP returns for it. */
+    async postFreightInvoice(inv, caller) {
+        if (!isConfigured()) return { docNo: sim.docNo(inv.extRef), simulated: true };
+        const r = map.invoiceResult(((await request(caller, 'POST', SET.invoice, map.invoiceBody(inv))) || {}).d || {});
+        if (!r.docNo) throw new SapError('SAP accepted the invoice but returned no document number.');
+        return r;
+    },
+    /** docs[] -> { [doc]: { cleared, clearingDoc } } */
+    async paymentStatus(docs, caller) {
+        if (!isConfigured()) return {};
+        const out = {};
+        for (let i = 0; i < docs.length; i += 20) {
+            const f = docs.slice(i, i + 20).map((d) => `Belnr eq ${enc(d)}`).join(' or ');
+            for (const r of results(await request(caller, 'GET', `${SET.payment}?$filter=${encodeURIComponent(f)}`)).map(map.payment)) out[r.doc] = r;
+        }
+        return out;
+    },
+};
+
+module.exports = { ...service, service, map, SapError, isConfigured, mapError, _test: { url, headersFor, enc, sim } };

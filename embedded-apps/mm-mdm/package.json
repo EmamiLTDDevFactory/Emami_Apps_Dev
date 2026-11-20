@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev -p 3320",
     "build": "next build && node scripts/rename-export.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "rm -rf .test-build && tsc -p tsconfig.test.json && node --test .test-build/mmMap.test.js"
   },
   "dependencies": {
     "next": "14.2.35",

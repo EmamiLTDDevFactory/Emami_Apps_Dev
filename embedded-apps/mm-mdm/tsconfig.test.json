@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "target": "es2020",
+    "noEmit": false,
+    "incremental": false,
+    "outDir": ".test-build",
+    "jsx": "react",
+    "plugins": []
+  },
+  "include": ["lib/mmMap.test.ts"]
+}

@@ -1,36 +1,38 @@
-/** App IDs of the old app: MC create (built now), MX change and ME extension (phase 2) */
+/** App IDs of the request: MC create, MX change, ME extension */
 export type AppId = 'MC' | 'MX' | 'ME';
 
 /**
- * Request status, as stored in the request header (M_TRANS / CM_META).
- * 00 draft, 01 in approval, 02 sent back, 03 rejected, 04 forwarded, 05 approved and posted.
- * The code-to-meaning mapping is to be confirmed against the header table (README, open items).
+ * Request status, as SAP stores it in the request header (backend STATUS_TEXT):
+ * 00 saved as draft, 01 requested, 02 in progress, 03 completed, 04 sent back, 05 rejected.
  */
 export type StatusCode = '00' | '01' | '02' | '03' | '04' | '05';
 
-/** View (tab) id, see VIEWS in lib/fieldConfig.ts */
+/** View (tab) id, see VIEWS in lib/materialViews.ts */
 export type ViewId = string;
 
 export type Severity = 'E' | 'W' | 'I';
 
+/** The signed-in hub user as SAP knows them (GET /session). There is no user switching. */
 export interface User {
   id: string;
   name: string;
   department: string;
-  /** null = initiator; 1..7 = workflow level agent (WF_ROLE / USR_DEP) */
-  level: number | null;
+  roles: string[];
 }
 
-/** Key data (V_INIT) plus all view fields of the material */
+/**
+ * Key data plus all view fields of the material, flat: the app's field key -> string. Table fields hold a JSON array of rows.
+ * lib/mmMap.ts converts it from and to the backend model (data.single / data.multi).
+ */
 export interface MaterialData {
   materialNumber: string;
-  // key data (Material Creation: Key data)
+  // key data
   materialType: string;
   industrySector: string;
   materialGroup: string;
   businessVertical: string;
   scheme: string;
-  /** 18 characters: Banner + Brand + Product + SKU + Variant + Scheme, 3 digits each */
+  /** 18 characters: Banner 2 + Brand 4 + Product 4 + SKU 3 + Variant 3 + Scheme 2 */
   prodHierarchy: string;
   division: string;
   description: string;
@@ -42,72 +44,18 @@ export interface MaterialData {
   distChannel: string;
   warehouseNo: string;
   storageType: string;
-  /**
-   * All view fields (Basic data, Sales, MRP, Accounting, ...). They are defined in
-   * lib/fieldConfig.ts and stored by key; table fields hold a JSON array.
-   */
   [field: string]: string;
 }
 
 export type FieldKey = string;
 
-export interface MaterialRecord extends MaterialData {
-  createdOn: string;
-  createdBy: string;
-  transId: string;
-}
-
-/** Same shape as the SAP message: text, target view and field, severity */
+/** A message about a field or the request: SAP's text, the tab and field it is about when known, severity */
 export interface Message {
   severity: Severity;
   text: string;
   view?: ViewId;
   field?: FieldKey;
 }
-
-export interface HistoryEntry {
-  at: string;
-  by: string;
-  department: string;
-  level: number | null;
-  action: string;
-  status: StatusCode;
-  comment?: string;
-}
-
-export interface ForwardInfo {
-  to: string; // user id of the person asked for input
-  by: string; // user id of the reviewer who forwarded
-  level: number;
-}
-
-export interface MdmRequest {
-  transId: string;
-  appId: AppId;
-  status: StatusCode;
-  /** 0 = with the initiator; 1..7 = current workflow level */
-  level: number;
-  sentBackFrom?: number;
-  forward?: ForwardInfo;
-  materialNumber: string;
-  data: MaterialData;
-  views: ViewId[];
-  initiator: string; // user id
-  createdOn: string;
-  changedOn: string;
-  history: HistoryEntry[];
-}
-
-export type ActionId =
-  | 'SAVE_DRAFT'
-  | 'SUBMIT'
-  | 'DELETE_DRAFT'
-  | 'SAVE'
-  | 'APPROVE'
-  | 'SEND_BACK'
-  | 'REJECT'
-  | 'FORWARD'
-  | 'RETURN';
 
 export type MessageType = 'success' | 'error' | 'warning' | 'info';
 export interface StatusMessage {

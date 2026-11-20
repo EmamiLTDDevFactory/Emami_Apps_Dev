@@ -61,11 +61,12 @@ export function parseSapError(status: number, text: string): SapError {
 
 type Query = Record<string, string | undefined>;
 
-function url(path: string, query?: Query) {
+function url(path: string, query?: Query, json = true) {
   const qs = Object.entries(query ?? {})
     .filter(([, v]) => v !== undefined && v !== '')
     .map(([k, v]) => `${k}=${encodeURIComponent(v as string)}`);
-  qs.push('$format=json');
+  // $format=json is refused by SAP on a create (400 'SystemQueryOptions ... not allowed'); the Accept header asks for JSON on every call.
+  if (json) qs.push('$format=json');
   return `${SAP_BASE_URL}${path}?${qs.join('&')}`;
 }
 
@@ -94,7 +95,7 @@ type Method = 'GET' | 'POST' | 'PUT' | 'DELETE';
 async function send(method: Method, path: string, query?: Query, body?: unknown) {
   let res: Response;
   try {
-    res = await fetch(url(path, query), {
+    res = await fetch(url(path, query, method === 'GET'), {
       method,
       cache: 'no-store',
       headers: { Accept: 'application/json', ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },

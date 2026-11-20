@@ -17,7 +17,7 @@ import ScenarioBar, { type BarAction } from './ScenarioBar';
 import { useHubSession } from '@/lib/client/session';
 import { fetchItems, fetchOverrides, fetchScenarios, postAction } from '@/lib/pkg/api';
 import { exportRates } from '@/lib/pkg/export';
-import { canEdit, fmtInt, groupItems, kpis, parseFlags, stripZeros } from '@/lib/pkg/rules';
+import { NO_ORIGIN, canEdit, fmtInt, groupItems, kpis, matchKpi, originKey, parseFlags, stripZeros, type KpiFilter } from '@/lib/pkg/rules';
 import type { EditLevel, PkgActionBody, PkgItem, PkgOvr, PkgResult, PkgScen } from '@/lib/pkg/types';
 
 type Tab = 'rates' | 'compare' | 'exceptions' | 'audit';
@@ -38,6 +38,10 @@ export default function PkgScreen() {
   const [pending, setPending] = useState('');
   const [search, setSearch] = useState('');
   const [exOnly, setExOnly] = useState(false);
+  const [kpi, setKpi] = useState<KpiFilter>('all');
+  const [plant, setPlant] = useState('');
+  const [origin, setOrigin] = useState('');
+  const [byOrigin, setByOrigin] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editKey, setEditKey] = useState<string | null>(null);
@@ -78,7 +82,7 @@ export default function PkgScreen() {
 
   useEffect(() => { void loadScens(); }, [loadScens]);
   useEffect(() => {
-    setSelected(new Set()); setEditKey(null);
+    setSelected(new Set()); setEditKey(null); setKpi('all'); setPlant(''); setOrigin('');
     if (scenId) { history.replaceState(null, '', `?scen=${scenId}`); void loadItems(scenId); } else setLoading(false);
   }, [scenId, loadItems]);
   useEffect(() => { if (tab === 'audit') void loadOvr(scenId); }, [tab, scenId, loadOvr]);
@@ -144,8 +148,13 @@ export default function PkgScreen() {
   // ---- the rows shown: search and "exceptions only" --------------------------------------------------------------------
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return groups.filter((g) => (!exOnly || parseFlags(g.head.MsgFlags).length > 0) && (!q || [stripZeros(g.head.Matnr), g.head.Matnr, g.head.Maktx, g.head.Matkl].some((t) => t.toLowerCase().includes(q))));
-  }, [groups, search, exOnly]);
+    return groups.filter((g) => matchKpi(g, kpi) && (!exOnly || parseFlags(g.head.MsgFlags).length > 0)
+      && (!plant || g.head.Werks === plant) && (!origin || originKey(g) === origin)
+      && (!q || [stripZeros(g.head.Matnr), g.head.Matnr, g.head.Maktx, g.head.Matkl, g.head.OriginGrp].some((t) => t.toLowerCase().includes(q))));
+  }, [groups, search, exOnly, kpi, plant, origin]);
+  const plants = useMemo(() => Array.from(new Set(groups.map((g) => g.head.Werks).filter(Boolean))).sort(), [groups]);
+  const origins = useMemo(() => Array.from(new Set(groups.map(originKey))).sort((a, b) => (a === NO_ORIGIN ? 1 : b === NO_ORIGIN ? -1 : a.localeCompare(b))), [groups]);
+  const filtered = kpi !== 'all' || !!plant || !!origin || exOnly || !!search.trim();
   const matkls = useMemo(() => Array.from(new Set(groups.map((g) => g.head.Matkl).filter(Boolean))).sort(), [groups]);
   const toggle = (set: Set<string>, m: string, on?: boolean) => { const n = new Set(set); if (on ?? !n.has(m)) n.add(m); else n.delete(m); return n; };
   const selectedList = shown.filter((g) => selected.has(g.head.Matnr)).map((g) => g.head.Matnr);
@@ -166,7 +175,7 @@ export default function PkgScreen() {
           loading ? <div className="grid place-items-center py-16"><Spinner /></div> : <Card><Empty title="Select or create a scenario">Pick a scenario above, or choose New to create one.</Empty></Card>
         ) : (
           <>
-            <KpiCards k={kpis(groups)} />
+            <KpiCards k={kpis(groups)} active={kpi} onPick={setKpi} />
             <Tabs label="Packing budget rate" tabs={TABS} value={tab} onChange={setTab} />
             {tab === 'rates' && (
               <>
@@ -175,19 +184,27 @@ export default function PkgScreen() {
                     <Search size={14} className="pointer-events-none absolute left-2.5 top-2.5 text-faint" />
                     <input aria-label="Search materials" className={`${inputCls} w-64 pl-8`} placeholder="Material, description or group" value={search} onChange={(e) => setSearch(e.target.value)} />
                   </div>
+                  <select aria-label="Filter by plant" className={`${inputCls} w-36`} value={plant} onChange={(e) => setPlant(e.target.value)}>
+                    <option value="">All plants</option>{plants.map((w) => <option key={w} value={w}>{w}</option>)}
+                  </select>
+                  <select aria-label="Filter by origin group" className={`${inputCls} w-44`} value={origin} onChange={(e) => setOrigin(e.target.value)}>
+                    <option value="">All origin groups</option>{origins.map((o) => <option key={o} value={o}>{o === NO_ORIGIN ? 'No origin group' : o}</option>)}
+                  </select>
                   <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={exOnly} onChange={(e) => setExOnly(e.target.checked)} /> Exceptions only</label>
+                  <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={byOrigin} onChange={(e) => setByOrigin(e.target.checked)} /> Group by origin group</label>
+                  {filtered && <button type="button" className="text-xs font-semibold text-accent hover:underline" onClick={() => { setKpi('all'); setPlant(''); setOrigin(''); setExOnly(false); setSearch(''); }}>Clear filters</button>}
                   <span className="text-xs text-muted">{fmtInt(shown.length)} of {fmtInt(groups.length)} materials | {fmtInt(selectedList.length)} selected</span>
                   <Button size="sm" className="ml-auto" disabled={!groups.length} onClick={() => void exportRates(scen, shown)}><Download size={14} /> Excel</Button>
                 </div>
                 <GlobalEditBar
                   editable={editable} busy={!!pending} pending={pending} matkls={matkls}
-                  scope={{ visible: shown.map((g) => g.head.Matnr), filterActive: !!search.trim() || exOnly, selected: selectedList }}
+                  scope={{ visible: shown.map((g) => g.head.Matnr), filterActive: filtered, selected: selectedList }}
                   onApply={(p) => void editAndRecalc('EDIT', { ...p, scenId }, 'Edit applied and scenario recalculated')}
                   onRevertSelected={() => void editAndRecalc('REVERT', { action: 'REVERT', scenId, scopeMatnr: selectedList.join(',') }, 'Selected rows reverted to SAP')}
                   onRevertScenario={() => setConfirm({ title: 'Revert scenario', yes: 'Revert scenario', text: 'Every override in this scenario goes back to the SAP value.', run: () => void editAndRecalc('REVERT', { action: 'REVERT', scenId }, 'Scenario reverted to SAP') })}
                 />
                 <RatesGrid
-                  groups={shown} loading={loading} editKey={editKey} setEditKey={setEditKey}
+                  groups={shown} grouped={byOrigin} loading={loading} editKey={editKey} setEditKey={setEditKey}
                   cell={{ editable, busy: !!pending, onEdit: onCellEdit, onRevert: onCellRevert }}
                   expanded={expanded} onToggle={(m) => setExpanded((s) => toggle(s, m))} selected={selected}
                   onSelect={(m, on) => setSelected((s) => toggle(s, m, on))} onSelectAll={(on) => setSelected(on ? new Set(shown.map((g) => g.head.Matnr)) : new Set())}
