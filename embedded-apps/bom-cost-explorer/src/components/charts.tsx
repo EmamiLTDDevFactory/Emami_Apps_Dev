@@ -10,13 +10,13 @@ import { sourceLabel } from '@/lib/rates/sourceLabel';
 export function useChartTheme() {
   // Light only, like the hub. Single series = the hub's indigo; diverging = red (up) / blue (down).
   return {
-    series: '#4F3FD6', up: '#C0392B', down: '#2a78d6', grid: '#ECEAF6', axis: '#6B7280', text: '#1F1B33', surface: '#ffffff', sim: '#C2185B', neutral: '#8B8FA3',
+    series: '#4338CA', up: '#C0392B', down: '#2563EB', grid: '#E6EAF5', axis: '#646C86', text: '#161B3A', surface: '#ffffff', sim: '#C2185B', neutral: '#8B8FA3',
     src: { CONTRACT: '#008300', INFOREC: '#eda100', MARKT: '#0e9fb5', CONSUMP: '#eb6834', MBEW: '#e34948', 'NO RATE': '#8a8984' } as Record<string, string>,
   };
 }
 
 const tooltipStyle = (t: ReturnType<typeof useChartTheme>) => ({
-  contentStyle: { background: t.surface, border: `1px solid ${t.grid}`, borderRadius: 6, fontSize: 12, color: t.text },
+  contentStyle: { background: t.surface, border: `1px solid ${t.grid}`, borderRadius: 12, fontSize: 12, color: t.text, boxShadow: '0 8px 24px rgba(22,27,58,0.12)' },
   itemStyle: { color: t.text },
   labelStyle: { color: t.text, fontWeight: 600 },
   cursor: { fill: t.grid, opacity: 0.5 },

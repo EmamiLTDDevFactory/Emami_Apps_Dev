@@ -81,7 +81,7 @@ function Table({ rows, first, title, scroll }: { rows: BreakupView[]; first: str
       {title && <div className="border-b border-line px-3 py-2 text-sm font-extrabold">{title}</div>}
       <table className="w-full min-w-[960px] border-collapse">
         <thead className="sticky top-0"><tr>
-          <th className={cx(thCls, 'text-left')}>{first}</th><th className={thCls}>Produced qty</th>
+          <th className={cx(thCls, '!text-left')}>{first}</th><th className={thCls}>Produced qty</th>
           <th className={thCls}>RM / pc</th><th className={thCls}>%</th><th className={thCls}>PM / pc</th><th className={thCls}>%</th><th className={thCls}>Perfume / pc</th><th className={thCls}>%</th><th className={thCls}>Conversion / pc</th><th className={thCls}>%</th><th className={thCls}>COGM / pc</th>
         </tr></thead>
         <tbody>

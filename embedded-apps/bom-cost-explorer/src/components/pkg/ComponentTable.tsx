@@ -19,9 +19,9 @@ export default function ComponentTable({ g, cell }: { g: PkgGroup; cell: CellApi
     <table className="w-full border-collapse text-xs" aria-label={`Components of ${stripZeros(m)}`}>
       <thead>
         <tr>
-          <th className={cx(th, 'text-left')}>Component</th><th className={cx(th, 'text-left')}>Description</th>
+          <th className={cx(th, '!text-left')}>Component</th><th className={cx(th, '!text-left')}>Description</th>
           <th className={th}>% SAP</th><th className={th}>% used</th><th className={th}>ZBUD % SAP</th><th className={th}>ZBUD % used</th>
-          <th className={th}>Base rate</th><th className={th}>Budgeted</th><th className={cx(th, 'text-left')}>Flags</th>
+          <th className={th}>Base rate</th><th className={th}>Budgeted</th><th className={cx(th, '!text-left')}>Flags</th>
         </tr>
       </thead>
       <tbody>

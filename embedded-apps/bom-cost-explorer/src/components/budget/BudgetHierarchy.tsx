@@ -99,8 +99,8 @@ export default function BudgetHierarchy({ runQ, email }: { runQ: BudgetQuery | n
         <div className="scroll-thin max-h-[62vh] overflow-auto rounded-2xl border border-line">
           <table className="w-full border-separate border-spacing-0 text-[13px]">
             <thead><tr>
-              <th className={cx(th, 'text-left')}>{LEVEL_LABEL[level]}</th>
-              {level !== 'brand' && <th className={cx(th, 'text-left')}>Brand</th>}{level === 'sku' && <th className={cx(th, 'text-left')}>Product</th>}
+              <th className={cx(th, '!text-left')}>{LEVEL_LABEL[level]}</th>
+              {level !== 'brand' && <th className={cx(th, '!text-left')}>Brand</th>}{level === 'sku' && <th className={cx(th, '!text-left')}>Product</th>}
               {['FGs', 'Plan qty', 'Plan cost', 'Budget / pc', 'B-RM', 'B-PM', 'B-Perfume', 'Projected', 'Actual', ...(withLy ? ['LY RM', 'LY PM', 'LY perfume', 'LY material', 'Variance', 'Var %'] : [])].map((h) => <th key={h} className={th}>{h}</th>)}
             </tr></thead>
             <tbody>{shown.map((g: HierGroup) => (

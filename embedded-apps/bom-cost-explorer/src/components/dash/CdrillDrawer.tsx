@@ -48,7 +48,7 @@ export default function CdrillDrawer({ target, onClose }: { target: DrillTarget 
           {data.notCosted > 0 && s.flag !== 'NBC' && <p className="text-xs text-muted">{data.notCosted} batch(es) are not costed (no process order, or beyond the 150-order limit): see the batch list.</p>}
           <Card className="overflow-x-auto p-0">
             <table className="w-full min-w-[520px] border-collapse">
-              <thead><tr><th className={cx(thCls, 'text-left')}>Per piece (₹)</th><th className={thCls}>Component breakup (avg)</th><th className={thCls}>Invoice condition</th><th className={thCls}>Difference</th></tr></thead>
+              <thead><tr><th className={cx(thCls, '!text-left')}>Per piece (₹)</th><th className={thCls}>Component breakup (avg)</th><th className={thCls}>Invoice condition</th><th className={thCls}>Difference</th></tr></thead>
               <tbody>
                 {cmp.map((x) => <tr key={x.label} className="border-t border-line/60"><td className="px-2.5 py-1.5 text-left text-xs font-bold">{x.label}</td><td className={tdCls}>{num(x.drill)}</td><td className={tdCls}>{num(x.inv)}</td><td className={cx(tdCls, 'font-bold', x.drill.gt(x.inv) ? 'text-bad' : 'text-good')}>{num(x.drill.minus(x.inv))}</td></tr>)}
                 <tr className="border-t border-line/60"><td className="px-2.5 py-1.5 text-left text-xs font-bold">Other (not RM / PM / perfume)</td><td className={tdCls}>{num(s.oth)}</td><td className={tdCls}>-</td><td className={tdCls}>-</td></tr>
@@ -59,7 +59,7 @@ export default function CdrillDrawer({ target, onClose }: { target: DrillTarget 
           {rows.length === 0 ? <p className="text-sm text-muted">No components in this category.</p> : (
             <div className="max-h-[40vh] overflow-auto rounded-xl border border-line">
               <table className="w-full min-w-[760px] border-collapse">
-                <thead className="sticky top-0"><tr><th className={cx(thCls, 'text-left')}>Component</th><th className={cx(thCls, 'text-left')}>Type</th><th className={thCls}>Qty / pc</th><th className={thCls}>Avg cost / pc (₹)</th><th className={thCls}>Share %</th><th className={thCls}>Qty (sold vol.)</th><th className={thCls}>Value (₹)</th></tr></thead>
+                <thead className="sticky top-0"><tr><th className={cx(thCls, '!text-left')}>Component</th><th className={cx(thCls, '!text-left')}>Type</th><th className={thCls}>Qty / pc</th><th className={thCls}>Avg cost / pc (₹)</th><th className={thCls}>Share %</th><th className={thCls}>Qty (sold vol.)</th><th className={thCls}>Value (₹)</th></tr></thead>
                 <tbody>
                   {rows.map((c) => (
                     <tr key={c.matnr} className="border-t border-line/60">
@@ -76,7 +76,7 @@ export default function CdrillDrawer({ target, onClose }: { target: DrillTarget 
           <h4 className="text-xs font-extrabold uppercase tracking-wide text-muted">Sold batches</h4>
           <div className="max-h-[32vh] overflow-auto rounded-xl border border-line">
             <table className="w-full min-w-[720px] border-collapse">
-              <thead className="sticky top-0"><tr><th className={cx(thCls, 'text-left')}>Batch</th><th className={thCls}>Sold qty</th><th className={thCls}>Produced</th><th className={thCls}>Orders</th><th className={thCls}>RM / pc</th><th className={thCls}>PM / pc</th><th className={thCls}>Perfume / pc</th><th className={cx(thCls, 'text-left')}>Status</th></tr></thead>
+              <thead className="sticky top-0"><tr><th className={cx(thCls, '!text-left')}>Batch</th><th className={thCls}>Sold qty</th><th className={thCls}>Produced</th><th className={thCls}>Orders</th><th className={thCls}>RM / pc</th><th className={thCls}>PM / pc</th><th className={thCls}>Perfume / pc</th><th className={cx(thCls, '!text-left')}>Status</th></tr></thead>
               <tbody>
                 {data.batches.map((b) => (
                   <tr key={b.charg || '-'} className="border-t border-line/60">

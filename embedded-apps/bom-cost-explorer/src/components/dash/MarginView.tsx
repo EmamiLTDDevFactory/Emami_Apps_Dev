@@ -6,7 +6,7 @@
  */
 import type Decimal from 'decimal.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Card, Empty, Segmented, Spinner, Stat, cx, inputCls } from '../ui';
+import { Button, Card, Empty, Segmented, Spinner, Stat, cx, inputBase, inputCls } from '../ui';
 import { ErrorBox, errorText } from '../budget-mgmt/shared';
 import { fetchMargin, type MarginSel } from '@/lib/dash/service';
 import CdrillDrawer, { type DrillTarget } from './CdrillDrawer';
@@ -111,7 +111,9 @@ export default function MarginView() {
         <label className="flex flex-col gap-1 text-xs font-semibold">To<input type="date" className={cx(inputCls, 'w-40')} value={to} onChange={(e) => setTo(e.target.value)} /></label>
         <Button variant="primary" disabled={busy || !(plants.trim() || vkorg.trim() || crssku.trim() || vbeln.trim()) || !from || !to} onClick={() => void run()}>{busy ? <><Spinner className="h-4 w-4" /> Running</> : 'Run'}</Button>
         {busy && <Button onClick={() => { ctl.current?.abort(); setBusy(false); }}>Stop</Button>}
-        <Segmented label="Revenue basis" size="sm" value={basis} onChange={setBasis} options={[{ value: 'gross', label: 'Gross sales (with GST)', hint: 'Selling price + GST, as in the Gross Margin Analysis report' }, { value: 'sp', label: 'Selling price' }]} />
+        <div className="w-full max-w-[460px]">
+          <Segmented label="Revenue basis" size="sm" value={basis} onChange={setBasis} options={[{ value: 'gross', label: 'Gross sales (with GST)', hint: 'Selling price + GST, as in the Gross Margin Analysis report' }, { value: 'sp', label: 'Selling price' }]} />
+        </div>
       </div>
       {error && <ErrorBox>{error}</ErrorBox>}
       {!rows && !busy && !error && <Card><Empty title="Choose a plant, sales organisation, CRSSKU or invoice number and the period, then press Run">Invoice conditions of finished goods: MRP, channel margins, selling price, GST, cost per component and schemes.</Empty></Card>}
@@ -164,7 +166,7 @@ export default function MarginView() {
           <Card className="p-3">
             <div className="mb-2 flex flex-wrap items-center gap-2">
               <Segmented label="Group by" size="sm" value={by} onChange={setBy} options={[{ value: 'brand', label: 'Brand' }, { value: 'cat', label: 'Product category' }, { value: 'sku', label: 'Material' }, { value: 'cust', label: 'Customer' }]} />
-              {by !== 'cust' && <select aria-label="Filter by brand" className={cx(inputCls, 'ml-auto w-40')} value={brand} onChange={(e) => setBrand(e.target.value)}><option value="">All brands</option>{brands.map((b) => <option key={b} value={b}>{b || '(none)'}</option>)}</select>}
+              {by !== 'cust' && <select aria-label="Filter by brand" className={cx(inputBase, 'h-9 ml-auto w-40')} value={brand} onChange={(e) => setBrand(e.target.value)}><option value="">All brands</option>{brands.map((b) => <option key={b} value={b}>{b || '(none)'}</option>)}</select>}
             </div>
             <GroupTable groups={groups} material={by === 'sku'} onBreakup={ran ? (g) => {
               const q = g.base.qty;
@@ -194,7 +196,7 @@ function Waterfall({ base, scen, changed, budGap }: { base: Result; scen: Result
   return (
     <div className="overflow-x-auto rounded-2xl border border-line bg-panel shadow-card">
       <table className="w-full min-w-[520px] border-collapse">
-        <thead><tr><th className={cx(thCls, 'text-left')}>₹ lakh</th><th className={thCls}>As invoiced</th>{changed && <th className={thCls}>Scenario</th>}</tr></thead>
+        <thead><tr><th className={cx(thCls, '!text-left')}>₹ lakh</th><th className={thCls}>As invoiced</th>{changed && <th className={thCls}>Scenario</th>}</tr></thead>
         <tbody>
           {L.map((x) => <tr key={x.label} className={cx('border-t border-line/60', x.bold && 'font-extrabold')}><td className="px-2.5 py-1.5 text-left text-xs">{x.label}</td><td className={tdCls}>{lakh(x.get(base), 2)}</td>{changed && <td className={tdCls}>{lakh(x.get(scen), 2)}</td>}</tr>)}
           <tr className="border-t border-line font-extrabold"><td className="px-2.5 py-1.5 text-left text-xs">GM %</td><td className={cx(tdCls, gmTone(base.gmPct))}>{pct(base.gmPct)}</td>{changed && <td className={cx(tdCls, gmTone(scen.gmPct))}>{pct(scen.gmPct)}</td>}</tr>
@@ -213,7 +215,7 @@ function GroupTable({ groups, material, onBreakup }: { groups: Group[]; material
     <div className="max-h-[60vh] overflow-auto rounded-xl border border-line">
       <table className="w-full min-w-[1100px] border-collapse">
         <thead className="sticky top-0"><tr>
-          <th className={cx(thCls, 'text-left')}>{material ? 'Material' : 'Group'}</th><th className={thCls}>{material ? 'Qty (pc)' : 'Qty (L pc)'}</th><th className={thCls}>{material ? 'Selling price (₹)' : 'Selling price (L)'}</th><th className={thCls}>{material ? 'Gross sales (₹)' : 'Gross sales (L)'}</th><th className={thCls}>{material ? 'Revenue (₹)' : 'Revenue (L)'}</th><th className={thCls}>{material ? 'COGS (₹)' : 'COGS (L)'}</th><th className={thCls}>{material ? 'Gross margin (₹)' : 'Gross margin (L)'}</th><th className={thCls}>GM %</th><th className={thCls}>GM / pc</th><th className={thCls}>vs invoiced (L)</th>{material && onBreakup && <th className={thCls}>Cost breakup</th>}<th className={thCls}>Budget flag</th>
+          <th className={cx(thCls, '!text-left')}>{material ? 'Material' : 'Group'}</th><th className={thCls}>{material ? 'Qty (pc)' : 'Qty (L pc)'}</th><th className={thCls}>{material ? 'Selling price (₹)' : 'Selling price (L)'}</th><th className={thCls}>{material ? 'Gross sales (₹)' : 'Gross sales (L)'}</th><th className={thCls}>{material ? 'Revenue (₹)' : 'Revenue (L)'}</th><th className={thCls}>{material ? 'COGS (₹)' : 'COGS (L)'}</th><th className={thCls}>{material ? 'Gross margin (₹)' : 'Gross margin (L)'}</th><th className={thCls}>GM %</th><th className={thCls}>GM / pc</th><th className={thCls}>vs invoiced (L)</th>{material && onBreakup && <th className={thCls}>Cost breakup</th>}<th className={thCls}>Budget flag</th>
         </tr></thead>
         <tbody>
           {groups.map((g) => {

@@ -6,21 +6,25 @@
    ink/muted on panel/bg meet WCAG AA. */
 :root {
   color-scheme: light;
-  --bg: 238 240 244;        /* #EEF0F4 appBg */
+  /* Analytics palette (matches the CPD / Secondary Sales apps): deep blue-indigo brand, orange call-to-action,
+     navy table headers, cool light canvas. ink/muted on panel/bg meet WCAG AA. */
+  --bg: 243 245 251;        /* #F3F5FB */
   --panel: 255 255 255;
-  --sunken: 246 244 253;    /* #F6F4FD cream */
-  --line: 230 227 245;      /* #E6E3F5 */
-  --ink: 31 27 51;          /* #1F1B33 */
-  --muted: 107 114 128;     /* #6B7280 inkSoft */
-  --faint: 117 121 140;
-  --accent: 79 63 214;      /* #4F3FD6 rust (hub primary) */
-  --accent-deep: 59 47 176; /* #3B2FB0 */
+  --sunken: 244 246 252;    /* #F4F6FC */
+  --line: 226 231 243;      /* #E2E7F3 */
+  --ink: 22 27 58;          /* #161B3A */
+  --muted: 100 108 134;     /* #646C86 */
+  --faint: 112 119 143;
+  --accent: 67 56 202;      /* #4338CA indigo */
+  --accent-deep: 49 46 129; /* #312E81 */
   --accent-ink: 255 255 255;
-  --plum: 36 30 61;         /* #241E3D */
-  --plum-deep: 21 17 41;    /* #151129 */
-  --good: 31 122 77;        /* #1F7A4D */
-  --warn: 180 83 9;         /* #B45309 */
-  --bad: 192 57 43;         /* #C0392B */
+  --plum: 30 36 112;        /* #1E2470 navy (side pane) */
+  --plum-deep: 18 22 74;    /* #12164A */
+  --navy: 45 43 120;        /* #2D2B78 table header */
+  --orange: 249 115 22;     /* #F97316 call-to-action */
+  --good: 22 128 80;        /* #168050 */
+  --warn: 194 100 10;       /* #C2640A */
+  --bad: 200 45 45;         /* #C82D2D */
   --sim: 194 24 91;         /* #C2185B - "simulated", distinct from the brand indigo */
   --src-contract: #008300;
   --src-inforec: #eda100;
@@ -31,31 +35,31 @@
 }
 
 html, body { height: 100%; }
-body { @apply bg-bg font-sans text-ink antialiased; font-feature-settings: 'cv11' 1; }
+body { @apply bg-bg font-sans text-ink antialiased; }
 .num { font-variant-numeric: tabular-nums; }
 
 /* The app canvas (Shell's content column): the flat grey lifted with three very soft brand washes.
    Pure decoration - every panel sits on opaque white, so contrast is untouched. */
 .app-canvas {
   background-image:
-    radial-gradient(rgb(var(--ink) / 0.05) 1px, transparent 1.5px),
-    radial-gradient(1000px 520px at 88% -12%, rgb(var(--accent) / 0.08), transparent 62%),
-    radial-gradient(760px 460px at -12% 32%, rgb(var(--sim) / 0.05), transparent 60%),
-    radial-gradient(680px 440px at 55% 115%, rgb(var(--accent-deep) / 0.06), transparent 58%);
-  background-size: 22px 22px, auto, auto, auto;
+    radial-gradient(900px 420px at 92% -10%, rgb(var(--accent) / 0.06), transparent 62%),
+    radial-gradient(700px 380px at -8% 40%, rgb(37 99 235 / 0.04), transparent 60%);
 }
+/* Page banner: blue to indigo with an orange top line (header of every screen). */
+.page-banner { background-image: linear-gradient(100deg, #2740B5 0%, #3732A8 48%, #4B2DB1 100%); }
+.banner-line { background-image: linear-gradient(90deg, rgb(var(--orange)), rgb(var(--orange) / 0.85) 38%, #6D4BD8 78%, #4B2DB1); }
 /* Brand hairline under the header / over feature blocks. */
-.brand-hairline { background-image: linear-gradient(90deg, rgb(var(--accent-deep)), rgb(var(--accent)) 35%, rgb(var(--sim)) 75%, transparent); }
+.brand-hairline { background-image: linear-gradient(90deg, rgb(var(--orange)), rgb(var(--accent)) 45%, transparent); }
 /* Brand gradient text for the product name and feature headings. */
-.brand-text { background-image: linear-gradient(92deg, rgb(var(--accent-deep)), rgb(var(--accent)) 55%, rgb(var(--sim))); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.brand-text { background-image: linear-gradient(92deg, rgb(var(--accent-deep)), rgb(var(--accent))); -webkit-background-clip: text; background-clip: text; color: transparent; }
 
 ::selection { background: rgb(var(--accent) / 0.18); }
 
 *:focus-visible { outline: 2px solid rgb(var(--accent)); outline-offset: 1px; border-radius: 3px; }
 
 .scroll-thin::-webkit-scrollbar { width: 10px; height: 10px; }
-.scroll-thin::-webkit-scrollbar-thumb { background: #d9d4ee; border-radius: 999px; border: 2px solid rgb(var(--panel)); }
-.scroll-thin::-webkit-scrollbar-thumb:hover { background: #b9aee6; }
+.scroll-thin::-webkit-scrollbar-thumb { background: #d3d9ec; border-radius: 999px; border: 2px solid rgb(var(--panel)); }
+.scroll-thin::-webkit-scrollbar-thumb:hover { background: #aab4dc; }
 
 /* Tree group rows: OPAQUE colours, because the sticky structure cell inherits the row colour
    and a translucent one would be painted twice there. */
@@ -82,6 +86,23 @@ body { @apply bg-bg font-sans text-ink antialiased; font-feature-settings: 'cv11
    one baseline above their column. */
 thead th, [role="columnheader"] { vertical-align: bottom; }
 
+/* Every data table: navy header with white uppercase labels (the Raw Material table keeps its own light header: .bm-thead).
+   Form controls inside a header (filter rows) keep their own colours. */
+thead:not(.bm-thead) th, thead:not(.bm-thead) td { background-color: rgb(var(--navy)) !important; color: rgb(255 255 255 / 0.95) !important; border-color: rgb(255 255 255 / 0.12) !important; letter-spacing: 0.02em; }
+thead:not(.bm-thead) th :where(span, div, p, svg, b, strong, button, a, label, abbr) { color: inherit !important; }
+thead:not(.bm-thead) th :where(input, select, textarea) { color: rgb(var(--ink)); }
+thead:not(.bm-thead):not(.keep-plain) th:first-child { border-top-left-radius: 10px; }
+thead:not(.bm-thead):not(.keep-plain) th:last-child { border-top-right-radius: 10px; }
+
+/* Div-based header rows that carry the class th-grid. */
+.th-grid { background-color: rgb(var(--navy)) !important; color: rgb(255 255 255 / 0.95) !important; letter-spacing: 0.02em; }
+.th-grid :where(div, span, button, svg) { color: inherit !important; }
+
+/* Grid (div) tables - BOM tree, plant comparison: the header row gets the same navy look. */
+[role="row"]:has(> [role="columnheader"]) { background-color: rgb(var(--navy)) !important; color: rgb(255 255 255 / 0.95) !important; border-color: transparent !important; letter-spacing: 0.02em; }
+[role="row"]:has(> [role="columnheader"]) > * { background-color: rgb(var(--navy)) !important; color: inherit !important; border-color: rgb(255 255 255 / 0.12) !important; }
+[role="row"]:has(> [role="columnheader"]) :where(span, svg, b, strong, button, abbr):not(.keep-color) { color: inherit !important; }
+
 /* Print: only the report. */
 .print-only { display: none; }
 @media print {
@@ -101,12 +122,12 @@ thead th, [role="columnheader"] { vertical-align: bottom; }
 }
 
 /* ---- Raw Material (Budget Rate Preparation): table look ---- */
-.bm-thead, .bm-thead th { background: #E9E5FA; }
-.bm-filterrow th { background: #F4F2FD; }
+.bm-thead, .bm-thead th { background: #E4E8F8; }
+.bm-filterrow th { background: #F2F4FC; }
 .bm-row { background: #ffffff; }
-.bm-row:nth-child(even) { background: #FAF9FE; }
-.bm-row:hover { background: #F0EDFC; }
-.bm-row-edit { background: #ECE8FB; }
+.bm-row:nth-child(even) { background: #F8F9FD; }
+.bm-row:hover { background: #EEF1FB; }
+.bm-row-edit { background: #E8ECFA; }
 .bm-band-A { background: #E3F4EA; color: #14633C; border-left: 4px solid #1F7A4D; }
 .bm-band-B { background: #FDF1DD; color: #8A4B07; border-left: 4px solid #D9810B; }
 .bm-band-C { background: #FBE6E3; color: #962D22; border-left: 4px solid #C0392B; }

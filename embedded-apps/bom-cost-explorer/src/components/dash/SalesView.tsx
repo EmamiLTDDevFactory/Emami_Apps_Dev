@@ -6,7 +6,7 @@
  * (DashPvmSet, from the sales budget ZSALES_BUD_TGT); alert bands per SKU category come from ZMIS_ALERT_THR.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Card, Empty, Spinner, Stat, cx, inputCls } from '../ui';
+import { Button, Card, Empty, Spinner, Stat, cx, inputBase, inputCls } from '../ui';
 import { ErrorBox, errorText } from '../budget-mgmt/shared';
 import { fetchPvm, fetchSales, fetchThresholds } from '@/lib/dash/service';
 import { brandSales, gmBands, pvmSteps, salesTotals, salesViews, skuSales, type GmBands, type PvmStep, type SalesView as Row } from '@/lib/dash/logic';
@@ -90,10 +90,10 @@ export default function SalesView() {
           <Card className="p-3">
             <div className="mb-2 flex flex-wrap items-center gap-2">
               <h3 className="text-sm font-extrabold">Net realization vs COGM by SKU and channel</h3>
-              <select aria-label="Filter by brand" className={cx(inputCls, 'ml-auto w-40')} value={brand} onChange={(e) => setBrand(e.target.value)}>
+              <select aria-label="Filter by brand" className={cx(inputBase, 'h-9 ml-auto w-40')} value={brand} onChange={(e) => setBrand(e.target.value)}>
                 <option value="">All brands</option>{brands.map((b) => <option key={b.brand} value={b.brand}>{b.brand || '(none)'}</option>)}
               </select>
-              <select aria-label="Filter by channel" className={cx(inputCls, 'w-48')} value={channel} onChange={(e) => setChannel(e.target.value)}>
+              <select aria-label="Filter by channel" className={cx(inputBase, 'h-9 w-48')} value={channel} onChange={(e) => setChannel(e.target.value)}>
                 <option value="">All channels</option>{channels.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
@@ -111,8 +111,8 @@ function BrandTable({ rows, tot }: { rows: Row[]; tot: ReturnType<typeof salesTo
     <div className="overflow-x-auto rounded-2xl border border-line bg-panel shadow-card">
       <table className="w-full min-w-[960px] border-collapse">
         <thead><tr>
-          <th className={cx(thCls, 'text-left')}>Brand</th><th className={thCls}>Sold qty (pc)</th><th className={thCls}>GSV (L)</th><th className={thCls}>Deductions (L)</th><th className={thCls}>NSV (L)</th>
-          <th className={thCls}>COGM (L)</th><th className={thCls}>Gross margin (L)</th><th className={thCls}>GM %</th><th className={cx(thCls, 'text-left')}>Note</th>
+          <th className={cx(thCls, '!text-left')}>Brand</th><th className={thCls}>Sold qty (pc)</th><th className={thCls}>GSV (L)</th><th className={thCls}>Deductions (L)</th><th className={thCls}>NSV (L)</th>
+          <th className={thCls}>COGM (L)</th><th className={thCls}>Gross margin (L)</th><th className={thCls}>GM %</th><th className={cx(thCls, '!text-left')}>Note</th>
         </tr></thead>
         <tbody>
           {rows.map((b) => (
@@ -139,7 +139,7 @@ function SkuTable({ rows }: { rows: Row[] }) {
     <div className="max-h-[60vh] overflow-auto rounded-xl border border-line">
       <table className="w-full min-w-[980px] border-collapse">
         <thead className="sticky top-0"><tr>
-          <th className={cx(thCls, 'text-left')}>SKU</th><th className={cx(thCls, 'text-left')}>Brand</th><th className={cx(thCls, 'text-left')}>Channel</th><th className={thCls}>Sold qty (pc)</th>
+          <th className={cx(thCls, '!text-left')}>SKU</th><th className={cx(thCls, '!text-left')}>Brand</th><th className={cx(thCls, '!text-left')}>Channel</th><th className={thCls}>Sold qty (pc)</th>
           <th className={thCls}>Net realization / pc</th><th className={thCls}>COGM / pc</th><th className={thCls}>GM / pc</th><th className={thCls}>GM %</th><th className={thCls}>Alert</th>
         </tr></thead>
         <tbody>

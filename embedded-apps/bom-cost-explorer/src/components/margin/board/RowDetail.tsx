@@ -38,7 +38,7 @@ function State<T>({ entry, retry, what }: { entry: WacEntry<T> | undefined; retr
 function CostSplit({ r }: { r: MarginRow }) {
   const t = useChartTheme();
   const parts = useMemo(() => costSplit(r), [r]);
-  const colors: Record<string, string> = { Rm: '#4F3FD6', Pm: '#0e9fb5', Conv: '#eda100', Ovh: '#2a78d6', Oth: '#8B8FA3' };
+  const colors: Record<string, string> = { Rm: '#4338CA', Pm: '#0e9fb5', Conv: '#eda100', Ovh: '#2a78d6', Oth: '#8B8FA3' };
   const n = (v: string) => { const d = dec(v); return d ? d.toNumber() : 0; };
   const data = [{ name: 'Standard', ...Object.fromEntries(parts.map((p) => [p.key, n(p.std)])) }, { name: 'Current', ...Object.fromEntries(parts.map((p) => [p.key, n(p.cur)])) }];
   if (!hasSplit(r)) return <p className="text-sm text-muted">SAP sent no cost split for this row.</p>;

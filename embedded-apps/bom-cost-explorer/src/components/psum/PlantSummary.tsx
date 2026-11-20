@@ -31,7 +31,7 @@ import type { WacCompRow, WacRow } from '@/lib/wac/types';
 import type Decimal from 'decimal.js';
 
 const PRESETS: PsumPreset[] = ['full6', 'full3', 'full12', 'td6', 'custom'];
-const MIX_COLOR: Record<string, string> = { rm: '#4F3FD6', pm: '#0e9fb5', perf: '#C2185B', conv: '#eda100', other: '#8B8FA3' };
+const MIX_COLOR: Record<string, string> = { rm: '#4338CA', pm: '#0e9fb5', perf: '#C2185B', conv: '#eda100', other: '#8B8FA3' };
 const th = 'px-2.5 py-1.5 text-left text-2xs font-bold uppercase tracking-wide text-muted';
 const thN = `${th} text-right`;
 const td = 'px-2.5 py-1.5 align-top';

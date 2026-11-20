@@ -149,9 +149,9 @@ function MisTable({ brands, tot }: { brands: BrandView[]; tot: { ftm: Window; yt
       <table className="w-full min-w-[980px] border-collapse">
         <thead>
           <tr>
-            <th className={cx(th, 'text-left')}>Brand</th><th className={th}>FG</th>
+            <th className={cx(th, '!text-left')}>Brand</th><th className={th}>FG</th>
             <th className={th}>FTM budget (L)</th><th className={th}>FTM actual (L)</th>
-            <th className={th}>YTM budget (L)</th><th className={th}>YTM actual (L)</th><th className={th}>Variance (L)</th><th className={th}>Variance %</th><th className={cx(th, 'text-left')}>Note</th>
+            <th className={th}>YTM budget (L)</th><th className={th}>YTM actual (L)</th><th className={th}>Variance (L)</th><th className={th}>Variance %</th><th className={cx(th, '!text-left')}>Note</th>
           </tr>
         </thead>
         <tbody>
