@@ -165,8 +165,13 @@ CLASS ZCL_MM_MDM_ATTACH IMPLEMENTATION.
   METHOD check_mandatory.
     "document types flagged mandatory for the material type (and its generic fields) of the request
     SELECT SINGLE mtart FROM /inowits/mm_mara WHERE transid = @( |{ CONV string( iv_transid ) ALPHA = IN }| ) INTO @DATA(lv_mtart).
-    SELECT doc_type, gen_field1, gen_field2 FROM /inowits/p_doc_t
-      WHERE app_name = 'MC' AND mandatory = 'X' AND ( gen_type = @lv_mtart OR gen_type = '*' )
+    "Required documents (art work, drawing ...) apply to packing materials only: VERP and PKGN. The mandatory entries are read
+    "from the configuration whatever material type they were maintained under; no other type has a mandatory attachment.
+    IF lv_mtart <> 'VERP' AND lv_mtart <> 'PKGN'.
+      RETURN.
+    ENDIF.
+    SELECT DISTINCT doc_type FROM /inowits/p_doc_t
+      WHERE app_name = 'MC' AND mandatory = 'X'
       INTO TABLE @DATA(lt_doc).
     CHECK lt_doc IS NOT INITIAL.
     DATA(lt_have) = list( iv_transid = iv_transid iv_app_id = iv_app_id ).

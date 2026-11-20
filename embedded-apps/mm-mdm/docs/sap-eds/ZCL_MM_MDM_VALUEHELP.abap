@@ -115,6 +115,18 @@ CLASS ZCL_MM_MDM_VALUEHELP IMPLEMENTATION.
           LEFT OUTER JOIN t301t AS t ON t~lgnum = y~lgnum AND t~lgtyp = y~lgtyp AND t~spras = @sy-langu
           WHERE y~lgnum = @lv_ln ORDER BY y~lgtyp INTO CORRESPONDING FIELDS OF TABLE @rt_item.
 
+      WHEN 'DOCTYPE'.   "attachment document types of the material type; the mandatory ones are marked in the text
+        DATA(lv_dtm) = to_upper( filter_value( it_filter = it_filter iv_name = 'MTART' ) ).
+        SELECT doc_type AS item_key, doc_desc AS item_text, mandatory FROM /inowits/p_doc_t
+          WHERE app_name = 'MC' ORDER BY doc_type
+          INTO TABLE @DATA(lt_dt).
+        DELETE ADJACENT DUPLICATES FROM lt_dt COMPARING item_key.
+        LOOP AT lt_dt ASSIGNING FIELD-SYMBOL(<dt>).
+          APPEND VALUE #( item_key = <dt>-item_key
+                          item_text = COND #( WHEN <dt>-mandatory = 'X' AND ( lv_dtm = 'VERP' OR lv_dtm = 'PKGN' ) THEN |{ COND string( WHEN <dt>-item_text IS NOT INITIAL THEN <dt>-item_text ELSE <dt>-item_key ) } (required)|
+                                              ELSE <dt>-item_text ) ) TO rt_item.
+        ENDLOOP.
+
       WHEN 'MEINS' OR 'GEWEI' OR 'VOLEH'.
         SELECT msehi AS item_key, msehl AS item_text FROM t006a WHERE spras = @sy-langu INTO CORRESPONDING FIELDS OF TABLE @rt_item.
 
