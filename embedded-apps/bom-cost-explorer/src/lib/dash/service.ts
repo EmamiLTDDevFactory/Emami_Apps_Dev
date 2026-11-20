@@ -1,7 +1,7 @@
 import { odataDate, odataString } from '../sap/filter';
 import { readSet, type Read } from '../price-context/odata';
-import { DASH_FILTER as F, DASH_MIS_FIELDS, DASH_SET } from './fields';
-import type { MisRow } from './types';
+import { DASH_FILTER as F, DASH_MARGIN_FIELDS, DASH_MARGIN_SET, DASH_MIS_FIELDS, DASH_PVM_FIELDS, DASH_PVM_SET, DASH_SALES_FIELDS, DASH_SALES_SET, DASH_SET, DASH_THRESH_FIELDS, DASH_THRESH_SET } from './fields';
+import type { MarginRow, MisRow, PvmRow, SalesRow, ThreshRow } from './types';
 
 const NONE: ReadonlySet<string> = new Set();
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -18,3 +18,22 @@ export function buildMisFilter(plants: string[], dateTo: string): string {
 
 export const fetchMis = (plants: string[], dateTo: string, signal?: AbortSignal): Promise<Read<MisRow>> =>
   readSet<MisRow>(DASH_SET, DASH_MIS_FIELDS, NONE, buildMisFilter(plants, dateTo), signal);
+
+/** $filter of the Sales view read: plants, from and to date. */
+export function buildSalesFilter(plants: string[], dateFrom: string, dateTo: string): string {
+  if (!DAY.test(dateFrom) || !DAY.test(dateTo)) throw new Error('Enter both dates.');
+  if (dateFrom > dateTo) throw new Error('The "from" date is after the "to" date.');
+  const base = buildMisFilter(plants, dateTo);
+  return `${base} and DateFrom eq ${odataDate(dateFrom)}`;
+}
+
+export const fetchSales = (plants: string[], dateFrom: string, dateTo: string, signal?: AbortSignal): Promise<Read<SalesRow>> =>
+  readSet<SalesRow>(DASH_SALES_SET, DASH_SALES_FIELDS, NONE, buildSalesFilter(plants, dateFrom, dateTo), signal);
+
+export const fetchPvm = (plants: string[], dateFrom: string, dateTo: string, signal?: AbortSignal): Promise<Read<PvmRow>> =>
+  readSet<PvmRow>(DASH_PVM_SET, DASH_PVM_FIELDS, NONE, buildSalesFilter(plants, dateFrom, dateTo), signal);
+
+export const fetchThresholds = (signal?: AbortSignal): Promise<Read<ThreshRow>> => readSet<ThreshRow>(DASH_THRESH_SET, DASH_THRESH_FIELDS, NONE, '', signal);
+
+export const fetchMargin = (plants: string[], dateFrom: string, dateTo: string, signal?: AbortSignal): Promise<Read<MarginRow>> =>
+  readSet<MarginRow>(DASH_MARGIN_SET, DASH_MARGIN_FIELDS, NONE, buildSalesFilter(plants, dateFrom, dateTo), signal);

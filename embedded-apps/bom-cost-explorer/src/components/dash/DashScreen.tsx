@@ -8,10 +8,13 @@ import Decimal from 'decimal.js';
 import { Button, Card, Empty, Spinner, Stat, Tabs, cx, inputCls } from '../ui';
 import PlanFrame from '../plan/PlanFrame';
 import { ErrorBox } from '../budget-mgmt/shared';
-import { BASE_PATH } from '@/lib/client/session';
 import { errorText } from '../budget-mgmt/shared';
 import { fetchMis } from '@/lib/dash/service';
-import { brandViews, insights, toLakh, totals, type Band, type BrandView, type Window } from '@/lib/dash/logic';
+import { brandViews, insights, totals, type BrandView, type Window } from '@/lib/dash/logic';
+import { BAND, Link, NeedsSap, lakh, pct, tdCls, thCls, today } from './parts';
+import SalesView from './SalesView';
+import MarginView from './MarginView';
+import BreakupView from './BreakupView';
 import type { MisRow } from '@/lib/dash/types';
 import { ls } from '@/lib/client/storage';
 
@@ -20,10 +23,6 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'mis', label: 'MIS' }, { id: 'sales', label: 'Sales view' }, { id: 'cost', label: 'Cost breakup' }, { id: 'margin', label: 'Margin' },
   { id: 'proj', label: 'Projection' }, { id: 'budget', label: 'Budget & rates' }, { id: 'ai', label: 'AI insights' },
 ];
-const today = () => { const d = new Date(); const p = (n: number) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; };
-const lakh = (v: Decimal, dp = 1) => toLakh(v).toNumber().toLocaleString('en-IN', { minimumFractionDigits: dp, maximumFractionDigits: dp });
-const pct = (v: Decimal | null) => (v === null ? '-' : `${v.toFixed(1)} %`);
-const BAND: Record<Band, string> = { good: 'text-good', amber: 'text-warn', red: 'text-bad', none: 'text-muted' };
 
 export default function DashScreen() {
   const [tab, setTab] = useState<Tab>('mis');
@@ -95,20 +94,23 @@ export default function DashScreen() {
           </>
         )}
 
-        {tab === 'sales' && (
-          <NeedsSap title="Sales view: GSV to NSV to COGM to gross margin, price-volume-mix-cost bridge, SKU x channel" object="ZI_SALES_MARGIN, ZCL_SALES_PVM_BRIDGE (and a sales budget source ZSALES_BUD_TGT, to confirm)"
-            why="Nothing built reads the billing side (VBRK / VBRP / KONV). The bridge also needs a budgeted price, quantity and mix per SKU."
-            links={[{ href: '/sales-price/', label: 'Sales price (MRP and selling price)' }, { href: '/cost-report/', label: 'Cost and margin report' }]} />
-        )}
-        {tab === 'cost' && (
-          <NeedsSap title="Cost breakup by component group and scheme" object="ZI_ACT_PROC_COST_ITEM extended with a SCHEME dimension"
-            why="The RM / PM / Perfume / overhead split per SKU exists in the actual-cost screens; the scheme dimension does not exist in SAP yet."
-            links={[{ href: '/cost-report/', label: 'Cost and margin report (RM, PM, Perfume, overheads per piece)' }, { href: '/plant-summary/', label: 'Plant production summary' }]} />
-        )}
+        {tab === 'sales' && <SalesView />}
+        {tab === 'cost' && <BreakupView />}
         {tab === 'margin' && (
-          <NeedsSap title="Margin board: COGM as % of MRP, budget vs actual" object="ZMIS_ALERT_THRESH (category-specific bands)"
-            why="Cost against MRP and selling price, with alert rules E1-E9, already exists as the Margin module. Category-specific Green / Amber / Red bands need the new threshold table."
-            links={[{ href: '/margin/', label: 'Margin board' }, { href: '/margin/alerts/', label: 'Margin alerts' }, { href: '/margin/portfolio/', label: 'Portfolio' }]} />
+          <>
+            <MarginView />
+            <Card className="p-4 text-sm">
+              <h3 className="text-base font-extrabold">More margin reports</h3>
+              <p className="mt-1 text-muted">This is already built as the Cost and margin report (cost per piece against the latest MRP and selling price, ratios, margin %, simulation at a rate type) and the Margin module (board, alerts E1-E9, portfolio, history). Open them from here; nothing is duplicated in the dashboard.</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Link href="/cost-report/">Cost and margin report</Link><Link href="/margin/">Margin board</Link><Link href="/margin/alerts/">Margin alerts</Link><Link href="/margin/portfolio/">Portfolio</Link>
+              </div>
+            </Card>
+            <Card className="p-4 text-sm">
+              <h3 className="text-base font-extrabold">Alert bands by SKU category</h3>
+              <p className="mt-1 text-muted">The Sales view colours each SKU's gross margin % with the bands in SAP table ZMIS_ALERT_THR (metric GM, one row per material group; a blank group is the default, now red below 18 %, amber below 22 %). Change the rows there; no release is needed.</p>
+            </Card>
+          </>
         )}
         {tab === 'proj' && (
           <NeedsSap title="3-month projection on three rate bases (CPD rate, latest actual, open PO)" object="ZCL_COGM_PROJECTION" why="The forward-looking COGM and margin engine does not exist in SAP yet." links={[{ href: '/plan/', label: 'Production plans (breakup and cost)' }]} />
@@ -141,23 +143,8 @@ export default function DashScreen() {
   );
 }
 
-function Link({ href, children }: { href: string; children: React.ReactNode }) {
-  return <a href={`${BASE_PATH}${href}`} className="inline-flex rounded-xl border border-line bg-panel px-3 py-1.5 text-sm font-semibold text-accent hover:bg-sunken">{children}</a>;
-}
-
-function NeedsSap({ title, object, why, links }: { title: string; object: string; why: string; links?: { href: string; label: string }[] }) {
-  return (
-    <Card className="p-4 text-sm">
-      <h3 className="text-base font-extrabold">{title}</h3>
-      <p className="mt-1 inline-flex rounded-full bg-warn/15 px-2 py-0.5 text-2xs font-bold uppercase tracking-wide text-warn">Needs SAP: {object}</p>
-      <p className="mt-2 text-muted">{why}</p>
-      {links && <div className="mt-3 flex flex-wrap gap-2">{links.map((l) => <Link key={l.href} href={l.href}>{l.label}</Link>)}</div>}
-    </Card>
-  );
-}
-
-const th = 'whitespace-nowrap border-b border-line bg-sunken px-2.5 py-1.5 text-right text-2xs font-bold uppercase tracking-wide text-muted';
-const td = 'whitespace-nowrap px-2.5 py-1.5 text-right text-xs tabular-nums';
+const th = thCls;
+const td = tdCls;
 function MisTable({ brands, tot }: { brands: BrandView[]; tot: { ftm: Window; ytm: Window } }) {
   const cell = (w: Window) => (<><td className={td}>{lakh(w.budget)}</td><td className={td}>{lakh(w.actualCmp)}</td></>);
   return (

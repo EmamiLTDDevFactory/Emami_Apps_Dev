@@ -1,0 +1,11 @@
+@EndUserText.label : 'Costing dashboard: PVM bridge row'
+@AbapCatalog.enhancementCategory : #NOT_EXTENSIBLE
+define type zdash_s_pvm {
+  effect      : abap.char(24);
+  sort_no     : abap.int4;
+  werks       : werks_d;
+  date_from   : dats;
+  date_to     : dats;
+  value       : abap.dec(23,6);
+  msg         : abap.char(120);
+}
