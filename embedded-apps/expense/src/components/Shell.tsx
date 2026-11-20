@@ -80,9 +80,14 @@ function TabBar() {
           needsMobileGrid ? 'grid grid-cols-2 sm:flex sm:flex-wrap sm:items-stretch' : 'flex flex-wrap items-stretch'
         )}
       >
-        {items.map((item) => {
+        {items.map((item, index) => {
           const active = pathname === norm(item.href);
           const Icon = item.icon;
+          // An admin who is also a manager/finance user gets a 5th tab - an odd count in the
+          // 2-col mobile grid would otherwise strand the last tab alone with an empty gap beside
+          // it (the same problem already fixed for 4 tabs, reintroduced by a 5th). Spanning the
+          // trailing tab full-width when the count is odd keeps it looking intentional instead.
+          const isTrailingOdd = needsMobileGrid && items.length % 2 === 1 && index === items.length - 1;
           return (
             <Link
               key={item.href}
@@ -92,6 +97,7 @@ function TabBar() {
               className={cx(
                 'relative flex items-center justify-center gap-2 rounded-xl border px-3 py-2 transition-colors',
                 needsMobileGrid ? 'sm:min-w-[110px] sm:flex-1' : 'min-w-[110px] flex-1',
+                isTrailingOdd && 'col-span-2 sm:col-span-1',
                 active ? 'text-white shadow-lift' : 'text-ink hover:brightness-95'
               )}
             >
