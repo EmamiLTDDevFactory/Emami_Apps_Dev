@@ -214,7 +214,7 @@ const isoOf = (v) => {
     const m = typeof v === 'string' ? /\/Date\((-?\d+)/.exec(v) : null;
     return m ? new Date(Number(m[1])).toISOString() : typeof v === 'string' ? v : '';
 };
-const toAttachment = (o) => ({ attachId: String(o.AttachId ?? ''), fileName: String(o.FileName ?? ''), mimeType: String(o.MimeType ?? ''), size: Number(o.Size ?? 0), uploadedBy: String(o.UploadedBy ?? ''), uploadedAt: isoOf(o.UploadedAt), level: String(o.Lvl ?? '') });
+const toAttachment = (o) => ({ attachId: String(o.AttachId ?? ''), fileName: String(o.FileName ?? ''), mimeType: String(o.MimeType ?? ''), docType: String(o.DocType ?? ''), size: Number(o.Size ?? 0), uploadedBy: String(o.UploadedBy ?? ''), uploadedAt: isoOf(o.UploadedAt), level: String(o.Lvl ?? '') });
 const toComment = (o) => ({ commentId: String(o.CommentId ?? ''), text: String(o.Text ?? ''), user: String(o.UserId ?? ''), createdAt: isoOf(o.CreatedAt), level: String(o.Lvl ?? '') });
 const extOf = (n) => (n.lastIndexOf('.') < 0 ? '' : n.slice(n.lastIndexOf('.') + 1).toLowerCase());
 const safeName = (n) => String(n || '').replace(/[\u0000-\u001f]/g, '').trim();
@@ -342,14 +342,14 @@ const service = {
     async listAttachments(c, id) {
         return sap.results(await sap.odata.get(c, `AttachmentSet?$filter=TransId eq ${enc(id)}&$orderby=AttachId`)).map(toAttachment);
     },
-    async addAttachment(c, id, bytes, fileName, mimeType) {
+    async addAttachment(c, id, bytes, fileName, mimeType, docType) {
         const bad = checkUpload(fileName, bytes.length);
         if (bad) throw bad;
         // TransId travels in the path of the navigation, never the uploader / time / level: SAP sets those.
         // the request number travels in the slug (SAP reads <request number>|<file name>); the uploader, date and level are SAP's
         // The proxy in front of the Gateway passes JSON entities but drops raw request bodies, the Slug header and $value: the file travels
         // as base64 text of the AttachmentFileSet entity, and the metadata (size, uploader, level) is read back from AttachmentSet.
-        const made = await sap.odata.post(c, 'AttachmentFileSet', { TransId: String(id), FileName: String(fileName), MimeType: String(mimeType || 'application/octet-stream'), Content: Buffer.from(bytes).toString('base64') });
+        const made = await sap.odata.post(c, 'AttachmentFileSet', { TransId: String(id), FileName: String(fileName), MimeType: String(mimeType || 'application/octet-stream'), DocType: String(docType || '').slice(0, 50), Content: Buffer.from(bytes).toString('base64') });
         const attachId = String(((made && made.d) || {}).AttachId || '');
         const meta = attachId ? sap.results(await sap.odata.get(c, `AttachmentSet?$filter=TransId eq ${enc(id)} and AttachId eq ${enc(attachId)}`))[0] : undefined;
         const json = { d: meta || { TransId: String(id), AttachId: attachId, FileName: String(fileName), MimeType: String(mimeType || '') } };
@@ -456,7 +456,7 @@ router.get('/requests/:id/attachments', handle('attachments', (req) => service.l
 router.post('/requests/:id/attachments', express.raw({ type: () => true, limit: MAX_UPLOAD_BYTES + 1 }), handle('attachment-add', async (req) => {
     const bytes = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
     const name = safeName((() => { try { return decodeURIComponent(req.get('slug') || ''); } catch { return ''; } })());
-    return { __status: 201, body: await service.addAttachment(req.caller, req.params.id, bytes, name, req.get('content-type') || 'application/octet-stream') };
+    return { __status: 201, body: await service.addAttachment(req.caller, req.params.id, bytes, name, req.get('content-type') || 'application/octet-stream', String(req.query.docType || '')) };
 }));
 router.get('/requests/:id/attachments/:attId', async (req, res) => {
     const t0 = Date.now();

@@ -162,7 +162,9 @@ function TableField({ def, value, edit, baseUom, onChange }: { def: FieldDef; va
 const fmtSize = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} B`);
 
 /** Attachments of the request, through the backend's attachment routes (SAP stores the files) */
-export function AttachmentsPanel({ transId, canAttach }: { transId: string; canAttach: boolean }) {
+export function AttachmentsPanel({ transId, canAttach, materialType = '' }: { transId: string; canAttach: boolean; materialType?: string }) {
+  const types = useValueHelp('DOCTYPE', { mtart: materialType }, !!materialType);
+  const [docType, setDocType] = useState('');
   const [items, setItems] = useState<Attachment[] | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -174,7 +176,7 @@ export function AttachmentsPanel({ transId, canAttach }: { transId: string; canA
   async function upload(file: File | undefined) {
     if (!file) return;
     setBusy(true);
-    try { await addAttachment(transId, file); setInputKey((k) => k + 1); await load(); }
+    try { await addAttachment(transId, file, docType); setInputKey((k) => k + 1); await load(); }
     catch (e) { setError(e instanceof Error ? e.message : 'The file could not be uploaded.'); }
     finally { setBusy(false); }
   }
@@ -190,7 +192,7 @@ export function AttachmentsPanel({ transId, canAttach }: { transId: string; canA
           {items.map((a) => (
             <li key={a.attachId}>
               <button type="button" className="link" onClick={() => void downloadAttachment(transId, a).catch((e: Error) => setError(e.message))}>{a.fileName}</button>
-              <small className="muted"> {fmtSize(a.size)}{a.uploadedBy && ` · ${a.uploadedBy}`}</small>
+              <small className="muted"> {a.docType && `${a.docType} · `}{fmtSize(a.size)}{a.uploadedBy && ` · ${a.uploadedBy}`}</small>
               {canAttach && (
                 <button type="button" className="btn btn-ghost btn-sm" aria-label={`Delete ${a.fileName}`}
                   onClick={() => void deleteAttachment(transId, a.attachId).then(load).catch((e: Error) => setError(e.message))}>✕</button>
@@ -200,10 +202,21 @@ export function AttachmentsPanel({ transId, canAttach }: { transId: string; canA
         </ul>
       )}
       {canAttach && (
+        <>
+        {types.options.length > 0 && (
+          <label className="field">
+            <span className="field-label">Document type</span>
+            <select value={docType} onChange={(e) => setDocType(e.target.value)}>
+              <option value="">— none —</option>
+              {types.options.map((o) => <option key={o.value} value={o.value}>{o.label || o.value}</option>)}
+            </select>
+          </label>
+        )}
         <label className="field">
           <span className="field-label">Upload file</span>
           <input key={inputKey} type="file" disabled={busy} onChange={(e) => void upload(e.target.files?.[0])} />
         </label>
+        </>
       )}
     </section>
   );

@@ -97,7 +97,7 @@ test('attachments: transport guards (name, empty, size, type) answer before SAP 
 test('attachments and comments: OData rows become screen items, dates as ISO', () => {
     const { toAttachment, toComment } = router._test;
     assert.deepEqual(toAttachment({ AttachId: 'A1', FileName: 'x.pdf', MimeType: 'application/pdf', Size: 12, UploadedBy: 'U', UploadedAt: '/Date(1793232000000)/', Lvl: 'L1' }),
-        { attachId: 'A1', fileName: 'x.pdf', mimeType: 'application/pdf', size: 12, uploadedBy: 'U', uploadedAt: '2026-10-29T00:00:00.000Z', level: 'L1' });
+        { attachId: 'A1', fileName: 'x.pdf', mimeType: 'application/pdf', docType: '', size: 12, uploadedBy: 'U', uploadedAt: '2026-10-29T00:00:00.000Z', level: 'L1' });
     assert.deepEqual(toComment({ CommentId: 'C1', Text: 't', UserId: 'U', CreatedAt: '/Date(1793232000000)/', Lvl: 'L2' }),
         { commentId: 'C1', text: 't', user: 'U', createdAt: '2026-10-29T00:00:00.000Z', level: 'L2' });
 });
@@ -115,12 +115,12 @@ test('upload: the file goes as base64 text of AttachmentFileSet (the proxy drops
         return new Response('{}', { status: 200, headers: { 'x-csrf-token': 't' } });
     };
     try {
-        const out = await router._test.service.addAttachment({ user: 'a@b.c' }, '0000000001', Buffer.from('abc'), 'My file.pdf', 'application/pdf');
+        const out = await router._test.service.addAttachment({ user: 'a@b.c' }, '0000000001', Buffer.from('abc'), 'My file.pdf', 'application/pdf', 'DRAWING');
         assert.equal(out.attachId, 'A1');
         assert.equal(out.fileName, 'My file.pdf');
         const post = calls.find((c) => c.method === 'POST' && c.url.endsWith('/AttachmentFileSet'));
         assert.ok(post, 'the file is posted to AttachmentFileSet');
-        assert.deepEqual(JSON.parse(post.body), { TransId: '0000000001', FileName: 'My file.pdf', MimeType: 'application/pdf', Content: Buffer.from('abc').toString('base64') });
+        assert.deepEqual(JSON.parse(post.body), { TransId: '0000000001', FileName: 'My file.pdf', MimeType: 'application/pdf', DocType: 'DRAWING', Content: Buffer.from('abc').toString('base64') });
         assert.equal(JSON.stringify(post.headers).includes('UploadedBy'), false);
         const back = await router._test.service.readAttachment({ user: 'a@b.c' }, '0000000001', 'A1');
         assert.equal(Buffer.from(back.bytes).toString(), 'abc');

@@ -126,7 +126,7 @@ const KEY_BINDING: Record<string, { entity: string; field: string; kind?: Bindin
   materialType: { entity: 'Material', field: 'MTART' },
   industrySector: { entity: 'Material', field: 'MBRSH' },
   materialGroup: { entity: 'Material', field: 'MATKL' },
-  businessVertical: { entity: 'Material', field: 'ZZBUSVERT' },
+  businessVertical: { entity: 'Material', field: 'ZBUSINESS' },
   scheme: { entity: 'Material', field: 'ZZSCHEME' },
   prodHierarchy: { entity: 'Material', field: 'PRDHA' },
   division: { entity: 'Material', field: 'SPART' },

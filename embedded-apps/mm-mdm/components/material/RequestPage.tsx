@@ -544,7 +544,7 @@ export default function RequestPage({ transId }: { transId: string }) {
               {h.isDuplicate && <div><dt>Duplicate</dt><dd>SAP marked this request as a possible duplicate</dd></div>}
             </dl>
           </section>
-          <AttachmentsPanel transId={h.transId} canAttach={allowed.attach} />
+          <AttachmentsPanel transId={h.transId} canAttach={allowed.attach} materialType={h.materialType} />
           <CommentsPanel transId={h.transId} canComment={allowed.comment} />
           <section className="card">
             <h3>History <span className="count-chip">{req.history.length}</span></h3>

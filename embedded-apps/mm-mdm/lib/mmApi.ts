@@ -73,7 +73,7 @@ export interface ScopeRow {
   kind: string; plant: string; plantText: string; storageLocation: string; storageLocationText: string;
   salesOrg: string; salesOrgText: string; distributionChannel: string; distributionChannelText: string;
 }
-export interface Attachment { attachId: string; fileName: string; mimeType: string; size: number; uploadedBy: string; uploadedAt: string; level: string }
+export interface Attachment { attachId: string; fileName: string; mimeType: string; docType?: string; size: number; uploadedBy: string; uploadedAt: string; level: string }
 export interface Comment { commentId: string; text: string; user: string; createdAt: string; level: string }
 
 export class MmApiError extends Error {
@@ -159,8 +159,8 @@ export interface ExtensionInput {
 export const startExtension = (i: ExtensionInput) => request<LoadedRequest>('POST', '/extension', i);
 
 export const listAttachments = (rid: string) => request<Attachment[]>('GET', `/requests/${id(rid)}/attachments`);
-export const addAttachment = (rid: string, file: File) =>
-  request<Attachment>('POST', `/requests/${id(rid)}/attachments`, undefined, {
+export const addAttachment = (rid: string, file: File, docType = '') =>
+  request<Attachment>('POST', `/requests/${id(rid)}/attachments${docType ? `?docType=${encodeURIComponent(docType)}` : ''}`, undefined, {
     headers: { Slug: encodeURIComponent(file.name), 'Content-Type': file.type || 'application/octet-stream' }, raw: file,
   });
 export const deleteAttachment = (rid: string, attachId: string) => request<{ ok: boolean }>('DELETE', `/requests/${id(rid)}/attachments/${id(attachId)}`);
