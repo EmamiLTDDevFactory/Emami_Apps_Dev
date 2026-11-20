@@ -176,9 +176,11 @@ async function loadBase(c, id) {
     return { baseId, data, exists: Object.keys(data.single).length > 0 };
 }
 
+// The Gateway entities are written whole: a field left out of the body comes back blank. A single-row entity is therefore sent as the row
+// SAP holds now with the changed fields on top (the app sends only what the user changed; Material type / industry sector were wiped).
 function writeOps(transId, data, existing) {
     const ops = [];
-    for (const [entity, row] of Object.entries(data.single || {})) if (ENTITY_SETS[entity]) ops.push({ method: 'MERGE', path: key(entity, transId), body: toOData(entity, row) });
+    for (const [entity, row] of Object.entries(data.single || {})) if (ENTITY_SETS[entity]) ops.push({ method: 'MERGE', path: key(entity, transId), body: toOData(entity, { ...((existing && existing.single && existing.single[entity]) || {}), ...row }) });
     for (const [entity, rows] of Object.entries(data.multi || {})) {
         const cfg = ENTITY_SETS[entity];
         if (!cfg) continue;

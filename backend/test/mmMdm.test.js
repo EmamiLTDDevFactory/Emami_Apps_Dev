@@ -202,3 +202,11 @@ test('change and extension start: parameters go to the SAP function imports, pos
         assert.equal(ex[2].StorageLocation, 'ASH1');
     } finally { sap.odata.fn = real.fn; sap.odata.get = real.get; }
 });
+
+test('a single-row entity is written as the current SAP row with the changed fields on top (key data is never blanked)', () => {
+    const existing = { single: { Material: { MTART: 'FERT', MBRSH: '1', MATKL: '202' } }, multi: {}, views: [] };
+    const ops = writeOps('0000000001', { single: { Material: { MATKL: '404' } }, multi: {}, views: [] }, existing);
+    assert.equal(ops[0].body.Mtart, 'FERT');
+    assert.equal(ops[0].body.Mbrsh, '1');
+    assert.equal(ops[0].body.Matkl, '404');
+});
