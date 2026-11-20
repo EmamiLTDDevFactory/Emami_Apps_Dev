@@ -79,6 +79,7 @@ CLASS ZCL_MM_MDM_REQUEST_SVC IMPLEMENTATION.
     LOOP AT zcl_mm_mdm_naming=>delete_tables( ) INTO DATA(lv_tab).
       DELETE FROM (lv_tab) WHERE transid = iv_transid OR transid = lv_base.
     ENDLOOP.
+    DELETE FROM /inowits/p_dms_a WHERE object_id = @( |{ CONV string( iv_app_id ) }/{ CONV string( iv_transid ) }/| ).
     DELETE FROM /inowits/m_trans WHERE transid = iv_transid AND app_id = iv_app_id.
     "No commit: the Gateway ends the unit of work.
   ENDMETHOD.
@@ -229,7 +230,7 @@ CLASS ZCL_MM_MDM_REQUEST_SVC IMPLEMENTATION.
       EXPORTING iv_app_id = zif_mm_mdm_types=>gc_app_create
                 iv_draft  = COND i( WHEN is_start-draft = abap_true THEN 1 ELSE 0 )
                 iv_user   = iv_user
-                iv_gen_type = is_start-material_type
+                iv_gen_type = CONV /inowits/wf_gen_type( is_start-material_type )
       IMPORTING ev_trans_id = rv_transid.
     COMMIT WORK AND WAIT.
     CALL FUNCTION 'DEQUEUE_E_TABLE'

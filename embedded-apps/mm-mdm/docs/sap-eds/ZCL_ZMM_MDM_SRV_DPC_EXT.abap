@@ -281,6 +281,15 @@ CLASS ZCL_ZMM_MDM_SRV_DPC_EXT IMPLEMENTATION.
                         WHEN 'MaterialTypeVhSet' THEN 'MTART' WHEN 'MainGroupSet' THEN 'MGRP'
                         WHEN 'SubGroupSet' THEN 'SGRP' WHEN 'SubSubGroupSet' THEN 'SSGR'
                         ELSE filter_value( it_filter = it_filter_select_options iv_name = 'Name' ) ).
+        "a generic list carries its parent values inside the name (LGORT|WERKS=UN13;...): the entity has no property for them
+        IF lv_vh CS '|'.
+          SPLIT lv_vh AT '|' INTO lv_vh DATA(lv_par).
+          SPLIT lv_par AT ';' INTO TABLE DATA(lt_par).
+          LOOP AT lt_par INTO DATA(lv_kv).
+            SPLIT lv_kv AT '=' INTO DATA(lv_pk) DATA(lv_pv).
+            IF lv_pk IS NOT INITIAL. APPEND VALUE #( name = lv_pk value = lv_pv ) TO lt_pair. ENDIF.
+          ENDLOOP.
+        ENDIF.
         DATA(lt_vh) = zcl_mm_mdm_valuehelp=>get( iv_name = lv_vh it_filter = lt_pair ).
         DATA(lv_tt) = SWITCH string( iv_entity_set_name
                         WHEN 'MaterialTypeVhSet' THEN `TT_MATERIALTYPEVH` WHEN 'MainGroupSet' THEN `TT_MAINGROUP`

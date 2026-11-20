@@ -322,9 +322,11 @@ const service = {
     async valueHelp(c, name, params) {
         const set = VALUE_HELP_SETS[name.toUpperCase()];
         const f = Object.entries(params).map(([k, v]) => `${k[0].toUpperCase()}${k.slice(1)} eq ${enc(v)}`);
+        // The generic list entity has only Name, Key and Text: the values of the fields it depends on (WERKS, VKORG ...) travel inside the name
+        const generic = [name.toUpperCase(), Object.entries(params).map(([k, v]) => `${k.toUpperCase()}=${String(v).replace(/[|;=]/g, '')}`).join(';')].filter(Boolean).join('|');
         const url = set
             ? `${set}${f.length ? `?$filter=${encodeURIComponent(f.join(' and '))}` : ''}`
-            : `${GENERIC_VALUE_HELP}?$filter=${encodeURIComponent([`Name eq ${enc(name.toUpperCase())}`, ...f].join(' and '))}`;
+            : `${GENERIC_VALUE_HELP}?$filter=${encodeURIComponent(`Name eq ${enc(generic)}`)}`;
         return sap.results(await sap.odata.get(c, url)).map((o) => ({ key: String(o.Key ?? ''), text: String(o.Text ?? '') }));
     },
     async duplicates(c, i) {
