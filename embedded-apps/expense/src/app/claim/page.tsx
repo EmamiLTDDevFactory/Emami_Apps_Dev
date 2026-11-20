@@ -9,7 +9,6 @@ import { useAuth } from '../../context/AuthContext';
 import { useClaim } from '../../context/ClaimContext';
 import { formatCurrency } from '../../utils/currency';
 import { displayClaimNumber } from '../../utils/claim-number';
-import { formatSapErrorMessage } from '../../utils/sap-error';
 import { MIME_TO_EXTENSION } from '../../lib/attachmentCompression';
 import { Banner, Button, LoadingBlock, MessageModal, type MessageModalState, Modal, Spinner } from '../../components/ui';
 
@@ -72,18 +71,24 @@ const getStatusLabel = (status?: string) => {
     case 'A': return 'Approved';
     case 'R': case 'REJECT': case 'REJECTED': return 'Rejected';
     case 'N': case 'SUBMIT': case 'RESUBMIT': return 'Submitted';
-    case 'H': return 'HOD Approval';
+    case 'H': return 'Pending at Finance';
     case 'C': return 'Created';
     default: return status || 'Unknown';
   }
 };
 
+// DOA chain: a claim now has 1-to-n approval levels (L1, L2, L3, ...) instead of always exactly
+// two, plus EMPLOYEE/FINANCE/ADMIN action rows in HistorySet. Unrecognized values degrade to the
+// raw value itself rather than a wrong hardcoded label, since "expect small contract differences"
+// is an explicit caveat from the DOA handover.
 const getActionLevelLabel = (level?: string) => {
-  switch ((level || '').toUpperCase()) {
-    case 'L1': return 'Manager Approval';
-    case 'L2': return 'HOD Approval';
-    default: return 'Employee Action';
-  }
+  const normalized = (level || '').toString().toUpperCase();
+  if (normalized === 'EMPLOYEE') return 'Employee Action';
+  if (normalized === 'FINANCE') return 'Finance Action';
+  if (normalized === 'ADMIN') return 'Admin Action';
+  const levelMatch = normalized.match(/^L(\d+)$/);
+  if (levelMatch) return `Level ${levelMatch[1]} Approval`;
+  return normalized || 'Action';
 };
 
 const getEntryDisplayLabel = (entry: any) => {
@@ -119,13 +124,13 @@ function ClaimDetailInner() {
   const claimId = searchParams.get('id') || '';
   const router = useRouter();
   const { currentUser } = useAuth();
-  const { setTempClaimForResubmit, approveClaim, rejectClaim, releasePayment, rejectClaimFinance, fetchTaxes, calculateTax, fetchClaims } = useClaim();
+  const { setTempClaimForResubmit, approveClaim, rejectClaim, releasePayment, rejectClaimFinance, adminRejectClaim, fetchTaxes, calculateTax, fetchClaims } = useClaim();
 
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>(null);
   const [actionModalVisible, setActionModalVisible] = useState(false);
   const [actionRemarks, setActionRemarks] = useState('');
-  const [actionMode, setActionMode] = useState<'manager-reject' | 'finance-reject' | ''>('');
+  const [actionMode, setActionMode] = useState<'manager-reject' | 'finance-reject' | 'admin-reject' | ''>('');
   const [taxModalVisible, setTaxModalVisible] = useState(false);
   const [availableTaxes, setAvailableTaxes] = useState<any[]>([]);
   const [selectedTaxCode, setSelectedTaxCode] = useState('');
@@ -179,30 +184,29 @@ function ClaimDetailInner() {
 
   const normalizedHeaderStatus = (header.Status || '').toString().toUpperCase();
   const currentUserId = (currentUser?.employeeId || '').toString().replace(/\D/g, '').padStart(8, '0');
-  const claimApproverId = (header.CurrentApprover || '').toString().replace(/\D/g, '').padStart(8, '0');
   const isManagerRole = currentUser?.role === 'manager';
   const isFinanceRole = currentUser?.role === 'finance' || currentUser?.role === 'B';
   const isTopLevelPending = currentUser?.role === 'B' && normalizedHeaderStatus === 'P';
   const claimRaiserId = (header.EmpId || '').toString().replace(/\D/g, '').padStart(8, '0');
   const isOwnClaim = !!currentUserId && claimRaiserId === currentUserId;
 
-  // Approve/Reject is for the ONE manager the claim is actually routed to. This must stay a full
-  // AND, not an OR — an OR previously let any manager approve claims they themselves had raised,
-  // because the status check alone satisfied the condition. See ClaimContext.tsx/plan notes.
-  //
-  // Status check includes 'A'/'APPROVED' alongside 'N'/'SUBMITTED' to cover a second-level (L2)
-  // approver: ClaimContext's own pending-claims list filter already treats rawStatus 'N' OR 'A' as
-  // "needs this manager's action" (a claim moves to 'A' once an L1 manager approves, then waits on
-  // whichever manager CurrentApprover names next) — this page's own check was missing the 'A' case,
-  // so an L2 approver saw their Approve/Reject buttons in the Approvals list but not here on the
-  // claim's own detail page. claimApproverId === currentUserId still gates this to the one manager
-  // SAP actually routed it to, exactly as before.
+  // Under the DOA chain, a level can have parallel approvers (rule O: any one closes it, rule A:
+  // all must approve), and SAP only ever returns ONE CurrentApprover PERNR even then - so this
+  // user can be a valid pending approver without being the single value header.CurrentApprover
+  // holds. Gating on that equality (as this used to) wrongly hid the buttons from a valid
+  // parallel approver. The backend itself now refuses an out-of-turn approve per the DOA
+  // handover, so that's the real enforcement layer — this page's job is just to not offer the
+  // buttons on a claim that's already closed (status outside N/A) or on the claimant's own claim.
   const showManagerActions =
     isManagerRole &&
     !isOwnClaim &&
-    claimApproverId === currentUserId &&
     (normalizedHeaderStatus === 'N' || normalizedHeaderStatus === 'SUBMITTED' || normalizedHeaderStatus === 'A' || normalizedHeaderStatus === 'APPROVED');
   const showFinanceActions = isFinanceRole && (normalizedHeaderStatus === 'A' || normalizedHeaderStatus === 'APPROVED' || normalizedHeaderStatus === 'H' || normalizedHeaderStatus === 'PENDING RELEASE' || isTopLevelPending);
+  // Admin can reject any open claim (N/A/H) regardless of whose it is or whether they're in the
+  // approval chain - excludes S/P (an FI document already exists) and R (already rejected), per
+  // the DOA handover's admin section. No role check needed on the read side; this just gates the
+  // button's visibility.
+  const showAdminReject = !!currentUser?.isAdmin && (normalizedHeaderStatus === 'N' || normalizedHeaderStatus === 'A' || normalizedHeaderStatus === 'H');
 
   const EXCEL_MIME_TYPES = ['application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
 
@@ -285,7 +289,9 @@ function ClaimDetailInner() {
     setTaxSearch('');
     setAvailableTaxes([]);
     if (!result.success) {
-      setScreenMessage({ title: 'Payment Release Failed', message: formatSapErrorMessage(result.error), type: 'error' });
+      // Shown verbatim, not reworded - if FI refuses the posting, the claim stays H and the
+      // DOA handover requires the raw FI message to reach the user unchanged.
+      setScreenMessage({ title: 'Payment Release Failed', message: result.error || 'Unknown error', type: 'error' });
       return;
     }
     await loadClaim();
@@ -316,9 +322,29 @@ function ClaimDetailInner() {
     setActionModalVisible(true);
   };
 
+  const handleOpenAdminReject = () => {
+    setActionMode('admin-reject');
+    setActionRemarks('');
+    setActionModalVisible(true);
+  };
+
   const handleConfirmReject = async () => {
     const remarks = actionRemarks.trim();
     if (!remarks) { setMessageModal({ title: 'Validation Error', message: 'Rejection remarks are mandatory.', type: 'error' }); return; }
+    if (actionMode === 'admin-reject') {
+      try {
+        const sapResponse = await adminRejectClaim(claimId, currentUser?.employeeId || '', remarks);
+        setActionModalVisible(false);
+        await loadClaim();
+        fetchClaims();
+        setMessageModal({ title: 'Success', message: sapResponse?.Message || `Claim ${displayClaimNumber(claimId)} has been rejected successfully.`, type: 'success' });
+      } catch (err: any) {
+        // Shown verbatim - the DOA handover's admin business-error table (e.g. "Claim is already
+        // posted in FI (document ...) - cannot reject") should reach the admin unmodified.
+        setMessageModal({ title: 'Rejection Failed', message: err?.message || 'Failed to reject claim.', type: 'error' });
+      }
+      return;
+    }
     const result = actionMode === 'finance-reject' ? await rejectClaimFinance(claimId, remarks) : await rejectClaim(claimId, remarks);
     if (!result.success) { setMessageModal({ title: 'Rejection Failed', message: result.error || 'Failed to reject claim.', type: 'error' }); return; }
     setActionModalVisible(false);
@@ -425,7 +451,7 @@ function ClaimDetailInner() {
         )}
       </div>
 
-      {(showManagerActions || showFinanceActions) && (
+      {(showManagerActions || showFinanceActions || showAdminReject) && (
         <div className="card flex flex-col gap-2 p-4">
           {showManagerActions && (
             <div className="flex gap-2">
@@ -437,6 +463,11 @@ function ClaimDetailInner() {
             <div className="flex gap-2">
               <Button variant="danger" className="flex-1" onClick={handleOpenFinanceReject}>Reject</Button>
               <Button variant="primary" className="flex-1" onClick={handleFinanceRelease}>Release Payment</Button>
+            </div>
+          )}
+          {showAdminReject && (
+            <div className="flex gap-2">
+              <Button variant="danger" className="flex-1" onClick={handleOpenAdminReject}>Admin Reject</Button>
             </div>
           )}
         </div>
@@ -495,7 +526,10 @@ function ClaimDetailInner() {
                 <span className="shrink-0 rounded-full px-2.5 py-1 text-2xs font-bold text-white" style={{ backgroundColor: palette.border }}>{entryStatus}</span>
               </div>
               {shouldShowNextApprover && (
-                <p className="mt-2 text-xs"><span className="font-bold text-inkSoft">Next Approver: </span><span className="text-ink">{nextApproverName || nextApproverValue}</span></p>
+                // Only one approver PERNR is ever returned, even for a parallel (rule O/A) level
+                // with several valid approvers - worded as "one of" rather than "the", per the
+                // DOA handover, so this doesn't read as the exclusive next approver.
+                <p className="mt-2 text-xs"><span className="font-bold text-inkSoft">One of this level's approvers: </span><span className="text-ink">{nextApproverName || nextApproverValue}</span></p>
               )}
               {entry.Remarks && (
                 <p className="mt-2 text-xs"><span className="font-bold text-inkSoft">Remarks: </span><span className="text-ink">{entry.Remarks}</span></p>

@@ -3,7 +3,7 @@
 import axios from 'axios';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { SAP_BASE_URL } from '../config/api';
-import { AreaCode, Attachment, ClaimKPIs, ClaimStatus, ExpenseClaim, SAPError, TaxCode } from '../types';
+import { AreaCode, Attachment, ClaimKPIs, ClaimStatus, DoaChainRow, ExpenseClaim, SAPError, TaxCode } from '../types';
 import { getClaimCreatedTimestamp } from '../utils/claim-date';
 import { useAuth } from './AuthContext';
 
@@ -28,6 +28,15 @@ interface ClaimContextType {
   calculateTax: (totalAmount: number, currency: string, mwskz: string) => Promise<{ expenseAmt: number; taxAmt: number } | null>;
   fetchAreas: () => Promise<AreaCode[]>;
   rejectClaimFinance: (id: string, remarks: string) => Promise<{ success: boolean; error?: string }>;
+  // Admin Actions (ZEXP_ADMIN) — search any claim, reject any open claim. See lib/adminAccess.ts
+  // for how isAdmin is resolved.
+  adminSearchClaims: (adminLoginId: string, criteria: { claimId?: string }) => Promise<ExpenseClaim[]>;
+  adminRejectClaim: (claimId: string, adminLoginId: string, reason: string) => Promise<{ Status?: string; Message?: string }>;
+  // DOA Chain Maintenance Actions — CRUD against the new DoaChainSet entity.
+  fetchDoaChain: (doaCtype: string, kostl: string) => Promise<DoaChainRow[]>;
+  createDoaChainRow: (row: DoaChainRow, adminPernr: string) => Promise<DoaChainRow>;
+  updateDoaChainRow: (row: DoaChainRow, adminPernr: string) => Promise<DoaChainRow>;
+  deactivateDoaChainRow: (row: DoaChainRow, adminPernr: string, validTo: string) => Promise<DoaChainRow>;
   // Error Management Actions
   retrySAPPosting: (errorId: string) => void;
   // Getters & Filters
@@ -131,6 +140,140 @@ const toODataDate = (dateStr?: string | null): string | null => {
   return Number.isNaN(ms) ? null : `/Date(${ms})/`;
 };
 
+// Single source of truth for raw SAP Status -> display ClaimStatus, used by fetchClaims and by
+// every action (approveClaim, releasePayment) that needs to trust a POST response's returned
+// Status instead of guessing the next state locally — see the DOA handover's "read the result, do
+// not assume it" requirement.
+const mapRawStatusToClaimStatus = (rawStatus: string): ClaimStatus => {
+  if (rawStatus === 'D') return 'Draft';
+  if (rawStatus === 'A') return 'Approved';
+  if (rawStatus === 'R') return 'Rejected';
+  if (rawStatus === 'P') return 'Pending Release';
+  if (rawStatus === 'H') return 'Pending at finance';
+  if (rawStatus === 's' || rawStatus === 'S') return 'Paid';
+  return 'Submitted';
+};
+
+// SAP's OData gateway returns results in one of several shapes depending on entity/call -
+// normalize every GET response (ClaimHeaderSet, DoaChainSet, etc.) to a plain array once, here.
+const extractSapResults = (data: any): any[] => {
+  if (!data) return [];
+  if (data.d && data.d.results) return data.d.results; // GET_ENTITYSET format
+  if (data.d) return [data.d]; // GET_ENTITY format
+  if (data.value) return data.value; // OData V4 format
+  if (data.EmpId) return [data]; // Flat object fallback
+  if (Array.isArray(data)) return data; // Direct array fallback
+  return [];
+};
+
+// Maps one raw SAP ClaimHeaderSet (with $expand=CLAIMNAV) record to this app's ExpenseClaim shape
+// - shared by fetchClaims (the logged-in user's own/assigned claims) and adminSearchClaims (any
+// claim, via Zview='ADMIN'), so the two don't duplicate this mapping.
+const mapSapClaimToExpenseClaim = (sap: any, expenseTypes: any[]): ExpenseClaim => {
+  const status: ClaimStatus = mapRawStatusToClaimStatus(sap.Status || '');
+
+  let expenseType = sap.ZglName || sap.ExpenseType || '';
+  let justification = '';
+  let expenseDate = '';
+  let itemNo = '';
+  const claimNavResults = sap.CLAIMNAV?.results || (Array.isArray(sap.CLAIMNAV) ? sap.CLAIMNAV : []);
+  if (claimNavResults.length > 0) {
+    const firstLine = claimNavResults[0];
+    expenseType = expenseType || firstLine.ZglName || firstLine.ExpenseType || '';
+    if (!firstLine.ZglName && firstLine.ExpenseType) {
+      const matchedType = expenseTypes.find((et) => et.id === firstLine.ExpenseType || et.name === firstLine.ExpenseType);
+      if (matchedType) {
+        expenseType = matchedType.name;
+      }
+    }
+    justification = firstLine.Description || '';
+    expenseDate = firstLine.ExpenseDate || '';
+    itemNo = firstLine.ItemNo || '';
+  }
+
+  // Handle ClaimDate (use CreatedOn as fallback if ClaimDate is null)
+  let claimDateStr = '';
+  const dateToParse = sap.ClaimDate || sap.CreatedOn;
+  if (dateToParse) {
+    if (dateToParse.includes('Date(')) {
+      const ts = parseInt(dateToParse.replace(/\D/g, ''), 10);
+      claimDateStr = new Date(ts).toISOString().split('T')[0];
+    } else {
+      claimDateStr = dateToParse.split('T')[0];
+    }
+  }
+
+  // Map attachments if Base64 data is present in the line items
+  const attachments: Attachment[] = [];
+  if (sap.CLAIMNAV && sap.CLAIMNAV.results) {
+    sap.CLAIMNAV.results.forEach((item: any, attIdx: number) => {
+      if (item.Filename && item.Value) {
+        const mimetype = item.Mimetype || 'application/pdf';
+        // SAP stores Filename with no extension at all — create.tsx's submit-time
+        // attachment-type check derives the extension from the name, so editing/
+        // resubmitting a claim loaded through this path would fail that check for
+        // an otherwise perfectly valid attachment. See MIME_TO_EXTENSION above.
+        const name = item.Filename.includes('.')
+          ? item.Filename
+          : `${item.Filename}.${MIME_TO_EXTENSION[mimetype] || 'pdf'}`;
+        attachments.push({
+          id: `att-${attIdx}-${item.Filename.replace(/[^a-zA-Z0-9]/g, '')}`,
+          name,
+          type: mimetype,
+          uri: `data:${mimetype};base64,${item.Value}`,
+        });
+      }
+    });
+  }
+
+  return {
+    id: sap.ClaimId,
+    employeeId: sap.EmpId,
+    employeeName: sap.EmpName,
+    department: sap.Department,
+    designation: sap.Designation,
+    claimDate: claimDateStr || new Date().toISOString().split('T')[0],
+    createdOn: sap.CreatedOn || sap.ClaimDate || '',
+    createdTime: sap.CreatedTime || '',
+    expenseDate,
+    expenseType,
+    itemNo,
+    amount: parseFloat(sap.TotalAmount) || 0,
+    costCenter: sap.CostCenter,
+    justification,
+    attachments,
+    currentApprover: sap.CurrentApprover || sap.currentApprover || '',
+    status,
+    rawStatus: sap.Status || '',
+    stcd3: sap.Stcd3 || '',
+    lifnr: sap.Lifnr || '',
+    // Persisted on the claim itself once it's gone through a GST tax-code release — SAP
+    // leaves these at '0.000' for claims that never had a tax code applied (see claim/
+    // page.tsx's identical persistedExpenseAmt/persistedTaxAmount read of this same header).
+    expenseAmt: parseFloat(sap.ExpenseAmt || '0') || 0,
+    taxAmaount: parseFloat(sap.TaxAmaount || '0') || 0,
+    workflowHistory: [],
+  };
+};
+
+// Shared status/error-body check for any SAP OData write response - SAP's gateway sometimes
+// returns HTTP 200 with an error body (Type==='E'), so status alone isn't enough. Returns the
+// parsed success body so callers can trust what SAP actually did instead of guessing.
+const handleSapWriteResponse = (response: any, defaultErrorMessage: string) => {
+  const bodyType = (response.data?.d?.Type || response.data?.Type || '').toString().toUpperCase();
+  if (response.status < 200 || response.status >= 300 || bodyType === 'E') {
+    let errMsg = defaultErrorMessage;
+    try {
+      const errData = response.data;
+      errMsg = errData?.error?.message?.value || errData?.error || errData?.d?.Message || errData?.Message || errMsg;
+    } catch (e) {
+      // keep defaultErrorMessage
+    }
+    throw new Error(errMsg);
+  }
+  return response.data?.d || response.data || {};
+};
+
 const parseCostCenter = (ccStr?: string) => {
   if (!ccStr) return { costCenter: '', ltext: '' };
   const match = ccStr.match(/^([^\(]+)(?:\((.*)\))?$/);
@@ -210,129 +353,8 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const response = await sapClient.get(`${SAP_BASE_URL}/ClaimHeaderSet?$filter=${filter}&$expand=CLAIMNAV&$format=json`);
       if (response.status < 200 || response.status >= 300) return;
 
-      const data = response.data;
-
-      let sapClaims = [];
-      if (data.d && data.d.results) {
-        sapClaims = data.d.results; // GET_ENTITYSET format
-      } else if (data.d) {
-        sapClaims = [data.d]; // GET_ENTITY format
-      } else if (data.value) {
-        sapClaims = data.value; // OData V4 format
-      } else if (data.EmpId) {
-        sapClaims = [data]; // Flat object fallback
-      } else if (Array.isArray(data)) {
-        sapClaims = data; // Direct array fallback
-      }
-
-      const mappedClaims: ExpenseClaim[] = sapClaims.map((sap: any) => {
-        let status: ClaimStatus = 'Submitted';
-        if (sap.Status === 'D') status = 'Draft';
-        if (sap.Status === 'A') status = 'Approved';
-        if (sap.Status === 'R') status = 'Rejected';
-        // 'P' (Parked) and 'H' (Pending at finance) are real, distinct SAP document states from
-        // 'S'/'s' (Posted) — previously all three were folded into 'Paid', which made every Parked
-        // or Pending-at-finance claim display as "Posted" here even though Claim Detail (which
-        // reads the raw SAP status directly) correctly showed "Parked"/"Pending at finance".
-        if (sap.Status === 'P') status = 'Pending Release';
-        if (sap.Status === 'H') status = 'Pending at finance';
-        if (sap.Status === 's' || sap.Status === 'S') status = 'Paid';
-
-        let expenseType = '';
-        let justification = '';
-        let expenseDate = '';
-        let itemNo = '';
-        expenseType = sap.ZglName || sap.ExpenseType || '';
-        if (sap.CLAIMNAV && sap.CLAIMNAV.results && sap.CLAIMNAV.results.length > 0) {
-          const firstLine = sap.CLAIMNAV.results[0];
-          expenseType = expenseType || firstLine.ZglName || firstLine.ExpenseType || '';
-          if (!firstLine.ZglName && firstLine.ExpenseType) {
-            const matchedType = expenseTypes.find((et) => et.id === firstLine.ExpenseType || et.name === firstLine.ExpenseType);
-            if (matchedType) {
-              expenseType = matchedType.name;
-            }
-          }
-          justification = firstLine.Description || '';
-          expenseDate = firstLine.ExpenseDate || '';
-          itemNo = firstLine.ItemNo || '';
-        } else if (sap.CLAIMNAV && sap.CLAIMNAV.length > 0) {
-          const firstLine = sap.CLAIMNAV[0];
-          expenseType = expenseType || firstLine.ZglName || firstLine.ExpenseType || '';
-          if (!firstLine.ZglName && firstLine.ExpenseType) {
-            const matchedType = expenseTypes.find((et) => et.id === firstLine.ExpenseType || et.name === firstLine.ExpenseType);
-            if (matchedType) {
-              expenseType = matchedType.name;
-            }
-          }
-          justification = firstLine.Description || '';
-          expenseDate = firstLine.ExpenseDate || '';
-          itemNo = firstLine.ItemNo || '';
-        }
-
-        // Handle ClaimDate (use CreatedOn as fallback if ClaimDate is null)
-        let claimDateStr = '';
-        const dateToParse = sap.ClaimDate || sap.CreatedOn;
-        if (dateToParse) {
-          if (dateToParse.includes('Date(')) {
-            const ts = parseInt(dateToParse.replace(/\D/g, ''), 10);
-            claimDateStr = new Date(ts).toISOString().split('T')[0];
-          } else {
-            claimDateStr = dateToParse.split('T')[0];
-          }
-        }
-
-        // Map attachments if Base64 data is present in the line items
-        const attachments: Attachment[] = [];
-        if (sap.CLAIMNAV && sap.CLAIMNAV.results) {
-          sap.CLAIMNAV.results.forEach((item: any, attIdx: number) => {
-            if (item.Filename && item.Value) {
-              const mimetype = item.Mimetype || 'application/pdf';
-              // SAP stores Filename with no extension at all — create.tsx's submit-time
-              // attachment-type check derives the extension from the name, so editing/
-              // resubmitting a claim loaded through this path would fail that check for
-              // an otherwise perfectly valid attachment. See MIME_TO_EXTENSION above.
-              const name = item.Filename.includes('.')
-                ? item.Filename
-                : `${item.Filename}.${MIME_TO_EXTENSION[mimetype] || 'pdf'}`;
-              attachments.push({
-                id: `att-${attIdx}-${item.Filename.replace(/[^a-zA-Z0-9]/g, '')}`,
-                name,
-                type: mimetype,
-                uri: `data:${mimetype};base64,${item.Value}`,
-              });
-            }
-          });
-        }
-
-        return {
-          id: sap.ClaimId,
-          employeeId: sap.EmpId,
-          employeeName: sap.EmpName,
-          department: sap.Department,
-          designation: sap.Designation,
-          claimDate: claimDateStr || new Date().toISOString().split('T')[0],
-          createdOn: sap.CreatedOn || sap.ClaimDate || '',
-          createdTime: sap.CreatedTime || '',
-          expenseDate,
-          expenseType,
-          itemNo,
-          amount: parseFloat(sap.TotalAmount) || 0,
-          costCenter: sap.CostCenter,
-          justification,
-          attachments,
-          currentApprover: sap.CurrentApprover || sap.currentApprover || '',
-          status,
-          rawStatus: sap.Status || '',
-          stcd3: sap.Stcd3 || '',
-          lifnr: sap.Lifnr || '',
-          // Persisted on the claim itself once it's gone through a GST tax-code release — SAP
-          // leaves these at '0.000' for claims that never had a tax code applied (see claim/
-          // page.tsx's identical persistedExpenseAmt/persistedTaxAmount read of this same header).
-          expenseAmt: parseFloat(sap.ExpenseAmt || '0') || 0,
-          taxAmaount: parseFloat(sap.TaxAmaount || '0') || 0,
-          workflowHistory: [],
-        };
-      });
+      const sapClaims = extractSapResults(response.data);
+      const mappedClaims: ExpenseClaim[] = sapClaims.map((sap: any) => mapSapClaimToExpenseClaim(sap, expenseTypes));
       // Replace the existing claims with the latest fetched set (clear when SAP returns empty)
       setClaims(mappedClaims);
     } catch (err) {
@@ -723,18 +745,10 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const response = await sapClient.post(`${SAP_BASE_URL}/ClaimHeaderSet`, putData, {
       headers: { 'Content-Type': 'application/json' },
     });
-
-    const bodyType = (response.data?.d?.Type || response.data?.Type || '').toString().toUpperCase();
-    if (response.status < 200 || response.status >= 300 || bodyType === 'E') {
-      let errMsg = defaultErrorMessage;
-      try {
-        const errData = response.data;
-        errMsg = errData?.error?.message?.value || errData?.error || errData?.d?.Message || errData?.Message || errMsg;
-      } catch (e) {
-        // keep defaultErrorMessage
-      }
-      throw new Error(errMsg);
-    }
+    // Callers that need to trust what SAP actually did (e.g. the DOA chain's resulting Status/
+    // CurrentApprover after an approve, or Belnr/Gjahr after a finance release) read it from here
+    // instead of guessing the next state locally.
+    return handleSapWriteResponse(response, defaultErrorMessage);
   };
 
   // BR-009, BR-011: Manager Approve
@@ -760,23 +774,30 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         ApprovalRequired: 'A', // Action: Approve
       };
 
-      await postClaimHeaderUpdate(putData, 'SAP Backend rejected the approval');
+      const sapResponse = await postClaimHeaderUpdate(putData, 'SAP Backend rejected the approval');
 
+      // Under the DOA chain, approving doesn't always mean "done" or even "status changed" — a
+      // claim can stay N/A if it's a parallel (rule A) level still waiting on other approvers, or
+      // move to A (more levels to go) or H (last level done). Trust whatever SAP actually
+      // returned instead of guessing a fixed N->A->H progression that only ever held for the old
+      // 2-level flow.
+      const newRawStatus = sapResponse.Status || claim.rawStatus;
       setClaims((prev) => prev.map((c) => {
         if (c.id === id) {
           return {
             ...c,
-            status: 'Approved',
-            rawStatus: c.rawStatus === 'N' ? 'A' : 'H',
-            currentApprover: '',
+            status: mapRawStatusToClaimStatus(newRawStatus),
+            rawStatus: newRawStatus,
+            // First pending approver of the next level, or empty once the chain reaches H.
+            currentApprover: sapResponse.CurrentApprover || '',
             workflowHistory: [
               ...c.workflowHistory,
               {
-                step: 'Manager Review',
-                actor: `${currentUser?.employeeName} (Manager)`,
+                step: 'Approval',
+                actor: `${currentUser?.employeeName} (${currentUser?.role})`,
                 timestamp: getCurrentTimestamp(),
                 outcome: 'Approved',
-                remarks: 'Approved by department manager.',
+                remarks: 'Approved at this level.',
               },
             ],
           };
@@ -971,6 +992,11 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       TotalAmount: (claim.amount ?? 0).toFixed(3),
       Currency: 'INR',
       CostCenter: claim.costCenter || '',
+      // Sent Status is unconfirmed against the new one-step H->S finance flow - the handover doc
+      // only describes new behavior, not a new request payload, and this value is very likely
+      // overridden server-side the same way approveClaim's sent Status:'A' already is. Verify
+      // once the new posting logic is actually live; the result handling below reads the real
+      // returned Status either way, so this is safe regardless of what SAP does with it.
       Status: 'P',
       ApprovalRequired: 'A',
     };
@@ -983,23 +1009,31 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     try {
-      await postClaimHeaderUpdate(putData, 'SAP rejected the payment release');
+      const sapResponse = await postClaimHeaderUpdate(putData, 'SAP rejected the payment release');
 
+      // A NEW claim's release now goes straight H -> S (posted) in one step; a legacy claim that
+      // genuinely still goes through the old park step comes back P. Read the real result instead
+      // of hardcoding either outcome, so this is correct under both flows.
+      const newRawStatus = sapResponse.Status || 'P';
       setClaims((prev) => prev.map((c) => {
         if (c.id === id) {
           return {
             ...c,
-            status: 'Paid',
-            rawStatus: 'P',
+            status: mapRawStatusToClaimStatus(newRawStatus),
+            rawStatus: newRawStatus,
             currentApprover: '',
+            belnr: sapResponse.Belnr || c.belnr,
+            gjahr: sapResponse.Gjahr || c.gjahr,
             workflowHistory: [
               ...c.workflowHistory,
               {
-                step: 'Payment Processing',
+                step: newRawStatus === 'S' ? 'Posted to FI' : 'Payment Processing',
                 actor: `${currentUser?.employeeName} (Finance)`,
                 timestamp: getCurrentTimestamp(),
-                outcome: 'Paid',
-                remarks: 'Payment released successfully. Accounting document posted.',
+                outcome: newRawStatus === 'S' ? 'Posted' : 'Processed',
+                remarks: newRawStatus === 'S'
+                  ? `Posted to FI${sapResponse.Belnr ? ` (doc ${sapResponse.Belnr}/${sapResponse.Gjahr || ''})` : ''}.`
+                  : 'Payment processing updated.',
               },
             ],
           };
@@ -1071,6 +1105,83 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  // Admin search — Zview='ADMIN' restricts the GET to rows this admin PERNR is allowed to see.
+  // Only ClaimId, LoginId, Zview are filterable server-side today; EmpId/EmpName/Status/
+  // CostCenter need a backend metadata change first (open prerequisite) — the admin page itself
+  // discloses this and only wires up the ClaimId criterion for now.
+  const adminSearchClaims = async (adminLoginId: string, criteria: { claimId?: string }): Promise<ExpenseClaim[]> => {
+    const parts = [`Zview eq 'ADMIN'`, `LoginId eq '${adminLoginId}'`];
+    if (criteria.claimId) parts.push(`ClaimId eq '${criteria.claimId}'`);
+    const filter = encodeURIComponent(parts.join(' and '));
+    const response = await sapClient.get(`${SAP_BASE_URL}/ClaimHeaderSet?$filter=${filter}&$expand=CLAIMNAV&$format=json`);
+    if (response.status < 200 || response.status >= 300) {
+      const errData = response.data;
+      const errMsg = errData?.error?.message?.value || errData?.error || errData?.d?.Message || errData?.Message || 'Admin claim search failed';
+      throw new Error(errMsg);
+    }
+    const sapClaims = extractSapResults(response.data);
+    return sapClaims.map((sap: any) => mapSapClaimToExpenseClaim(sap, expenseTypes));
+  };
+
+  // Admin reject — same ApprovalRequired='R' shape as rejectClaim/rejectClaimFinance, plus the
+  // Zview flag that tells SAP this is the admin path (works on any open claim, any employee,
+  // including those who've left). Routes through the same ClaimHeaderSet POST helper since it's
+  // the same entity every other write here uses.
+  const adminRejectClaim = async (claimId: string, adminLoginId: string, reason: string) => {
+    const putData = {
+      ClaimId: claimId,
+      LoginId: adminLoginId,
+      Zview: 'ADMIN',
+      ApprovalRequired: 'R',
+      RejReason: reason,
+    };
+    return postClaimHeaderUpdate(putData, 'Admin reject failed');
+  };
+
+  // DOA Chain Maintenance — new DoaChainSet entity. Likely can't be written/filtered yet (SEGW
+  // Creatable/Updatable/Filterable flags are off, transport EDSK9B0EN3 must land before
+  // EDSK9B0EMX) — these calls are wired up ready for when that lands; expect failures until then.
+  const fetchDoaChain = async (doaCtype: string, kostl: string): Promise<DoaChainRow[]> => {
+    const filter = encodeURIComponent(`DoaCtype eq '${doaCtype}' and Kostl eq '${kostl.toUpperCase()}'`);
+    const response = await sapClient.get(`${SAP_BASE_URL}/DoaChainSet?$filter=${filter}&$format=json`);
+    if (response.status < 200 || response.status >= 300) {
+      const errData = response.data;
+      const errMsg = errData?.error?.message?.value || errData?.error || errData?.d?.Message || errData?.Message || 'Failed to fetch DOA chain';
+      throw new Error(errMsg);
+    }
+    return extractSapResults(response.data) as DoaChainRow[];
+  };
+
+  const createDoaChainRow = async (row: DoaChainRow, adminPernr: string): Promise<DoaChainRow> => {
+    const postData = { ...row, Aenam: adminPernr };
+    const response = await sapClient.post(`${SAP_BASE_URL}/DoaChainSet`, postData, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    return handleSapWriteResponse(response, 'Failed to create DOA chain row') as DoaChainRow;
+  };
+
+  // PUT must resend every field (whole-row replace); key fields can't change. If SAP's gateway
+  // rejects PUT-with-key-predicates the same way it does for ClaimHeaderSet (see
+  // postClaimHeaderUpdate's comment), fall back to POST.
+  const updateDoaChainRow = async (row: DoaChainRow, adminPernr: string): Promise<DoaChainRow> => {
+    const putData = { ...row, Aenam: adminPernr };
+    const keyUrl = `DoaChainSet(DoaCtype='${row.DoaCtype}',Kostl='${row.Kostl}',Expgrp='${row.Expgrp}',AmtFrom=${row.AmtFrom.toFixed(2)}M,Seqno='${row.Seqno}')`;
+    let response = await sapClient.put(`${SAP_BASE_URL}/${keyUrl}`, putData, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (response.status === 405) {
+      response = await sapClient.post(`${SAP_BASE_URL}/DoaChainSet`, putData, {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    return handleSapWriteResponse(response, 'Failed to update DOA chain row');
+  };
+
+  // There is no real delete — "removing" an approver row means marking it inactive with a
+  // ValidTo date, per spec.
+  const deactivateDoaChainRow = async (row: DoaChainRow, adminPernr: string, validTo: string): Promise<DoaChainRow> =>
+    updateDoaChainRow({ ...row, Active: false, ValidTo: validTo }, adminPernr);
+
   // BR-018, BR-019: Retry SAP Posting — local-only, backs the debug-only errors screen.
   const retrySAPPosting = (errorId: string) => {
     setErrors((prev) => prev.map((err) => {
@@ -1107,16 +1218,14 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             return false;
           }
         } else if (roleFilter === 'manager') {
-          const userNumeric = currentUser?.employeeId?.replace(/\D/g, '').padStart(8, '0') || '';
-          const approverNumeric = (c.currentApprover || '').toString().replace(/\D/g, '').padStart(8, '0');
-
-          if (currentUser) {
-            if (approverNumeric !== userNumeric) {
-              return false;
-            }
-          }
-
-          // Manager should only see claims assigned to them with SAP status N or A
+          // Under the DOA chain, a level can have parallel approvers (rule O: any one closes it,
+          // rule A: all must approve) and SAP only ever returns ONE CurrentApprover PERNR even
+          // then - so this user can be a valid pending approver for a claim without being the
+          // single value c.currentApprover happens to hold. fetchClaims() already scopes `claims`
+          // to `LoginId eq <me>` server-side, i.e. SAP has already decided this claim is waiting
+          // on this user at their level; re-checking currentApprover here would wrongly drop
+          // exactly the parallel-approver case the DOA chain introduces. Status is still the
+          // right local check: only N/A claims are still open at some approval level.
           if (c.rawStatus !== 'N' && c.rawStatus !== 'A') return false;
         } else if (roleFilter === 'finance') {
           const userNumericF = currentUser?.employeeId?.replace(/\D/g, '').padStart(8, '0') || '';
@@ -1200,6 +1309,12 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         calculateTax,
         fetchAreas,
         rejectClaimFinance,
+        adminSearchClaims,
+        adminRejectClaim,
+        fetchDoaChain,
+        createDoaChainRow,
+        updateDoaChainRow,
+        deactivateDoaChainRow,
         retrySAPPosting,
         getClaimById,
         filterClaims,

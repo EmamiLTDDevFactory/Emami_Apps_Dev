@@ -3,7 +3,7 @@
 import React, { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { FilePlus2, LayoutDashboard, ListChecks, Wallet, FileCheck2, type LucideIcon } from 'lucide-react';
+import { FilePlus2, LayoutDashboard, ListChecks, Wallet, FileCheck2, ShieldAlert, type LucideIcon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useClaim } from '../context/ClaimContext';
 import { hasHubSession } from '../lib/hubEmailLogin';
@@ -59,6 +59,11 @@ function TabBar() {
   }
   if (activeRole === 'finance') {
     items.push({ href: '/finance/', label: 'Finance', subtitle: 'Finance & Reports', icon: Wallet, badge: financeCount, accent: '#0EA5E9' });
+  }
+  // Additive admin capability (ZEXP_ADMIN PERNR list) - independent of activeRole, so an admin
+  // who is also a manager/finance user sees this tab alongside their normal ones.
+  if (currentUser?.isAdmin) {
+    items.push({ href: '/admin/', label: 'Admin', subtitle: 'Search & DOA Chain', icon: ShieldAlert, accent: '#DC2626' });
   }
 
   // 3 tabs (employee role) already fit comfortably on one row even on a narrow phone, so they

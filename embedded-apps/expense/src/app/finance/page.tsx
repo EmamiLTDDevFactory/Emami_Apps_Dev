@@ -323,7 +323,9 @@ export default function FinancePage() {
     closeReleaseConfirm();
     const result = await releasePayment(id, taxCodeToSend || undefined, taxDescriptionToSend || undefined);
     if (!result.success) {
-      showScreenMessage(formatSapErrorMessage(result.error), 'error', 'Payment Release Failed');
+      // Shown verbatim, not reworded - if FI refuses the posting, the claim stays H and the DOA
+      // handover requires the raw FI message to reach the user unchanged.
+      showScreenMessage(result.error || 'Unknown error', 'error', 'Payment Release Failed');
       return;
     }
     await refreshHistoryStats();
@@ -591,7 +593,7 @@ export default function FinancePage() {
                     </div>
                   ) : (
                     <div className="flex gap-2">
-                      <Button variant="success" className="flex-1" icon={IndianRupee} onClick={() => handleRelease(claim.id)}>Release Payment (SAP Pay)</Button>
+                      <Button variant="success" className="flex-1" icon={IndianRupee} onClick={() => handleRelease(claim.id)}>Claim Posting</Button>
                       <Button variant="danger" className="flex-1" onClick={() => handleReject(claim.id)}>Reject Claim</Button>
                     </div>
                   )}

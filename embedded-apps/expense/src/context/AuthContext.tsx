@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { getHubEmail, loginWithHubEmail } from '../lib/hubEmailLogin';
+import { resolveIsAdmin } from '../lib/adminAccess';
 import { EmployeeProfile, UserRole } from '../types';
 
 interface AuthContextType {
@@ -146,6 +147,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           (PROFILES[role] as any).CostCenter = formattedCc;
           (PROFILES[role] as any).gst = info.GstSet || info.Gst || info.gst || (PROFILES[role] as any).gst;
         }
+        // Re-resolved on every restore rather than trusted from the persisted session - the
+        // backend flag or the local test allowlist can change between sessions.
+        (PROFILES[role] as any).isAdmin = resolveIsAdmin(info, employeeId);
         setActiveRole(role);
       } catch (error) {
         console.error('Failed to restore user session:', error);
@@ -187,6 +191,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } catch (e) {
         console.warn('Failed to map extra profile fields', e);
       }
+
+      (PROFILES[role] as any).isAdmin = resolveIsAdmin(info, employeeId);
 
       const sessionData = JSON.stringify({ role, employeeId, name, info });
       if (typeof window !== 'undefined' && window.sessionStorage) {
