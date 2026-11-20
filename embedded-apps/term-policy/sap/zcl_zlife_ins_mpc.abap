@@ -19,7 +19,7 @@ CLASS zcl_zlife_ins_mpc IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD get_last_modified.
-    CONSTANTS lc_gen_date_time TYPE timestamp VALUE '20261118200000'.
+    CONSTANTS lc_gen_date_time TYPE timestamp VALUE '20261120120000'.
     rv_last_modified = super->get_last_modified( ).
     IF rv_last_modified < lc_gen_date_time.
       rv_last_modified = lc_gen_date_time.
@@ -349,6 +349,102 @@ CLASS zcl_zlife_ins_mpc IMPLEMENTATION.
     lo_entity_set->set_subscribable( abap_false ).
     lo_entity_set->set_filter_required( abap_false ).
 
+
+    " ---- maintenance entities MaintRow / MaintCmd (zcl_ins_maint)
+    lo_entity_type = model->create_entity_type( iv_entity_type_name = 'MaintRow' iv_def_entity_set = abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Email' iv_abap_fieldname = 'EMAIL' ).
+    lo_property->set_is_key( ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 241 ).
+    lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Table' iv_abap_fieldname = 'TAB' ).
+    lo_property->set_is_key( ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 10 ).
+    lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Key1' iv_abap_fieldname = 'KEY1' ).
+    lo_property->set_is_key( ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 40 ).
+    lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Key2' iv_abap_fieldname = 'KEY2' ).
+    lo_property->set_is_key( ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 40 ).
+    lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Key3' iv_abap_fieldname = 'KEY3' ).
+    lo_property->set_is_key( ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 40 ).
+    lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Year' iv_abap_fieldname = 'YEAR' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 4 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Val1' iv_abap_fieldname = 'VAL1' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 60 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Val2' iv_abap_fieldname = 'VAL2' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 60 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Val3' iv_abap_fieldname = 'VAL3' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 60 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Val4' iv_abap_fieldname = 'VAL4' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 60 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Val5' iv_abap_fieldname = 'VAL5' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 60 ).
+    lo_entity_type->bind_structure( iv_structure_name = 'ZCL_INS_MAINT=>TS_ROW' iv_bind_conversions = abap_false ).
+    lo_entity_set = lo_entity_type->create_entity_set( 'MaintRowSet' ).
+    lo_entity_set->set_creatable( abap_false ).
+    lo_entity_set->set_updatable( abap_false ).
+    lo_entity_set->set_deletable( abap_false ).
+    lo_entity_set->set_pageable( abap_false ).
+    lo_entity_set->set_addressable( abap_true ).
+    lo_entity_set->set_has_ftxt_search( abap_false ).
+    lo_entity_set->set_subscribable( abap_false ).
+    lo_entity_set->set_filter_required( abap_false ).
+
+    lo_entity_type = model->create_entity_type( iv_entity_type_name = 'MaintCmd' iv_def_entity_set = abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Email' iv_abap_fieldname = 'EMAIL' ).
+    lo_property->set_is_key( ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 241 ).
+    lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Table' iv_abap_fieldname = 'TAB' ).
+    lo_property->set_is_key( ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 10 ).
+    lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Year' iv_abap_fieldname = 'YEAR' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 4 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'ToYear' iv_abap_fieldname = 'TOYEAR' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 4 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Action' iv_abap_fieldname = 'ACTION' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 10 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Ok' iv_abap_fieldname = 'OK' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 1 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Message' iv_abap_fieldname = 'MESSAGE' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 255 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Count' iv_abap_fieldname = 'COUNT' ).
+    lo_property->set_type_edm_int32( ).
+    lo_entity_type->bind_structure( iv_structure_name = 'ZCL_INS_MAINT=>TS_CMD' iv_bind_conversions = abap_false ).
+    lo_entity_set = lo_entity_type->create_entity_set( 'MaintCmdSet' ).
+    lo_entity_set->set_creatable( abap_true ).
+    lo_entity_set->set_updatable( abap_false ).
+    lo_entity_set->set_deletable( abap_false ).
+    lo_entity_set->set_pageable( abap_false ).
+    lo_entity_set->set_addressable( abap_true ).
+    lo_entity_set->set_has_ftxt_search( abap_false ).
+    lo_entity_set->set_subscribable( abap_false ).
+    lo_entity_set->set_filter_required( abap_false ).
+
   ENDMETHOD.
 
   METHOD define_associations.
@@ -372,6 +468,14 @@ CLASS zcl_zlife_ins_mpc IMPLEMENTATION.
     lo_entity_type = model->get_entity_type( 'LimitUpload' ).
     lo_nav = lo_entity_type->create_navigation_property( iv_property_name = 'Rows' iv_association_name = 'LimitUpload_Rows' iv_abap_fieldname = 'ROWS' ).
 
+
+    lo_association = model->create_association( iv_association_name = 'MaintCmd_Rows' iv_left_type = 'MaintCmd' iv_right_type = 'MaintRow' iv_left_card = '1' iv_right_card = 'M' iv_def_assoc_set = abap_false ).
+    lo_ref_constraint = lo_association->create_ref_constraint( ).
+    lo_ref_constraint->add_property( iv_principal_property = 'Email' iv_dependent_property = 'Email' ).
+    lo_ref_constraint->add_property( iv_principal_property = 'Table' iv_dependent_property = 'Table' ).
+    lo_assoc_set = model->create_association_set( iv_association_set_name = 'MaintCmd_Rows_AssocSet' iv_left_entity_set_name = 'MaintCmdSet' iv_right_entity_set_name = 'MaintRowSet' iv_association_name = 'MaintCmd_Rows' ).
+    lo_entity_type = model->get_entity_type( 'MaintCmd' ).
+    lo_nav = lo_entity_type->create_navigation_property( iv_property_name = 'Rows' iv_association_name = 'MaintCmd_Rows' iv_abap_fieldname = 'ROWS' ).
   ENDMETHOD.
 
   METHOD define_actions.

@@ -1,16 +1,24 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Download, Upload } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import AdminGuard from '../../components/AdminGuard';
 import Banner, { type BannerState } from '../../components/Banner';
+import MasterGrid from '../../components/MasterGrid';
+import YearBar from '../../components/YearBar';
+import { maintApi } from '../../lib/maint';
 import { api } from '../../lib/termPolicyApi';
 import { downloadLimitTemplate, parseLimitFile } from '../../lib/exportExcel';
 import type { LimitRow } from '../../types/policy';
 
 function LimitsInner() {
-  const { email } = useApp();
+  const { email, profile } = useApp();
+  const [year, setYear] = useState('');
+  const [gridKey, setGridKey] = useState(0);
+  useEffect(() => {
+    if (!year && profile?.activeYear) setYear(profile.activeYear);
+  }, [profile?.activeYear, year]);
   const [banner, setBanner] = useState<BannerState | null>(null);
   const [busy, setBusy] = useState(false);
   const [limitRows, setLimitRows] = useState<LimitRow[]>([]);
@@ -34,6 +42,7 @@ function LimitsInner() {
       const { count } = await api.saveLimits(email, limitRows);
       setBanner({ type: 'success', message: `Saved ${count} limit(s).` });
       setLimitRows([]);
+      setGridKey((k) => k + 1);
     } catch (e) {
       setBanner({ type: 'error', message: e instanceof Error ? e.message : 'Something went wrong.' });
     } finally {
@@ -58,6 +67,28 @@ function LimitsInner() {
             <button className="btn btn-primary" disabled={busy} onClick={saveLimits}>Save {limitRows.length} limit(s)</button>
           </>
         )}
+      </div>
+      <div className="mt-4">
+        <YearBar year={year} onChange={setYear} />
+        <MasterGrid
+          key={`${year}-${gridKey}`}
+          table="LIMIT"
+          title="Employee limits"
+          note="Sum-assured cap per employee and year (SAP table ZLIFE_INS_LIMIT). Search, change, add or remove single employees here; use the upload above for many."
+          year={year}
+          api={maintApi}
+          mode="diff"
+          searchable
+          cols={[
+            { field: 'key1', label: 'Employee number', type: 'number', keyCol: true, required: true, maxLength: 8, width: '35%' },
+            { field: 'val1', label: 'Limit', required: true, placeholder: 'e.g. 50 LAKHS', maxLength: 15 },
+          ]}
+          validate={(rows) => {
+            const bad = rows.find((r) => !/^\d{1,6}( LAKHS)?$/i.test(r.val1.trim()));
+            if (bad) return `Limit "${bad.val1}" for ${bad.key1} must look like 50 LAKHS.`;
+            return null;
+          }}
+        />
       </div>
     </div>
   );

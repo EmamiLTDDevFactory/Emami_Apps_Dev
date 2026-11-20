@@ -120,3 +120,11 @@ Dry run for tests: header `X-Life-Simulate: X` runs everything and rolls back on
   Basis can look up the transaction id in `/IWFND/ERROR_LOG` on NGD (for example 86E79F2A03010060E006AD53A2B9B175). Worked around with `CommandSet`.
 - `GET .../$metadata` through the Azure gateway answers 400 "System query options ... not allowed" (gateway quirk, same for Mediclaim); not needed by the app.
 - Not tested through a browser yet.
+
+## Maintenance entities (added 2026-11-20)
+
+`MaintRowSet` (GET) and `MaintCmdSet` (deep POST) serve the master tables through the shared class `ZCL_INS_MAINT` (source in `../../mediclaim/sap/`; model entities
+added by `mediclaim/sap/maint_mpc.py`, which `gen/gen.py` calls, so regenerating keeps them). Admins only. Contract and the table codes are in
+`mediclaim/sap/README.md`. Term Life codes: `SLAB` = ZLIFE_AMT (Key1 slab no, Val1 sum assured, Val2 text, Val3 premium, Val4 GST, Val5 total; Year),
+`LPERIOD` = ZLIFE_PERIOD, `LIMIT` = ZLIFE_INS_LIMIT (Key1 employee, Val1 limit; Year), `DATE` row 2 = cut-off and HR mail, `AUTH` = ZMEDI_AUTH_USERS.
+Transport: `ZCL_ZLIFE_INS_MPC/DPC` and `ZCL_INS_MAINT` are in EDSK9B0EKB.

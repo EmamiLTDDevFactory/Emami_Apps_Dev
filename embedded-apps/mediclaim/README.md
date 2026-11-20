@@ -40,6 +40,9 @@ No credentials or secrets are used or stored anywhere in this app.
 | `/admin/cutoff/` | **Cut-off date & insurer mail** (`SetCutOff`) | IsHrAdmin |
 | `/admin/blocked/` | **Blocked employees**: list, add, delete, `.xlsx` upload (col A = PERNR, col B = name; header row skipped) | IsHrAdmin |
 | `/admin/download/` | **HR download**: policies of a year (`PolicyReportSet`), location filter, preview, Excel export | IsHrAdmin |
+| `/admin/rates/` | **Premium rates**: base premium by age band and sum insured, top-up premium, per policy year; edit as a grid, copy a year to the next (ZBASE_PREMIUM, ZTOP_PREMIUM) | IsHrAdmin |
+| `/admin/periods/` | **Policy periods**: add years, choose the one active year (ZMEDI_PERIOD) | IsHrAdmin |
+| `/admin/users/` | **Authorised users**: add / change / remove users and their role E or R (ZMEDI_AUTH_USERS, shared with Term Life) | IsHrAdmin |
 
 Enrolment flow (SPEC.md 2.x): employee id + Fetch (own PERNR is fetched automatically; only auth users can type another one) ->
 eligibility result verbatim from SAP (`Reason`) -> SAP employee (read-only data) or non-SAP employee (manual fields, validated in the legacy order)
@@ -60,9 +63,10 @@ Premiums are never sent as authoritative: the client only displays what SAP retu
 | Quote | `POST QuoteSet` deep (`Members`), no persistence |
 | Submit | `POST PolicySet` deep (`Members`) |
 | Add Nominees | deep `POST /PolicySet` with the existing ReqNo: policy as read + all `Members` (SAP Gateway rejects PUT with inline Members) |
-| Delete | function import `POST DeletePolicy?ReqNo='..'&Email='..'` |
-| Cut-off | function import `POST SetCutOff?CutOffDate=datetime'..'&InsurerMail='..'&Email='..'` |
-| Blocked | `GET/POST BlockedEmployeeSet`, `DELETE BlockedEmployeeSet(EmpId,Email)` (one row per POST) |
+| Delete | `POST MaintCmdSet` Table `POLICY`, Action `DELETE`, Key1 = request number |
+| Cut-off | `POST MaintCmdSet` Table `DATE`, Key1 `1` (the gateway passes no function imports) |
+| Blocked | `GET/POST BlockedEmployeeSet` (one row per POST); remove = `POST MaintCmdSet` Table `EXCL`, Action `DELETE` |
+| Maintenance | `GET MaintRowSet`, `POST MaintCmdSet` for rates, periods, users (see `sap/README.md`) |
 | HR download | `GET PolicyReportSet?$filter=Email eq '..' and Year eq '..'` |
 
 ABAP flags are `'X'`/`''` strings, amounts `Edm.Decimal` strings, dates `/Date()/`. SAP business exceptions (`/IWBEP/CX_MGW_BUSI_EXCEPTION`)
@@ -74,6 +78,11 @@ are shown **verbatim** (`src/lib/sap.ts`, `SapError.message`). Excel/CSV cells g
   `types.ts` entity types (SAP property names), `rules.ts` client-side Web Dynpro validations and messages, `format.ts`, `exportExcel.ts`,
   `blockedUpload.ts`, `spreadsheetSafe.ts`.
 * `src/context/AppContext.tsx` loads `ContextSet`; `src/components/Shell.tsx` shows the service-unavailable state.
+
+## Maintenance
+
+Everything that was maintained in SAP tables is maintained in the app by HR admins: cut-off date and insurer mail, blocked employees, premium rates, top-up rates,
+policy periods and authorised users. SAP-side details and table codes: `sap/README.md`.
 
 ## Assumptions the SAP side should confirm
 

@@ -39,6 +39,12 @@ can reach the gateway (see `sap/README.md`).
 | `/report/` | **Insurance Report**: all policies of the year, search, Excel download, mail, delete | ADMIN |
 | `/limits/` | **Insurance Limits**: upload each employee's cap (.xlsx) | ADMIN |
 | `/mass/` | **Mass Upload**: one policy per Excel row, per-row results | ADMIN |
+| `/slabs/` | **Sum assured & premium**: slabs (sum, text, premium, GST, total) per policy year as a grid, copy a year to the next (ZLIFE_AMT) | ADMIN |
+| `/periods/` | **Policy periods**: add years, choose the one active year (ZLIFE_PERIOD) | ADMIN |
+| `/settings/` | **Cut-off date & HR mail** (ZMEDI_DATE row 2) | ADMIN |
+| `/users/` | **Authorised users**: user id and role E / R (ZMEDI_AUTH_USERS, shared with Mediclaim) | ADMIN |
+
+`/limits/` also lists the limits of a year (ZLIFE_INS_LIMIT) with search, edit, add and remove next to the Excel upload. The maintenance entries appear in the menu for ADMIN only.
 
 All five tabs are shown to everyone, like the Web Dynpro; the HR-only ones show "Not authorised" to others, and SAP refuses the calls anyway.
 A user who is not in ZMEDI_AUTH_USERS (flag E or R) is a USER: after the cut-off date in ZMEDI_DATE (slno 2) the form still loads, and clicking Submit shows SAP's "You have exceeded the permissible date limit". Submit always goes to SAP (no duplicate checks in the browser); SAP's message decides which field is highlighted.

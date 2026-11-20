@@ -21,6 +21,8 @@ CLASS zcl_zlife_ins_dpc DEFINITION PUBLIC INHERITING FROM /iwbep/cl_mgw_abs_data
     METHODS is_simulate RETURNING VALUE(rv_sim) TYPE abap_bool.
     METHODS finish
       IMPORTING iv_error TYPE string iv_simulate TYPE abap_bool RAISING /iwbep/cx_mgw_busi_exception.
+    METHODS maint_admin
+      IMPORTING iv_mail TYPE string RAISING /iwbep/cx_mgw_busi_exception.
     METHODS only_own
       IMPORTING iv_email TYPE string iv_empid TYPE string RAISING /iwbep/cx_mgw_busi_exception.
     METHODS to_policy
@@ -91,6 +93,12 @@ CLASS zcl_zlife_ins_dpc IMPLEMENTATION.
       ROLLBACK WORK.
     ELSE.
       COMMIT WORK AND WAIT.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD maint_admin.
+    IF zcl_life_ins_utils=>is_admin( zcl_life_ins_utils=>user_from_email( iv_mail ) ) = abap_false.
+      busi( iv_text = `Not Authorised` iv_status = '403' ).
     ENDIF.
   ENDMETHOD.
 
@@ -198,6 +206,19 @@ CLASS zcl_zlife_ins_dpc IMPLEMENTATION.
         ENDLOOP.
         copy_data_to_ref( EXPORTING is_data = lt_nom CHANGING cr_data = er_entityset ).
 
+      WHEN 'MaintRowSet'.
+        maint_admin( lv_mail ).
+        TRY.
+            DATA(lt_mrow) = zcl_ins_maint=>list( iv_tab  = filter_value( it_filter = it_filter_select_options iv_name = 'Table' )
+                                                 iv_year = filter_value( it_filter = it_filter_select_options iv_name = 'Year' ) ).
+          CATCH zcx_medi_error INTO DATA(lx_m).
+            busi( lx_m->mv_text ).
+        ENDTRY.
+        LOOP AT lt_mrow ASSIGNING FIELD-SYMBOL(<mr>).
+          <mr>-email = lv_mail.
+        ENDLOOP.
+        copy_data_to_ref( EXPORTING is_data = lt_mrow CHANGING cr_data = er_entityset ).
+
       WHEN OTHERS.
         super->/iwbep/if_mgw_appl_srv_runtime~get_entityset(
           EXPORTING iv_entity_name = iv_entity_name iv_entity_set_name = iv_entity_set_name iv_source_name = iv_source_name
@@ -246,6 +267,24 @@ CLASS zcl_zlife_ins_dpc IMPLEMENTATION.
         finish( iv_error = lv_err iv_simulate = is_simulate( ) ).
         ls_ldeep-count = lv_count.
         copy_data_to_ref( EXPORTING is_data = ls_ldeep CHANGING cr_data = er_deep_entity ).
+
+      WHEN 'MaintCmdSet'.
+        DATA ls_mdeep TYPE zcl_ins_maint=>ts_cmd_deep.
+        DATA lv_merr TYPE string.
+        io_data_provider->read_entry_data( IMPORTING es_data = ls_mdeep ).
+        IF ls_mdeep-email IS INITIAL.
+          busi( `Email is mandatory (every request carries the login email).` ).
+        ENDIF.
+        maint_admin( CONV #( ls_mdeep-email ) ).
+        TRY.
+            ls_mdeep-count = zcl_ins_maint=>apply( is_cmd = CORRESPONDING #( ls_mdeep ) it_rows = ls_mdeep-rows ).
+          CATCH zcx_medi_error INTO DATA(lx_mc).
+            lv_merr = lx_mc->mv_text.
+        ENDTRY.
+        finish( iv_error = lv_merr iv_simulate = is_simulate( ) ).
+        ls_mdeep-ok = 'X'.
+        CLEAR ls_mdeep-rows.
+        copy_data_to_ref( EXPORTING is_data = ls_mdeep CHANGING cr_data = er_deep_entity ).
 
       WHEN OTHERS.
         super->/iwbep/if_mgw_appl_srv_runtime~create_deep_entity(

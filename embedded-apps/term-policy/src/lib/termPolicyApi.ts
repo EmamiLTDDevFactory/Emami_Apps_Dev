@@ -48,6 +48,7 @@ function sapError(status: number, text: string): TermPolicyError {
   return new TermPolicyError(message || `SAP returned HTTP ${status}`, status || 502);
 }
 
+export const sapCall = (...a: Parameters<typeof call>) => call(...a);
 async function call(method: 'GET' | 'POST', path: string, params: Record<string, string> = {}, body?: unknown): Promise<any> {
   // $format=json is not allowed on an entity-create POST (SAP answers 400); the Accept header asks for JSON on every call
   const qs = Object.entries(method === 'GET' ? { ...params, $format: 'json' } : params)

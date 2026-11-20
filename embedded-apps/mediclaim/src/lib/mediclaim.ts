@@ -7,8 +7,9 @@
  * are Edm.Decimal strings, dates /Date()/. Premiums are never sent as authoritative: SAP recomputes everything.
  */
 import { getHubEmail } from './hubEmailLogin';
-import { dec, eq, flag, fromSapDate, isX, num, odataKey, str, toSapDate, toSapDateLiteral } from './format';
-import { navResults, plainEntity, sapCreate, sapDelete, sapFunction, sapGet, sapList, SapError } from './sap';
+import { dec, eq, flag, fromSapDate, isX, num, str, toSapDate } from './format';
+import { blankRow, maintApi } from './maint';
+import { navResults, plainEntity, sapCreate, sapGet, sapList, SapError } from './sap';
 import type {
   BlockedEmployee, Employee, MediclaimContext, MemberInput, NonSapSelf, Policy, PolicyMember, PolicyReportRow, QuoteInput, QuoteResult,
   SubmitInput, SumInsuredOption, TopUpOption,
@@ -337,16 +338,18 @@ export async function addNominees(policy: Policy, existing: PolicyMember[], adde
   return getPolicy(policy.ReqNo);
 }
 
-/** DeletePolicy(ReqNo, Email): HR admin only, active year only (SAP enforces and answers with the legacy texts). */
-export async function deletePolicy(reqNo: string): Promise<Policy> {
-  return mapPolicy(await sapFunction<any>('DeletePolicy', { ReqNo: odataKey(reqNo), Email: odataKey(email()) }));
+/**
+ * Delete a policy: HR admin only, active year only (SAP enforces and answers with the legacy texts). It is a MaintCmdSet create
+ * (Table POLICY, Action DELETE, Key1 = request number) because the Azure gateway passes no function imports.
+ */
+export async function deletePolicy(reqNo: string): Promise<void> {
+  await maintApi.apply('POLICY', 'DELETE', [{ ...blankRow(), key1: reqNo.trim() }]);
 }
 
-/** SetCutOff(CutOffDate, InsurerMail, Email): HR admin only. Returns the new context. */
+/** Cut-off date and insurer mail (ZMEDI_DATE row 1): HR admin only. Returns the new context. */
 export async function setCutOff(cutOffDate: string, insurerMail: string): Promise<MediclaimContext> {
-  return mapContext(
-    await sapFunction<any>('SetCutOff', { CutOffDate: toSapDateLiteral(cutOffDate), InsurerMail: odataKey(insurerMail.trim().toLowerCase()), Email: odataKey(email()) })
-  );
+  await maintApi.apply('DATE', 'SAVE', [{ ...blankRow(), key1: '1', val1: cutOffDate, val2: insurerMail.trim().toLowerCase() }]);
+  return getContext();
 }
 
 /* ------------------------------- blocked employees ------------------------------- */
@@ -363,9 +366,9 @@ export async function addBlocked(empId: string, name: string): Promise<BlockedEm
   return mapBlocked(await sapCreate('BlockedEmployeeSet', { EmpId: padPernr(empId), Name: name.trim(), Email: email() }));
 }
 
-/** DELETE - the Azure gateway had no DELETE route for the other apps; SapError GATEWAY_UNSUPPORTED if it still has none. */
+/** Remove from the block list: a MaintCmdSet create (Table EXCL), because the Azure gateway has no DELETE route. */
 export async function removeBlocked(empId: string): Promise<void> {
-  await sapDelete('BlockedEmployeeSet', { EmpId: padPernr(empId), Email: email() });
+  await maintApi.apply('EXCL', 'DELETE', [{ ...blankRow(), key1: padPernr(empId) }]);
 }
 
 /** PERNR_D is NUMC 8. */

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ShieldCheck, Search, BarChart3, Gauge, Upload, ArrowLeft, X } from 'lucide-react';
+import { ShieldCheck, Search, BarChart3, Gauge, Upload, IndianRupee, CalendarRange, CalendarClock, Users, ArrowLeft, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { nameFromEmail } from '../lib/hubEmailLogin';
 import { goBack } from '../lib/goBack';
@@ -22,6 +22,13 @@ const NAV_ITEMS = [
   { href: '/limits/', label: 'Insurance Limits', icon: Gauge },
   { href: '/mass/', label: 'Mass Upload', icon: Upload },
 ];
+// Maintenance of the SAP master tables (administrators only)
+const ADMIN_NAV_ITEMS = [
+  { href: '/slabs/', label: 'Sum assured & premium', icon: IndianRupee },
+  { href: '/periods/', label: 'Policy periods', icon: CalendarRange },
+  { href: '/settings/', label: 'Cut-off date & HR mail', icon: CalendarClock },
+  { href: '/users/', label: 'Authorised users', icon: Users },
+];
 
 export default function SidePane({
   isOpen,
@@ -33,8 +40,8 @@ export default function SidePane({
   isWideScreen: boolean;
 }) {
   const pathname = usePathname();
-  const { email } = useApp();
-  const items = NAV_ITEMS;
+  const { email, isAdmin } = useApp();
+  const items = isAdmin ? [...NAV_ITEMS, ...ADMIN_NAV_ITEMS] : NAV_ITEMS;
 
   const paneClasses = isWideScreen
     ? 'relative w-56 shrink-0'

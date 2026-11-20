@@ -66,5 +66,7 @@ for (n,rt,rs,ps) in ACT:
         m+=["    lo_parameter = lo_action->create_input_parameter( iv_parameter_name = '%s' iv_abap_fieldname = '%s' )."%(pn,pf.upper()),'    lo_parameter->/iwbep/if_mgw_odata_property~set_type_edm_string( ).','    lo_parameter->set_maxlength( iv_max_length = %d ).'%ln]
     m.append('')
 m+=['  ENDMETHOD.','ENDCLASS.','']
-open(OUT+'zcl_zlife_ins_mpc.abap','w').write('\n'.join(m))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),'..','..','..','mediclaim','sap'))
+import maint_mpc   # adds MaintRow / MaintCmd (shared with Mediclaim, class ZCL_INS_MAINT)
+open(OUT+'zcl_zlife_ins_mpc.abap','w').write(maint_mpc.splice('\n'.join(m),'20261120120000'))
 print('ok',len(m))
