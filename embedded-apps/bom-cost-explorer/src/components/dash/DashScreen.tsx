@@ -18,10 +18,10 @@ import BreakupView from './BreakupView';
 import type { MisRow } from '@/lib/dash/types';
 import { ls } from '@/lib/client/storage';
 
-type Tab = 'mis' | 'sales' | 'cost' | 'margin' | 'proj' | 'budget' | 'ai';
+type Tab = 'mis' | 'sales' | 'cost' | 'margin' | 'budget' | 'ai';
 const TABS: { id: Tab; label: string }[] = [
   { id: 'mis', label: 'MIS' }, { id: 'sales', label: 'Sales view' }, { id: 'cost', label: 'Cost breakup' }, { id: 'margin', label: 'Margin' },
-  { id: 'proj', label: 'Projection' }, { id: 'budget', label: 'Budget & rates' }, { id: 'ai', label: 'AI insights' },
+  { id: 'budget', label: 'Budget & rates' }, { id: 'ai', label: 'AI insights' },
 ];
 
 export default function DashScreen() {
@@ -111,9 +111,6 @@ export default function DashScreen() {
               <p className="mt-1 text-muted">The Sales view colours each SKU's gross margin % with the bands in SAP table ZMIS_ALERT_THR (metric GM, one row per material group; a blank group is the default, now red below 18 %, amber below 22 %). Change the rows there; no release is needed.</p>
             </Card>
           </>
-        )}
-        {tab === 'proj' && (
-          <NeedsSap title="3-month projection on three rate bases (CPD rate, latest actual, open PO)" object="ZCL_COGM_PROJECTION" why="The forward-looking COGM and margin engine does not exist in SAP yet." links={[{ href: '/plan/', label: 'Production plans (breakup and cost)' }]} />
         )}
         {tab === 'budget' && (
           <Card className="p-4 text-sm">
