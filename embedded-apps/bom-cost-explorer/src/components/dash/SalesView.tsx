@@ -55,7 +55,7 @@ export default function SalesView() {
   const all = useMemo(() => (rows ? salesViews(rows, bands) : []), [rows, bands]);
   const steps = useMemo(() => (pvm ? pvmSteps(pvm) : []), [pvm]);
   const brands = useMemo(() => brandSales(all), [all]);
-  const skus = useMemo(() => skuSales(all), [all]);
+  const skus = useMemo(() => skuSales(all).sort((a, b) => b.nsv.comparedTo(a.nsv)), [all]);
   const tot = useMemo(() => salesTotals(brands), [brands]);
   const channels = useMemo(() => Array.from(new Set(skus.map((s) => s.channel))).sort(), [skus]);
   const shownSkus = useMemo(() => skus.filter((s) => (!brand || s.brand === brand) && (!channel || s.channel === channel)), [skus, brand, channel]);
@@ -111,21 +111,21 @@ function BrandTable({ rows, tot }: { rows: Row[]; tot: ReturnType<typeof salesTo
     <div className="overflow-x-auto rounded-2xl border border-line bg-panel shadow-card">
       <table className="w-full min-w-[960px] border-collapse">
         <thead><tr>
-          <th className={cx(thCls, 'text-left')}>Brand</th><th className={thCls}>Sold qty (L pc)</th><th className={thCls}>GSV (L)</th><th className={thCls}>Deductions (L)</th><th className={thCls}>NSV (L)</th>
+          <th className={cx(thCls, 'text-left')}>Brand</th><th className={thCls}>Sold qty (pc)</th><th className={thCls}>GSV (L)</th><th className={thCls}>Deductions (L)</th><th className={thCls}>NSV (L)</th>
           <th className={thCls}>COGM (L)</th><th className={thCls}>Gross margin (L)</th><th className={thCls}>GM %</th><th className={cx(thCls, 'text-left')}>Note</th>
         </tr></thead>
         <tbody>
           {rows.map((b) => (
             <tr key={b.brand || '-'} className="border-t border-line/60">
               <td className="px-2.5 py-1.5 text-left text-xs font-bold">{b.brand || '(none)'}</td>
-              <td className={tdCls}>{lakh(b.soldQty, 2)}</td><td className={tdCls}>{lakh(b.gsv)}</td><td className={tdCls}>{lakh(b.deductions)}</td><td className={tdCls}>{lakh(b.nsv)}</td>
+              <td className={tdCls}>{money(b.soldQty, 0)}</td><td className={tdCls}>{lakh(b.gsv)}</td><td className={tdCls}>{lakh(b.deductions)}</td><td className={tdCls}>{lakh(b.nsv)}</td>
               <td className={tdCls}>{lakh(b.cogm)}</td><td className={tdCls}>{lakh(b.gm)}</td><td className={cx(tdCls, 'font-bold', BAND[b.band])}>{pct(b.gmPct)}</td>
               <td className="px-2.5 py-1.5 text-left text-2xs text-muted">{b.msg}</td>
             </tr>
           ))}
         </tbody>
         <tfoot><tr className="border-t border-line font-extrabold">
-          <td className="px-2.5 py-1.5 text-left text-xs">All brands</td><td className={tdCls}>{lakh(tot.soldQty, 2)}</td><td className={tdCls}>{lakh(tot.gsv)}</td><td className={tdCls}>{lakh(tot.deductions)}</td><td className={tdCls}>{lakh(tot.nsv)}</td>
+          <td className="px-2.5 py-1.5 text-left text-xs">All brands</td><td className={tdCls}>{money(tot.soldQty, 0)}</td><td className={tdCls}>{lakh(tot.gsv)}</td><td className={tdCls}>{lakh(tot.deductions)}</td><td className={tdCls}>{lakh(tot.nsv)}</td>
           <td className={tdCls}>{lakh(tot.cogm)}</td><td className={tdCls}>{lakh(tot.gm)}</td><td className={tdCls}>{pct(tot.gmPct)}</td><td />
         </tr></tfoot>
       </table>
@@ -139,7 +139,7 @@ function SkuTable({ rows }: { rows: Row[] }) {
     <div className="max-h-[60vh] overflow-auto rounded-xl border border-line">
       <table className="w-full min-w-[980px] border-collapse">
         <thead className="sticky top-0"><tr>
-          <th className={cx(thCls, 'text-left')}>SKU</th><th className={cx(thCls, 'text-left')}>Brand</th><th className={cx(thCls, 'text-left')}>Channel</th><th className={thCls}>Sold qty (L pc)</th>
+          <th className={cx(thCls, 'text-left')}>SKU</th><th className={cx(thCls, 'text-left')}>Brand</th><th className={cx(thCls, 'text-left')}>Channel</th><th className={thCls}>Sold qty (pc)</th>
           <th className={thCls}>Net realization / pc</th><th className={thCls}>COGM / pc</th><th className={thCls}>GM / pc</th><th className={thCls}>GM %</th><th className={thCls}>Alert</th>
         </tr></thead>
         <tbody>
@@ -147,7 +147,7 @@ function SkuTable({ rows }: { rows: Row[] }) {
             <tr key={`${s.matnr}|${s.vtweg}`} className="border-t border-line/60">
               <td className="px-2.5 py-1.5 text-left text-xs"><span className="font-bold">{s.matnr.replace(/^0+/, '')}</span> <span className="text-muted" title={s.maktx}>{s.maktx}</span></td>
               <td className="px-2.5 py-1.5 text-left text-xs">{s.brand || '(none)'}</td><td className="px-2.5 py-1.5 text-left text-xs">{s.channel}</td>
-              <td className={tdCls}>{lakh(s.soldQty, 2)}</td><td className={tdCls}>{money(s.netRealPc)}</td><td className={tdCls}>{money(s.cogmPc)}</td><td className={tdCls}>{money(s.gmPc)}</td>
+              <td className={tdCls}>{money(s.soldQty, 0)}</td><td className={tdCls}>{money(s.netRealPc)}</td><td className={tdCls}>{money(s.cogmPc)}</td><td className={tdCls}>{money(s.gmPc)}</td>
               <td className={cx(tdCls, 'font-bold', BAND[s.band])}>{pct(s.gmPct)}</td>
               <td className={tdCls}><span className={cx('rounded-full px-2 py-0.5 text-2xs font-bold', PILL[s.band])}>{ALERT[s.band]}</span></td>
             </tr>

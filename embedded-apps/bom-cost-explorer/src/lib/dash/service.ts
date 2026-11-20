@@ -1,7 +1,7 @@
 import { odataDate, odataString } from '../sap/filter';
 import { readSet, type Read } from '../price-context/odata';
-import { DASH_FILTER as F, DASH_MARGIN_FIELDS, DASH_MARGIN_FILTER as MF, DASH_MARGIN_SET, DASH_MIS_FIELDS, DASH_PVM_FIELDS, DASH_PVM_SET, DASH_SALES_FIELDS, DASH_SALES_SET, DASH_SET, DASH_THRESH_FIELDS, DASH_THRESH_SET } from './fields';
-import type { MarginRow, MisRow, PvmRow, SalesRow, ThreshRow } from './types';
+import { DASH_FILTER as F, DASH_CDRILL_FIELDS, DASH_CDRILL_SET, DASH_MARGIN_FIELDS, DASH_MARGIN_FILTER as MF, DASH_MARGIN_SET, DASH_MIS_FIELDS, DASH_PVM_FIELDS, DASH_PVM_SET, DASH_SALES_FIELDS, DASH_SALES_SET, DASH_SET, DASH_THRESH_FIELDS, DASH_THRESH_SET } from './fields';
+import type { CdrillRow, MarginRow, MisRow, PvmRow, SalesRow, ThreshRow } from './types';
 
 const NONE: ReadonlySet<string> = new Set();
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -56,3 +56,15 @@ export function buildMarginFilter(sel: MarginSel, dateFrom: string, dateTo: stri
 
 export const fetchMargin = (sel: MarginSel, dateFrom: string, dateTo: string, signal?: AbortSignal): Promise<Read<MarginRow>> =>
   readSet<MarginRow>(DASH_MARGIN_SET, DASH_MARGIN_FIELDS, NONE, buildMarginFilter(sel, dateFrom, dateTo), signal);
+
+/** $filter of the cost drill-down of ONE material: its number plus the selection of the Margin report (plant, sales org, channel, invoice) and the period. */
+export function buildCdrillFilter(matnr: string, sel: MarginSel, dateFrom: string, dateTo: string): string {
+  const m = matnr.trim().replace(/^0+/, '');
+  if (!/^\d{1,18}$/.test(m)) throw new Error('A material number is needed.');
+  const plants = uniq(sel.plants), vkorg = uniq(sel.vkorg), vtweg = uniq(sel.vtweg), vbeln = uniq(sel.vbeln);
+  if (!DAY.test(dateFrom) || !DAY.test(dateTo)) throw new Error('Enter both dates.');
+  const parts = [`Matnr eq ${odataString(m)}`, anyOf(F.Werks, plants), anyOf(MF.Vkorg, vkorg), anyOf(MF.Vtweg, vtweg), anyOf(MF.Vbeln, vbeln), `DateFrom eq ${odataDate(dateFrom)}`, `${F.DateTo} eq ${odataDate(dateTo)}`];
+  return parts.filter(Boolean).join(' and ');
+}
+export const fetchCdrill = (matnr: string, sel: MarginSel, dateFrom: string, dateTo: string, signal?: AbortSignal): Promise<Read<CdrillRow>> =>
+  readSet<CdrillRow>(DASH_CDRILL_SET, DASH_CDRILL_FIELDS, NONE, buildCdrillFilter(matnr, sel, dateFrom, dateTo), signal);

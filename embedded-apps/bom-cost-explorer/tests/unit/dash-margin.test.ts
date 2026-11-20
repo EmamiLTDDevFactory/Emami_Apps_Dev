@@ -67,3 +67,27 @@ describe('margin selection filter', () => {
     expect(() => buildMarginFilter({ ...sel, plants: ['AB'] }, '2025-04-01', '2025-06-30')).toThrow();
   });
 });
+
+import { parseCdrill } from '@/lib/dash/cdrill';
+import { buildCdrillFilter } from '@/lib/dash/service';
+import type { CdrillRow } from '@/lib/dash/types';
+const cr = (o: Partial<CdrillRow>): CdrillRow => ({ Grain: 'C', Matnr: '400', Charg: '', Idnrk: '', Maktx: '', Mtart: 'ROH', Matkl: '', Cat: 'R', Meins: 'KG', Flag: '', Msg: '', Orders: 0, SoldQty: '0', ProdQty: '0', Qty: '0', Val: '0', AvgQtyPc: '0', AvgCostPc: '0', RmPc: '0', PmPc: '0', PfPc: '0', OthPc: '0', ...o });
+describe('cost drill-down', () => {
+  it('groups components by category with shares, batches NBC last', () => {
+    const p = parseCdrill([
+      cr({ Grain: 'S', RmPc: '3', PmPc: '2', PfPc: '1', SoldQty: '100', Orders: 2, Flag: 'OK' }),
+      cr({ Grain: 'B', Charg: 'N1', Flag: 'NBC', SoldQty: '500' }), cr({ Grain: 'B', Charg: 'B1', Flag: 'OK', SoldQty: '100', ProdQty: '100', Orders: 2 }),
+      cr({ Idnrk: '1', Cat: 'R', AvgCostPc: '1' }), cr({ Idnrk: '2', Cat: 'R', AvgCostPc: '3' }), cr({ Idnrk: '3', Cat: 'P', Mtart: 'VERP', AvgCostPc: '2' }), cr({ Idnrk: '4', Cat: 'F', AvgCostPc: '1' }),
+    ]);
+    expect(p.summary!.total.toNumber()).toBe(6);
+    expect(p.batches.map((b) => b.charg)).toEqual(['B1', 'N1']);
+    expect(p.costed).toBe(1); expect(p.notCosted).toBe(1);
+    expect(p.comps.R.map((c) => c.matnr)).toEqual(['2', '1']);
+    expect(p.comps.R[0].share!.toNumber()).toBe(75);
+  });
+  it('filter: material plus the report selection', () => {
+    const f = buildCdrillFilter('000000000400002034', { plants: ['dp01'], vkorg: [], vtweg: ['10'], crssku: [], vbeln: [] }, '2025-04-01', '2025-06-30');
+    expect(f).toContain("Matnr eq '400002034'"); expect(f).toContain("Werks eq 'DP01'"); expect(f).toContain("Vtweg eq '10'");
+    expect(() => buildCdrillFilter('', { plants: [], vkorg: [], vtweg: [], crssku: [], vbeln: [] }, '2025-04-01', '2025-06-30')).toThrow();
+  });
+});
