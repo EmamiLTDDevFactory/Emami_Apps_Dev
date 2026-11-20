@@ -38,3 +38,5 @@ Invoiced sales of finished goods (MARA-MTART FERT), INR invoices only, billing i
 - Grain S = SKU, C = customer, B = brand (billing item, INR, vbtyp M/P/S +, N/O -). "As per current COGM" is NOT read in SAP: the front end loads the business data set (CSV, per piece by SKU).
 - Gotcha: a SORTED TABLE row cannot go to a CHANGING parameter (write-protected): copy it, change, MODIFY TABLE.
 - Test class ZCL_TMP_MGN_T in $TMP (classrun) can be deleted.
+- Selection (request EDSK9B0EN5): filter properties Werks, Vkorg (VBRK-VKORG), Vtweg (VBRK-VTWEG), Crssku (MARA-ZSKUGRCODECRS), Vbeln (invoice), DateFrom, DateTo. Empty = all; at least one of plant, sales org, CRSSKU or invoice; the date range always applies. Fields vkorg, vtweg, vbeln were added to ZDASH_S_MARGIN (filter use only, blank in rows).
+- Cost conditions (ZRMP, ZPMP, ZPFP, ZOHP and the scheme ones) are summed as ABS( KWERT ) per item, then signed only by billing category, so COGS is a positive amount on a sale whatever sign the condition has. Price conditions (ZP12, MRP, margins, GST) stay as stored.

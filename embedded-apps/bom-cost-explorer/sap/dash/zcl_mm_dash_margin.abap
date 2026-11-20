@@ -8,7 +8,16 @@ CLASS zcl_mm_dash_margin DEFINITION PUBLIC FINAL CREATE PUBLIC.
     "  Sold qty in the base unit; invoice (M) and debit memo (P) +, cancellation (N), credit memo (O) -, cancellation of credit memo (S) +
     "  Budget cost per piece: ZMM_FBUDCOST_SUM, latest approved VERSION of the financial year (of the to date), key CRSSKU + business vertical + scheme (MARA), FERT; none = flag NBC
     "  Grain S = SKU, C = customer, B = brand.   "As per current COGM" is not read here: it comes from the data set the business supplies.
-    METHODS constructor IMPORTING is_par TYPE zif_mm_wac_types=>ty_par.
+    TYPES: ty_r_vkorg  TYPE RANGE OF vkorg,
+           ty_r_vtweg  TYPE RANGE OF vtweg,
+           ty_r_crssku TYPE RANGE OF zskugrcodecrs,
+           ty_r_vbeln  TYPE RANGE OF vbeln_vf.
+    "Selection: plants (is_par-werks), sales organisation, distribution channel, CRSSKU and invoice number; an empty range means all. The date range always applies.
+    METHODS constructor IMPORTING is_par TYPE zif_mm_wac_types=>ty_par
+                                  it_vkorg  TYPE ty_r_vkorg  OPTIONAL
+                                  it_vtweg  TYPE ty_r_vtweg  OPTIONAL
+                                  it_crssku TYPE ty_r_crssku OPTIONAL
+                                  it_vbeln  TYPE ty_r_vbeln  OPTIONAL.
     METHODS run RETURNING VALUE(rt_margin) TYPE tt_margin.
   PRIVATE SECTION.
     TYPES: BEGIN OF ty_k,
@@ -38,6 +47,10 @@ CLASS zcl_mm_dash_margin DEFINITION PUBLIC FINAL CREATE PUBLIC.
              tot     TYPE decfloat34,   "overhead = MACHINE + LABOUR + POWER + STEAM + LABOUR3P
            END OF ty_bud.
     DATA ms_par TYPE zif_mm_wac_types=>ty_par.
+    DATA: mr_vkorg  TYPE ty_r_vkorg,
+          mr_vtweg  TYPE ty_r_vtweg,
+          mr_crssku TYPE ty_r_crssku,
+          mr_vbeln  TYPE ty_r_vbeln.
     METHODS add_cond IMPORTING iv_kschl TYPE kschl iv_val TYPE decfloat34 CHANGING cs TYPE zdash_s_margin.
     METHODS add_row  IMPORTING is_from TYPE zdash_s_margin CHANGING cs_to TYPE zdash_s_margin.
 ENDCLASS.
@@ -47,6 +60,8 @@ CLASS zcl_mm_dash_margin IMPLEMENTATION.
 
   METHOD constructor.
     ms_par = is_par.
+    mr_vbeln = it_vbeln.
+    mr_vkorg = it_vkorg. mr_vtweg = it_vtweg. mr_crssku = it_crssku.
     IF ms_par-date_to IS INITIAL. ms_par-date_to = sy-datum. ENDIF.
     IF ms_par-date_from IS INITIAL.
       ms_par-date_from = ms_par-date_to.
@@ -122,6 +137,10 @@ CLASS zcl_mm_dash_margin IMPLEMENTATION.
         AND h~vbtyp IN ( 'M', 'N', 'O', 'P', 'S' )
         AND h~waerk = 'INR'
         AND p~werks IN @ms_par-werks
+        AND h~vbeln IN @mr_vbeln
+        AND h~vkorg IN @mr_vkorg
+        AND h~vtweg IN @mr_vtweg
+        AND m~zskugrcodecrs IN @mr_crssku
         AND p~umvkn > 0
         AND m~mtart = 'FERT'
       GROUP BY p~matnr, h~kunag, h~vbtyp, p~umvkz, p~umvkn
@@ -129,6 +148,7 @@ CLASS zcl_mm_dash_margin IMPLEMENTATION.
     IF lt_q IS INITIAL. RETURN. ENDIF.
 
     " ---- conditions of the same items, one row per condition type (the inactive flag is ignored on purpose: the cost conditions carry it)
+    " ---- price conditions, signed as stored (the inactive flag is ignored on purpose: the cost conditions carry it)
     SELECT p~matnr AS matnr, h~kunag AS kunag, h~vbtyp AS vbtyp, k~kschl AS kschl, SUM( k~kwert ) AS kwert
       FROM vbrk AS h
         INNER JOIN vbrp AS p ON p~vbeln = h~vbeln
@@ -138,11 +158,32 @@ CLASS zcl_mm_dash_margin IMPLEMENTATION.
         AND h~vbtyp IN ( 'M', 'N', 'O', 'P', 'S' )
         AND h~waerk = 'INR'
         AND p~werks IN @ms_par-werks
+        AND h~vbeln IN @mr_vbeln
+        AND h~vkorg IN @mr_vkorg
+        AND h~vtweg IN @mr_vtweg
+        AND m~zskugrcodecrs IN @mr_crssku
         AND m~mtart = 'FERT'
-        AND k~kschl IN ( 'ZP12', 'ZMRP', 'ZNMR', 'ZREM', 'ZTDP', 'ZDIM', 'ZTDM', 'ZSSM', 'ZTSM', 'JOIG', 'JOCG', 'JOSG',
-                         'ZRMP', 'ZPMP', 'ZPFP', 'ZOHP', 'ZRSP', 'ZPSP', 'ZFCP', 'ZOSP', 'ZRTS', 'ZPTP', 'ZFTS', 'ZOTP' )
+        AND k~kschl IN ( 'ZP12', 'ZMRP', 'ZNMR', 'ZREM', 'ZTDP', 'ZDIM', 'ZTDM', 'ZSSM', 'ZTSM', 'JOIG', 'JOCG', 'JOSG' )
       GROUP BY p~matnr, h~kunag, h~vbtyp, k~kschl
       INTO TABLE @lt_k.
+    " ---- cost conditions: always a POSITIVE amount per item (ABS), signed only by the billing category below; so COGS never turns negative on a sale
+    SELECT p~matnr AS matnr, h~kunag AS kunag, h~vbtyp AS vbtyp, k~kschl AS kschl, SUM( ABS( k~kwert ) ) AS kwert
+      FROM vbrk AS h
+        INNER JOIN vbrp AS p ON p~vbeln = h~vbeln
+        INNER JOIN mara AS m ON m~matnr = p~matnr
+        INNER JOIN konv AS k ON k~knumv = h~knumv AND k~kposn = p~posnr
+      WHERE h~fkdat BETWEEN @ms_par-date_from AND @ms_par-date_to
+        AND h~vbtyp IN ( 'M', 'N', 'O', 'P', 'S' )
+        AND h~waerk = 'INR'
+        AND p~werks IN @ms_par-werks
+        AND h~vbeln IN @mr_vbeln
+        AND h~vkorg IN @mr_vkorg
+        AND h~vtweg IN @mr_vtweg
+        AND m~zskugrcodecrs IN @mr_crssku
+        AND m~mtart = 'FERT'
+        AND k~kschl IN ( 'ZRMP', 'ZPMP', 'ZPFP', 'ZOHP', 'ZRSP', 'ZPSP', 'ZFCP', 'ZOSP', 'ZRTS', 'ZPTP', 'ZFTS', 'ZOTP' )
+      GROUP BY p~matnr, h~kunag, h~vbtyp, k~kschl
+      APPENDING TABLE @lt_k.
 
     " ---- SKU x customer detail
     LOOP AT lt_q ASSIGNING FIELD-SYMBOL(<q>).

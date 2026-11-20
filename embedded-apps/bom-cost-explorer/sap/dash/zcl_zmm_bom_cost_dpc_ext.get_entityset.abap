@@ -31,17 +31,39 @@
       RETURN.
     ENDIF.
     ls_par = wac_par( io_tech_request_context->get_filter( )->get_filter_select_options( ) ).
-    IF ls_par-werks IS INITIAL.
-      raise_busi( 'Select at least one plant' ).
-    ENDIF.
     IF iv_entity_set_name = 'DashMarginSet'.
+      DATA: lr_vkorg  TYPE zcl_mm_dash_margin=>ty_r_vkorg,
+            lr_vtweg  TYPE zcl_mm_dash_margin=>ty_r_vtweg,
+            lr_crssku TYPE zcl_mm_dash_margin=>ty_r_crssku,
+            lr_vbeln  TYPE zcl_mm_dash_margin=>ty_r_vbeln.
+      LOOP AT io_tech_request_context->get_filter( )->get_filter_select_options( ) INTO DATA(ls_mf).
+        CHECK lines( ls_mf-select_options ) > 0.
+        DATA(lv_mp) = to_upper( CONV string( ls_mf-property ) ).
+        REPLACE ALL OCCURRENCES OF '_' IN lv_mp WITH ''.
+        CASE lv_mp.
+          WHEN 'VKORG'.  lr_vkorg  = CORRESPONDING #( ls_mf-select_options ).
+          WHEN 'VTWEG'.  lr_vtweg  = CORRESPONDING #( ls_mf-select_options ).
+          WHEN 'CRSSKU'. lr_crssku = CORRESPONDING #( ls_mf-select_options ).
+          WHEN 'VBELN'.  lr_vbeln  = CORRESPONDING #( ls_mf-select_options ).
+        ENDCASE.
+      ENDLOOP.
+      LOOP AT lr_vbeln ASSIGNING FIELD-SYMBOL(<mv>).
+        <mv>-low = |{ <mv>-low ALPHA = IN }|.
+        IF <mv>-high IS NOT INITIAL. <mv>-high = |{ <mv>-high ALPHA = IN }|. ENDIF.
+      ENDLOOP.
+      IF ls_par-werks IS INITIAL AND lr_vkorg IS INITIAL AND lr_crssku IS INITIAL AND lr_vbeln IS INITIAL.
+        raise_busi( 'Select a plant, a sales organisation, a CRSSKU or an invoice number' ).
+      ENDIF.
       TRY.
-          lt_mgn = NEW zcl_mm_dash_margin( ls_par )->run( ).
+          lt_mgn = NEW zcl_mm_dash_margin( is_par = ls_par it_vkorg = lr_vkorg it_vtweg = lr_vtweg it_crssku = lr_crssku it_vbeln = lr_vbeln )->run( ).
         CATCH cx_root INTO DATA(lx4).
           raise_busi( |Margin analysis failed: { lx4->get_text( ) }| ).
       ENDTRY.
       copy_data_to_ref( EXPORTING is_data = lt_mgn CHANGING cr_data = er_entityset ).
       RETURN.
+    ENDIF.
+    IF ls_par-werks IS INITIAL.
+      raise_busi( 'Select at least one plant' ).
     ENDIF.
     IF iv_entity_set_name = 'DashPvmSet'.
       TRY.

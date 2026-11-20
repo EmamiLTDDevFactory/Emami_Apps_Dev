@@ -24,6 +24,10 @@ const gmTone = (p: Result['gmPct']) => (p === null ? 'text-muted' : p.lt(0) ? 't
 
 export default function MarginView() {
   const [plants, setPlants] = useState('');
+  const [vkorg, setVkorg] = useState('');
+  const [vtweg, setVtweg] = useState('');
+  const [crssku, setCrssku] = useState('');
+  const [vbeln, setVbeln] = useState('');
   const [from, setFrom] = useState(fyStart(today()));
   const [to, setTo] = useState(today());
   const [rows, setRows] = useState<MarginRow[] | null>(null);
@@ -44,8 +48,8 @@ export default function MarginView() {
     const c = new AbortController(); ctl.current = c;
     setBusy(true); setError('');
     try {
-      const list = plants.split(/[\s,;]+/).filter(Boolean);
-      const r = await fetchMargin(list, from, to, c.signal);
+      const sp = (x: string) => x.split(/[\s,;]+/).filter(Boolean);
+      const r = await fetchMargin({ plants: sp(plants), vkorg: sp(vkorg), vtweg: sp(vtweg), crssku: sp(crssku), vbeln: sp(vbeln) }, from, to, c.signal);
       setRows(r.rows); setBrand(''); ls.set('bce:dash-plants', plants);
     } catch (e) { if (!c.signal.aborted) { setRows(null); setError(errorText(e)); } }
     if (!c.signal.aborted) setBusy(false);
@@ -84,17 +88,29 @@ export default function MarginView() {
   return (
     <>
       <div className="flex flex-wrap items-end gap-2">
-        <label className="flex flex-col gap-1 text-xs font-semibold">Plants
-          <input className={cx(inputCls, 'w-56 uppercase')} placeholder="EM02, UN13" value={plants} onChange={(e) => setPlants(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void run()} />
+        <label className="flex flex-col gap-1 text-xs font-semibold">Plant
+          <input className={cx(inputCls, 'w-36 uppercase')} placeholder="DP01, DP03" value={plants} onChange={(e) => setPlants(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void run()} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold">Sales org
+          <input className={cx(inputCls, 'w-28 uppercase')} placeholder="EM01" value={vkorg} onChange={(e) => setVkorg(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void run()} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold">Channel
+          <input className={cx(inputCls, 'w-24 uppercase')} placeholder="10, 20" value={vtweg} onChange={(e) => setVtweg(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void run()} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold">CRSSKU
+          <input className={cx(inputCls, 'w-40 uppercase')} placeholder="CRSSKU code" value={crssku} onChange={(e) => setCrssku(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void run()} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold">Invoice no.
+          <input className={cx(inputCls, 'w-36')} placeholder="7880120981" inputMode="numeric" value={vbeln} onChange={(e) => setVbeln(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void run()} title="One or more invoice numbers; the dates still apply" />
         </label>
         <label className="flex flex-col gap-1 text-xs font-semibold">From<input type="date" className={cx(inputCls, 'w-40')} value={from} onChange={(e) => setFrom(e.target.value)} /></label>
         <label className="flex flex-col gap-1 text-xs font-semibold">To<input type="date" className={cx(inputCls, 'w-40')} value={to} onChange={(e) => setTo(e.target.value)} /></label>
-        <Button variant="primary" disabled={busy || !plants.trim() || !from || !to} onClick={() => void run()}>{busy ? <><Spinner className="h-4 w-4" /> Running</> : 'Run'}</Button>
+        <Button variant="primary" disabled={busy || !(plants.trim() || vkorg.trim() || crssku.trim() || vbeln.trim()) || !from || !to} onClick={() => void run()}>{busy ? <><Spinner className="h-4 w-4" /> Running</> : 'Run'}</Button>
         {busy && <Button onClick={() => { ctl.current?.abort(); setBusy(false); }}>Stop</Button>}
         <Segmented label="Revenue basis" size="sm" value={basis} onChange={setBasis} options={[{ value: 'gross', label: 'Gross sales (with GST)', hint: 'Selling price + GST, as in the Gross Margin Analysis report' }, { value: 'sp', label: 'Selling price' }]} />
       </div>
       {error && <ErrorBox>{error}</ErrorBox>}
-      {!rows && !busy && !error && <Card><Empty title="Choose the plants and the period, then press Run">Invoice conditions of finished goods: MRP, channel margins, selling price, GST, cost per component and schemes.</Empty></Card>}
+      {!rows && !busy && !error && <Card><Empty title="Choose a plant, sales organisation, CRSSKU or invoice number and the period, then press Run">Invoice conditions of finished goods: MRP, channel margins, selling price, GST, cost per component and schemes.</Empty></Card>}
       {rows && !parsed.sku.length && <Card><Empty title="No invoiced sales found">SAP returned no finished-good billing for these plants and dates.</Empty></Card>}
       {rows && parsed.sku.length > 0 && (
         <>
@@ -143,10 +159,10 @@ export default function MarginView() {
           </div>
           <Card className="p-3">
             <div className="mb-2 flex flex-wrap items-center gap-2">
-              <Segmented label="Group by" size="sm" value={by} onChange={setBy} options={[{ value: 'brand', label: 'Brand' }, { value: 'cat', label: 'Product category' }, { value: 'sku', label: 'SKU' }, { value: 'cust', label: 'Customer' }]} />
+              <Segmented label="Group by" size="sm" value={by} onChange={setBy} options={[{ value: 'brand', label: 'Brand' }, { value: 'cat', label: 'Product category' }, { value: 'sku', label: 'Material' }, { value: 'cust', label: 'Customer' }]} />
               {by !== 'cust' && <select aria-label="Filter by brand" className={cx(inputCls, 'ml-auto w-40')} value={brand} onChange={(e) => setBrand(e.target.value)}><option value="">All brands</option>{brands.map((b) => <option key={b} value={b}>{b || '(none)'}</option>)}</select>}
             </div>
-            <GroupTable groups={groups} />
+            <GroupTable groups={groups} material={by === 'sku'} />
             {by === 'cust' && <p className="mt-2 text-2xs text-muted">Customer lines use the invoice cost (the current COGM data set is by SKU).</p>}
           </Card>
           <Card className="p-4">
@@ -181,13 +197,15 @@ function Waterfall({ base, scen, changed, budGap }: { base: Result; scen: Result
   );
 }
 
-function GroupTable({ groups }: { groups: Group[] }) {
+function GroupTable({ groups, material }: { groups: Group[]; material: boolean }) {
+  const qty = (v: Decimal) => (material ? money(v, 0) : lakh(v, 2));
+  const val = (v: Decimal) => (material ? money(v, 0) : lakh(v));
   if (!groups.length) return <p className="text-sm text-muted">No lines for this choice.</p>;
   return (
     <div className="max-h-[60vh] overflow-auto rounded-xl border border-line">
-      <table className="w-full min-w-[920px] border-collapse">
+      <table className="w-full min-w-[1100px] border-collapse">
         <thead className="sticky top-0"><tr>
-          <th className={cx(thCls, 'text-left')}>Group</th><th className={thCls}>Qty (L pc)</th><th className={thCls}>Revenue (L)</th><th className={thCls}>COGS (L)</th><th className={thCls}>Gross margin (L)</th><th className={thCls}>GM %</th><th className={thCls}>GM / pc</th><th className={thCls}>vs invoiced (L)</th><th className={thCls}>Budget flag</th>
+          <th className={cx(thCls, 'text-left')}>{material ? 'Material' : 'Group'}</th><th className={thCls}>{material ? 'Qty (pc)' : 'Qty (L pc)'}</th><th className={thCls}>{material ? 'Selling price (₹)' : 'Selling price (L)'}</th><th className={thCls}>{material ? 'Gross sales (₹)' : 'Gross sales (L)'}</th><th className={thCls}>{material ? 'Revenue (₹)' : 'Revenue (L)'}</th><th className={thCls}>{material ? 'COGS (₹)' : 'COGS (L)'}</th><th className={thCls}>{material ? 'Gross margin (₹)' : 'Gross margin (L)'}</th><th className={thCls}>GM %</th><th className={thCls}>GM / pc</th><th className={thCls}>vs invoiced (L)</th><th className={thCls}>Budget flag</th>
         </tr></thead>
         <tbody>
           {groups.map((g) => {
@@ -195,7 +213,7 @@ function GroupTable({ groups }: { groups: Group[] }) {
             return (
               <tr key={g.key} className="border-t border-line/60">
                 <td className="px-2.5 py-1.5 text-left text-xs font-bold" title={g.label}>{g.label}</td>
-                <td className={tdCls}>{lakh(g.scen.qty, 2)}</td><td className={tdCls}>{lakh(g.scen.revenue)}</td><td className={tdCls}>{lakh(g.scen.cogs)}</td><td className={tdCls}>{lakh(g.scen.gm)}</td>
+                <td className={tdCls}>{qty(g.scen.qty)}</td><td className={tdCls}>{val(g.scen.sp)}</td><td className={tdCls}>{val(g.scen.gross)}</td><td className={tdCls}>{val(g.scen.revenue)}</td><td className={tdCls}>{val(g.scen.cogs)}</td><td className={tdCls}>{val(g.scen.gm)}</td>
                 <td className={cx(tdCls, 'font-bold', gmTone(g.scen.gmPct))}>{pct(g.scen.gmPct)}</td>
                 <td className={tdCls}>{g.scen.qty.isZero() ? '-' : money(g.scen.gm.div(g.scen.qty))}</td>
                 <td className={cx(tdCls, g.scen.gm.gte(g.base.gm) ? 'text-good' : 'text-bad')}>{lakh(g.scen.gm.minus(g.base.gm), 2)}</td>

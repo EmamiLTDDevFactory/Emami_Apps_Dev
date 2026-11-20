@@ -50,3 +50,20 @@ describe('margin analysis', () => {
     expect(parseCurrentCogm('a,b\n1,2').error).toBeTruthy();
   });
 });
+
+import { buildMarginFilter } from '@/lib/dash/service';
+describe('margin selection filter', () => {
+  const sel = { plants: [], vkorg: [], vtweg: [], crssku: [], vbeln: [] };
+  it('needs one of plant, sales org, CRSSKU or invoice', () => { expect(() => buildMarginFilter(sel, '2025-04-01', '2025-06-30')).toThrow(); });
+  it('ands the lists and ors the values', () => {
+    const f = buildMarginFilter({ plants: ['dp01', 'dp03'], vkorg: ['EM01'], vtweg: ['10', '20'], crssku: ['C1'], vbeln: ['7880120981'] }, '2025-04-01', '2025-06-30');
+    expect(f).toContain("(Werks eq 'DP01' or Werks eq 'DP03')");
+    expect(f).toContain("Vkorg eq 'EM01'"); expect(f).toContain("(Vtweg eq '10' or Vtweg eq '20')"); expect(f).toContain("Crssku eq 'C1'"); expect(f).toContain("Vbeln eq '7880120981'");
+    expect(f).toContain('DateFrom eq datetime') ; expect(f).toContain('DateTo eq datetime');
+  });
+  it('an invoice alone is enough, bad values are refused', () => {
+    expect(buildMarginFilter({ ...sel, vbeln: ['123'] }, '2025-04-01', '2025-06-30')).toContain("Vbeln eq '123'");
+    expect(() => buildMarginFilter({ ...sel, vbeln: ['12a'] }, '2025-04-01', '2025-06-30')).toThrow();
+    expect(() => buildMarginFilter({ ...sel, plants: ['AB'] }, '2025-04-01', '2025-06-30')).toThrow();
+  });
+});

@@ -342,6 +342,8 @@ CLASS zcl_zmm_bom_cost_mpc_ext IMPLEMENTATION.
     dash_str( io_et = lo_et iv_name = 'KunagTxt' iv_field = 'KUNAG_TXT' iv_len = 35 ).
     dash_str( io_et = lo_et iv_name = 'Zscheme' iv_field = 'ZSCHEME' iv_len = 1 ).
     dash_str( io_et = lo_et iv_name = 'Crssku' iv_field = 'CRSSKU' iv_len = 30 ).
+    lo_p = lo_et->get_property( 'Crssku' ).
+    lo_p->set_filterable( abap_true ).
     dash_str( io_et = lo_et iv_name = 'Zbusiness' iv_field = 'ZBUSINESS' iv_len = 6 ).
     dash_str( io_et = lo_et iv_name = 'BudVer' iv_field = 'BUD_VER' iv_len = 2 ).
     dash_str( io_et = lo_et iv_name = 'BudFlag' iv_field = 'BUD_FLAG' iv_len = 10 ).
@@ -349,6 +351,30 @@ CLASS zcl_zmm_bom_cost_mpc_ext IMPLEMENTATION.
     lo_p = lo_et->create_property( iv_property_name = 'Werks' iv_abap_fieldname = 'WERKS' ).
     lo_p->set_type_edm_string( ).
     lo_p->set_maxlength( iv_max_length = 4 ).
+    lo_p->set_creatable( abap_false ).
+    lo_p->set_updatable( abap_false ).
+    lo_p->set_sortable( abap_false ).
+    lo_p->set_nullable( abap_false ).
+    lo_p->set_filterable( abap_true ).
+    lo_p = lo_et->create_property( iv_property_name = 'Vkorg' iv_abap_fieldname = 'VKORG' ).
+    lo_p->set_type_edm_string( ).
+    lo_p->set_maxlength( iv_max_length = 4 ).
+    lo_p->set_creatable( abap_false ).
+    lo_p->set_updatable( abap_false ).
+    lo_p->set_sortable( abap_false ).
+    lo_p->set_nullable( abap_false ).
+    lo_p->set_filterable( abap_true ).
+    lo_p = lo_et->create_property( iv_property_name = 'Vbeln' iv_abap_fieldname = 'VBELN' ).
+    lo_p->set_type_edm_string( ).
+    lo_p->set_maxlength( iv_max_length = 10 ).
+    lo_p->set_creatable( abap_false ).
+    lo_p->set_updatable( abap_false ).
+    lo_p->set_sortable( abap_false ).
+    lo_p->set_nullable( abap_false ).
+    lo_p->set_filterable( abap_true ).
+    lo_p = lo_et->create_property( iv_property_name = 'Vtweg' iv_abap_fieldname = 'VTWEG' ).
+    lo_p->set_type_edm_string( ).
+    lo_p->set_maxlength( iv_max_length = 2 ).
     lo_p->set_creatable( abap_false ).
     lo_p->set_updatable( abap_false ).
     lo_p->set_sortable( abap_false ).

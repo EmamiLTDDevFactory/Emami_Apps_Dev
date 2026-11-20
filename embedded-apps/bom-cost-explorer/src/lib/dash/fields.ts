@@ -4,6 +4,7 @@ import type { FieldMap } from '../price-context/odata';
  *  Werks and DateTo are $filter properties only. Decimals are strings. */
 export const DASH_SET = 'DashMisSet';
 export const DASH_FILTER = { Werks: 'Werks', DateTo: 'DateTo' } as const;
+export const DASH_MARGIN_FILTER = { Vkorg: 'Vkorg', Vtweg: 'Vtweg', Crssku: 'Crssku', Vbeln: 'Vbeln' } as const;
 export const DASH_MIS_FIELDS = {
   Zbrand: ['Zbrand', 's'], Gjahr: ['Gjahr', 's'], Version: ['Version', 's'], FgCnt: ['FgCnt', 'i'], FgNobud: ['FgNobud', 'i'],
   FtmQty: ['FtmQty', 'd'], FtmBudget: ['FtmBudget', 'd'], FtmActual: ['FtmActual', 'd'], FtmActualCmp: ['FtmActualCmp', 'd'],

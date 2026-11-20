@@ -15,6 +15,9 @@ define type zdash_s_margin {
   bud_flag    : abap.char(10);
   msg         : abap.char(120);
   werks       : werks_d;
+  vkorg       : vkorg;
+  vtweg       : vtweg;
+  vbeln       : vbeln_vf;
   date_from   : dats;
   date_to     : dats;
   qty         : abap.dec(23,3);
