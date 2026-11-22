@@ -1709,3 +1709,8 @@ button.dd-card:focus-visible { outline: 3px solid var(--accent); outline-offset:
   .wf-agent-grid, .wf-level-grid { grid-template-columns: 1fr; }
   .wf-actions .btn { flex: 1 1 auto; }
 }
+
+/* admin pages: keep wide tables inside their card instead of widening the page */
+.admin-page { min-width: 0; }
+.admin-page .card { min-width: 0; max-width: 100%; }
+.admin-page .table-wrap { max-width: 100%; }

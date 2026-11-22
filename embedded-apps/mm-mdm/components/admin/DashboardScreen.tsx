@@ -11,6 +11,7 @@ import DetailDrawer from './dash/DetailDrawer';
 
 const PAGE = 25;
 const MATERIAL = ['MC', 'MX', 'ME'];
+const MATERIAL_NAMES: Record<string, string> = { MC: 'Material Creation', MX: 'Material Change', ME: 'Material Extension' };
 
 interface Form { transId: string; user: string; status: string; mtype: string; plant: string; genField2: string; objValue: string; text: string; duplicate: '' | 'Y' | 'N' }
 const emptyForm = (): Form => ({ transId: '', user: '', status: '', mtype: '', plant: '', genField2: '', objValue: '', text: '', duplicate: '' });
@@ -145,7 +146,7 @@ export default function DashboardScreen() {
                 return (
                   <label key={id} className={`dd-appchip ${apps.includes(id) ? 'on' : ''}`}>
                     <input type="checkbox" checked={apps.includes(id)} onChange={() => toggleApp(id)} />
-                    <strong>{id}</strong> {a?.label ?? id}{a && <span>{a.total}</span>}
+                    <strong>{id}</strong> {a?.label ?? MATERIAL_NAMES[id] ?? id}{a && <span>{a.total}</span>}
                   </label>
                 );
               })}
