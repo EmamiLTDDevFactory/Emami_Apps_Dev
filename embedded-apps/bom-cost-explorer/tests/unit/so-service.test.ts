@@ -114,14 +114,21 @@ describe('sales areas on a SAP that does not know OnlyOrd yet', () => {
   });
 });
 
-describe('sales areas with OnlyOrd but no material', () => {
-  it('an empty answer is read again without OnlyOrd; with materials it is not', async () => {
+describe('sales areas with OnlyOrd but no order (or no material)', () => {
+  it('an empty answer is read again without OnlyOrd, with or without materials, so a sales organisation can always be picked', async () => {
     mocked.mockReset();
     mocked.mockResolvedValueOnce(resp([])).mockResolvedValueOnce(resp([{ Vkorg: 'EM01', Vtweg: '10' }]));
     const r = await fetchSo('AREA', { daysBack: 90, onlyOrd: true });
     expect(mocked).toHaveBeenCalledTimes(2); expect(String(mocked.mock.calls[1][1].$filter)).not.toContain('OnlyOrd'); expect(r.rows).toHaveLength(1);
     mocked.mockReset();
-    mocked.mockResolvedValueOnce(resp([]));
+    mocked.mockResolvedValueOnce(resp([])).mockResolvedValueOnce(resp([{ Vkorg: 'EM03', Vtweg: '50' }]));
+    const m = await fetchSo('AREA', { materials: ['400020106'], daysBack: 90, onlyOrd: true });
+    expect(mocked).toHaveBeenCalledTimes(2); expect(m.rows).toHaveLength(1);
+    expect(m.messages.some((x) => /No sales orders for these materials/.test(x.message))).toBe(true);
+  });
+  it('a non-empty answer is used as it is (one call)', async () => {
+    mocked.mockReset();
+    mocked.mockResolvedValueOnce(resp([{ Vkorg: 'EM03', Vtweg: '50' }]));
     await fetchSo('AREA', { materials: ['A'], daysBack: 90, onlyOrd: true });
     expect(mocked).toHaveBeenCalledTimes(1);
   });

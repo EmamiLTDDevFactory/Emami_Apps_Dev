@@ -17,9 +17,12 @@ export async function fetchSo<K extends SoFilterSet>(set: K, q: SoQuery, opts: {
       r = await readSet<SoRowsBySet[K]>(SO_SET[set], SO_FIELDS[set], SO_NULLABLE[set], buildSoFilter({ ...q, onlyOrd: false }, set), opts.signal, select);
     } else throw e;
   }
-  // OnlyOrd without a material answers nothing (SAP counts orders per material): the list is read again without it, so the sales areas can still be picked.
-  if (set === 'AREA' && q.onlyOrd && !(q.materials ?? []).length && r.rows.length === 0 && !opts.signal?.aborted) {
+  // OnlyOrd answers nothing when the materials had no order in the look-back (or when there is no material at all: SAP counts orders per material). The sales area is
+  // still required to run the report, so the list is read again without OnlyOrd: every sales area the person may see.
+  if (set === 'AREA' && q.onlyOrd && r.rows.length === 0 && !opts.signal?.aborted) {
+    const hadMaterials = (q.materials ?? []).length > 0;
     r = await readSet<SoRowsBySet[K]>(SO_SET[set], SO_FIELDS[set], SO_NULLABLE[set], buildSoFilter({ ...q, onlyOrd: false }, set), opts.signal, select);
+    if (hadMaterials && r.rows.length > 0) r.messages = [...r.messages, { code: '', message: `No sales orders for these materials in the last ${q.daysBack ?? ''} days: every sales area you may see is listed instead.`, severity: 'warning' }];
   }
   if (set === 'PRICE') r.messages = rowMessages((r.rows as SoPriceRow[]).map((x) => (x.Msg && !isUsable(x) ? x.Msg : '')), r.messages);
   return r;

@@ -48,8 +48,9 @@ export default function MarginSelection({ sel, onChange, plantsState, email, err
   const hn = useHierNames();
   const order = sel.priceSrc === 'O';
   const mats = sel.materials.slice(0, SO_MAX_MATERIALS);
-  const areaQ = useMemo(() => ({ materials: mats, daysBack: sel.days, onlyOrd: true }), [mats.join(','), sel.days]); // eslint-disable-line react-hooks/exhaustive-deps
-  const areaKey = order && mats.length ? safe(() => `so|AREA|${buildSoFilter(areaQ, 'AREA')}`) : null;
+  const areaQ = useMemo(() => ({ materials: mats, daysBack: sel.days, onlyOrd: mats.length > 0 }), [mats.join(','), sel.days]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Sales areas can be listed without finished goods too (every area the person may see): a Portfolio / Alerts run by plant, hierarchy or brand needs a sales organisation as well.
+  const areaKey = order ? safe(() => `so|AREA|${buildSoFilter(areaQ, 'AREA')}`) : null;
   const areas = useEntry<SoAreaRow>(areaKey);
   const COND_KEY = 'so|COND|';
   const cond = useEntry<SoCondRow>(order ? COND_KEY : null);
@@ -61,6 +62,8 @@ export default function MarginSelection({ sel, onChange, plantsState, email, err
     void ensure<SoAreaRow>(areaKey, PAGE_CTX, 'AREA', (signal) => fetchSo('AREA', areaQ, { signal }));
     void ensure<SoCondRow>(COND_KEY, PAGE_CTX, 'COND', (signal) => fetchSo('COND', {}, { signal }));
   };
+  // The sales organisation is required (prices come from the latest sales order), so its list is read as soon as the card shows; the button stays for a retry.
+  useEffect(() => { if (areaKey && !areas) loadAreas(); }, [areaKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const loadFilters = () => { if (filterKey) void ensure<SoFilterRow>(filterKey, PAGE_CTX, 'FILTER', (signal) => fetchSo('FILTER', listQ, { signal })); };
   const value: SalesFiltersValue = { vkorg: sel.vkorg, vtweg: sel.vtweg, segment: sel.segment ? [sel.segment] : [], days: sel.days, auart: sel.auart, pstyv: sel.pstyv, kdgrp: sel.kdgrp, kunnr: sel.kunnr };
   const applyValue = (p: Partial<SalesFiltersValue>) => {

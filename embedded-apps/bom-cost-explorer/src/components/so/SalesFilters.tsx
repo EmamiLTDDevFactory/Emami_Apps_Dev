@@ -114,7 +114,7 @@ export function SalesFiltersEditor(p: SalesFiltersEditorProps) {
             {p.onLoadAreas && <Button size="sm" onClick={p.onLoadAreas} disabled={!p.canLoadAreas || p.areasLoading}>{p.areasLoading ? <Spinner className="h-3.5 w-3.5" /> : null} Load sales areas</Button>}
           </div>
           {p.areasError && <p role="alert" className="text-xs text-bad">{p.areasError}</p>}
-          {p.areas.length === 0 ? <p className="text-xs text-faint">{p.canLoadAreas ? 'Press "Load sales areas" to list where these materials were sold.' : 'Pick the materials first.'}</p> : (
+          {p.areas.length === 0 ? <p className="text-xs text-faint">{p.canLoadAreas ? 'Press "Load sales areas" to list where these materials were sold (without materials: every sales area you may see).' : 'Pick the materials first.'}</p> : (
             <div className="max-h-52 overflow-auto rounded-xl border border-line">
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-sunken"><tr><th className="px-2 py-1" /><th className="px-2 py-1 text-left">Sales organisation</th><th className="px-2 py-1 text-left">Channel</th><th className="px-2 py-1 text-left">Currency</th><th className="px-2 py-1 text-right">Orders</th><th className="px-2 py-1 text-left">Last order</th></tr></thead>
