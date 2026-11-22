@@ -75,7 +75,7 @@ function Rates() {
 
 export default function RatesPage() {
   return (
-    <AdminGuard hrOnly>
+    <AdminGuard maint>
       <Rates />
     </AdminGuard>
   );

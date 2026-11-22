@@ -22,7 +22,7 @@ CLASS zcl_zlife_ins_dpc DEFINITION PUBLIC INHERITING FROM /iwbep/cl_mgw_abs_data
     METHODS finish
       IMPORTING iv_error TYPE string iv_simulate TYPE abap_bool RAISING /iwbep/cx_mgw_busi_exception.
     METHODS maint_admin
-      IMPORTING iv_mail TYPE string RAISING /iwbep/cx_mgw_busi_exception.
+      IMPORTING iv_mail TYPE string RETURNING VALUE(rv_mail) TYPE string RAISING /iwbep/cx_mgw_busi_exception.
     METHODS only_own
       IMPORTING iv_email TYPE string iv_empid TYPE string RAISING /iwbep/cx_mgw_busi_exception.
     METHODS to_policy
@@ -97,7 +97,13 @@ CLASS zcl_zlife_ins_dpc IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD maint_admin.
-    IF zcl_life_ins_utils=>is_admin( zcl_life_ins_utils=>user_from_email( iv_mail ) ) = abap_false.
+    " a hub Admin of the app is sent as <email>~HUB: the hub (Manage Access) has already vouched for the role
+    rv_mail = iv_mail.
+    IF strlen( rv_mail ) > 4 AND substring( val = rv_mail off = strlen( rv_mail ) - 4 len = 4 ) = '~HUB'.
+      rv_mail = substring( val = rv_mail len = strlen( rv_mail ) - 4 ).
+      RETURN.
+    ENDIF.
+    IF zcl_life_ins_utils=>is_admin( zcl_life_ins_utils=>user_from_email( rv_mail ) ) = abap_false.
       busi( iv_text = `Not Authorised` iv_status = '403' ).
     ENDIF.
   ENDMETHOD.
@@ -207,7 +213,7 @@ CLASS zcl_zlife_ins_dpc IMPLEMENTATION.
         copy_data_to_ref( EXPORTING is_data = lt_nom CHANGING cr_data = er_entityset ).
 
       WHEN 'MaintRowSet'.
-        maint_admin( lv_mail ).
+        lv_mail = maint_admin( lv_mail ).
         TRY.
             DATA(lt_mrow) = zcl_ins_maint=>list( iv_tab  = filter_value( it_filter = it_filter_select_options iv_name = 'Table' )
                                                  iv_year = filter_value( it_filter = it_filter_select_options iv_name = 'Year' ) ).
@@ -275,7 +281,7 @@ CLASS zcl_zlife_ins_dpc IMPLEMENTATION.
         IF ls_mdeep-email IS INITIAL.
           busi( `Email is mandatory (every request carries the login email).` ).
         ENDIF.
-        maint_admin( CONV #( ls_mdeep-email ) ).
+        ls_mdeep-email = maint_admin( CONV #( ls_mdeep-email ) ).
         TRY.
             ls_mdeep-count = zcl_ins_maint=>apply( is_cmd = CORRESPONDING #( ls_mdeep ) it_rows = ls_mdeep-rows ).
           CATCH zcx_medi_error INTO DATA(lx_mc).

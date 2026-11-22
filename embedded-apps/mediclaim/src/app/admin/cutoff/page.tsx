@@ -64,7 +64,7 @@ function CutOff() {
 
 export default function CutOffPage() {
   return (
-    <AdminGuard hrOnly>
+    <AdminGuard maint>
       <CutOff />
     </AdminGuard>
   );

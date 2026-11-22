@@ -33,7 +33,7 @@ function Periods() {
 
 export default function PeriodsPage() {
   return (
-    <AdminGuard hrOnly>
+    <AdminGuard maint>
       <Periods />
     </AdminGuard>
   );

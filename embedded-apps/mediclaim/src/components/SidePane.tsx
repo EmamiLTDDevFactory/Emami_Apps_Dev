@@ -19,10 +19,11 @@ const NAV_ITEMS = [
 ];
 // Admin menu: roles come from SAP (ContextSet.IsAuthUser / IsHrAdmin), not from the hub's Admin role.
 const AUTH_NAV_ITEMS = [{ href: '/admin/', label: 'Policies', icon: ClipboardList }];
-const HR_NAV_ITEMS = [
+const HR_NAV_ITEMS = [{ href: '/admin/download/', label: 'HR download', icon: Download }];
+// Maintenance: HR admin in SAP or Admin in the hub
+const MAINT_NAV_ITEMS = [
   { href: '/admin/cutoff/', label: 'Cut-off date & insurer mail', icon: CalendarClock },
   { href: '/admin/blocked/', label: 'Blocked employees', icon: ShieldBan },
-  { href: '/admin/download/', label: 'HR download', icon: Download },
   { href: '/admin/rates/', label: 'Premium rates', icon: IndianRupee },
   { href: '/admin/periods/', label: 'Policy periods', icon: CalendarRange },
   { href: '/admin/users/', label: 'Authorised users', icon: Users },
@@ -38,8 +39,8 @@ export default function SidePane({
   isWideScreen: boolean;
 }) {
   const pathname = usePathname();
-  const { email, ctx, canAdmin, isHrAdmin } = useApp();
-  const items = [...NAV_ITEMS, ...(canAdmin ? AUTH_NAV_ITEMS : []), ...(isHrAdmin ? HR_NAV_ITEMS : [])];
+  const { email, ctx, canAdmin, isHrAdmin, canMaintain } = useApp();
+  const items = [...NAV_ITEMS, ...(canAdmin ? AUTH_NAV_ITEMS : []), ...(canMaintain ? MAINT_NAV_ITEMS : []), ...(isHrAdmin ? HR_NAV_ITEMS : [])];
 
   const paneClasses = isWideScreen
     ? 'relative w-56 shrink-0'
