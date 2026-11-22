@@ -8,19 +8,23 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        plum: { DEFAULT: '#4F3FD6', deep: '#3B2FB0', soft: '#EFECFC' },
-        brand: { DEFAULT: '#241E3D', deep: '#151129' },
-        sap: { head: '#F6F4FD', line: '#E6E3F5', row: '#FBFAFE', ink: '#1F1B33', muted: '#6B7280', bg: '#EEF0F4' },
+        // Costing Cockpit palette: indigo accent, navy table headers / banner, orange call-to-action.
+        plum: { DEFAULT: '#4338CA', deep: '#312E81', soft: '#EEF0FB' },
+        brand: { DEFAULT: '#1E2470', deep: '#12164A' },
+        navy: '#2D2B78',
+        orange: '#F97316',
+        sap: { head: '#F4F6FC', line: '#E2E7F3', row: '#F8F9FD', ink: '#161B3A', muted: '#646C86', bg: '#F3F5FB' },
       },
       fontFamily: {
-        sans: ['Inter', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
-        display: ['Sora', 'Inter', 'sans-serif'],
+        sans: ['Manrope', 'Inter', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
+        display: ['Manrope', 'Inter', 'sans-serif'],
         mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
       fontSize: { '2xs': ['10.5px', '14px'] },
       boxShadow: {
-        card: '0 1px 3px rgba(31,27,51,0.06), 0 1px 2px rgba(31,27,51,0.04)',
+        card: '0 1px 2px rgba(22,27,58,0.05), 0 4px 14px rgba(22,27,58,0.05)',
         pop: '0 20px 50px rgba(21,17,41,0.35)',
+        glow: '0 6px 18px rgba(67,56,202,0.30)',
       },
     },
   },

@@ -88,7 +88,7 @@ export default function DataTable({ label, columns, rows, rowKeyOf, selection, s
               </th>
             )}
             {rowAction && <th scope="col" className={th}>{rowAction.label}</th>}
-            {columns.map((c, i) => <th key={`${c.key}-${i}`} scope="col" className={`${th} ${c.editable ? '!bg-amber-50/95 !text-amber-800' : ''}`}>{c.label}</th>)}
+            {columns.map((c, i) => <th key={`${c.key}-${i}`} scope="col" className={`${th} ${c.editable ? 'editable-col' : ''}`}>{c.label}</th>)}
           </tr>
         </thead>
         <tbody>
