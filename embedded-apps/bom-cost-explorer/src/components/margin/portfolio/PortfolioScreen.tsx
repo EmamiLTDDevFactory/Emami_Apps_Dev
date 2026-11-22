@@ -96,7 +96,7 @@ export default function PortfolioScreen({ ctx }: { ctx: MarginCtx }) {
                     <YAxis type="category" dataKey="name" width={150} tick={{ fill: ct.axis, fontSize: 11 }} />
                     <Tooltip formatter={(x, _n, p) => [`${fmtNum(Number(x), 0, 'INR')} INR · ${IMPACT_WORD[(p?.payload as { kind: ImpactKind }).kind]}`, 'Annual impact']} />
                     <Bar dataKey="value" isAnimationActive={false} label={{ position: 'right', fontSize: 10, fill: ct.text, formatter: (x: unknown) => `${Number(x) > 0 ? '▲ loss' : Number(x) < 0 ? '▼ saving' : ''}` }}>
-                      {bars.map((b) => <Cell key={b.key} fill={b.kind === 'loss' ? ct.up : b.kind === 'saving' ? ct.down : ct.neutral} />)}
+                      {bars.map((b, bi) => <Cell key={`${b.key}|${bi}`} fill={b.kind === 'loss' ? ct.up : b.kind === 'saving' ? ct.down : ct.neutral} />)}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
@@ -113,10 +113,10 @@ export default function PortfolioScreen({ ctx }: { ctx: MarginCtx }) {
             <table className="w-full text-sm">
               <thead className="bg-sunken"><tr><th className={th}>{GROUP_BY_LABEL[ranBy]}</th><th className={thN}>Finished goods</th><th className={thN}>High alerts</th><th className={thN}>Medium alerts</th><th className={thN}>Data gaps</th><th className={thN}>Weighted ratio Standard</th><th className={thN}>Weighted ratio Current</th><th className={thN}>Revenue</th><th className={thN}>Annual impact</th></tr></thead>
               <tbody>
-                {sorted.map((r) => {
+                {sorted.map((r, ri) => {
                   const gb = (GROUP_BYS as string[]).includes(r.GroupKind) ? (r.GroupKind as GroupBy) : ranBy;
                   return (
-                    <tr key={`${r.GroupKind}|${r.GrpKey}`} className="border-t border-line/60 hover:bg-sunken">
+                    <tr key={`${r.GroupKind}|${r.GrpKey}|${ri}`} className="border-t border-line/60 hover:bg-sunken">
                       <td className={td}><a className="font-semibold text-accent underline-offset-2 hover:underline" href={`${BASE_PATH}/margin/${groupBoardSearch(sel, gb, r.GrpKey)}`} title="Open the Board for this group">{r.GrpKey || NA}</a> <span className="text-muted">{r.GrpTxt}</span></td>
                       <td className={tdN}>{r.FgCnt}</td><td className={tdN}>{cnt(r.AlertHigh, 'bad')}</td><td className={tdN}>{cnt(r.AlertMed, 'warn')}</td><td className={tdN}>{cnt(r.NoDataCnt, 'warn')}</td>
                       <td className={tdN}>{pctCell(r.WratioStd)}</td><td className={tdN}>{pctCell(r.WratioCur)}</td><td className={tdN}>{inr(r.RevenueInr)}</td><td className={tdN}><Impact v={r.AnnualImpactInr} /></td>

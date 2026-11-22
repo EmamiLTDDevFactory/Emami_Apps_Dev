@@ -36,3 +36,10 @@ describe('Portfolio view', () => {
     expect(s.cols[9].get(1)).toBeNull();
   });
 });
+
+describe('Portfolio view: the same group from several live batches', () => {
+  it('every bar gets its own category name (no overlap) and rows can repeat a key', () => {
+    const bars = impactBars([g({ GrpKey: 'P1', AnnualImpactInr: '5' }), g({ GrpKey: 'P1', AnnualImpactInr: '3' }), g({ GrpKey: '', GrpTxt: '', AnnualImpactInr: '1' })]);
+    expect(bars.map((b) => b.name)).toEqual(['P1 Hair oil', 'P1 Hair oil (2)', '(blank)']);
+  });
+});

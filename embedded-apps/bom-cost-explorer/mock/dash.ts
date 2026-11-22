@@ -9,13 +9,19 @@ interface Deps {
   odataError: (status: number, code: string, message: string) => Response;
   parseFilter: (f: string) => Map<string, string[]>;
 }
-const SETS = new Set(['DashMisSet', 'DashSalesSet', 'DashMarginSet', 'DashCdrillSet', 'DashPvmSet', 'DashThreshSet']);
+const SETS = new Set(['CogmBoardSet', 'DashMisSet', 'DashSalesSet', 'DashMarginSet', 'DashCdrillSet', 'DashPvmSet', 'DashThreshSet']);
 const BRANDS = [['010016', 'NAVRATNA'], ['020011', 'HIMANI'], ['080045', 'ZANDU'], ['010052', 'BOROPLUS'], ['080061', 'KESH KING']] as const;
 const n = (v: number, dp = 6) => v.toFixed(dp);
 const MAT = (i: number) => String(400000000 + i * 137).padStart(18, '0');
 
 export function handleDash(set: string, sp: URLSearchParams, d: Deps): Response | null {
   if (!SETS.has(set)) return null;
+  if (set === 'CogmBoardSet') {
+    const g = (sp.get('$filter') ?? '').match(/GroupBy eq '(\w)'/)?.[1] ?? 'P';
+    const mk = (k: string, t: string, i: number, imp: string): Raw => ({ GroupKind: g, GrpKey: k, GrpTxt: t, FgCnt: 8 + i, AlertHigh: i % 3, AlertMed: i % 2, NoDataCnt: i === 3 ? 2 : 0, WratioStd: n(38 + i, 4), WratioCur: i === 4 ? '' : n(40 + i, 4), RevenueInr: n(9e6 + i * 1.3e6, 2), AnnualImpactInr: imp });
+    const big = Array.from({ length: 12 }, (_, k) => mk(k % 9 === 0 ? '' : `GRP${k % 3}`, k % 5 === 0 ? 'A very long group description that keeps going and going' : k % 7 === 0 ? '' : `Group ${k}`, k, k % 4 === 0 ? '' : k % 3 === 0 ? n(-1.7e12 + k, 2) : n(3.3e11 + k * 977, 2)));
+    return d.json({ d: { results: big } });
+  }
   if (set === 'DashThreshSet') return d.json({ d: { results: [{ Metric: 'GM', Category: '', RedPct: '18.000000', AmberPct: '22.000000', HighBad: '' }] } });
   if (set === 'DashPvmSet') return d.json({ d: { results: [{ Effect: 'No budget', SortNo: 0, Value: '0', Msg: 'No approved sales budget for financial year 2026 in ZSALES_BUD_TGT' }] } });
   if (set === 'DashMisSet') {

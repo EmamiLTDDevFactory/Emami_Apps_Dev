@@ -21,7 +21,14 @@ export function unitsOf(set: MarginReadKey, q: MarginQuery): Unit[] {
   const parts = live && mats.length > MARGIN_LIVE_MAX ? chunkMaterials(mats) : [mats];
   return parts.map((m, i) => { const uq = { ...q, materials: m }; return { key: `margin|${MARGIN_SET[set]}|${buildMarginFilter(uq, set)}`, q: uq, label: parts.length > 1 ? `batch ${i + 1} of ${parts.length}` : 'run' }; });
 }
-export const runCtx = (set: MarginReadKey, q: MarginQuery): string => `margin-run|${MARGIN_SET[set]}|${buildMarginFilter({ ...q, materials: q.materials }, set)}`;
+/** Cache context of a whole run. It is built while the screen is drawn, so it must never throw: a live run of more than 25 finished goods is valid (it is split
+ * into batches by unitsOf), only a single call is limited, so the material list is kept out of the filter and added as plain text. */
+export const runCtx = (set: MarginReadKey, q: MarginQuery): string => {
+  const mats = Array.from(new Set((q.materials ?? []).map((m) => m.trim()).filter(Boolean))).sort().join(',');
+  let f: string;
+  try { f = buildMarginFilter({ ...q, materials: [] }, set); } catch { f = 'invalid'; }   // e.g. History needs a material: the real error is raised by the calls themselves
+  return `margin-run|${MARGIN_SET[set]}|${f}|${mats}`;
+};
 
 export interface MarginRunState<K extends MarginReadKey> {
   q: MarginQuery | null;
