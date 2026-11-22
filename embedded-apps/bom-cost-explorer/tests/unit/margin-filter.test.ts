@@ -46,8 +46,10 @@ describe('Margin selection in the URL', () => {
     expect(s).not.toContain('+');
     expect(parseMarginSearch(s)).toMatchObject({ materials: ['400009226', 'A B'], plants: ['UB01'], source: 'S', priceSrc: 'O', vkorg: ['EM01'], segment: 'DOM', auart: { in: ['ZOD1'], ex: ['ZOFC'] } });
   });
-  it('uploaded prices send Market / Channel; order prices send the sales area', () => {
-    expect(toMarginQuery({ ...DEFAULT_SEL, market: 'IN', channel: '10' })).toMatchObject({ market: 'IN', priceSrc: '' });
-    expect(toMarginQuery({ ...DEFAULT_SEL, priceSrc: 'O', market: 'IN', vkorg: ['EM01'] })).toMatchObject({ market: '', priceSrc: 'O', vkorg: ['EM01'] });
+  it('prices always come from the latest sales order: the default and every URL use it, the sales area is sent, Market / Channel of uploaded prices are not', () => {
+    expect(DEFAULT_SEL.priceSrc).toBe('O');
+    expect(parseMarginSearch('?mat=400009226&ps=U').priceSrc).toBe('O');
+    expect(parseMarginSearch('').priceSrc).toBe('O');
+    expect(toMarginQuery({ ...DEFAULT_SEL, market: 'IN', vkorg: ['EM01'] })).toMatchObject({ market: '', priceSrc: 'O', vkorg: ['EM01'] });
   });
 });

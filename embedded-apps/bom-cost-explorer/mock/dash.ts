@@ -10,7 +10,7 @@ interface Deps {
   parseFilter: (f: string) => Map<string, string[]>;
 }
 const SETS = new Set(['CogmBoardSet', 'DashMisSet', 'DashSalesSet', 'DashMarginSet', 'DashCdrillSet', 'DashPvmSet', 'DashThreshSet']);
-const BRANDS = [['010016', 'NAVRATNA'], ['020011', 'HIMANI'], ['080045', 'ZANDU'], ['010052', 'BOROPLUS'], ['080061', 'KESH KING']] as const;
+const BRANDS = [['NAV', 'NAVRATNA'], ['KES', 'KESH KING'], ['ZAN', 'ZANDU'], ['BOR', 'BOROPLUS'], ['BIG', 'BIG BRAND']] as const;
 const n = (v: number, dp = 6) => v.toFixed(dp);
 const MAT = (i: number) => String(400000000 + i * 137).padStart(18, '0');
 

@@ -12,7 +12,7 @@ import WacMessages from '../wac/WacMessages';
 import { Button, Empty, Field, Spinner, cx, inputCls } from '../ui';
 import { fmtMs } from '@/lib/format';
 import { useElapsed, useMarginRun } from '@/lib/margin/run';
-import { toMarginQuery } from '@/lib/margin/selection';
+import { liveSelectionErrors, toMarginQuery } from '@/lib/margin/selection';
 import { SCENARIOS, SCENARIO_LABEL, type Scenario } from '@/lib/margin/types';
 import { EMPTY_WHATIF, hasErrors, validateWhatIf, whatIfQuery, type WhatIfInputs } from '@/lib/margin/whatifView';
 import { downloadWhatIf } from '@/lib/margin/whatifExport';
@@ -42,6 +42,7 @@ function Screen({ email }: { email: string }) {
   const start = () => {
     const e: typeof errors = {};
     if (!sel.materials.length) e.materials = 'Pick at least one finished good.';
+    if (liveSelectionErrors(sel).plants) e.plants = liveSelectionErrors(sel).plants;
     if (sel.priceSrc === 'O' && !sel.vkorg.length) e.areas = 'Pick at least one sales organisation (load the sales areas first).';
     const ie = validateWhatIf(inp);
     setErrors(e); setInErr(ie);
@@ -58,7 +59,7 @@ function Screen({ email }: { email: string }) {
     const q = state.q;
     await downloadWhatIf(rows, [
       ['Report', 'What-if: before and after, as SAP computed them (amounts per selling unit, price currency)'], ['SAP system', system], ['Run at', runAt?.toLocaleString('en-IN') ?? ''],
-      ['Finished goods', (q.materials ?? []).join(', ')], ['Plants', (q.plants ?? []).join(', ') || 'all'], ['Price source', q.priceSrc === 'O' ? 'latest sales order' : 'uploaded prices'], ['Data', (q.source ?? 'L') === 'L' ? 'live' : 'snapshot'],
+      ['Finished goods', (q.materials ?? []).join(', ')], ['Plants', (q.plants ?? []).join(', ') || 'all'], ['Price source', 'latest sales order'], ['Data', (q.source ?? 'L') === 'L' ? 'live' : 'snapshot'],
       ['Base scenario', SCENARIO_LABEL[(q.scenario ?? 'STD') as Scenario]], ['New MRP', q.newMrp ?? ''], ['New selling price', q.newSp ?? ''], ['COGM change %', q.cogmDpct ?? ''], ['COGM change amount', q.cogmDabs ?? ''],
       ['Target ratio %', q.tgtRatio ?? ''], ['Target remaining amount', q.tgtRemain ?? ''], ['Annual change', 'positive = loss, negative = saving (INR)'], ['Rows', String(rows.length)],
     ]);

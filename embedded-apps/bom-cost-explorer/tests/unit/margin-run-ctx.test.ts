@@ -20,3 +20,21 @@ describe('margin run context', () => {
   });
   it('History without a material does not throw while drawing', () => { expect(() => runCtx('HISTORY', q([]))).not.toThrow(); });
 });
+
+import { DEFAULT_SEL, liveSelectionErrors } from '@/lib/margin/selection';
+describe('live selection needs a plant', () => {
+  const s = (p: Partial<typeof DEFAULT_SEL>) => ({ ...DEFAULT_SEL, source: 'L' as const, ...p });
+  it('finished goods without a plant: SAP would return nothing, so the plant is asked for', () => {
+    const e = liveSelectionErrors(s({ materials: ['400011228'], plants: [] }));
+    expect(e.plants).toMatch(/plant/); expect(e.materials).toBeUndefined();
+  });
+  it('a plant without finished goods, hierarchy or brand asks for the finished goods', () => {
+    const e = liveSelectionErrors(s({ materials: [], plants: ['UN13'] }));
+    expect(e.materials).toMatch(/finished good/); expect(e.plants).toBeUndefined();
+  });
+  it('a complete live selection and any snapshot selection pass', () => {
+    expect(liveSelectionErrors(s({ materials: ['400011228'], plants: ['UN13'] }))).toEqual({});
+    expect(liveSelectionErrors(s({ brand: 'ZANDU', plants: ['UN13'] }))).toEqual({});
+    expect(liveSelectionErrors({ ...DEFAULT_SEL, source: 'S', materials: [], plants: [] })).toEqual({});
+  });
+});

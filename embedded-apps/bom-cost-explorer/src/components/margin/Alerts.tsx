@@ -13,7 +13,7 @@ import WacMessages from '../wac/WacMessages';
 import { Button, Empty, Spinner, cx } from '../ui';
 import { fmtMs } from '@/lib/format';
 import { useElapsed, useMarginRun } from '@/lib/margin/run';
-import { toMarginQuery } from '@/lib/margin/selection';
+import { liveSelectionErrors, toMarginQuery } from '@/lib/margin/selection';
 import { RULES, SEVERITIES, SEVERITY_WORD, countBySeverity, filterBySeverity, sortByImpact } from '@/lib/margin/alertView';
 import { downloadAlerts } from '@/lib/margin/alertExport';
 import { buildMarginFilter } from '@/lib/margin/filter';
@@ -47,6 +47,7 @@ function Screen({ email }: { email: string }) {
   const start = () => {
     const e: typeof errors = {};
     if (!sel.materials.length && !sel.plants.length && !sel.prodha.trim() && !sel.brand.trim()) e.other = 'Pick plants, finished goods, a product hierarchy or a brand so SAP knows where to look.';
+    Object.assign(e, liveSelectionErrors(sel));
     if (sel.priceSrc === 'O' && !sel.vkorg.length) e.areas = 'Pick at least one sales organisation (load the sales areas first).';
     setErrors(e);
     if (Object.keys(e).length) return;
@@ -103,7 +104,7 @@ function Screen({ email }: { email: string }) {
       {state.q && !state.running && !state.error && !state.stopped && state.doneCount === state.total && sorted.length === 0 && (
         <Empty title={state.rows.length ? 'No alert with this severity' : 'No alerts'}>{state.rows.length ? 'Clear the severity filter to see all.' : 'SAP found no rule that fired for this selection (see the messages above, if any).'}</Empty>
       )}
-      {!state.q && <Empty title="Nothing loaded yet">Pick the plants (and, if you like, finished goods, hierarchy, brand or rules), then press Show alerts.</Empty>}
+      {!state.q && <Empty title="Nothing loaded yet">Pick the plants and the finished goods (or a hierarchy or brand; rules are optional), then press Show alerts.</Empty>}
     </>
   );
 }

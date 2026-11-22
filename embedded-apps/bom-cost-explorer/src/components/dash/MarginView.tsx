@@ -13,6 +13,7 @@ import CdrillDrawer, { type DrillTarget } from './CdrillDrawer';
 import { NO_DRIVERS, cogmDrivers, groupBy, marginNotes, parseCurrentCogm, parseMargin, promoBreakeven, sensitivity, totalOf, type Basis, type Cur, type Drivers, type Group, type MLine, type Result } from '@/lib/dash/margin';
 import type { MarginRow } from '@/lib/dash/types';
 import { ls } from '@/lib/client/storage';
+import { useHierNames } from '@/lib/client/useHierNames';
 import { fyStart, lakh, money, pct, tdCls, thCls, today } from './parts';
 
 type By = 'brand' | 'cat' | 'sku' | 'cust';
@@ -24,6 +25,7 @@ const SLIDERS: { k: keyof Drivers; label: string; min: number; max: number }[] =
 const gmTone = (p: Result['gmPct']) => (p === null ? 'text-muted' : p.lt(0) ? 'text-bad' : p.lt(18) ? 'text-warn' : 'text-good');
 
 export default function MarginView() {
+  const hn = useHierNames();
   const [plants, setPlants] = useState('');
   const [vkorg, setVkorg] = useState('');
   const [vtweg, setVtweg] = useState('');
@@ -78,9 +80,9 @@ export default function MarginView() {
   const groups = useMemo<Group[]>(() => {
     if (by === 'cust') return groupBy(parsed.customers, (l) => l.kunag, (l) => l.label, dr, basis);
     const key = by === 'brand' ? (l: MLine) => l.brand : by === 'cat' ? (l: MLine) => l.matkl : (l: MLine) => l.matnr;
-    const lab = by === 'sku' ? (l: MLine) => `${l.matnr.replace(/^0+/, '')} ${l.label}` : key;
+    const lab = by === 'sku' ? (l: MLine) => `${l.matnr.replace(/^0+/, '')} ${l.label}` : by === 'brand' ? (l: MLine) => hn.brand(l.brand) : key;
     return groupBy(skus, key, lab, dr, basis, cur);
-  }, [by, skus, parsed.customers, dr, basis, cur]);
+  }, [by, skus, parsed.customers, dr, basis, cur, hn]);
   const sens = useMemo(() => sensitivity(skus, dr, basis, cur), [skus, dr, basis, cur]);
   const brk = useMemo(() => promoBreakeven(skus, dr.promo, basis, cur), [skus, dr.promo, basis, cur]);
   const drivers = useMemo(() => (cur ? cogmDrivers(skus, cur) : []), [skus, cur]);
@@ -166,7 +168,7 @@ export default function MarginView() {
           <Card className="p-3">
             <div className="mb-2 flex flex-wrap items-center gap-2">
               <Segmented label="Group by" size="sm" value={by} onChange={setBy} options={[{ value: 'brand', label: 'Brand' }, { value: 'cat', label: 'Product category' }, { value: 'sku', label: 'Material' }, { value: 'cust', label: 'Customer' }]} />
-              {by !== 'cust' && <select aria-label="Filter by brand" className={cx(inputBase, 'h-9 ml-auto w-40')} value={brand} onChange={(e) => setBrand(e.target.value)}><option value="">All brands</option>{brands.map((b) => <option key={b} value={b}>{b || '(none)'}</option>)}</select>}
+              {by !== 'cust' && <select aria-label="Filter by brand" className={cx(inputBase, 'h-9 ml-auto w-56')} value={brand} onChange={(e) => setBrand(e.target.value)}><option value="">All brands</option>{brands.map((b) => <option key={b} value={b}>{hn.brand(b) || '(none)'}</option>)}</select>}
             </div>
             <GroupTable groups={groups} material={by === 'sku'} onBreakup={ran ? (g) => {
               const q = g.base.qty;

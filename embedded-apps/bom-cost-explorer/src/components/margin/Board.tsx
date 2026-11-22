@@ -14,7 +14,7 @@ import { Button, Empty, Pill, Spinner, Stat, cx, inputCls } from '../ui';
 import { fmtMs, fmtNum } from '@/lib/format';
 import { buildMarginFilter } from '@/lib/margin/filter';
 import { useElapsed, useMarginRun } from '@/lib/margin/run';
-import { toMarginQuery } from '@/lib/margin/selection';
+import { liveSelectionErrors, toMarginQuery } from '@/lib/margin/selection';
 import { SCENARIO_LABEL, type MarginRow, type Scenario } from '@/lib/margin/types';
 import { COLUMNS, EROSION_WORD, IMPACT_WORD, NO_FILTERS, SEVERITY_WORD, VARIANCE_WORD, countBy, defaultHidden, directionOf, filterRows, filtersActive, hasAmt, headerGroups, rowKey, rowNote, scenarioCells, severityOf, sortRows, statusWord, varianceCells, type BoardFilters, type ColKey, type Direction, type SortDir } from '@/lib/margin/boardView';
 import { downloadBoard } from '@/lib/margin/boardExport';
@@ -93,7 +93,7 @@ function Screen({ email }: { email: string }) {
   const start = () => {
     const e: typeof errors = {};
     const q = toMarginQuery(sel);
-    if (sel.source === 'L' && !sel.materials.length && !sel.prodha.trim() && !sel.brand.trim()) e.materials = 'Pick at least one finished good (or a product hierarchy or brand).';
+    Object.assign(e, liveSelectionErrors(sel));
     if (sel.priceSrc === 'O' && !sel.vkorg.length) e.areas = 'Pick at least one sales organisation (load the sales areas first).';
     let plantsOk = sel.plants;
     if (sel.plants.length && plants.length) { plantsOk = intersectPlants(sel.plants, plants.map((p) => p.Werks)); if (!plantsOk.length) e.plants = 'None of these plants is available to you in SAP.'; }
@@ -118,7 +118,7 @@ function Screen({ email }: { email: string }) {
     await downloadBoard(shown, [
       ['Report', 'Margin board: selling price against Standard, Actual, Budget and Current cost, as SAP computed them (per selling unit)'], ['SAP system', system], ['Run at', runAt?.toLocaleString('en-IN') ?? ''],
       ['Finished goods', q.materials?.length ? q.materials.join(', ') : 'by hierarchy / brand / plant'], ['Plants', (q.plants ?? []).join(', ') || 'all'],
-      ['Price source', q.priceSrc === 'O' ? `Latest sales order (sales org ${(q.vkorg ?? []).join(', ') || 'all'}, ${q.soDays ?? ''} days)` : `Uploaded prices${q.market ? `, market ${q.market}` : ''}${q.channel ? `, channel ${q.channel}` : ''}`],
+      ['Price source', `Latest sales order (sales org ${(q.vkorg ?? []).join(', ') || 'all'}, ${q.soDays ?? ''} days)`],
       ['Data', q.source === 'S' ? 'Snapshot' : 'Live'], ['Freight', q.inclFrt ? 'included' : 'not included'], ['Price date', q.priceDate || 'today'],
       ['Rows exported', String(shown.length)], ['Rows loaded', String(all.length)], ['Note', 'n/a = SAP has no value for that scenario. Positive variance / erosion = cost up / remaining amount down; positive annual impact = loss, negative = saving.'],
     ]);

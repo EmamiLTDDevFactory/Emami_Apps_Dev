@@ -17,6 +17,7 @@ import MarginView from './MarginView';
 import BreakupView from './BreakupView';
 import type { MisRow } from '@/lib/dash/types';
 import { ls } from '@/lib/client/storage';
+import { useHierNames } from '@/lib/client/useHierNames';
 
 type Tab = 'mis' | 'sales' | 'cost' | 'margin' | 'budget' | 'ai';
 const TABS: { id: Tab; label: string }[] = [
@@ -25,6 +26,7 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 export default function DashScreen() {
+  const hn = useHierNames();
   const [tab, setTab] = useState<Tab>('mis');
   const [plants, setPlants] = useState('');
   const [asOf, setAsOf] = useState(today());
@@ -87,7 +89,7 @@ export default function DashScreen() {
                   Plants {ran?.plants} · as of {ran?.asOf} · month to date and financial year to date{fy ? ` (FY ${fy}` : ''}{fy && version ? `, latest approved budget version ${version}` : ''}{fy ? ')' : ''}. Actual = RM + PM + perfume + conversion of the period (SAP, INR).
                   Budget = approved budget cost per piece (COST_PC) x actual quantity. Amounts in ₹ lakh.
                 </p>
-                <MisTable brands={brands} tot={tot} />
+                <MisTable brands={brands} tot={tot} bn={hn.brand} />
               </>
             )}
             <NeedsSap title="Variance bridge (rate, usage, mix, overheads, currency)" object="ZCL_MM_COGM_BRIDGE" why="Nothing in SAP splits the COGM variance into these five effects yet. The bridge appears here when that class exists." />
@@ -142,7 +144,7 @@ export default function DashScreen() {
 
 const th = thCls;
 const td = tdCls;
-function MisTable({ brands, tot }: { brands: BrandView[]; tot: { ftm: Window; ytm: Window } }) {
+function MisTable({ brands, tot, bn }: { brands: BrandView[]; tot: { ftm: Window; ytm: Window }; bn: (c: string) => string }) {
   const cell = (w: Window) => (<><td className={td}>{lakh(w.budget)}</td><td className={td}>{lakh(w.actualCmp)}</td></>);
   return (
     <div className="overflow-x-auto rounded-2xl border border-line bg-panel shadow-card">
@@ -157,7 +159,7 @@ function MisTable({ brands, tot }: { brands: BrandView[]; tot: { ftm: Window; yt
         <tbody>
           {brands.map((b) => (
             <tr key={b.brand || '-'} className="border-t border-line/60">
-              <td className="px-2.5 py-1.5 text-left text-xs font-bold">{b.brand || '(none)'}</td>
+              <td className="px-2.5 py-1.5 text-left text-xs font-bold">{bn(b.brand) || '(none)'}</td>
               <td className={td}>{b.fgCnt}</td>
               {cell(b.ftm)}{cell(b.ytm)}
               <td className={td}>{lakh(b.ytm.variance)}</td>

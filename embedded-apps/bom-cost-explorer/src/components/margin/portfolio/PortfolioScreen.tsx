@@ -4,6 +4,7 @@
  * plant, market or brand), with a bar chart of the impact. SAP computes every figure; nothing is summed here. A group opens the filtered Board
  * (it never runs by itself). Nothing loads before Show; no call has a time limit (Stop ends it).
  */
+import { useHierNames } from '@/lib/client/useHierNames';
 import { useMemo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { ArrowDownRight, ArrowUpRight, FileSpreadsheet, Minus } from 'lucide-react';
@@ -16,7 +17,7 @@ import { fmtMs, fmtNum } from '@/lib/format';
 import { BASE_PATH } from '@/lib/client/session';
 import { downloadWacWorkbook } from '@/lib/wac/export';
 import { dec } from '@/lib/wac/view';
-import { toMarginQuery } from '@/lib/margin/selection';
+import { liveSelectionErrors, toMarginQuery } from '@/lib/margin/selection';
 import { useElapsed, useMarginRun } from '@/lib/margin/run';
 import { GROUP_BYS, GROUP_BY_LABEL, IMPACT_WORD, groupBoardSearch, impactBars, impactKind, portfolioSheet, sortGroups, type GroupBy, type ImpactKind } from '@/lib/margin/portfolioView';
 import type { MarginBoard } from '@/lib/margin/types';
@@ -43,25 +44,30 @@ export default function PortfolioScreen({ ctx }: { ctx: MarginCtx }) {
   const { state: plantsState } = usePlantsState(true);
   const { state, run, stop, resume, refresh } = useMarginRun('BOARD');
   const elapsed = useElapsed(state.running);
-  const [errors, setErrors] = useState<{ materials?: string; plants?: string; other?: string }>({});
+  const [errors, setErrors] = useState<{ materials?: string; plants?: string; areas?: string; other?: string }>({});
   const [ranBy, setRanBy] = useState<GroupBy>('P');
   const ct = useChartTheme();
+  const hn = useHierNames();
+  const grpName = (r: MarginBoard) => r.GrpTxt || (r.GroupKind === 'B' ? hn.brand(r.GrpKey).replace(` (${r.GrpKey})`, '') : r.GroupKind === 'P' ? hn.product(r.GrpKey).replace(` (${r.GrpKey})`, '') : '');
 
   const show = () => {
     if (!sel.materials.length && !sel.plants.length && !sel.prodha.trim() && !sel.brand.trim()) { setErrors({ other: 'Pick finished goods, a plant, a product hierarchy or a brand.' }); return; }
+    const le: { materials?: string; plants?: string; areas?: string } = liveSelectionErrors(sel);
+    if (sel.priceSrc === 'O' && !sel.vkorg.length) le.areas = 'Pick at least one sales organisation (load the sales areas first).';
+    if (le.plants || le.materials || le.areas) { setErrors(le); return; }
     setErrors({});
     setRanBy(groupBy);
     run({ ...toMarginQuery(sel), groupBy });
   };
   const rows = state.rows as MarginBoard[];
   const sorted = useMemo(() => sortGroups(rows), [rows]);
-  const bars = useMemo(() => impactBars(rows), [rows]);
+  const bars = useMemo(() => impactBars(rows.map((r) => ({ ...r, GrpTxt: grpName(r) }))), [rows, hn]); // eslint-disable-line react-hooks/exhaustive-deps
   const withGaps = rows.filter((r) => r.NoDataCnt > 0).length;
 
   return (
     <>
       <MarginSelection sel={sel} onChange={patch} plantsState={plantsState} email={ctx.email} errors={errors} onRun={show} onStop={stop} onRefresh={refresh} canRefresh={!!state.q} running={state.running} elapsed={elapsed}
-        noMaterialsHint="Optional here: a plant, product hierarchy or brand also selects the portfolio. A live run takes 25 finished goods at a time."
+        noMaterialsHint="Pick finished goods (or a product hierarchy or brand) and the plants: a live run needs both. A live run takes 25 finished goods at a time."
         extra={(
           <fieldset className="flex flex-col gap-1"><legend className="text-2xs font-bold uppercase tracking-wide text-muted">Group by</legend>
             <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Group by">
@@ -105,7 +111,7 @@ export default function PortfolioScreen({ ctx }: { ctx: MarginCtx }) {
           </section>
 
           <div className="flex items-center gap-2">
-            <Button size="sm" onClick={() => void downloadWacWorkbook([portfolioSheet(rows, ranBy)], [['Report', 'Margin portfolio (CogmBoardSet)'], ['Grouped by', GROUP_BY_LABEL[ranBy]], ['Source', sel.source === 'L' ? 'live' : 'snapshot'], ['Price source', sel.priceSrc === 'O' ? 'latest sales order' : 'uploaded prices'], ['Note', 'Every figure is SAP\'s; nothing is summed or weighted here.']], 'margin-portfolio')}><FileSpreadsheet size={14} /> Excel</Button>
+            <Button size="sm" onClick={() => void downloadWacWorkbook([portfolioSheet(rows, ranBy)], [['Report', 'Margin portfolio (CogmBoardSet)'], ['Grouped by', GROUP_BY_LABEL[ranBy]], ['Source', sel.source === 'L' ? 'live' : 'snapshot'], ['Price source', 'latest sales order'], ['Note', 'Every figure is SAP\'s; nothing is summed or weighted here.']], 'margin-portfolio')}><FileSpreadsheet size={14} /> Excel</Button>
             <span className="text-xs text-faint">Click a group to open the Board for it (you press Show there).</span>
           </div>
 
@@ -117,7 +123,7 @@ export default function PortfolioScreen({ ctx }: { ctx: MarginCtx }) {
                   const gb = (GROUP_BYS as string[]).includes(r.GroupKind) ? (r.GroupKind as GroupBy) : ranBy;
                   return (
                     <tr key={`${r.GroupKind}|${r.GrpKey}|${ri}`} className="border-t border-line/60 hover:bg-sunken">
-                      <td className={td}><a className="font-semibold text-accent underline-offset-2 hover:underline" href={`${BASE_PATH}/margin/${groupBoardSearch(sel, gb, r.GrpKey)}`} title="Open the Board for this group">{r.GrpKey || NA}</a> <span className="text-muted">{r.GrpTxt}</span></td>
+                      <td className={td}><a className="font-semibold text-accent underline-offset-2 hover:underline" href={`${BASE_PATH}/margin/${groupBoardSearch(sel, gb, r.GrpKey)}`} title="Open the Board for this group">{r.GrpKey || NA}</a> <span className="text-muted">{grpName(r)}</span></td>
                       <td className={tdN}>{r.FgCnt}</td><td className={tdN}>{cnt(r.AlertHigh, 'bad')}</td><td className={tdN}>{cnt(r.AlertMed, 'warn')}</td><td className={tdN}>{cnt(r.NoDataCnt, 'warn')}</td>
                       <td className={tdN}>{pctCell(r.WratioStd)}</td><td className={tdN}>{pctCell(r.WratioCur)}</td><td className={tdN}>{inr(r.RevenueInr)}</td><td className={tdN}><Impact v={r.AnnualImpactInr} /></td>
                     </tr>
