@@ -7,6 +7,8 @@ import { useMdm } from '@/lib/store';
 import { DOMAINS, SETUP_PATH, SETUP_TCODE, resolveTcode } from '@/lib/tcodes';
 import { DOMAIN_ICONS, IconChart, IconClock, IconHome, IconLayers, IconMenu, IconTree } from './icons';
 
+const BASE = process.env.NEXT_PUBLIC_BASE_PATH || '';
+
 const ADMIN_LINKS = [
   { href: '/admin/dashboard', label: 'Dashboard', tcode: 'MDM_DB', Icon: IconChart },
   { href: '/admin/worklist', label: 'Workflow visibility', tcode: 'UWL', Icon: IconClock },
@@ -35,19 +37,27 @@ export default function AppShell({ children }: { children: ReactNode }) {
     setNavOpen(false);
   }
 
+  const adminHit = ADMIN_LINKS.find((a) => pathname.startsWith(a.href));
+  const domainHit = DOMAINS.find((d) => pathname.startsWith(`/master/${d.id}`));
+  const pageTitle = adminHit ? adminHit.label : pathname.startsWith(SETUP_PATH) ? 'Product Hierarchy & CRS' : domainHit ? domainHit.label : 'Master Data';
+  const pageSub = adminHit ? `Administration · ${adminHit.tcode}` : pathname.startsWith(SETUP_PATH) ? SETUP_TCODE : domainHit ? domainHit.tcode : 'Governance portal';
   const initials = user.name.split(' ').filter(Boolean).map((p) => p[0]).join('').slice(0, 3) || '?';
   const role = sessionState === 'loading' ? 'Signing in…' : sessionState === 'error' ? 'Not connected' : user.department || user.roles.join(', ') || 'Signed in';
 
   return (
     <div className="shell">
       <nav className={`sidebar ${navOpen ? 'open' : ''}`} aria-label="Master data objects">
-        <Link href="/" className="brand" onClick={() => setNavOpen(false)}>
-          <span className="brand-mark" aria-hidden>M</span>
-          <span className="brand-text">
+        <div className="brand">
+          <button type="button" className="nav-close" onClick={() => setNavOpen(false)} aria-label="Close menu">×</button>
+          <a href="/" className="brand-logo" title="Back to Emami Apps" aria-label="Back to Emami Apps">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`${BASE}/emami-apps-logo.png`} alt="Emami Apps" width={150} height={124} />
+          </a>
+          <Link href="/" className="brand-text" onClick={() => setNavOpen(false)}>
             <span className="brand-name">Master Data</span>
             <span className="brand-sub">Governance portal</span>
-          </span>
-        </Link>
+          </Link>
+        </div>
 
         <div className="nav-scroll">
           <Link href="/" className={`nav-item ${pathname === '/' ? 'active' : ''}`} onClick={() => setNavOpen(false)}>
@@ -97,22 +107,29 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
       <div className="shell-main">
         <header className="topbar">
-          <button className="nav-toggle" onClick={() => setNavOpen((o) => !o)} aria-label="Toggle navigation" aria-expanded={navOpen}><IconMenu /></button>
-          <form className="tcode" onSubmit={runTcode} role="search">
-            <label htmlFor="tcode-input" className="sr-only">Transaction code</label>
-            <span className="tcode-prefix" aria-hidden>/n</span>
-            <input
-              id="tcode-input"
-              value={cmd}
-              onChange={(e) => setCmd(e.target.value)}
-              placeholder="Enter t-code, e.g. ZMDM_M"
-              spellCheck={false}
-              autoComplete="off"
-            />
-            <button type="submit" className="tcode-go" aria-label="Run transaction">Go</button>
-          </form>
-          <div className="topbar-right">
-            <span className="avatar avatar-top" title={user.name}>{initials}</span>
+          <div aria-hidden className="banner-line" />
+          <div className="banner">
+            <button className="nav-toggle" onClick={() => setNavOpen((o) => !o)} aria-label="Toggle navigation" aria-expanded={navOpen}><IconMenu /></button>
+            <div className="banner-title">
+              <h1>{pageTitle}</h1>
+              <p>{pageSub}</p>
+            </div>
+            <form className="tcode" onSubmit={runTcode} role="search">
+              <label htmlFor="tcode-input" className="sr-only">Transaction code</label>
+              <span className="tcode-prefix" aria-hidden>/n</span>
+              <input
+                id="tcode-input"
+                value={cmd}
+                onChange={(e) => setCmd(e.target.value)}
+                placeholder="T-code, e.g. ZMDM_M"
+                spellCheck={false}
+                autoComplete="off"
+              />
+              <button type="submit" className="tcode-go" aria-label="Run transaction">Go</button>
+            </form>
+            <div className="topbar-right">
+              <span className="user-chip" title={user.name}><span className="avatar avatar-top" aria-hidden>{initials}</span><span className="user-chip-name">{user.name}</span></span>
+            </div>
           </div>
         </header>
 
