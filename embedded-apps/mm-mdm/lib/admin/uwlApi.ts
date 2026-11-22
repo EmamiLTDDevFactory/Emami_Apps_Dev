@@ -22,8 +22,9 @@ export interface UwlQuery {
 
 /** The SAP area class answers {ok:true,data} or {ok:false,messages}; the hub turns the latter into an error with the SAP messages */
 async function call<T>(op: string, q: Record<string, unknown> = {}): Promise<T> {
-  const r = await adminCall<{ ok: boolean; data: T }>('UWL', op, q);
-  return r.data;
+  const r = await adminCall<T | { ok: boolean; data: T }>('UWL', op, q);
+  // the hub already hands over SAP's data part; accept the {ok,data} envelope too
+  return (r && typeof r === 'object' && 'ok' in r && 'data' in r ? (r as { data: T }).data : r) as T;
 }
 export const uwlMy = (q: UwlQuery) => call<UwlPage>('my', { ...q });
 export const uwlAll = (q: UwlQuery) => call<UwlPage>('all', { ...q });

@@ -67,6 +67,10 @@ export default function DashboardScreen() {
     if (applied.objValue) q.objValue = applied.objValue;
     if (applied.text) q.text = applied.text;
     if (applied.duplicate) q.duplicate = applied.duplicate;
+    if (applied.transId || applied.objValue) {
+      // a T-ID or SAP code search finds the request whatever its creation date
+      delete q.dateFrom; delete q.dateTo; q.allDates = true;
+    }
     if (focus) {
       // the waiting state is not bound to the creation date: the list then looks at all dates
       delete q.dateFrom; delete q.dateTo; q.allDates = true;

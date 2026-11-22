@@ -67,8 +67,9 @@ export interface DashQuery {
 }
 
 async function call<T>(op: string, q: Record<string, unknown> = {}): Promise<T> {
-  const r = await adminCall<{ ok: boolean; data: T }>('DASH', op, q);
-  return r.data;
+  const r = await adminCall<T | { ok: boolean; data: T }>('DASH', op, q);
+  // the hub already hands over SAP's data part; accept the {ok,data} envelope too
+  return (r && typeof r === 'object' && 'ok' in r && 'data' in r ? (r as { data: T }).data : r) as T;
 }
 export const dashMeta = () => call<DashMeta>('meta');
 export const dashOverview = (q: DashQuery) => call<Overview>('overview', { ...q });
