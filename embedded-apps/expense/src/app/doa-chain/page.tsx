@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useMemo, useRef, useState } from 'react';
-import { Copy, Plus, RefreshCw, Save, ShieldAlert, Upload, X } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ArrowLeft, Copy, Info, Plus, Power, PowerOff, RefreshCw, Save, ShieldAlert, Upload, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useClaim } from '../../context/ClaimContext';
 import { DoaChainRow } from '../../types';
@@ -111,6 +112,7 @@ function findAmtToMismatchWarnings(rows: GridRow[]): string[] {
 }
 
 export default function DoaChainPage() {
+  const router = useRouter();
   const { currentUser } = useAuth();
   const { fetchDoaChain, createDoaChainRow, updateDoaChainRow } = useClaim();
 
@@ -306,10 +308,18 @@ export default function DoaChainPage() {
       a.Seqno.localeCompare(b.Seqno));
   }, [rows, showInactive, searchText]);
 
-  const cellInputClass = 'input !h-8 !py-1 !px-1.5 text-xs';
+  const cellInputClass = 'input !h-7 !w-full !min-w-0 !py-0.5 !px-1 text-2xs';
 
   return (
     <div>
+      <button
+        type="button"
+        onClick={() => router.push('/admin/')}
+        className="mb-2 flex items-center gap-1 text-xs font-semibold text-brand hover:underline"
+      >
+        <ArrowLeft size={14} /> Back to Admin
+      </button>
+
       <PageHeader
         eyebrow="Admin"
         title="DOA Chain Maintenance"
@@ -322,7 +332,11 @@ export default function DoaChainPage() {
       </Banner>
 
       <Card className="my-3">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+        {/* Every field below shares the same label+input top line regardless of whether it also
+            has a hint line under it (Cost Centre/Search do, Type/Load don't) - items-start keeps
+            all four aligned on that shared top line instead of Load drifting to the bottom of the
+            tallest cell. */}
+        <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-4">
           <Field label="Type">
             <Select value={doaCtypeFilter} onChange={setDoaCtypeFilter} options={DOA_CTYPE_FILTER_OPTIONS} />
           </Field>
@@ -337,11 +351,11 @@ export default function DoaChainPage() {
           <Field label="Search" hint="Cost centre, approver name or email">
             <Input value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Filter loaded rows…" />
           </Field>
-          <div className="flex items-end gap-2">
-            <Button variant="primary" icon={RefreshCw} loading={loading} onClick={handleLoad} className="flex-1">
+          <Field label=" ">
+            <Button variant="primary" icon={RefreshCw} loading={loading} onClick={handleLoad} className="w-full">
               Load
             </Button>
-          </div>
+          </Field>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-4">
           <Checkbox checked={showInactive} onChange={setShowInactive} label="Show inactive rows" />
@@ -394,26 +408,24 @@ export default function DoaChainPage() {
             </div>
           </div>
 
-          <div className="card overflow-x-auto !p-0">
-            <table className="w-full min-w-[1400px] border-collapse text-xs">
+          <div className="card !p-0">
+            <table className="w-full table-fixed border-collapse text-2xs">
               <thead>
                 <tr className="border-b border-border bg-appBg text-left">
-                  <th className="p-2">Type</th>
-                  <th className="p-2">Cost Centre</th>
-                  <th className="p-2">Amt From</th>
-                  <th className="p-2">Seq</th>
-                  <th className="p-2">Amt To</th>
-                  <th className="p-2">Department</th>
-                  <th className="p-2">Approver Email</th>
-                  <th className="p-2">PERNR</th>
-                  <th className="p-2">Name</th>
-                  <th className="p-2">Rule</th>
-                  <th className="p-2">HoD</th>
-                  <th className="p-2">Active</th>
-                  <th className="p-2">Valid From</th>
-                  <th className="p-2">Valid To</th>
-                  <th className="p-2">Audit</th>
-                  <th className="p-2">Actions</th>
+                  <th className="w-[7%] p-1.5">Type</th>
+                  <th className="w-[8%] p-1.5">Cost Centre</th>
+                  <th className="w-[7%] p-1.5">Amt From</th>
+                  <th className="w-[5%] p-1.5">Seq</th>
+                  <th className="w-[7%] p-1.5">Amt To</th>
+                  <th className="w-[9%] p-1.5">Department</th>
+                  <th className="w-[15%] p-1.5">Approver Email</th>
+                  <th className="w-[11%] p-1.5">Approver</th>
+                  <th className="w-[6%] p-1.5">Rule</th>
+                  <th className="w-[5%] p-1.5">HoD</th>
+                  <th className="w-[5%] p-1.5">Active</th>
+                  <th className="w-[9%] p-1.5">Validity</th>
+                  <th className="w-[5%] p-1.5">Audit</th>
+                  <th className="w-[6%] p-1.5">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -421,69 +433,69 @@ export default function DoaChainPage() {
                   const isKeyLocked = !row._isNew;
                   return (
                     <tr key={row._cid} className={row._isNew || row._dirty ? 'bg-amberBg/40' : 'border-b border-line'}>
-                      <td className="p-1.5 align-top">
+                      <td className="p-1 align-top">
                         {row._isNew ? (
-                          <Select value={row.DoaCtype} onChange={(v) => updateField(row._cid, { DoaCtype: v, Hod: v === 'MBN' ? row.Hod : false })} options={DOA_CTYPE_OPTIONS} className="!h-8 !py-1 text-xs" />
+                          <Select value={row.DoaCtype} onChange={(v) => updateField(row._cid, { DoaCtype: v, Hod: v === 'MBN' ? row.Hod : false })} options={DOA_CTYPE_OPTIONS.map((o) => ({ value: o.value, label: o.value }))} className="!h-7 !w-full !min-w-0 !py-0.5 !px-1 text-2xs" />
                         ) : row.DoaCtype}
                       </td>
-                      <td className="p-1.5 align-top">
+                      <td className="p-1 align-top">
                         {row._isNew ? (
                           <Input value={row.Kostl} onChange={(e) => updateField(row._cid, { Kostl: e.target.value.toUpperCase() })} className={cellInputClass} />
                         ) : row.Kostl}
                       </td>
-                      <td className="p-1.5 align-top">
+                      <td className="p-1 align-top">
                         {row._isNew ? (
                           <Input type="number" value={row.AmtFrom || ''} onChange={(e) => updateField(row._cid, { AmtFrom: parseFloat(e.target.value) || 0 })} className={cellInputClass} />
                         ) : row.AmtFrom}
                       </td>
-                      <td className="p-1.5 align-top">
+                      <td className="p-1 align-top">
                         {row._isNew ? (
-                          <Input value={row.Seqno} onChange={(e) => updateField(row._cid, { Seqno: e.target.value.slice(0, 2) })} className={`${cellInputClass} !w-14`} />
+                          <Input value={row.Seqno} onChange={(e) => updateField(row._cid, { Seqno: e.target.value.slice(0, 2) })} className={cellInputClass} />
                         ) : row.Seqno}
                       </td>
-                      <td className="p-1.5 align-top">
+                      <td className="p-1 align-top">
                         <Input type="number" value={row.AmtTo || ''} onChange={(e) => updateField(row._cid, { AmtTo: parseFloat(e.target.value) || 0 })} placeholder="No cap" className={cellInputClass} />
                       </td>
-                      <td className="p-1.5 align-top">
+                      <td className="p-1 align-top">
                         <Input value={row.DeptTxt} onChange={(e) => updateField(row._cid, { DeptTxt: e.target.value })} className={cellInputClass} />
                       </td>
-                      <td className="p-1.5 align-top">
-                        <Input value={row.ApprEmail} onChange={(e) => updateField(row._cid, { ApprEmail: e.target.value })} placeholder="approver@emamigroup.com" className={`${cellInputClass} min-w-[180px]`} />
+                      <td className="p-1 align-top">
+                        <Input value={row.ApprEmail} onChange={(e) => updateField(row._cid, { ApprEmail: e.target.value })} placeholder="approver@…" className={cellInputClass} title={row.ApprEmail} />
                       </td>
-                      <td className="p-1.5 align-top text-inkSoft">{row.ApprPernr || '—'}</td>
-                      <td className="p-1.5 align-top text-inkSoft">{row.ApprName || '—'}</td>
-                      <td className="p-1.5 align-top">
-                        <Select value={row.ApprRule} onChange={(v) => updateField(row._cid, { ApprRule: v as 'O' | 'A' })} options={[{ value: 'O', label: 'O' }, { value: 'A', label: 'A' }]} className="!h-8 !py-1 text-xs" />
+                      <td className="p-1 align-top text-inkSoft" title={`${row.ApprPernr || ''} ${row.ApprName || ''}`}>
+                        <div className="truncate">{row.ApprName || '—'}</div>
+                        {row.ApprPernr && <div className="truncate text-inkFaint">{row.ApprPernr}</div>}
                       </td>
-                      <td className="p-1.5 align-top">
+                      <td className="p-1 align-top">
+                        <Select value={row.ApprRule} onChange={(v) => updateField(row._cid, { ApprRule: v as 'O' | 'A' })} options={[{ value: 'O', label: 'O' }, { value: 'A', label: 'A' }]} className="!h-7 !w-full !min-w-0 !py-0.5 !px-1.5 text-2xs" />
+                      </td>
+                      <td className="p-1 align-top">
                         {row.DoaCtype === 'MBN' ? (
                           <Checkbox checked={!!row.Hod} onChange={(v) => updateField(row._cid, { Hod: v })} />
                         ) : '—'}
                       </td>
-                      <td className="p-1.5 align-top">
+                      <td className="p-1 align-top">
                         <Checkbox checked={row.Active} onChange={() => handleToggleActive(row._cid)} />
                       </td>
-                      <td className="p-1.5 align-top">
-                        <DateField label="Valid From" value={row.ValidFrom} onChange={(v) => updateField(row._cid, { ValidFrom: v })} className={cellInputClass} />
-                      </td>
-                      <td className="p-1.5 align-top">
+                      <td className="p-1 align-top">
+                        <DateField label="Valid From" value={row.ValidFrom} onChange={(v) => updateField(row._cid, { ValidFrom: v })} className={`${cellInputClass} mb-0.5`} />
                         <DateField label="Valid To" value={row.ValidTo} onChange={(v) => updateField(row._cid, { ValidTo: v })} className={cellInputClass} />
                       </td>
-                      <td className="p-1.5 align-top text-2xs text-inkFaint">
-                        {row.Aenam ? <>{row.Aenam}<br />{row.Aedat || ''}</> : '—'}
+                      <td className="p-1 align-top text-inkFaint" title={row.Aenam ? `${row.Aenam} · ${row.Aedat || ''}` : 'No audit yet'}>
+                        {row.Aenam ? <Info size={14} /> : '—'}
                       </td>
-                      <td className="p-1.5 align-top">
-                        <div className="flex items-center gap-1">
+                      <td className="p-1 align-top">
+                        <div className="flex items-center gap-0.5">
                           <button type="button" title="Copy row (parallel approver)" onClick={() => handleCopyRow(row)} className="rounded p-1 text-inkSoft hover:bg-appBg hover:text-ink">
-                            <Copy size={14} />
+                            <Copy size={13} />
                           </button>
-                          <button type="button" title={row.Active ? 'Deactivate' : 'Reactivate'} onClick={() => handleToggleActive(row._cid)} className="rounded px-1.5 py-0.5 text-2xs font-semibold text-inkSoft hover:bg-appBg hover:text-ink">
-                            {row.Active ? 'Deactivate' : 'Reactivate'}
+                          <button type="button" title={row.Active ? 'Deactivate' : 'Reactivate'} onClick={() => handleToggleActive(row._cid)} className="rounded p-1 text-inkSoft hover:bg-appBg hover:text-ink">
+                            {row.Active ? <PowerOff size={13} /> : <Power size={13} />}
                           </button>
                         </div>
-                        {row._saving && <p className="mt-1 text-2xs text-brand">Saving…</p>}
-                        {row._rowError && <p className="mt-1 max-w-[220px] text-2xs font-semibold text-red">{row._rowError}</p>}
-                        {isKeyLocked && <p className="mt-1 text-2xs text-inkFaint">Key fields locked</p>}
+                        {row._saving && <p className="mt-1 text-inkFaint">Saving…</p>}
+                        {row._rowError && <p className="mt-1 font-semibold text-red">{row._rowError}</p>}
+                        {isKeyLocked && <p className="mt-1 text-inkFaint">Locked</p>}
                       </td>
                     </tr>
                   );
