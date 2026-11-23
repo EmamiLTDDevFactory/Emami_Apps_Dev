@@ -4,9 +4,10 @@ import React, { useState } from 'react';
 import { useTms } from '../lib/store';
 import { KV, Modal, StatusPill, Tabs, Timeline, inr, fmtDT, ProgressSteps, Pill } from './ui';
 import type { Shipment } from '../lib/types';
+import TripPanel from './TripPanel';
 
 const STEPS = ['Requested', 'Accepted', 'Assigned', 'Towards Pickup', 'At Pickup', 'In Transit', 'At Delivery', 'Completed'];
-const TABS = ['Shipment Details', 'Activity Timeline', 'Pickup & Delivery', 'Carrier Invoice', 'Lorry Receipt'] as const;
+const TABS = ['Shipment Details', 'Activity Timeline', 'Pickup & Delivery', 'Carrier Invoice', 'Lorry Receipt', 'Outward Trip'] as const;
 
 export default function ShipmentDetail({ sin, onClose }: { sin: string; onClose: () => void }) {
   const t = useTms();
@@ -33,7 +34,8 @@ export default function ShipmentDetail({ sin, onClose }: { sin: string; onClose:
       {!['Completed', 'Cancelled', 'Rejected'].includes(s.status) && <button className="btn-danger" onClick={guard(() => { t.cancelShipment(s.sin); t.toast('Shipment cancelled'); })}>Cancel</button>}
     </>}>
       {s.status !== 'Cancelled' && s.status !== 'Rejected' ? <div className="mb-4"><ProgressSteps steps={STEPS} current={idx} /></div> : <div className="mb-4"><StatusPill s={s.status} /></div>}
-      <Tabs tabs={TABS} value={tab} onChange={setTab} />
+      <Tabs tabs={s.indentId ? TABS : TABS.filter((x) => x !== 'Outward Trip')} value={tab} onChange={setTab} />
+      {tab === 'Outward Trip' && <TripPanel s={s} />}
       {tab === 'Shipment Details' && (<div className="space-y-4">
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           <KV k="Status" v={<StatusPill s={s.status} />} /><KV k="Carrier" v={carrier?.name} /><KV k="Vehicle" v={`${s.vehicleNo} (${s.vehicleType})`} /><KV k="Freight" v={inr(s.freight)} />

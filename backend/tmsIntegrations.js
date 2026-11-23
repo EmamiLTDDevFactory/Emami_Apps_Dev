@@ -33,4 +33,11 @@ const notify = {
         try { await post(env('TMS_NOTIFY_URL'), env('TMS_NOTIFY_KEY'), { to, channel, text }); return { sent: true }; } catch (e) { return { sent: false, error: e.message }; }
     },
 };
-module.exports = { consent, eway, notify };
+/** Invoice mail: TMS_MAIL_URL / TMS_MAIL_KEY  POST { to, subject, text, attachment: { name, mime, dataBase64 } }. Simulated (not sent, flagged) until set. */
+const mail = {
+    async send({ to, subject, text, attachment }) {
+        if (!env('TMS_MAIL_URL')) return { sent: false, simulated: true };
+        try { await post(env('TMS_MAIL_URL'), env('TMS_MAIL_KEY'), { to, subject, text, attachment }); return { sent: true }; } catch (e) { return { sent: false, error: e.message }; }
+    },
+};
+module.exports = { consent, eway, notify, mail };

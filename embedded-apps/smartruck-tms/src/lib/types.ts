@@ -36,11 +36,30 @@ export interface Shipment {
   carrierId: string; vehicleNo: string; vehicleType: string; driver: string; phone: string; provider: 'Jio' | 'Airtel' | 'Vi';
   consent: Consent; consentSince?: string; tracking: Tracking; ePod: EPod; freight: number; fromLocId: string; toLocId: string;
   pickupAt: string; progress: number; delayH: number; anomaly?: 'Tracking' | 'Speed' | 'Distance'; lr: string; km: number;
-  ewayExpiry: string; ewayNo?: string; pos?: { lat: number; lon: number; at: string; speed: number; source: string }; material: string; qty: number; customerId: string; log: Activity[]; gpsReason?: string; delayReason?: string;
+  ewayExpiry: string; ewayNo?: string;
+  /** Outward tracking (live): trip fields */
+  indentId?: string; deliveries?: Delivery[]; eccShipmentNo?: string; eccCost?: { net: number; tax: number; currency: string; status: string; at: string; source: string };
+  loading?: Loading; sealNo?: string; departedAt?: string; arrivedAt?: string; plannedArrival?: string; etaAt?: string; delayFlag?: boolean; events?: TrackEvent[];
+  receipt?: Receipt; pod?: { fileId: string; name: string; at: string; by: string }; driverConsent?: { at: string; by: string; version: string }; ulipCheck?: { ok: boolean; simulated: boolean; at: string };
+  trackToken?: string; departPhoto?: string; pos?: { lat: number; lon: number; at: string; speed: number; source: string }; material: string; qty: number; customerId: string; log: Activity[]; gpsReason?: string; delayReason?: string;
 }
+export interface Delivery { no: string; plant?: string; shipTo: string; cartons: number; weightKg: number; volumeM3: number; source: 'sap' | 'manual'; irn?: string; ewbNo?: string; ewbValid?: string }
+export interface Loading { weightKg: number; volumeM3: number; weightPct: number; volumePct: number; effectivePct: number; minPct: number; reason: string; approval: 'NotNeeded' | 'Pending' | 'Approved' | 'Rejected'; approvedBy?: string; at: string; by: string }
+export interface TrackEvent { at: string; source: 'ULIP' | 'Manual' | 'System'; place: string; lat: number; lon: number; note?: string; by?: string }
+export interface Receipt { arrivedAt: string; dispatched: number; cartonsReceived: number; damagedQty: number; shortage: number; unloadingCharge: number; detentionCharge: number; remarks: string; chargesApproval: 'NotNeeded' | 'Pending' | 'Approved' | 'Rejected'; by: string; approvedBy?: string }
+export interface VehicleType { code: string; name: string; maxWeightKg: number; maxVolumeM3: number }
+export interface LaneVendor { carrierId: string; priority: number; rate: number }
+export interface Lane { id: string; fromLocId: string; toLocId: string; distanceKm: number; transitH: number; vendors: LaneVendor[] }
+export interface Offer { carrierId: string; offeredAt: string; expiresAt: string; response: 'Pending' | 'Accepted' | 'Rejected' | 'Timed out' | 'Withdrawn'; reason?: string; respondedAt?: string; rate: number }
+export interface Indent {
+  id: string; unitId: string; laneId: string; fromLocId: string; toLocId: string; customerId: string; vehicleType: string; vehicles: number; requiredAt: string; deliveries: string[];
+  material: string; qty: number; status: 'Draft' | 'Open' | 'Allocated' | 'Vehicle Assigned' | 'Cancelled'; offers: Offer[]; escalated?: boolean; orderId?: string; sin?: string; createdAt: string; createdBy: string; remarks: string[];
+}
+export interface TmsSettings { offerTimeoutH: number; capacityMinPct: number; invoiceTolerancePct: number; delayMarginH: number; unlinkedAlertH: number; invoiceMailbox: string; consentVersion: string; consentText: string }
 export interface Invoice {
   id: string; sin: string; carrierId: string; unitId: string; status: InvStatus; amount: number; sapDoc?: string; miro: string;
   date: string; vehicleNo: string; history: Activity[]; simulated?: boolean;
+  invoiceNo?: string; lrNo?: string; expected?: number; basis?: string; extras?: number; variancePct?: number; review?: 'OK' | 'Under Review' | 'Cleared' | 'Rejected'; fileId?: string; mailedAt?: string;
 }
 export interface Voucher { id: string; carrierId: string; amount: number; status: 'Draft' | 'Posted'; date: string; invoices: string[] }
 export interface Note { id: string; kind: 'Debit' | 'Credit'; carrierId: string; amount: number; reason: string; date: string; sin: string }
@@ -52,6 +71,7 @@ export interface Db {
   units: Unit[]; locs: Loc[]; carriers: Carrier[]; customers: Customer[]; orders: Order[]; shipments: Shipment[];
   invoices: Invoice[]; vouchers: Voucher[]; notes: Note[]; users: AppUser[]; notifications: Notification[]; geofences: Geofence[];
   seq: number;
+  vehicleTypes?: VehicleType[]; lanes?: Lane[]; indents?: Indent[]; settings?: Partial<TmsSettings>;
 }
 
 export const ROLE_PERMS: Record<string, { label: string; perms: { key: string; label: string }[] }> = {
@@ -68,6 +88,9 @@ export const ROLE_PERMS: Record<string, { label: string; perms: { key: string; l
   'Marketing': { label: 'Marketing', perms: [{ key: 'customer.edit', label: 'Edit Customers' }, { key: 'report.view', label: 'View Reports' }] },
   'Control Tower': { label: 'Control Tower', perms: [
     { key: 'ship.update', label: 'Update Shipment / Delay Reasons' }, { key: 'sim.manage', label: 'Manage SIM Consent' }, { key: 'report.view', label: 'View Reports' } ] },
-  'Carrier Vendor': { label: 'Carrier Vendor', perms: [{ key: 'bid.place', label: 'Place bids (own carrier)' }] },
+  'Carrier Vendor': { label: 'Carrier Vendor', perms: [{ key: 'bid.place', label: 'Place bids (own carrier)' }, { key: 'indent.respond', label: 'Accept / reject indents' }, { key: 'ship.assign.own', label: 'Assign vehicle, depart, POD, invoice (own trips)' }] },
+  'Depot User': { label: 'Depot User', perms: [{ key: 'indent.create', label: 'Raise indents' }, { key: 'indent.cancel', label: 'Cancel indents' }, { key: 'trip.manage', label: 'Link deliveries, loading check, receipt, POD' }] },
+  'Depot Head': { label: 'Depot Head', perms: [{ key: 'trip.manage', label: 'Trip work' }, { key: 'loading.approve', label: 'Approve under-loaded vehicles' }, { key: 'charges.approve', label: 'Approve unloading / detention' }, { key: 'indent.create', label: 'Raise indents' }] },
+  'HO Logistics': { label: 'HO Logistics', perms: [{ key: 'lane.manage', label: 'Lanes, vehicle types, SAP lane sync' }, { key: 'indent.override', label: 'Override capacity / offer to a vendor' }, { key: 'invoice.review', label: 'Review out-of-tolerance invoices' }, { key: 'settings.manage', label: 'Thresholds and mailbox' }, { key: 'trip.manage', label: 'Trip work' }] },
   'Admin': { label: 'Admin', perms: [{ key: 'user.manage', label: 'Manage Users' }, { key: '*', label: 'All permissions' }] },
 };

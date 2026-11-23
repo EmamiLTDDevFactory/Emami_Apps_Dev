@@ -384,7 +384,7 @@ test('import: dry run reports referential problems; a clean import merges by key
 
 test('reports: 40+ in 8 categories; every one runs on an empty and on a populated database; unknown name is null', async () => {
     assert.ok(reports.count() >= 40, `only ${reports.count()}`);
-    assert.equal(Object.keys(reports.catalog()).length, 8);
+    assert.equal(Object.keys(reports.catalog()).length, 9);
     const w = world(); await toAssigned(w); w.db.invoices.push({ id: 'I', sin: w.db.shipments[0].sin, carrierId: 'C001', unitId: 'UN13', status: 'Approved', amount: 1, miro: '', date: iso(NOW), history: [] });
     for (const names of Object.values(reports.catalog())) for (const n of names) {
         assert.ok(Array.isArray(reports.run(n, engine.emptyDb(), NOW)), `${n} on empty`);
@@ -415,4 +415,302 @@ test('carrier admin: block / weightage / lanes need their own permission; unknow
     await run(w, ca, { type: 'patchCarrier', id: 'C001', patch: { blocked: true, lanes: ['gau-ccu'] } });
     assert.equal(w.db.carriers[0].blocked, true);
     assert.deepEqual(w.db.carriers[0].lanes, ['GAU-CCU']);
+});
+
+// ------------------------------------------------------------------ Outward tracking, slice 1: lanes, indents, vendor offers
+function outwardWorld() {
+    const w = world();
+    w.db.vehicleTypes = [{ code: 'CONT15MT', name: '15 MT container', maxWeightKg: 15000, maxVolumeM3: 60 }];
+    const mk = (id, name, roles, extra = {}) => ({ id, name, email: `${id.toLowerCase()}@x.com`, designation: '', roles, units: ['UN13'], lastSignin: '', ...extra });
+    w.u.depot = mk('U20', 'Depot', ['Depot User']);
+    w.u.ho = mk('U21', 'HO', ['HO Logistics']);
+    w.u.v1 = mk('U22', 'Vendor1', ['Carrier Vendor'], { carrierId: 'C001', units: [] });
+    w.u.v2 = mk('U23', 'Vendor2', ['Carrier Vendor'], { carrierId: 'C002', units: [] });
+    w.db.users.push(w.u.depot, w.u.ho, w.u.v1, w.u.v2);
+    return w;
+}
+const laneCmd = () => ({ type: 'upsertLane', fromLocId: 'GAU', toLocId: 'CCU', distanceKm: 1030, transitH: 30, vendors: [{ carrierId: 'C001', priority: 1, rate: 41000 }, { carrierId: 'C002', priority: 2, rate: 43000 }, { carrierId: 'C003', priority: 3, rate: 40000 }] });
+const indentCmd = (over = {}) => ({ type: 'createIndent', unitId: 'UN13', customerId: 'K1', laneId: 'LN-GAU-CCU', vehicleType: 'CONT15MT', requiredAt: iso(NOW + 24 * H), material: 'Talc', qty: 12, deliveries: ['80001234'], ...over });
+
+test('outward: only HO maintains lanes; indents need a known lane and vehicle type', async () => {
+    const w = outwardWorld();
+    await rejects(run(w, w.u.depot, laneCmd()), 403);
+    await run(w, w.u.ho, laneCmd());
+    await rejects(run(w, w.u.depot, indentCmd({ laneId: 'nope' })), 400, /lane/i);
+    await rejects(run(w, w.u.depot, indentCmd({ vehicleType: 'XX' })), 400, /vehicle type/i);
+    await rejects(run(w, w.u.depot, indentCmd({ requiredAt: iso(NOW - H) })), 400, /future/);
+    await rejects(run(w, w.u.fin1, indentCmd()), 403);
+});
+
+test('outward: vendor accepts -> order + shipment at the lane rate; other vendor cannot respond', async () => {
+    const w = outwardWorld(); await run(w, w.u.ho, laneCmd());
+    const { result } = await run(w, w.u.depot, indentCmd());
+    assert.equal(result.offeredTo, 'C001');
+    await rejects(run(w, w.u.v2, { type: 'vendorRespond', id: result.indentId, response: 'accept' }), 409);
+    const r = await run(w, w.u.v1, { type: 'vendorRespond', id: result.indentId, response: 'accept' });
+    const ship = w.db.shipments.find((s) => s.sin === r.result.sin);
+    assert.equal(ship.carrierId, 'C001'); assert.equal(ship.freight, 41000); assert.equal(ship.status, 'Accepted');
+    assert.equal(w.db.indents[0].status, 'Allocated');
+    await rejects(run(w, w.u.v1, { type: 'vendorRespond', id: result.indentId, response: 'accept' }), 409);
+});
+
+test('outward: rejection needs a reason, moves to next vendor, skips blocked, then escalates to HO', async () => {
+    const w = outwardWorld(); await run(w, w.u.ho, laneCmd());
+    const { result } = await run(w, w.u.depot, indentCmd());
+    await rejects(run(w, w.u.v1, { type: 'vendorRespond', id: result.indentId, response: 'reject' }), 400, /reason/);
+    const r1 = await run(w, w.u.v1, { type: 'vendorRespond', id: result.indentId, response: 'reject', reason: 'No vehicle' });
+    assert.equal(r1.result.next, 'C002');
+    const r2 = await run(w, w.u.v2, { type: 'vendorRespond', id: result.indentId, response: 'reject', reason: 'Busy' });
+    assert.equal(r2.result.next, null);                       // C003 is blocked
+    assert.equal(w.db.indents[0].escalated, true);
+    assert.equal(w.db.indents[0].status, 'Open');
+});
+
+test('outward: unanswered offer times out to the next vendor via the sweep', async () => {
+    const w = outwardWorld(); await run(w, w.u.ho, laneCmd());
+    await run(w, w.u.depot, indentCmd());
+    assert.equal(engine.sweep(w.db, NOW + 3 * H).indentsMoved, 0);
+    assert.equal(engine.sweep(w.db, NOW + 5 * H).indentsMoved, 1);
+    const offers = w.db.indents[0].offers;
+    assert.deepEqual(offers.map((o) => [o.carrierId, o.response]), [['C001', 'Timed out'], ['C002', 'Pending']]);
+    await rejects(run(w, w.u.v1, { type: 'vendorRespond', id: w.db.indents[0].id, response: 'accept' }, {}, NOW + 6 * H), 409);
+});
+
+test('outward: vendor view shows only their own offers, without customer detail; vendors cannot send other commands', async () => {
+    const w = outwardWorld(); await run(w, w.u.ho, laneCmd());
+    await run(w, w.u.depot, indentCmd());
+    const v1 = engine.scopedDb(w.db, w.u.v1), v2 = engine.scopedDb(w.db, w.u.v2);
+    assert.equal(v1.indents.length, 1); assert.equal(v1.indents[0].customerId, ''); assert.equal(v1.indents[0].offers.length, 1);
+    assert.equal(v2.indents.length, 0);
+    await rejects(run(w, w.u.v1, indentCmd()), 403);
+    await rejects(run(w, w.u.v1, { type: 'cancelIndent', id: w.db.indents[0].id }), 403);
+});
+
+test('outward: cancelling an allocated indent cancels its order and shipment', async () => {
+    const w = outwardWorld(); await run(w, w.u.ho, laneCmd());
+    const { result } = await run(w, w.u.depot, indentCmd());
+    const r = await run(w, w.u.v1, { type: 'vendorRespond', id: result.indentId, response: 'accept' });
+    await run(w, w.u.depot, { type: 'cancelIndent', id: result.indentId, reason: 'Customer changed plan' });
+    assert.equal(w.db.shipments.find((s) => s.sin === r.result.sin).status, 'Cancelled');
+    await rejects(run(w, w.u.depot, { type: 'cancelIndent', id: result.indentId }), 409);
+});
+
+// ------------------------------------------------------------------ Outward tracking, slices 2-6: trip lifecycle
+const { checkFile } = require('../tmsTrips');
+const PDF = Buffer.from('%PDF-1.4 test').toString('base64');
+const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47]), Buffer.from('xxxxxxxx')]).toString('base64');
+const pdf = { name: 'pod.pdf', mime: 'application/pdf', dataBase64: PDF };
+function depsOf(w, over = {}) {
+    const files = new Map();
+    return {
+        files: { async put(f) { const id = `F${files.size + 1}`; files.set(id, f); return id; }, async get(id) { return files.get(id); } },
+        ulip: { simulated: () => false, async validateVehicle(v) { return /0000$/.test(v) ? { ok: false, issues: ['insurance expired'] } : { ok: true, issues: [], details: { rc: '2030-01-01' } }; }, async track() { return []; } },
+        sap: {
+            async deliveries(nos) { return { simulated: false, rows: nos.filter((n) => n !== '999999').map((n) => ({ no: n, plant: 'UN13', shipTo: 'Shop', cartons: 100, weightKg: 6000, volumeM3: 25 })) }; },
+            async shipment(no) { return { no, serviceAgent: '100200', deliveries: ['80001234', '80001235'], cost: { net: 40000, tax: 2000, currency: 'INR', status: 'C' } }; },
+            async lanes() { return [{ fromLoc: 'GAU', toLoc: 'CCU', vendor: '100200', rate: 41000, distanceKm: 1030, transitH: 30, priority: 1 }, { fromLoc: 'GAU', toLoc: 'XXX', vendor: '100200', rate: 1, distanceKm: 1, transitH: 1, priority: 1 }]; },
+        },
+        ...over,
+    };
+}
+async function assigned(w, d, veh = 'AS01AB1234') {
+    await run(w, w.u.ho, laneCmd());
+    const { result } = await run(w, w.u.depot, indentCmd(), d);
+    const r = await run(w, w.u.v1, { type: 'vendorRespond', id: result.indentId, response: 'accept' }, d);
+    await run(w, w.u.v1, { type: 'vendorAssign', sin: r.result.sin, vehicleNo: veh, driver: 'Ramesh', phone: '9876543210', driverConsent: true }, d);
+    return r.result.sin;
+}
+async function loaded(w, d) {
+    const sin = await assigned(w, d);
+    await run(w, w.u.depot, { type: 'linkDeliveries', sin, deliveries: ['80001234', '80001235'] }, d);   // 12000 kg of 15000 = 80 %
+    await run(w, w.u.depot, { type: 'linkShipment', sin, eccShipmentNo: '600012345' }, d);
+    await run(w, w.u.depot, { type: 'loadingCheck', sin }, d);
+    return sin;
+}
+const ship = (w, sin) => w.db.shipments.find((s) => s.sin === sin);
+
+test('trip: full flow indent -> POD -> invoice inside tolerance, with mail request and recipient link', async () => {
+    const w = outwardWorld(), d = depsOf(w);
+    w.db.settings = { invoiceMailbox: 'freight@emami.test' };
+    const sin = await loaded(w, d);
+    assert.equal(ship(w, sin).loading.approval, 'NotNeeded');
+    const dep = await run(w, w.u.v1, { type: 'vendorDepart', sin, lrNo: 'lr-100', sealNo: 'S1' }, d, NOW + 2 * H);
+    assert.match(dep.result.trackToken, /^[0-9a-f]{32}$/);
+    assert.equal(ship(w, sin).status, 'In Transit');
+    await run(w, w.u.v1, { type: 'vendorCheckpoint', sin, locId: 'CCU', at: iso(NOW + 20 * H) }, d, NOW + 21 * H);
+    const pub = w.db.trips ? null : engine.trips.publicTrack(w.db, dep.result.trackToken, NOW + 21 * H);
+    assert.equal(pub.from, 'Guwahati'); assert.equal(pub.vehicle, 'AS01••1234'); assert.equal(pub.driver, undefined);
+    await rejects(run(w, w.u.depot, { type: 'recordReceipt', sin, cartonsReceived: 250 }, d, NOW + 30 * H), 400, /remark/);
+    await run(w, w.u.depot, { type: 'recordReceipt', sin, cartonsReceived: 198, damagedQty: 2, unloadingCharge: 500, remarks: 'Unloaded by labour' }, d, NOW + 30 * H);
+    await rejects(run(w, w.u.v1, { type: 'vendorInvoice', sin, invoiceNo: 'A1', invoiceDate: iso(NOW), amount: 42000, lrNo: 'LR-100', file: pdf }, d, NOW + 31 * H), 409, /POD/);
+    await rejects(run(w, w.u.v1, { type: 'vendorUploadPod', sin, file: { ...pdf, mime: 'image/png' } }, d, NOW + 31 * H), 400, /does not match/);
+    await run(w, w.u.v1, { type: 'vendorUploadPod', sin, file: pdf }, d, NOW + 31 * H);
+    assert.equal(ship(w, sin).status, 'Completed');
+    await run(w, w.u.depot, { type: 'approveCharges', sin, approve: true }, d, NOW + 31 * H).catch((e) => assert.equal(e.status, 403)); // depot user is not the head
+    w.u.head = { id: 'U30', name: 'Head', email: 'h@x.com', designation: '', roles: ['Depot Head'], units: ['UN13'], lastSignin: '' };
+    await run(w, w.u.head, { type: 'approveCharges', sin, approve: true }, d, NOW + 31 * H);
+    await rejects(run(w, w.u.v1, { type: 'vendorInvoice', sin, invoiceNo: 'A1', invoiceDate: iso(NOW), amount: 42500, lrNo: 'WRONG', file: pdf }, d, NOW + 32 * H), 409, /LR/);
+    const inv = await run(w, w.u.v1, { type: 'vendorInvoice', sin, invoiceNo: 'A1', invoiceDate: iso(NOW), amount: 42500, lrNo: 'LR-100', file: pdf }, d, NOW + 32 * H);
+    assert.equal(inv.result.within, true);                  // expected 40000 + 2000 tax + 500 approved charge = 42500
+    assert.equal(inv.result.mailRequest.to, 'freight@emami.test');
+    await rejects(run(w, w.u.v1, { type: 'vendorInvoice', sin, invoiceNo: 'A2', invoiceDate: iso(NOW), amount: 42500, lrNo: 'LR-100', file: pdf }, d, NOW + 32 * H), 409, /already exists/);
+});
+
+test('trip: vendor assignment rules (consent, ULIP, duplicate vehicle, ownership)', async () => {
+    const w = outwardWorld(), d = depsOf(w);
+    await run(w, w.u.ho, laneCmd());
+    const { result } = await run(w, w.u.depot, indentCmd(), d);
+    const r = await run(w, w.u.v1, { type: 'vendorRespond', id: result.indentId, response: 'accept' }, d);
+    const base = { type: 'vendorAssign', sin: r.result.sin, vehicleNo: 'AS01AB1234', driver: 'R', phone: '9876543210' };
+    await rejects(run(w, w.u.v1, { ...base, driverConsent: false }, d), 400, /consent/);
+    await rejects(run(w, w.u.v1, { ...base, driverConsent: true, vehicleNo: 'AS01AB0000' }, d), 422, /insurance/);
+    await rejects(run(w, w.u.v1, { ...base, driverConsent: true, phone: '12345' }, d), 400, /mobile/);
+    await rejects(run(w, w.u.v2, { ...base, driverConsent: true }, d), 403);
+    await run(w, w.u.v1, { ...base, driverConsent: true }, d);
+    assert.equal(w.db.indents[0].status, 'Vehicle Assigned');
+    assert.equal(ship(w, r.result.sin).driverConsent.version, 'v1');
+    // a second trip cannot use the same vehicle while it is live
+    const i2 = await run(w, w.u.depot, indentCmd(), d);
+    const r2 = await run(w, w.u.v1, { type: 'vendorRespond', id: i2.result.indentId, response: 'accept' }, d);
+    await rejects(run(w, w.u.v1, { ...base, sin: r2.result.sin, driverConsent: true }, d), 409, /already on another/);
+});
+
+test('trip: loading check - under-load needs reason and approval, over-load only HO, departure gated', async () => {
+    const w = outwardWorld(), d = depsOf(w);
+    const sin = await assigned(w, d);
+    await rejects(run(w, w.u.depot, { type: 'loadingCheck', sin }, d), 409, /deliveries/);
+    await run(w, w.u.depot, { type: 'linkDeliveries', sin, deliveries: ['80001234'] }, d);        // 6000 kg = 40 %
+    await rejects(run(w, w.u.depot, { type: 'loadingCheck', sin }, d), 400, /minimum/);
+    await run(w, w.u.depot, { type: 'loadingCheck', sin, reason: 'Urgent customer order' }, d);
+    assert.equal(ship(w, sin).loading.approval, 'Pending');
+    await rejects(run(w, w.u.v1, { type: 'vendorDepart', sin, lrNo: 'LR1' }, d), 409, /pending/);
+    w.u.head = { id: 'U30', name: 'Head', email: 'h@x.com', designation: '', roles: ['Depot Head'], units: ['UN13'], lastSignin: '' };
+    await rejects(run(w, w.u.depot, { type: 'approveLoading', sin, approve: true }, d), 403);
+    await run(w, w.u.head, { type: 'approveLoading', sin, approve: true }, d);
+    await run(w, w.u.v1, { type: 'vendorDepart', sin, lrNo: 'LR1' }, d);
+    // over 100 %
+    const w2 = outwardWorld(), d2 = depsOf(w2, { sap: { ...depsOf(w2).sap, async deliveries(nos) { return { simulated: false, rows: nos.map((n) => ({ no: n, plant: 'UN13', shipTo: 'S', cartons: 400, weightKg: 17000, volumeM3: 10 })) }; } } });
+    const s2 = await assigned(w2, d2);
+    await run(w2, w2.u.depot, { type: 'linkDeliveries', sin: s2, deliveries: ['80001234'] }, d2);
+    await rejects(run(w2, w2.u.depot, { type: 'loadingCheck', sin: s2, reason: 'Fits fine' }, d2), 403, /HO/);
+    await run(w2, w2.u.ho, { type: 'loadingCheck', sin: s2, reason: 'Approved overload by HO' }, d2);
+    assert.equal(ship(w2, s2).loading.approval, 'Approved');
+});
+
+test('trip: LR is unique per vendor; deliveries cannot be on two live trips; SAP simulated needs manual figures', async () => {
+    const w = outwardWorld(), d = depsOf(w);
+    const a = await loaded(w, d);
+    await run(w, w.u.v1, { type: 'vendorDepart', sin: a, lrNo: 'LR-7' }, d);
+    const b = await assigned(w, d, 'AS02CD5678');
+    await rejects(run(w, w.u.depot, { type: 'linkDeliveries', sin: b, deliveries: ['80001234'] }, d), 409, /already on trip/);
+    await run(w, w.u.depot, { type: 'linkDeliveries', sin: b, deliveries: ['80009999'] }, d);
+    await run(w, w.u.depot, { type: 'loadingCheck', sin: b, reason: 'Short load for urgent order' }, d);
+    w.u.head = { id: 'U30', name: 'Head', email: 'h@x.com', designation: '', roles: ['Depot Head'], units: ['UN13'], lastSignin: '' };
+    await run(w, w.u.head, { type: 'approveLoading', sin: b, approve: true }, d);
+    await rejects(run(w, w.u.v1, { type: 'vendorDepart', sin: b, lrNo: 'lr-7' }, d), 409, /already used/);
+    await rejects(run(w, w.u.depot, { type: 'linkDeliveries', sin: b, deliveries: ['999999'] }, d), 404);
+    const sim = depsOf(w, { sap: { async deliveries() { return { simulated: true, rows: [] }; } } });
+    await rejects(run(w, w.u.depot, { type: 'linkDeliveries', sin: b, deliveries: ['80007777'] }, sim), 400, /not connected/);
+    await run(w, w.u.depot, { type: 'linkDeliveries', sin: b, deliveries: ['80007777'], manual: [{ no: '80007777', cartons: 10, weightKg: 100, volumeM3: 1 }] }, sim);
+    assert.equal(ship(w, b).deliveries[0].source, 'manual');
+});
+
+test('trip: ECC shipment must belong to the trip vendor and to one trip; cost needed', async () => {
+    const w = outwardWorld(), d = depsOf(w);
+    const sin = await assigned(w, d);
+    await rejects(run(w, w.u.depot, { type: 'linkShipment', sin, eccShipmentNo: '12' }, d), 400);
+    const other = depsOf(w, { sap: { async shipment() { return { serviceAgent: '100207', deliveries: [], cost: { net: 1 } }; } } });
+    await rejects(run(w, w.u.depot, { type: 'linkShipment', sin, eccShipmentNo: '600012345' }, other), 409, /belongs to transporter/);
+    const nocost = depsOf(w, { sap: { async shipment() { return { serviceAgent: '100200', deliveries: [], cost: { net: 0 } }; } } });
+    await rejects(run(w, w.u.depot, { type: 'linkShipment', sin, eccShipmentNo: '600012345' }, nocost), 409, /no shipment cost/);
+    await run(w, w.u.depot, { type: 'linkShipment', sin, eccShipmentNo: '600012345' }, d);
+    assert.equal(ship(w, sin).eccCost.net, 40000);
+    const s2 = await assigned(w, d, 'AS03EF9999');
+    await rejects(run(w, w.u.depot, { type: 'linkShipment', sin: s2, eccShipmentNo: '600012345' }, d), 409, /already linked/);
+});
+
+test('trip: invoice outside tolerance goes to review and blocks approval until HO clears it', async () => {
+    const w = outwardWorld(), d = depsOf(w);
+    const sin = await loaded(w, d);
+    await run(w, w.u.v1, { type: 'vendorDepart', sin, lrNo: 'LR-9' }, d, NOW + H);
+    await run(w, w.u.depot, { type: 'recordReceipt', sin, cartonsReceived: 200 }, d, NOW + 20 * H);
+    await run(w, w.u.v1, { type: 'vendorUploadPod', sin, file: pdf }, d, NOW + 21 * H);
+    const r = await run(w, w.u.v1, { type: 'vendorInvoice', sin, invoiceNo: 'B1', invoiceDate: iso(NOW), amount: 50000, lrNo: 'LR-9', file: pdf }, d, NOW + 22 * H);
+    assert.equal(r.result.within, false);
+    const id = r.result.invoiceId, inv = () => w.db.invoices.find((i) => i.id === id);
+    assert.equal(inv().review, 'Under Review');
+    await rejects(run(w, w.u.fin1, { type: 'setInvoice', id, to: 'Pending (Finance)' }, d), 409, /review/);
+    await rejects(run(w, w.u.fin1, { type: 'reviewFreightInvoice', id, decision: 'approve' }, d), 403);
+    await run(w, w.u.ho, { type: 'reviewFreightInvoice', id, decision: 'approve', remark: 'Toll change' }, d);
+    await run(w, w.u.fin1, { type: 'setInvoice', id, to: 'Pending (Finance)' }, d);
+    // rejection lets the vendor resubmit
+    const w2 = outwardWorld(), d2 = depsOf(w2);
+    const s2 = await loaded(w2, d2);
+    await run(w2, w2.u.v1, { type: 'vendorDepart', sin: s2, lrNo: 'LR-1' }, d2, NOW + H);
+    await run(w2, w2.u.depot, { type: 'recordReceipt', sin: s2, cartonsReceived: 200 }, d2, NOW + 20 * H);
+    await run(w2, w2.u.v1, { type: 'vendorUploadPod', sin: s2, file: pdf }, d2, NOW + 21 * H);
+    const bad = await run(w2, w2.u.v1, { type: 'vendorInvoice', sin: s2, invoiceNo: 'C1', invoiceDate: iso(NOW), amount: 60000, lrNo: 'LR-1', file: pdf }, d2, NOW + 22 * H);
+    await run(w2, w2.u.ho, { type: 'reviewFreightInvoice', id: bad.result.invoiceId, decision: 'reject', remark: 'Wrong rate' }, d2);
+    assert.equal(w2.db.invoices[0].status, 'Disapproved');
+    const again = await run(w2, w2.u.v1, { type: 'vendorInvoice', sin: s2, invoiceNo: 'C2', invoiceDate: iso(NOW), amount: 42000, lrNo: 'LR-1', file: pdf }, d2, NOW + 23 * H);
+    assert.equal(again.result.within, true);
+});
+
+test('trip: ULIP poll applies events, recomputes ETA; sweep flags unlinked trips; public link expires', async () => {
+    const w = outwardWorld();
+    const d = depsOf(w, { ulip: { simulated: () => false, async validateVehicle() { return { ok: true }; }, async track() { return [{ lat: 24.8, lon: 91.9, at: iso(NOW + 6 * H), place: 'Toll A' }, { lat: 24.0, lon: 90.9, at: iso(NOW + 12 * H), place: 'Toll B' }]; } } });
+    const sin = await loaded(w, d);
+    await run(w, w.u.v1, { type: 'vendorDepart', sin, lrNo: 'LR-5', departedAt: iso(NOW) }, d, NOW + H);
+    const before = ship(w, sin).etaAt;
+    const r = await engine.trips.pollTracking(w.db, NOW + 13 * H, d);
+    assert.equal(r.updated, 1);
+    assert.equal(ship(w, sin).events.filter((e) => e.source === 'ULIP').length, 2);
+    assert.equal(ship(w, sin).pos.source, 'ULIP');
+    assert.notEqual(ship(w, sin).etaAt, before);
+    assert.equal((await engine.trips.pollTracking(w.db, NOW + 14 * H, d)).updated, 0);   // same events are not applied twice
+    const w2 = outwardWorld(), d2 = depsOf(w2);
+    const s2 = await assigned(w2, d2);
+    assert.equal(engine.sweep(w2.db, NOW + 13 * H).unlinked, 1);
+    assert.equal(engine.sweep(w2.db, NOW + 14 * H).unlinked, 0);
+    const tok = ship(w, sin).trackToken;
+    await run(w, w.u.depot, { type: 'recordReceipt', sin, cartonsReceived: 200 }, d, NOW + 30 * H);
+    await run(w, w.u.v1, { type: 'vendorUploadPod', sin, file: pdf }, d, NOW + 31 * H);
+    assert.equal(engine.trips.publicTrack(w.db, tok, NOW + 32 * H).status, 'Delivered');
+    assert.equal(engine.trips.publicTrack(w.db, tok, NOW + 60 * H).expired, true);
+    assert.equal(engine.trips.publicTrack(w.db, 'zz', NOW), null);
+    assert.equal(engine.trips.publicTrack(w.db, '0'.repeat(32), NOW), null);
+});
+
+test('trip: settings and lane sync from SAP are validated; vendor view never carries the tracking token', async () => {
+    const w = outwardWorld(), d = depsOf(w);
+    await rejects(run(w, w.u.depot, { type: 'saveSettings', settings: { capacityMinPct: 70 } }, d), 403);
+    await rejects(run(w, w.u.ho, { type: 'saveSettings', settings: { capacityMinPct: 500 } }, d), 400);
+    await rejects(run(w, w.u.ho, { type: 'saveSettings', settings: { invoiceMailbox: 'not-an-email' } }, d), 400);
+    await run(w, w.u.ho, { type: 'saveSettings', settings: { capacityMinPct: 70, invoiceMailbox: 'f@emami.test', consentText: 'New wording' } }, d);
+    assert.equal(w.db.settings.capacityMinPct, 70); assert.equal(w.db.settings.consentVersion, 'v2');
+    const r = await run(w, w.u.ho, { type: 'syncLanes' }, d);
+    assert.equal(r.result.lanes, 1); assert.equal(r.result.skipped.length, 1);
+    const sin = await loaded(w, d);
+    await run(w, w.u.v1, { type: 'vendorDepart', sin, lrNo: 'LR-3' }, d, NOW + H);
+    assert.equal(engine.scopedDb(w.db, w.u.v1).shipments[0].trackToken, undefined);
+});
+
+test('files: type, size and content are checked', () => {
+    assert.throws(() => checkFile({ name: 'a.exe', mime: 'application/x-msdownload', dataBase64: PDF }), /Only PDF/);
+    assert.throws(() => checkFile({ name: 'a.pdf', mime: 'application/pdf', dataBase64: PNG }), /does not match/);
+    assert.throws(() => checkFile({ name: 'a.pdf', mime: 'application/pdf', dataBase64: Buffer.alloc(4 * 1024 * 1024 + 10, 0x25).toString('base64') }), /4 MB/);
+    assert.equal(checkFile({ name: 'ok pod.pdf', mime: 'application/pdf', dataBase64: PDF }).name, 'ok pod.pdf');
+});
+
+test('outward: HO can hand an escalated indent to a chosen vendor', async () => {
+    const w = outwardWorld(); await run(w, w.u.ho, laneCmd());
+    const { result } = await run(w, w.u.depot, indentCmd());
+    await run(w, w.u.v1, { type: 'vendorRespond', id: result.indentId, response: 'reject', reason: 'No' });
+    await run(w, w.u.v2, { type: 'vendorRespond', id: result.indentId, response: 'reject', reason: 'No' });
+    assert.equal(w.db.indents[0].escalated, true);
+    await rejects(run(w, w.u.depot, { type: 'offerIndent', id: result.indentId, carrierId: 'C001' }), 403);
+    await rejects(run(w, w.u.ho, { type: 'offerIndent', id: result.indentId, carrierId: 'C003' }), 409);
+    await run(w, w.u.ho, { type: 'offerIndent', id: result.indentId, carrierId: 'C001' });
+    const r = await run(w, w.u.v1, { type: 'vendorRespond', id: result.indentId, response: 'accept' });
+    assert.equal(w.db.shipments.find((s) => s.sin === r.result.sin).freight, 41000);
 });

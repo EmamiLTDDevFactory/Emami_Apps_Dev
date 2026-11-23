@@ -46,6 +46,14 @@ async function send<T>(path: string, init?: { method?: string; body?: unknown })
 }
 
 export interface Me { user: AppUser; perms: string[]; integrations: { sap: string; eway: string; consent: string; ingest: string } }
+export const publicTrack = (t: string) => fetch(`${apiBase()}/public/track/${encodeURIComponent(t)}`, { cache: 'no-store' }).then(async (r) => ({ status: r.status, body: (await r.json().catch(() => ({}))) as Record<string, unknown> }));
+/** Download a stored file (POD, invoice, photo) with the hub session; opens it in a new tab. */
+export async function openFile(id: string, name: string): Promise<void> {
+  const res = await fetch(`${apiBase()}/file/${encodeURIComponent(id)}`, { headers: { Authorization: `Bearer ${token()}` }, cache: 'no-store' });
+  if (!res.ok) throw new ApiError(res.status, (await res.json().catch(() => ({ error: '' }))).error || 'Could not open the file.');
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a'); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
 export const liveApi = {
   me: () => send<Me>('/me'),
   db: (allUnits: boolean) => send<{ db: Db; serverNow: number }>(`/db${allUnits ? '?allUnits=1' : ''}`),

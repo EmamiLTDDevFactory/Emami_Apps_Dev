@@ -3,10 +3,11 @@
 import React, { useState } from 'react';
 import { useTms } from '../../lib/store';
 import { ROLE_PERMS, type AppUser } from '../../lib/types';
+import OutwardRules from '../../components/OutwardRules';
 import { Card, Field, Modal, PageHead, Pill, Table, Tabs, fmtDT } from '../../components/ui';
 import { buildDemoDb } from '../../lib/demo';
 
-const TABS = ['User Management', 'Roles & Permissions', 'Units & Divisions', 'Locations & Lanes', 'Alerts', 'Integrations'] as const;
+const TABS = ['User Management', 'Roles & Permissions', 'Units & Divisions', 'Locations & Lanes', 'Alerts', 'Outward Rules', 'Integrations'] as const;
 
 export default function Settings() {
   const t = useTms();
@@ -32,6 +33,7 @@ export default function Settings() {
       {tab === 'Roles & Permissions' && <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{Object.entries(ROLE_PERMS).map(([r, v]) => <Card key={r} title={r}><ul className="space-y-1.5 text-sm">{v.perms.map((p) => <li key={p.key} className="flex items-center gap-2"><span className="text-green">✓</span>{p.label}<code className="ml-auto text-[10px] text-inkSoft">{p.key}</code></li>)}</ul></Card>)}</div>}
       {tab === 'Units & Divisions' && <Card pad={false}><Table rows={t.db.units} rowKey={(u) => u.id} cols={[{ h: 'Code', r: (u) => <b>{u.code}</b> }, { h: 'Unit', r: (u) => u.name }, { h: 'Division', r: (u) => u.division }, { h: 'City', r: (u) => u.city }]} /></Card>}
       {tab === 'Locations & Lanes' && <Card pad={false}><Table rows={t.db.locs} rowKey={(l) => l.id} cols={[{ h: 'Code', r: (l) => <b>{l.id}</b> }, { h: 'City', r: (l) => l.city }, { h: 'State', r: (l) => l.state }, { h: 'Zone', r: (l) => l.zone }, { h: 'Pincode', r: (l) => l.pincode }]} /></Card>}
+      {tab === 'Outward Rules' && <OutwardRules />}
       {tab === 'Alerts' && <Card title="Email / SMS alert rules"><div className="space-y-3">{([['delay', 'Delay > 4h on a live shipment'], ['eway', 'E-way bill expiring within 6h'], ['consent', 'SIM consent expired or declined'], ['bid', 'New bid / auction closing in 30 min'], ['invoice', 'Carrier invoice waiting > 3 days']] as const).map(([k, l]) => <label key={k} className="flex items-center justify-between rounded-xl border border-border p-3 text-sm font-bold">{l}<input type="checkbox" checked={alerts[k]} onChange={() => { setAlerts({ ...alerts, [k]: !alerts[k] }); t.toast('Alert rule updated'); }} /></label>)}</div></Card>}
 
       {tab === 'Integrations' && (<div className="space-y-4">

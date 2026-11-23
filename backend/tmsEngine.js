@@ -38,7 +38,7 @@ const id = (db, prefix) => `${prefix}${++db.seq}`;
 const log = (s, at, actor, text) => { s.log = [...(s.log || []), { at: iso(at), actor, text }].slice(-200); };
 
 function emptyDb() {
-    return { units: [], locs: [], carriers: [], customers: [], orders: [], shipments: [], invoices: [], vouchers: [], notes: [], users: [], notifications: [], geofences: [], seq: 100000 };
+    return { units: [], locs: [], carriers: [], customers: [], orders: [], shipments: [], invoices: [], vouchers: [], notes: [], users: [], notifications: [], geofences: [], seq: 100000, vehicleTypes: [], lanes: [], indents: [], settings: {} };
 }
 
 // ------------------------------------------------------------------------------------------------------------- geometry
@@ -66,11 +66,12 @@ function scopedDb(db, user, allUnits = false) {
     if (isVendor(user)) {
         const orders = db.orders.filter((o) => o.mode === 'BID' && o.bid && (o.bid.vendors.includes(user.carrierId)))
             .map((o) => ({ ...o, customerId: '', po: '', so: '', project: '', comments: '', remarks: [], bid: { ...o.bid, vendors: [], bids: o.bid.bids.filter((b) => b.carrierId === user.carrierId), lowest: lowestBid(o.bid) } }));
-        return { ...emptyDb(), units: db.units, locs: db.locs, orders, users: db.users.filter((u) => u.id === user.id), carriers: db.carriers.filter((c) => c.id === user.carrierId), seq: 0 };
+        return { ...emptyDb(), units: db.units, locs: db.locs, orders, indents: outward.vendorIndents(db, user), shipments: db.shipments.filter((s) => s.carrierId === user.carrierId).map((s) => ({ ...s, customerId: '', trackToken: undefined })), invoices: db.invoices.filter((i) => i.carrierId === user.carrierId), users: db.users.filter((u) => u.id === user.id), carriers: db.carriers.filter((c) => c.id === user.carrierId), seq: 0 };
     }
     const ok = (r) => (allUnits || isAdmin(user)) ? (isAdmin(user) || (user.units || []).includes(r.unitId)) : (user.units || []).includes(r.unitId);
     const users = can(user, 'user.manage') ? db.users : db.users.map((u) => ({ id: u.id, name: u.name, designation: u.designation, email: '', units: [], roles: [], lastSignin: '' }));
-    return { ...db, orders: db.orders.filter(ok), shipments: db.shipments.filter(ok), invoices: db.invoices.filter(ok), users, seq: 0 };
+    outward.ensure(db);
+    return { ...db, orders: db.orders.filter(ok), shipments: db.shipments.filter(ok), indents: db.indents.filter(ok), invoices: db.invoices.filter(ok), users, seq: 0 };
 }
 
 // ------------------------------------------------------------------------------------------------------------- helpers
@@ -381,7 +382,7 @@ function setInvoiceStatuses(db, ids, to, u, now) {
     need(u, rule.perm, 'make that invoice change');
     if (to === 'Billed') fail('Use "Post to SAP" - an invoice becomes Billed only when SAP accepts it.', 409);
     const rows = ids.map((x) => invOf(db, x));
-    for (const i of rows) { sees(u, i); if (!rule.from.includes(i.status)) fail(`${i.id} is ${i.status}; it cannot move to ${to}.`, 409); }
+    for (const i of rows) { sees(u, i); if (i.review === 'Under Review') fail(`${i.id} is outside the invoice tolerance and needs HO review first.`, 409); if (!rule.from.includes(i.status)) fail(`${i.id} is ${i.status}; it cannot move to ${to}.`, 409); }
     for (const i of rows) i.history.push({ at: iso(now), actor: u.name, text: `Status -> ${to}` }), (i.status = to);
     return { changed: rows.length };
 }
@@ -433,7 +434,9 @@ function ingestPing(db, ping, now) {
 
 /** Periodic sweep: auctions that ran out, GPS gaps, e-way bills about to expire, consent that lapsed. Returns what changed. */
 function sweep(db, now) {
-    const out = { closedAuctions: 0, gaps: 0, eway: 0, delays: 0 };
+    const out = { closedAuctions: 0, gaps: 0, eway: 0, delays: 0, indentsMoved: 0 };
+    out.indentsMoved = outward.sweepIndents(db, now);
+    out.unlinked = 0;
     for (const o of db.orders) {
         const b = o.bid;
         if (b && b.status === 'Open' && now >= Date.parse(b.expiresAt) && !b.closedNoticed) {
@@ -452,6 +455,7 @@ function sweep(db, now) {
         }
         if (s.consent === 'Granted' && s.consentSince && now - Date.parse(s.consentSince) > 30 * 86400_000) { s.consent = 'Expired'; s.tracking = 'Non-Tracking'; log(s, now, 'System', 'SIM consent subscription expired'); }
     }
+    out.unlinked = trips.sweepTrips(db, now);
     return out;
 }
 
@@ -498,9 +502,15 @@ function importData(db, payload, { dryRun = false } = {}) {
 async function apply(db, cmd, user, deps = {}, now = Date.now()) {
     const h = cmd && handlers[cmd.type];
     if (!h || typeof cmd.type !== 'string' || Object.prototype.hasOwnProperty.call(Object.prototype, cmd.type)) fail('Unknown command.', 400);
-    if (isVendor(user) && cmd.type !== 'placeBid') fail('Carrier users can only place bids.', 403);
+    if (isVendor(user) && cmd.type !== 'placeBid' && !outward.VENDOR_CMDS.includes(cmd.type) && !trips.VENDOR_CMDS.includes(cmd.type)) fail('Carrier users can only place bids and respond to indents.', 403);
     const result = await h(db, cmd, user, now, deps);
     return { result: result || {} };
 }
 
-module.exports = { apply, scopedDb, emptyDb, ingestPing, sweep, importData, syncPayments, can, permsOf, inScope, isAdmin, isVendor, EngineError, ROLE_PERMS, FLOW, INV_FLOW, project, km, lowestBid, handlers };
+const outward = require('./tmsOutward').build({ fail, need, can, inScope, isAdmin, isVendor, str, num, iso, id, log, notify, makeShipments, sees, locOf, shipOf });
+const trips = require('./tmsTrips').build({ fail, need, can, inScope, isAdmin, isVendor, str, num, iso, id, log, notify, sees, shipOf, locOf, km, project, completeOrderIfDone, ingestPing }, outward);
+Object.assign(handlers, outward.handlers, trips.handlers);
+Object.assign(ROLE_PERMS, outward.ROLE_PERMS, trips.ROLE_PERMS);
+ROLE_PERMS['Carrier Vendor'].push(...outward.VENDOR_PERMS);
+
+module.exports = { apply, scopedDb, emptyDb, ingestPing, sweep, importData, syncPayments, can, permsOf, inScope, isAdmin, isVendor, EngineError, ROLE_PERMS, FLOW, INV_FLOW, project, km, lowestBid, handlers, trips };

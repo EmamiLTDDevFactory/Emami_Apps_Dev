@@ -209,6 +209,144 @@ CLASS zcl_ztms_mpc IMPLEMENTATION.
     lo_entity_set->set_subscribable( abap_false ).
     lo_entity_set->set_filter_required( abap_false ).
 
+    lo_entity_type = model->create_entity_type( iv_entity_type_name = 'OutDelivery' iv_def_entity_set = abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Vbeln' iv_abap_fieldname = 'VBELN' ).
+    lo_property->set_is_key( ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 10 ).
+    lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Werks' iv_abap_fieldname = 'WERKS' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 4 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Kunnr' iv_abap_fieldname = 'KUNNR' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 10 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'ShipToName' iv_abap_fieldname = 'SHIPTONAME' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 35 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Cartons' iv_abap_fieldname = 'CARTONS' ).
+    lo_property->set_type_edm_decimal( ).
+    lo_property->set_precison( iv_precision = 2 ).
+    lo_property->set_maxlength( iv_max_length = 13 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'GrossWeightKg' iv_abap_fieldname = 'GROSSWEIGHTKG' ).
+    lo_property->set_type_edm_decimal( ).
+    lo_property->set_precison( iv_precision = 2 ).
+    lo_property->set_maxlength( iv_max_length = 13 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'VolumeM3' iv_abap_fieldname = 'VOLUMEM3' ).
+    lo_property->set_type_edm_decimal( ).
+    lo_property->set_precison( iv_precision = 2 ).
+    lo_property->set_maxlength( iv_max_length = 13 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Pgi' iv_abap_fieldname = 'PGI' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 1 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Route' iv_abap_fieldname = 'ROUTE' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 6 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Irn' iv_abap_fieldname = 'IRN' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 64 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'EwbNo' iv_abap_fieldname = 'EWBNO' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 20 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'EwbValid' iv_abap_fieldname = 'EWBVALID' ).
+    lo_property->set_type_edm_datetime( ).
+    lo_property->/iwbep/if_mgw_odata_annotatabl~create_annotation( iv_annotation_namespace = /iwbep/if_mgw_med_odata_types=>gc_sap_namespace )->add( iv_key = 'display-format' iv_value = 'Date' ).
+    lo_entity_type->bind_structure( iv_structure_name = 'ZCL_TMS_TY=>TS_OUTDELIVERY' iv_bind_conversions = abap_false ).
+    lo_entity_set = lo_entity_type->create_entity_set( 'OutDeliverySet' ).
+    lo_entity_set->set_creatable( abap_false ).
+    lo_entity_set->set_updatable( abap_false ).
+    lo_entity_set->set_deletable( abap_false ).
+    lo_entity_set->set_pageable( abap_false ).
+    lo_entity_set->set_addressable( abap_true ).
+    lo_entity_set->set_has_ftxt_search( abap_false ).
+    lo_entity_set->set_subscribable( abap_false ).
+    lo_entity_set->set_filter_required( abap_false ).
+
+    lo_entity_type = model->create_entity_type( iv_entity_type_name = 'OutShipment' iv_def_entity_set = abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Tknum' iv_abap_fieldname = 'TKNUM' ).
+    lo_property->set_is_key( ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 10 ).
+    lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Shtyp' iv_abap_fieldname = 'SHTYP' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 4 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Tdlnr' iv_abap_fieldname = 'TDLNR' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 10 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Route' iv_abap_fieldname = 'ROUTE' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 6 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Vbelns' iv_abap_fieldname = 'VBELNS' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 255 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'CostNet' iv_abap_fieldname = 'COSTNET' ).
+    lo_property->set_type_edm_decimal( ).
+    lo_property->set_precison( iv_precision = 2 ).
+    lo_property->set_maxlength( iv_max_length = 13 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'CostTax' iv_abap_fieldname = 'COSTTAX' ).
+    lo_property->set_type_edm_decimal( ).
+    lo_property->set_precison( iv_precision = 2 ).
+    lo_property->set_maxlength( iv_max_length = 13 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Waers' iv_abap_fieldname = 'WAERS' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 5 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'CostStatus' iv_abap_fieldname = 'COSTSTATUS' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 1 ).
+    lo_entity_type->bind_structure( iv_structure_name = 'ZCL_TMS_TY=>TS_OUTSHIPMENT' iv_bind_conversions = abap_false ).
+    lo_entity_set = lo_entity_type->create_entity_set( 'OutShipmentSet' ).
+    lo_entity_set->set_creatable( abap_false ).
+    lo_entity_set->set_updatable( abap_false ).
+    lo_entity_set->set_deletable( abap_false ).
+    lo_entity_set->set_pageable( abap_false ).
+    lo_entity_set->set_addressable( abap_true ).
+    lo_entity_set->set_has_ftxt_search( abap_false ).
+    lo_entity_set->set_subscribable( abap_false ).
+    lo_entity_set->set_filter_required( abap_false ).
+
+    lo_entity_type = model->create_entity_type( iv_entity_type_name = 'Lane' iv_def_entity_set = abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'FromLoc' iv_abap_fieldname = 'FROMLOC' ).
+    lo_property->set_is_key( ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 20 ).
+    lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'ToLoc' iv_abap_fieldname = 'TOLOC' ).
+    lo_property->set_is_key( ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 20 ).
+    lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Lifnr' iv_abap_fieldname = 'LIFNR' ).
+    lo_property->set_is_key( ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 10 ).
+    lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Rate' iv_abap_fieldname = 'RATE' ).
+    lo_property->set_type_edm_decimal( ).
+    lo_property->set_precison( iv_precision = 2 ).
+    lo_property->set_maxlength( iv_max_length = 13 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Distance' iv_abap_fieldname = 'DISTANCE' ).
+    lo_property->set_type_edm_decimal( ).
+    lo_property->set_precison( iv_precision = 2 ).
+    lo_property->set_maxlength( iv_max_length = 13 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'TransitH' iv_abap_fieldname = 'TRANSITH' ).
+    lo_property->set_type_edm_decimal( ).
+    lo_property->set_precison( iv_precision = 2 ).
+    lo_property->set_maxlength( iv_max_length = 13 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Priority' iv_abap_fieldname = 'PRIORITY' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 2 ).
+    lo_entity_type->bind_structure( iv_structure_name = 'ZCL_TMS_TY=>TS_LANE' iv_bind_conversions = abap_false ).
+    lo_entity_set = lo_entity_type->create_entity_set( 'LaneSet' ).
+    lo_entity_set->set_creatable( abap_false ).
+    lo_entity_set->set_updatable( abap_false ).
+    lo_entity_set->set_deletable( abap_false ).
+    lo_entity_set->set_pageable( abap_false ).
+    lo_entity_set->set_addressable( abap_true ).
+    lo_entity_set->set_has_ftxt_search( abap_false ).
+    lo_entity_set->set_subscribable( abap_false ).
+    lo_entity_set->set_filter_required( abap_false ).
+
   ENDMETHOD.
 
   METHOD define_associations.

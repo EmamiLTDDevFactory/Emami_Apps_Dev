@@ -2,8 +2,8 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Radar, PackagePlus, ClipboardList, Truck, Gavel, Receipt, Users, Building2, Settings, FileBarChart, Bell, Menu, X, ArrowLeft, RotateCcw, ShieldCheck } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { LayoutDashboard, Radar, PackagePlus, ClipboardList, Truck, Gavel, Receipt, Users, Building2, Settings, FileBarChart, Bell, Menu, X, ArrowLeft, RotateCcw, ShieldCheck, FileInput, Handshake } from 'lucide-react';
 import { TmsProvider, useTms } from '../lib/store';
 import { goBack } from '../lib/goBack';
 import { hasHubSession } from '../lib/hubEmailLogin';
@@ -14,6 +14,8 @@ const NAV = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/control-tower/', label: 'Control Tower', icon: Radar },
   { href: '/post-order/', label: 'Post Order', icon: PackagePlus },
+  { href: '/indents/', label: 'Indents', icon: FileInput },
+  { href: '/vendor/', label: 'Vendor Portal', icon: Handshake },
   { href: '/orders/', label: 'Orders', icon: ClipboardList },
   { href: '/shipments/', label: 'Shipments', icon: Truck },
   { href: '/bidding/', label: 'Bidding Room', icon: Gavel },
@@ -27,6 +29,7 @@ const NAV = [
 function Chrome({ children }: { children: React.ReactNode }) {
   const path = usePathname() || '/';
   const t = useTms();
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [bell, setBell] = useState(false);
   const [wide, setWide] = useState(true);
@@ -36,7 +39,8 @@ function Chrome({ children }: { children: React.ReactNode }) {
   const unread = t.db.notifications.filter((n) => !n.read).length;
   const live = t.mode === 'live';
   const vendor = live && t.me.roles.includes('Carrier Vendor');
-  const nav = vendor ? NAV.filter((n) => n.href === '/bidding/') : NAV;
+  useEffect(() => { if (vendor && (path === '/' || path === '')) router.replace('/vendor/'); }, [vendor, path, router]);
+  const nav = vendor ? NAV.filter((n) => n.href === '/bidding/' || n.href === '/vendor/') : NAV;
   const pane = wide ? 'relative w-60 shrink-0 border-r border-border bg-white' : `fixed inset-y-0 left-0 z-40 w-64 bg-white shadow-pop transition-transform ${open ? 'translate-x-0' : '-translate-x-full'}`;
 
   return (
@@ -111,5 +115,7 @@ function Gate({ children }: { children: React.ReactNode }) {
 }
 
 export default function Shell({ children }: { children: React.ReactNode }) {
+  const path = usePathname() || '/';
+  if (path.startsWith('/track')) return <>{children}</>; // public recipient page: no hub session, no app chrome
   return <TmsProvider><Gate>{children}</Gate></TmsProvider>;
 }
