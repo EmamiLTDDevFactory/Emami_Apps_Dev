@@ -4,7 +4,7 @@ import HierarchyCrs from '@/components/setup/HierarchyCrs';
 export default function Page() {
   return (
     <Suspense fallback={null}>
-      <HierarchyCrs />
+      <HierarchyCrs only="hierarchy" />
     </Suspense>
   );
 }

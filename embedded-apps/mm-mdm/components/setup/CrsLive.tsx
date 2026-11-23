@@ -264,7 +264,6 @@ export default function CrsLive() {
     <div className="su-layout">
       <section className="card su-card" aria-labelledby="crs-live-title">
         <div className="su-banner">
-          <span className="su-banner-sap" aria-hidden>SAP</span>
           <div>
             <h2 id="crs-live-title">CRS Product Group Creation</h2>
             <p>Pick existing CRS codes with F4, or leave a code blank and describe a new one – SAP gives it a number when the request is approved.</p>

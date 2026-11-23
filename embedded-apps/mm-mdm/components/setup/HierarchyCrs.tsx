@@ -12,7 +12,7 @@ import { BUSINESS_VERTICALS, Opt, PH_LENGTH, PH_LEVELS, getHierarchyOptions, hel
 import {
   CRS_CODE_LEN, CRS_UNITS, CrsFile, CrsHelp, createCrs, createHierarchy, crsGroupingKey, crsOptions, listCrs, listHierarchies,
 } from '@/lib/setupData';
-import { SETUP_PATH, SETUP_TCODE } from '@/lib/tcodes';
+import { CRS_PATH, CRS_TCODE, SETUP_PATH, SETUP_TCODE } from '@/lib/tcodes';
 import { fmtAgo } from '@/lib/format';
 import { ValueHelpDialog, ValueHelpField } from '../ValueHelp';
 import CrsLive from './CrsLive';
@@ -21,10 +21,10 @@ import { IconArrowRight, IconBox, IconCheck, IconFile, IconGrid, IconRefresh, Ic
 type Mode = 'hierarchy' | 'crs';
 const DESC_MAX = 40;
 
-export default function HierarchyCrs() {
+export default function HierarchyCrs({ only }: { only?: Mode }) {
   const params = useSearchParams();
   const router = useRouter();
-  const mode: Mode = params.get('mode') === 'crs' ? 'crs' : 'hierarchy';
+  const mode: Mode = only ?? (params.get('mode') === 'crs' ? 'crs' : 'hierarchy');
   // Bumped after every create so the lists (kept outside React) are read again
   const [version, setVersion] = useState(0);
   const [mounted, setMounted] = useState(false);
@@ -47,8 +47,8 @@ export default function HierarchyCrs() {
         <div className="page-title">
           <span className="page-icon" aria-hidden><IconTree size={22} /></span>
           <div>
-            <span className="tcode-chip">{SETUP_TCODE}</span>
-            <h1>Product Hierarchy &amp; CRS</h1>
+            <span className="tcode-chip">{mode === 'crs' ? CRS_TCODE : SETUP_TCODE}</span>
+            <h1>{mode === 'crs' ? 'CRS Product Grouping' : 'Product Hierarchy'}</h1>
           </div>
         </div>
         <p className="muted su-lead">
@@ -57,7 +57,7 @@ export default function HierarchyCrs() {
         </p>
       </div>
 
-      <div className="su-modes" role="radiogroup" aria-label="What do you want to create?">
+      {!only && <div className="su-modes" role="radiogroup" aria-label="What do you want to create?">
         {modes.map((m) => {
           const on = m.id === mode;
           return (
@@ -67,7 +67,7 @@ export default function HierarchyCrs() {
               role="radio"
               aria-checked={on}
               className={`su-mode ${on ? 'on' : ''}`}
-              onClick={() => router.replace(m.id === 'crs' ? `${SETUP_PATH}?mode=crs` : SETUP_PATH, { scroll: false })}
+              onClick={() => router.replace(m.id === 'crs' ? CRS_PATH : SETUP_PATH, { scroll: false })}
             >
               <span className="su-mode-icon" aria-hidden>{m.icon}</span>
               <span className="su-mode-text">
@@ -83,7 +83,7 @@ export default function HierarchyCrs() {
             </button>
           );
         })}
-      </div>
+      </div>}
 
       {mode === 'hierarchy'
         ? <HierarchyForm key="ph" version={version} mounted={mounted} onCreated={() => setVersion((v) => v + 1)} />
@@ -101,7 +101,6 @@ export default function HierarchyCrs() {
 function FormBanner({ title, sub }: { title: string; sub: string }) {
   return (
     <div className="su-banner">
-      <span className="su-banner-sap" aria-hidden>SAP</span>
       <div>
         <h2>{title}</h2>
         <p>{sub}</p>
