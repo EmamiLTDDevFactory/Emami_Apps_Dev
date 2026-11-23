@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Hub palette as RGB triplets (same values as Samadhan and every sibling app; tailwind.config.ts maps them). */
+:root {
+  color-scheme: light;
+  --bg: 238 240 244;
+  --panel: 255 255 255;
+  --sunken: 246 244 253;
+  --line: 230 227 245;
+  --ink: 31 27 51;
+  --muted: 107 114 128;
+  --faint: 117 121 140;
+  --accent: 79 63 214;
+  --accent-deep: 59 47 176;
+  --accent-ink: 255 255 255;
+  --plum: 36 30 61;
+  --plum-deep: 21 17 41;
+  --good: 31 122 77;
+  --warn: 180 83 9;
+  --bad: 192 57 43;
+  --sim: 194 24 91;
+  /* Chart series, fixed order (validated: lightness, chroma, CVD and normal-vision separation on white). s2 / s7 are
+     under 3:1 on white, so every chart that uses them also shows values in text (tooltip + table). s8 = "Other". */
+  --s1: 79 63 214;    /* #4f3fd6 indigo - ATL / CY */
+  --s2: 27 175 122;   /* #1baf7a aqua   - BTL */
+  --s3: 217 119 6;    /* #d97706 amber  - Other / DSR */
+  --s4: 194 24 91;    /* #c2185b magenta */
+  --s5: 42 120 214;   /* #2a78d6 blue */
+  --s6: 101 163 13;   /* #65a30d green */
+  --s7: 232 123 164;  /* #e87ba4 pink */
+  --s8: 156 163 175;  /* #9ca3af gray - Other */
+}
+
+html, body { height: 100%; }
+body { @apply bg-bg font-sans text-ink antialiased; font-feature-settings: 'cv11' 1; }
+.num { font-variant-numeric: tabular-nums; }
+
+*:focus-visible { outline: 2px solid rgb(var(--accent)); outline-offset: 1px; border-radius: 3px; }
+
+.scroll-thin::-webkit-scrollbar { width: 10px; height: 10px; }
+.scroll-thin::-webkit-scrollbar-thumb { background: #d9d4ee; border-radius: 999px; border: 2px solid rgb(var(--panel)); }
+
+.skeleton { background: linear-gradient(90deg, rgb(var(--sunken)) 25%, rgb(var(--line)) 50%, rgb(var(--sunken)) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; }
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+/* MIS grid: sticky first column and header rows. */
+.mis th, .mis td { white-space: nowrap; }
+.mis thead th { position: sticky; z-index: 2; background: rgb(var(--panel)); }
+.mis .stick { position: sticky; left: 0; z-index: 1; } /* opaque bg set per cell (bg-panel / bg-sunken / bg-plum) */
+.mis thead .stick { z-index: 3; }

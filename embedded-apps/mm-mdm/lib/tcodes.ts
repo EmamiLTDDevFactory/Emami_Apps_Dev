@@ -22,6 +22,9 @@ export const DOMAINS: Domain[] = [
 /** Set-up transaction done before material creation */
 export const SETUP_TCODE = 'ZMDM_PH';
 export const SETUP_PATH = '/master/hierarchy';
+/** CRS product grouping has its own side-pane entry */
+export const CRS_TCODE = 'ZCRS_PG';
+export const CRS_PATH = '/master/crs';
 /** Change (MX) and extension (ME) start from the posted materials list */
 export const CHANGE_TCODE = 'ZMDM_MX';
 export const EXTEND_TCODE = 'ZMDM_ME';
@@ -32,6 +35,7 @@ export function resolveTcode(raw: string): { code: string; home?: boolean; domai
   if (code.startsWith('/N') || code.startsWith('/O')) code = code.slice(2);
   if (code === '' || code === 'HOME' || code === 'SESSION_MANAGER' || code === 'SMEN') return { code, home: true };
   if (code === SETUP_TCODE) return { code, path: SETUP_PATH };
+  if (code === CRS_TCODE || code === 'ZCRS_PRODUCT_GROUP') return { code, path: CRS_PATH };
   if (code === CHANGE_TCODE || code === EXTEND_TCODE) return { code, path: POSTED_PATH };
   return { code, domain: DOMAINS.find((d) => d.tcode === code) };
 }

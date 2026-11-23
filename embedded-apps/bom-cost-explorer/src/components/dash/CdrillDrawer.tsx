@@ -10,6 +10,7 @@ import { ErrorBox, errorText } from '../budget-mgmt/shared';
 import { fetchCdrill, type MarginSel } from '@/lib/dash/service';
 import { CAT_LABEL, parseCdrill, type BudGroup, type Cat, type Cdrill } from '@/lib/dash/cdrill';
 import { money, tdCls, thCls } from './parts';
+import CompareBlock from './CompareBlock';
 
 export interface DrillTarget { matnr: string; label: string; invoice: { rm: Decimal; pm: Decimal; pf: Decimal; oh: Decimal } | null; sel: MarginSel; from: string; to: string }
 
@@ -37,7 +38,7 @@ export default function CdrillDrawer({ target, onClose }: { target: DrillTarget 
     { label: 'Raw material', drill: s.rm, inv: inv.rm }, { label: 'Packing material', drill: s.pm, inv: inv.pm }, { label: 'Perfume', drill: s.pf, inv: inv.pf },
   ] : []), [s, inv]);
   return (
-    <Drawer open={!!target} onClose={onClose} title={target ? `Cost breakup: ${target.label}` : ''} width={860}>
+    <Drawer open={!!target} onClose={onClose} title={target ? `Cost breakup: ${target.label}` : ''} width={1180}>
       {busy && <p className="flex items-center gap-2 text-sm text-muted"><Spinner className="h-4 w-4" /> Reading process orders and component consumption (can take a minute for many batches)</p>}
       {error && <ErrorBox>{error}</ErrorBox>}
       {data && !s && <p className="text-sm text-muted">No sold batches found for this material and selection.</p>}
@@ -73,6 +74,7 @@ export default function CdrillDrawer({ target, onClose }: { target: DrillTarget 
               </table>
             </div>
           )}
+          <CompareBlock matnr={target!.matnr} data={data} defaultPlant={target!.sel.plants.find((x) => data.budget.some((g) => g.bwtar === x)) ?? ''} />
           <BudgetBlock groups={data.budget} />
           <h4 className="text-xs font-extrabold uppercase tracking-wide text-muted">Sold batches</h4>
           <div className="max-h-[32vh] overflow-auto rounded-xl border border-line">

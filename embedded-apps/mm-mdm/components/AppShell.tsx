@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { FormEvent, ReactNode, useState } from 'react';
 import { useMdm } from '@/lib/store';
-import { DOMAINS, SETUP_PATH, SETUP_TCODE, resolveTcode } from '@/lib/tcodes';
+import { CRS_PATH, CRS_TCODE, DOMAINS, SETUP_PATH, SETUP_TCODE, resolveTcode } from '@/lib/tcodes';
 import { DOMAIN_ICONS, IconChart, IconClock, IconHome, IconLayers, IconMenu, IconTree } from './icons';
 
 const BASE = process.env.NEXT_PUBLIC_BASE_PATH || '';
@@ -39,8 +39,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   const adminHit = ADMIN_LINKS.find((a) => pathname.startsWith(a.href));
   const domainHit = DOMAINS.find((d) => pathname.startsWith(`/master/${d.id}`));
-  const pageTitle = adminHit ? adminHit.label : pathname.startsWith(SETUP_PATH) ? 'Product Hierarchy & CRS' : domainHit ? domainHit.label : 'Master Data';
-  const pageSub = adminHit ? `Administration · ${adminHit.tcode}` : pathname.startsWith(SETUP_PATH) ? SETUP_TCODE : domainHit ? domainHit.tcode : 'Governance portal';
+  const pageTitle = adminHit ? adminHit.label : pathname.startsWith(CRS_PATH) ? 'CRS Product Grouping' : pathname.startsWith(SETUP_PATH) ? 'Product Hierarchy' : domainHit ? domainHit.label : 'Master Data';
+  const pageSub = adminHit ? `Administration · ${adminHit.tcode}` : pathname.startsWith(CRS_PATH) ? CRS_TCODE : pathname.startsWith(SETUP_PATH) ? SETUP_TCODE : domainHit ? domainHit.tcode : 'Governance portal';
   const initials = user.name.split(' ').filter(Boolean).map((p) => p[0]).join('').slice(0, 3) || '?';
   const role = sessionState === 'loading' ? 'Signing in…' : sessionState === 'error' ? 'Not connected' : user.department || user.roles.join(', ') || 'Signed in';
 
@@ -67,8 +67,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
           <div className="nav-group">Master data objects</div>
           <Link href={SETUP_PATH} className={`nav-item ${pathname.startsWith(SETUP_PATH) ? 'active' : ''}`} onClick={() => setNavOpen(false)}>
             <span className="nav-icon"><IconTree /></span>
-            <span className="nav-label">Product Hierarchy &amp; CRS</span>
+            <span className="nav-label">Product Hierarchy</span>
             <span className="nav-tcode">{SETUP_TCODE}</span>
+          </Link>
+          <Link href={CRS_PATH} className={`nav-item ${pathname.startsWith(CRS_PATH) ? 'active' : ''}`} onClick={() => setNavOpen(false)}>
+            <span className="nav-icon"><IconLayers /></span>
+            <span className="nav-label">CRS Product Grouping</span>
+            <span className="nav-tcode">{CRS_TCODE}</span>
           </Link>
           {DOMAINS.map((d) => {
             const active = pathname.startsWith(`/master/${d.id}`);

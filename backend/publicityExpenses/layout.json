@@ -1,0 +1,2856 @@
+{
+ "source": "ATL BTL Expenses Summary report layout.xlsx (labels and structure only, no amounts)",
+ "headers": [
+  "ATL",
+  "MODELLING",
+  "FILM PROD",
+  "BTL",
+  "BTL SALES",
+  "CREATIVE",
+  "GR TOTAL MIS",
+  "DSR AND OTHER EXP",
+  "GR.TOTAL LR"
+ ],
+ "glAccounts": [
+  {
+   "gl": "0000507927",
+   "name": "Press",
+   "header": "ATL",
+   "headerSeq": 1
+  },
+  {
+   "gl": "0000507929",
+   "name": "T.V.",
+   "header": "ATL",
+   "headerSeq": 1
+  },
+  {
+   "gl": "0000507930",
+   "name": "Internet Publicity",
+   "header": "ATL",
+   "headerSeq": 1
+  },
+  {
+   "gl": "0000507932",
+   "name": "Performance Marketing",
+   "header": "ATL",
+   "headerSeq": 1
+  },
+  {
+   "gl": "0000507933",
+   "name": "Influencer Marketing",
+   "header": "ATL",
+   "headerSeq": 1
+  },
+  {
+   "gl": "0000507934",
+   "name": "E-Commerce Marketing",
+   "header": "ATL",
+   "headerSeq": 1
+  },
+  {
+   "gl": "0000507931",
+   "name": "Cinema",
+   "header": "ATL",
+   "headerSeq": 1
+  },
+  {
+   "gl": "0000507926",
+   "name": "Magazine",
+   "header": "ATL",
+   "headerSeq": 1
+  },
+  {
+   "gl": "0000507928",
+   "name": "Radio",
+   "header": "ATL",
+   "headerSeq": 1
+  },
+  {
+   "gl": "0000508034",
+   "name": "Sponsorship",
+   "header": "ATL",
+   "headerSeq": 1
+  },
+  {
+   "gl": "0000508028",
+   "name": "Sponsorship-IBD",
+   "header": "ATL",
+   "headerSeq": 1
+  },
+  {
+   "gl": "0000508042",
+   "name": "PUB -BRAND PROMOTION SERVICE",
+   "header": "ATL",
+   "headerSeq": 1
+  },
+  {
+   "gl": "0000508033",
+   "name": "Souvenier",
+   "header": "ATL",
+   "headerSeq": 1
+  },
+  {
+   "gl": "0000508140",
+   "name": "PUBLICITY EXPENSES-FILM-MODELING FEES",
+   "header": "MODELLING",
+   "headerSeq": 2
+  },
+  {
+   "gl": "0000508139",
+   "name": "PUBLICITY EXPENSES-FILM-MISC.VIDEO CASSETTES",
+   "header": "FILM PROD",
+   "headerSeq": 3
+  },
+  {
+   "gl": "0000508142",
+   "name": "PUBLICITY EXPENSES-FILM-MISC.VIDEO CASSETTES",
+   "header": "FILM PROD",
+   "headerSeq": 3
+  },
+  {
+   "gl": "0000508141",
+   "name": "PUBLICITY EXPENSES-FILM-PRODUCTION COST",
+   "header": "FILM PROD",
+   "headerSeq": 3
+  },
+  {
+   "gl": "0000508138",
+   "name": "PUBLICITY EXPENSES-FILM-PRODUCTION COST",
+   "header": "FILM PROD",
+   "headerSeq": 3
+  },
+  {
+   "gl": "0000500836",
+   "name": "TG Free Issue Business Promotion",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000500904",
+   "name": "FG Free Issue Bp",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000500922",
+   "name": "FG Free Issue Doctor",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000500920",
+   "name": "TRADING GOODS FREE ISSUE-DOCTOR",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000507826",
+   "name": "PROMOTIONAL & GIFT EXPENSES",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000507831",
+   "name": "DUTY REVERSAL-SAMPLES/ FREE ISUUES-PROMOTINAL",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508043",
+   "name": "POP MAT CON",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508029",
+   "name": "PUBLICITY EXPENSES-BTL-HOARDING",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508032",
+   "name": "PUBLICITY EXPENSES-BTL-PUBLICITY MATERIAL",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508036",
+   "name": "PUBLICITY EXPENSES-BTL-BLOCK & ART WORK",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508037",
+   "name": "PUBLICITY EXPENSES-BTL-BOARD/NEON SIGN",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508038",
+   "name": "PUBLICITY EXPENSES-BTL-RESEARCH & SURVEY",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508248",
+   "name": "PUBLICITY EXPENSES-OUT OF POCKET EXP",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508445",
+   "name": "SALES PROMOTION-CAMPAIGN EXPENSES",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508447",
+   "name": "SALES PROMOTION-CONFERENCE/SEMINAR EXPENSES",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508458",
+   "name": "SALES PROMOTION-MARKET DEVELOPMENT EXPENSES",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508580",
+   "name": "SELLING EXPENSES-OTHER EXPENSES",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508582",
+   "name": "SELLING EXPENSES-PURCHASE CUM WINDOW DISPLAY",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508585",
+   "name": "SELLING EXPENSES-VAN OPERATION EXPENSES",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508587",
+   "name": "SELLING EXPENSES-WINDOW DISPLAY",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508606",
+   "name": "PROMOTIONAL MATERIAL FREE ISSUE-SALES (EXCEPT SCH)",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508718",
+   "name": "WINDOW DISPLAY(Visibility/Window hiring/End Cap-MT(NAME CHANGED TO DEALER SALES REBATE)",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508719",
+   "name": "WINDOW DISPLAY-ECOM",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000500523",
+   "name": "PRICE DIFF / REVALUATION OF OTH",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000500814",
+   "name": "GIFT- SUBCONTRACTING (EXCLUDING FG)",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000507541",
+   "name": "EXP.CLAIMED BY CSD-SURVEY FOR PRICE REVISION",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508030",
+   "name": "PUBLICITY EXPENSES-BTL-MOBILE VAN MEDIA",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508035",
+   "name": "PUBLICITY EXPENSES-BTL-BANNER DISPLAY",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508041",
+   "name": "PUBLICITY EXPENSES-BTL-Call Centre Charges",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508242",
+   "name": "PUBLICITY EXPENSES-MISCELLENEOUS",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508246",
+   "name": "Calendar",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508456",
+   "name": "Launching  Exps",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508464",
+   "name": "Rural Development",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508244",
+   "name": "PUBLICITY EXPENSES-WALL PAINTING",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508466",
+   "name": "SALES PROMOTION-SAMPLING EXPENSES",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508467",
+   "name": "Celebrities Meet",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508588",
+   "name": "Retail Merchandising",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508599",
+   "name": "Selling Con Sch-PIM",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508596",
+   "name": "Listing Fees",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508574",
+   "name": "Cycle Sales Man Expenses",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508717",
+   "name": "Image Window",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508620",
+   "name": "Selling Expenses-Consumer Scheme (Excl.Fg)",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508468",
+   "name": "SALES PROMOTION PROJECT (FRANK ROSS)",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508575",
+   "name": "SELLING EXPENSES-DOOR TO DOOR CAMPAIGN",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508577",
+   "name": "SELLING EXPENSES-EXHIBITION/FAIR EXPENSES",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508578",
+   "name": "SELLING EXPENSES-IN SHOP EXPENSES",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508245",
+   "name": "Rickshow /Van Painting",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508039",
+   "name": "Road Show Expenses",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508031",
+   "name": "PUBLICITY EXPENSES-BTL-POSTER & STICKER",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508142",
+   "name": "PUBLICITY EXPENSES-FILM-PHOTOGRAPHY CHARGES",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000500910",
+   "name": "TG FREE ISSUE TS",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000500909",
+   "name": "FG FREE ISSUE TS",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508597",
+   "name": "SELLING EXPENSES-DISPOSAL CHARGES",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000500921",
+   "name": "FG Free Issue Doctor",
+   "header": "BTL",
+   "headerSeq": 4
+  },
+  {
+   "gl": "0000508586",
+   "name": "SELLING EXPENSES-VAN SUBSIDY",
+   "header": "BTL SALES",
+   "headerSeq": 5
+  },
+  {
+   "gl": "0000508626",
+   "name": "E COM-SELL CO OP",
+   "header": "BTL SALES",
+   "headerSeq": 5
+  },
+  {
+   "gl": "0000508627",
+   "name": "E COM-CAM SERVICES",
+   "header": "BTL SALES",
+   "headerSeq": 5
+  },
+  {
+   "gl": "0000508137",
+   "name": "PUBLICITY EXPENSES-FILM-CREATIVE CONSULTANCY",
+   "header": "CREATIVE",
+   "headerSeq": 6
+  },
+  {
+   "gl": "0000508135",
+   "name": "PUBLICITY EXPENSES-FILM-CREATIVE CONSULTANCY-(OPE)",
+   "header": "CREATIVE",
+   "headerSeq": 6
+  },
+  {
+   "gl": "0000507786",
+   "name": "INCENTIVE ON SALES(FIELD FORCE-DSR)",
+   "header": "DSR AND OTHER EXP",
+   "headerSeq": 8
+  },
+  {
+   "gl": "0000508576",
+   "name": "SELLING EXPENSES-DSR EXPENSES",
+   "header": "DSR AND OTHER EXP",
+   "headerSeq": 8
+  },
+  {
+   "gl": "0000508590",
+   "name": "SELLING EXPENSES-DSR EXPENSES-MERCANDISER",
+   "header": "DSR AND OTHER EXP",
+   "headerSeq": 8
+  },
+  {
+   "gl": "0000508598",
+   "name": "SELLING EXPENSES-SALES PROMOTION & MARKET STUDY",
+   "header": "DSR AND OTHER EXP",
+   "headerSeq": 8
+  },
+  {
+   "gl": "0000508612",
+   "name": "SELLING EXPENSES-DOCTOR'S SALARY-ECD",
+   "header": "DSR AND OTHER EXP",
+   "headerSeq": 8
+  },
+  {
+   "gl": "0000508613",
+   "name": "SELLING EXPENSES-DOCTOR'S TRAINING-ECD",
+   "header": "DSR AND OTHER EXP",
+   "headerSeq": 8
+  },
+  {
+   "gl": "0000508618",
+   "name": "MERCANDISER EXPENSES (DSR)- MEDICLAIM INSURANCE",
+   "header": "DSR AND OTHER EXP",
+   "headerSeq": 8
+  },
+  {
+   "gl": "0000508594",
+   "name": "Market Reporter Expenses",
+   "header": "DSR AND OTHER EXP",
+   "headerSeq": 8
+  },
+  {
+   "gl": "0000508595",
+   "name": "Market Reporter Expenses",
+   "header": "DSR AND OTHER EXP",
+   "headerSeq": 8
+  },
+  {
+   "gl": "0000500859",
+   "name": "ITC Rev Oth",
+   "header": "DSR AND OTHER EXP",
+   "headerSeq": 8
+  },
+  {
+   "gl": "0000507827",
+   "name": "Price diff for Gift",
+   "header": "DSR AND OTHER EXP",
+   "headerSeq": 8
+  }
+ ],
+ "rows": [
+  {
+   "category": "EXISTING-CCD",
+   "range": "NR RANGE",
+   "product": "NRO",
+   "visible": true,
+   "type": "OIL"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "NR RANGE",
+   "product": "NRO LITE",
+   "visible": false,
+   "type": "OIL"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "NR RANGE",
+   "product": "NRXT",
+   "visible": true,
+   "type": "OIL"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "NR RANGE",
+   "product": "NR WARM OIL",
+   "visible": false,
+   "type": "OIL"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "NR RANGE",
+   "product": "NRAC OIL-NR GOLD",
+   "visible": true,
+   "type": "OIL"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "NR RANGE",
+   "product": "NRT STRESS RELIEF OIL",
+   "visible": false,
+   "type": "OIL"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "NR RANGE",
+   "product": "NRT BODY MASSAGE OIL",
+   "visible": false,
+   "type": "OIL"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "NR RANGE",
+   "product": "NR Therapy Essential Oil",
+   "visible": false,
+   "type": "OIL"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "NR RANGE",
+   "product": "NR TALC",
+   "visible": true,
+   "type": "NR TALC"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "BP RANGE",
+   "product": "BP CREAM/GEL",
+   "visible": true,
+   "type": "CREAM"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "BP RANGE",
+   "product": "BP SOFT",
+   "visible": true,
+   "type": "CREAM"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "BP RANGE",
+   "product": "BP FAIRNESS CREAM/LOTION",
+   "visible": false,
+   "type": "CREAM"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "BP RANGE",
+   "product": "BP PERFECT TOUCH",
+   "visible": false,
+   "type": "CREAM"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "BP RANGE",
+   "product": "BP LOTION / OIL",
+   "visible": true,
+   "type": "LOTION"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "BP RANGE",
+   "product": "BP ALOE NEEM LOTION",
+   "visible": true,
+   "type": "LOTION"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "BP RANGE",
+   "product": "BP CC BUTTER",
+   "visible": false,
+   "type": "LOTION"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "BP RANGE",
+   "product": "BP LOTION NPD",
+   "visible": true,
+   "type": "LOTION"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "BP RANGE",
+   "product": "BP FW (AV & CM)",
+   "visible": false,
+   "type": "BP FW"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "BP RANGE",
+   "product": "BP FW (ZOZP)",
+   "visible": false,
+   "type": "BP FW"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "BP RANGE",
+   "product": "BP POWDER",
+   "visible": true,
+   "type": "BP POWDER"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "BP RANGE",
+   "product": "PETRO JELLY",
+   "visible": true,
+   "type": "PETRO JELLY"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "BP RANGE",
+   "product": "BP ALOEVERA GEL",
+   "visible": true,
+   "type": "BP ALOEVERA GEL"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "BP RANGE",
+   "product": "BP SANITIZER",
+   "visible": false,
+   "type": "BP SANITIZER"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "BP RANGE",
+   "product": "BPA&M SOAP",
+   "visible": true,
+   "type": "BPA&M SOAP"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "BP RANGE",
+   "product": "BP GLY SOAP",
+   "visible": false,
+   "type": "BP GLY SOAP"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "BP RANGE",
+   "product": "BPSHL",
+   "visible": false,
+   "type": "BPSHL"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "BP RANGE",
+   "product": "BP HANDWASH",
+   "visible": false,
+   "type": "BP HANDWASH"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "BP RANGE",
+   "product": "BP BODYWSH",
+   "visible": false,
+   "type": "BP BODYWSH"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "BP RANGE",
+   "product": "BP HYGIENE RANGE",
+   "visible": false,
+   "type": "BP HYGIENE RANGE"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "PAIN MANAGEMENT",
+   "product": "MP BALM",
+   "visible": true,
+   "type": "MP BALM"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "PAIN MANAGEMENT",
+   "product": "Z BALM",
+   "visible": true,
+   "type": "ZANDU BALM"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "PAIN MANAGEMENT",
+   "product": "ZB U",
+   "visible": true,
+   "type": "ZANDU BALM"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "PAIN MANAGEMENT",
+   "product": "ZB JUNIOR",
+   "visible": false,
+   "type": "ZANDU BALM"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "PAIN MANAGEMENT",
+   "product": "Z ANAND BALM",
+   "visible": false,
+   "type": "ZANDU BALM"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "PAIN MANAGEMENT",
+   "product": "FAST RELIEF",
+   "visible": true,
+   "type": "FAST RELIEF"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "PAIN MANAGEMENT",
+   "product": "Z FAST RELIEF CR",
+   "visible": false,
+   "type": "Z FAST RELIEF CR"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "PAIN MANAGEMENT",
+   "product": "Z Q RELIEF ROLL ON",
+   "visible": false,
+   "type": "Z Q RELIEF ROLL ON"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "PAIN MANAGEMENT",
+   "product": "Z PAIN RELIEF / JOINT HEAL OIL",
+   "visible": true,
+   "type": "Z PAIN RELIEF / JOINT HEAL OIL"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "PAIN MANAGEMENT",
+   "product": "Z. FAST RELIEF HEAT PATCH",
+   "visible": false,
+   "type": "Z. FAST RELIEF HEAT PATCH"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "PAIN MANAGEMENT",
+   "product": "Z SPRAY",
+   "visible": true,
+   "type": "Z SPRAY"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "PAIN MANAGEMENT",
+   "product": "Emami Agni Balm",
+   "visible": false,
+   "type": "Emami Agni Balm"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "PAIN MANAGEMENT",
+   "product": "Mentho Plus Total",
+   "visible": true,
+   "type": "Mentho Plus Total"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "PAIN MANAGEMENT",
+   "product": "Z ROLL ON",
+   "visible": true,
+   "type": "Z ROLL ON"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "PAIN MANAGEMENT",
+   "product": "Z GEL/CREAM",
+   "visible": false,
+   "type": "Z GEL/CREAM"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "MENS GROOMING",
+   "product": "F&H CREAM",
+   "visible": true,
+   "type": "F&H CR"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "MENS GROOMING",
+   "product": "FAH MASTIGE/SALON",
+   "visible": true,
+   "type": "F&H CR"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "MENS GROOMING",
+   "product": "FAH Eagle Cream(FAH nature first Cream)",
+   "visible": false,
+   "type": "F&H CR"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "MENS GROOMING",
+   "product": "F&H WF CREAM",
+   "visible": false,
+   "type": "F&H CR"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "MENS GROOMING",
+   "product": "FAH MEN LASER",
+   "visible": false,
+   "type": "FAH MEN LASER"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "MENS GROOMING",
+   "product": "F&H FW",
+   "visible": true,
+   "type": "F&H FW"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "MENS GROOMING",
+   "product": "FAH ANTI PIMPLE FW",
+   "visible": false,
+   "type": "F&H FW"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "MENS GROOMING",
+   "product": "FAH Eagle FW(FAH nature first FW)",
+   "visible": true,
+   "type": "F&H FW"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "MENS GROOMING",
+   "product": "Pure Glow",
+   "visible": true,
+   "type": "F&H FW"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "MENS GROOMING",
+   "product": "SAH Project Aura",
+   "visible": false,
+   "type": "F&H FW"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "MENS GROOMING",
+   "product": "F&H FW (OC)",
+   "visible": true,
+   "type": "F&H FW"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "MENS GROOMING",
+   "product": "HE",
+   "visible": true,
+   "type": "HE"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "MENS GROOMING",
+   "product": "HE BIKER SERIES",
+   "visible": false,
+   "type": "HE"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "MENS GROOMING",
+   "product": "HE FW",
+   "visible": true,
+   "type": "HE"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "HEALTH SUPPLIMENT",
+   "product": "SCCP",
+   "visible": true,
+   "type": "CHAWANPRASH"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "HEALTH SUPPLIMENT",
+   "product": "KESARI JIVAN",
+   "visible": true,
+   "type": "CHAWANPRASH"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "HEALTH SUPPLIMENT",
+   "product": "KJ SUGAR FREE",
+   "visible": false,
+   "type": "CHAWANPRASH"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "HEALTH SUPPLIMENT",
+   "product": "ZANDU HONEY",
+   "visible": true,
+   "type": "ZANDU HONEY"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "OTHER RANGE",
+   "product": "7 OILS IN 1",
+   "visible": true,
+   "type": "7 OILS IN 1"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "OTHER RANGE",
+   "product": "7 OILS - 1 -ORGANIC",
+   "visible": true,
+   "type": "7 OILS - 1 -ORGANIC"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "OTHER RANGE",
+   "product": "GB TALC",
+   "visible": false,
+   "type": "GB TALC"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "OTHER RANGE",
+   "product": "NF CREAM",
+   "visible": true,
+   "type": "NF CREAM"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "OTHER RANGE",
+   "product": "BMO (OLD)",
+   "visible": false,
+   "type": "BMO (OLD)"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "OTHER RANGE",
+   "product": "CREAME 21",
+   "visible": false,
+   "type": "CREAME 21"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "OTHER RANGE",
+   "product": "V CREAM",
+   "visible": false,
+   "type": "V CREAM"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "OTHER RANGE",
+   "product": "MKC CREAM",
+   "visible": true,
+   "type": "MKC CREAM"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "OTHER RANGE",
+   "product": "BP DEEPLY MOISTURISING LIP BALM",
+   "visible": false,
+   "type": "BP DEEPLY MOISTURISING LIP BALM"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "OTHER RANGE",
+   "product": "EMAZE",
+   "visible": false,
+   "type": "EMAZE"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "OTHER RANGE",
+   "product": "SHE COMF",
+   "visible": false,
+   "type": "SHE COMF"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "OTHER RANGE",
+   "product": "AROMA",
+   "visible": false,
+   "type": "AROMA"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "OTHER RANGE",
+   "product": "HAIR COLOR",
+   "visible": false,
+   "type": "HAIR COLOR"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "KK RANGE",
+   "product": "KK OIL",
+   "visible": true,
+   "type": "KK"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "KK RANGE",
+   "product": "KK ONION OIL",
+   "visible": true,
+   "type": "KK"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "KK RANGE",
+   "product": "KK SHAMPOO",
+   "visible": true,
+   "type": "KK"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "KK RANGE",
+   "product": "KK ONION SHAMPOO",
+   "visible": true,
+   "type": "KK"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "KK RANGE",
+   "product": "KK CAPSULES",
+   "visible": false,
+   "type": "KK"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "KK RANGE",
+   "product": "KK CONDITIONER",
+   "visible": true,
+   "type": "KK"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "KK RANGE",
+   "product": "KK ONION CONDITIONER",
+   "visible": false,
+   "type": "KK"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "KK RANGE",
+   "product": "KK Shampoo-Organic",
+   "visible": true,
+   "type": "KK"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "KK RANGE",
+   "product": "Kesh King Rosemary Hair Oil",
+   "visible": false,
+   "type": "KK"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "KK RANGE",
+   "product": "Kesh King Rosemary shampoo",
+   "visible": false,
+   "type": "KK"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "KK RANGE",
+   "product": "Kesh King Rosemary conditioner",
+   "visible": true,
+   "type": "KK"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "KK RANGE",
+   "product": "KK Organic Conditioner",
+   "visible": false,
+   "type": "KK"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "KK RANGE",
+   "product": "KK ONION MASK",
+   "visible": false,
+   "type": "KK"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "KK RANGE",
+   "product": "KK COMBO PACK",
+   "visible": false,
+   "type": "KK"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "KK RANGE",
+   "product": "KK FREE ISSUE",
+   "visible": false,
+   "type": "KK"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "KK RANGE",
+   "product": "KP OIL",
+   "visible": true,
+   "type": "KP"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "KK RANGE",
+   "product": "KP HAIR WASH",
+   "visible": true,
+   "type": "KP"
+  },
+  {
+   "category": "EXISTING-CCD",
+   "range": "KK RANGE",
+   "product": "KP CAPSULES",
+   "visible": true,
+   "type": "KP"
+  },
+  {
+   "category": "HOME & HYGIENE RANGE",
+   "range": "HOME & HYGIENE RANGE",
+   "product": "EMASOL BATHROOM CLEANER",
+   "visible": false,
+   "type": "EMASOL BATHROOM CLEANER"
+  },
+  {
+   "category": "HOME & HYGIENE RANGE",
+   "range": "HOME & HYGIENE RANGE",
+   "product": "EMASOL FLOOR CLEANER",
+   "visible": false,
+   "type": "EMASOL FLOOR CLEANER"
+  },
+  {
+   "category": "HOME & HYGIENE RANGE",
+   "range": "HOME & HYGIENE RANGE",
+   "product": "EMASOL DISHWASH GEL",
+   "visible": false,
+   "type": "EMASOL DISHWASH GEL"
+  },
+  {
+   "category": "HOME & HYGIENE RANGE",
+   "range": "HOME & HYGIENE RANGE",
+   "product": "EMASOL TOILET CLEANER",
+   "visible": false,
+   "type": "EMASOL TOILET CLEANER"
+  },
+  {
+   "category": "HOME & HYGIENE RANGE",
+   "range": "HOME & HYGIENE RANGE",
+   "product": "EMASOL SURFACE SANITIZER",
+   "visible": false,
+   "type": "EMASOL SURFACE SANITIZER"
+  },
+  {
+   "category": "HOME & HYGIENE RANGE",
+   "range": "HOME & HYGIENE RANGE",
+   "product": "EMASOL DISH WASH BAR",
+   "visible": false,
+   "type": "EMASOL DISH WASH BAR"
+  },
+  {
+   "category": "HOME & HYGIENE RANGE",
+   "range": "HOME & HYGIENE RANGE",
+   "product": "EMASOL HOME HYGIENE RANGE",
+   "visible": false,
+   "type": "EMASOL HOME HYGIENE RANGE"
+  },
+  {
+   "category": "DERMI",
+   "range": "DERMI",
+   "product": "DERMI POWDER",
+   "visible": true,
+   "type": "DERMI POWDER"
+  },
+  {
+   "category": "DERMI",
+   "range": "DERMI",
+   "product": "Dermicool - Soap",
+   "visible": true,
+   "type": "Dermicool - Soap"
+  },
+  {
+   "category": "DERMI",
+   "range": "DERMI",
+   "product": "Dermicool-Spray",
+   "visible": true,
+   "type": "Dermicool-Spray"
+  },
+  {
+   "category": "DERMI",
+   "range": "DERMI",
+   "product": "Dermicool - Her - Talc",
+   "visible": true,
+   "type": "Dermicool - Her - Talc"
+  },
+  {
+   "category": "DERMI",
+   "range": "DERMI",
+   "product": "Dermicool - Super Active",
+   "visible": false,
+   "type": "Dermicool - Super Active"
+  },
+  {
+   "category": "DERMI",
+   "range": "DERMI",
+   "product": "Dermicool - Shower Gel",
+   "visible": true,
+   "type": "Dermicool - Shower Gel"
+  },
+  {
+   "category": "INNOVATION-CCD",
+   "range": "INNOVATION-CCD",
+   "product": "Z FAST RELIEF SPRAY",
+   "visible": false,
+   "type": "Z FAST RELIEF SPRAY"
+  },
+  {
+   "category": "INNOVATION-CCD",
+   "range": "INNOVATION-CCD",
+   "product": "Z Stress Relief Balm",
+   "visible": false,
+   "type": "Z Stress Relief Balm"
+  },
+  {
+   "category": "INNOVATION-CCD",
+   "range": "INNOVATION-CCD",
+   "product": "ZFR 7+ Cold Rub",
+   "visible": false,
+   "type": "ZFR 7+ Cold Rub"
+  },
+  {
+   "category": "INNOVATION-CCD",
+   "range": "INNOVATION-CCD",
+   "product": "BP Baby Care (Boroplus from Maa Baby)",
+   "visible": true,
+   "type": "BP Baby Care (Boroplus from Maa Baby)"
+  },
+  {
+   "category": "INNOVATION-CCD",
+   "range": "INNOVATION-CCD",
+   "product": "NR SUPER STRONG",
+   "visible": false,
+   "type": "NR SUPER STRONG"
+  },
+  {
+   "category": "INNOVATION-CCD",
+   "range": "INNOVATION-CCD",
+   "product": "BP LIP BALM",
+   "visible": false,
+   "type": "BP LIP BALM"
+  },
+  {
+   "category": "INNOVATION-CCD",
+   "range": "INNOVATION-CCD",
+   "product": "KK Scalp Care Shampoo",
+   "visible": true,
+   "type": "KK Scalp Care Shampoo"
+  },
+  {
+   "category": "INNOVATION-CCD",
+   "range": "INNOVATION-CCD",
+   "product": "KK Scalp Care Scrub -Oily",
+   "visible": false,
+   "type": "KK Scalp Care Scrub -Oily"
+  },
+  {
+   "category": "INNOVATION-CCD",
+   "range": "INNOVATION-CCD",
+   "product": "KK Scalp Care Scrub -Dry",
+   "visible": false,
+   "type": "KK Scalp Care Scrub -Dry"
+  },
+  {
+   "category": "INNOVATION-CCD",
+   "range": "INNOVATION-CCD",
+   "product": "KK Organic Hair Oil Shots",
+   "visible": true,
+   "type": "KK Organic Hair Oil Shots"
+  },
+  {
+   "category": "INNOVATION-CCD",
+   "range": "INNOVATION-CCD",
+   "product": "KK AD Oil",
+   "visible": true,
+   "type": "KK AD Oil"
+  },
+  {
+   "category": "INNOVATION-CCD",
+   "range": "INNOVATION-CCD",
+   "product": "KK Premium Oil(KK GOLD SERUM)",
+   "visible": false,
+   "type": "KK Premium Oil(KK GOLD SERUM)"
+  },
+  {
+   "category": "INNOVATION-CCD",
+   "range": "INNOVATION-CCD",
+   "product": "KK Lifestyle Oil(Non sticky hair oil)",
+   "visible": false,
+   "type": "KK Lifestyle Oil(Non sticky hair oil)"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "FAT",
+   "visible": false,
+   "type": "FAT"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "EMAMI HAIR COLOUR",
+   "visible": false,
+   "type": "EMAMI HAIR COLOUR"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "FAA",
+   "visible": false,
+   "type": "FAA"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "CCD-FG W/H - Vapi",
+   "visible": false,
+   "type": "CCD-FG W/H - Vapi"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "CCD-Food - Corp",
+   "visible": false,
+   "type": "CCD-Food - Corp"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD",
+   "visible": true,
+   "type": "MISC CCD"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-ABLE TOOTHBRUSH",
+   "visible": false,
+   "type": "MISC CCD-ABLE TOOTHBRUSH"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Accounts",
+   "visible": false,
+   "type": "MISC CCD-Accounts"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Air-condition",
+   "visible": false,
+   "type": "MISC CCD-Air-condition"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Allocation from Depot",
+   "visible": false,
+   "type": "MISC CCD-Allocation from Depot"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Allocation from HO",
+   "visible": false,
+   "type": "MISC CCD-Allocation from HO"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Allocation from Units",
+   "visible": false,
+   "type": "MISC CCD-Allocation from Units"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-AMLA",
+   "visible": false,
+   "type": "MISC CCD-AMLA"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-ANALYTICAL DESIGN EXCELLENCE",
+   "visible": false,
+   "type": "MISC CCD-ANALYTICAL DESIGN EXCELLENCE"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-BIO RESOURCE DEVELOPMENT",
+   "visible": false,
+   "type": "MISC CCD-BIO RESOURCE DEVELOPMENT"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-BOILER",
+   "visible": false,
+   "type": "MISC CCD-BOILER"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-BOROPLUS FACE PROJECT",
+   "visible": false,
+   "type": "MISC CCD-BOROPLUS FACE PROJECT"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-BOROPLUS INTENSIVE SKIN THERAPY CR",
+   "visible": false,
+   "type": "MISC CCD-BOROPLUS INTENSIVE SKIN THERAPY CR"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Boroplus Kids Total Defence Talc",
+   "visible": false,
+   "type": "MISC CCD-Boroplus Kids Total Defence Talc"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-BOROPLUS LITE",
+   "visible": false,
+   "type": "MISC CCD-BOROPLUS LITE"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-BOROPLUS SUMMER LOTION",
+   "visible": false,
+   "type": "MISC CCD-BOROPLUS SUMMER LOTION"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Boroplus Sun Protection lotion",
+   "visible": false,
+   "type": "MISC CCD-Boroplus Sun Protection lotion"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Capsule",
+   "visible": false,
+   "type": "MISC CCD-Capsule"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Chilling Plant",
+   "visible": false,
+   "type": "MISC CCD-Chilling Plant"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-CIS-ADMIN",
+   "visible": false,
+   "type": "MISC CCD-CIS-ADMIN"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Coarse Powder",
+   "visible": false,
+   "type": "MISC CCD-Coarse Powder"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-COMMON",
+   "visible": false,
+   "type": "MISC CCD-COMMON"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Compressed Air",
+   "visible": false,
+   "type": "MISC CCD-Compressed Air"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Consumable Stores",
+   "visible": false,
+   "type": "MISC CCD-Consumable Stores"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Corp",
+   "visible": false,
+   "type": "MISC CCD-Corp"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Cosm Cream",
+   "visible": false,
+   "type": "MISC CCD-Cosm Cream"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-CQA",
+   "visible": false,
+   "type": "MISC CCD-CQA"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-CREAM/Ointment",
+   "visible": false,
+   "type": "MISC CCD-CREAM/Ointment"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-CSR",
+   "visible": false,
+   "type": "MISC CCD-CSR"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Deesha Media",
+   "visible": false,
+   "type": "MISC CCD-Deesha Media"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Depot Commercial",
+   "visible": false,
+   "type": "MISC CCD-Depot Commercial"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Depot Expenses",
+   "visible": false,
+   "type": "MISC CCD-Depot Expenses"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Despatch",
+   "visible": false,
+   "type": "MISC CCD-Despatch"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-DIAMOND FAIRNESS CREAM",
+   "visible": false,
+   "type": "MISC CCD-DIAMOND FAIRNESS CREAM"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Direct Labour",
+   "visible": false,
+   "type": "MISC CCD-Direct Labour"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-DM Water",
+   "visible": false,
+   "type": "MISC CCD-DM Water"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Drinking Water",
+   "visible": false,
+   "type": "MISC CCD-Drinking Water"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Dummy",
+   "visible": false,
+   "type": "MISC CCD-Dummy"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Edible Oil",
+   "visible": false,
+   "type": "MISC CCD-Edible Oil"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-EMAMI 5 in1 SHAMPOO",
+   "visible": false,
+   "type": "MISC CCD-EMAMI 5 in1 SHAMPOO"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-EMAMI AMRIT SAGAR AYUR MEDICINE OIL",
+   "visible": false,
+   "type": "MISC CCD-EMAMI AMRIT SAGAR AYUR MEDICINE OIL"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-EMAMI AYURVEDIC HAIR OIL",
+   "visible": false,
+   "type": "MISC CCD-EMAMI AYURVEDIC HAIR OIL"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-EMAMI GLYCERINE SOAP",
+   "visible": false,
+   "type": "MISC CCD-EMAMI GLYCERINE SOAP"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-EMAMI HAIR LIFE OIL",
+   "visible": false,
+   "type": "MISC CCD-EMAMI HAIR LIFE OIL"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-EMAMI HEALTHY & FAIR BABY CARE",
+   "visible": false,
+   "type": "MISC CCD-EMAMI HEALTHY & FAIR BABY CARE"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-EMAMI MALAI KESAR SOAP",
+   "visible": true,
+   "type": "MISC CCD-EMAMI MALAI KESAR SOAP"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-EMAMI PURE SKIN FACEWASH",
+   "visible": false,
+   "type": "MISC CCD-EMAMI PURE SKIN FACEWASH"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-EMAMI SHAMPOO",
+   "visible": false,
+   "type": "MISC CCD-EMAMI SHAMPOO"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-EMAMI SHAVING CREAM",
+   "visible": false,
+   "type": "MISC CCD-EMAMI SHAVING CREAM"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-EMAMI TALC",
+   "visible": false,
+   "type": "MISC CCD-EMAMI TALC"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-EMAMI YOUTH RANGE",
+   "visible": false,
+   "type": "MISC CCD-EMAMI YOUTH RANGE"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-EMITA",
+   "visible": false,
+   "type": "MISC CCD-EMITA"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-EMMA",
+   "visible": false,
+   "type": "MISC CCD-EMMA"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-ETP",
+   "visible": false,
+   "type": "MISC CCD-ETP"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-General Admin",
+   "visible": false,
+   "type": "MISC CCD-General Admin"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-General Admn",
+   "visible": false,
+   "type": "MISC CCD-General Admn"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Generator",
+   "visible": false,
+   "type": "MISC CCD-Generator"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-GLUCOSE",
+   "visible": false,
+   "type": "MISC CCD-GLUCOSE"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-GOLD TURMERIC CREAM",
+   "visible": false,
+   "type": "MISC CCD-GOLD TURMERIC CREAM"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-GUEST HOUSE",
+   "visible": false,
+   "type": "MISC CCD-GUEST HOUSE"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-HAIRDYE",
+   "visible": false,
+   "type": "MISC CCD-HAIRDYE"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-HAIRMASK",
+   "visible": false,
+   "type": "MISC CCD-HAIRMASK"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Hairpowder",
+   "visible": false,
+   "type": "MISC CCD-Hairpowder"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-HO Adm- Kalbadevi",
+   "visible": false,
+   "type": "MISC CCD-HO Adm- Kalbadevi"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-HRD",
+   "visible": false,
+   "type": "MISC CCD-HRD"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-INdirect Labour",
+   "visible": false,
+   "type": "MISC CCD-INdirect Labour"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Ink Jet Printer",
+   "visible": false,
+   "type": "MISC CCD-Ink Jet Printer"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Internal Audit",
+   "visible": false,
+   "type": "MISC CCD-Internal Audit"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Laxatives",
+   "visible": false,
+   "type": "MISC CCD-Laxatives"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Legal",
+   "visible": false,
+   "type": "MISC CCD-Legal"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Logistics",
+   "visible": false,
+   "type": "MISC CCD-Logistics"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-lotion",
+   "visible": false,
+   "type": "MISC CCD-lotion"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-MADHURI",
+   "visible": false,
+   "type": "MISC CCD-MADHURI"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Maintanance",
+   "visible": false,
+   "type": "MISC CCD-Maintanance"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Marketing",
+   "visible": false,
+   "type": "MISC CCD-Marketing"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Media - HO",
+   "visible": false,
+   "type": "MISC CCD-Media - HO"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Media-ETM",
+   "visible": false,
+   "type": "MISC CCD-Media-ETM"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-MENTHO PLUS YELLOW BALM",
+   "visible": false,
+   "type": "MISC CCD-MENTHO PLUS YELLOW BALM"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-MKTG_HAIR CARE",
+   "visible": false,
+   "type": "MISC CCD-MKTG_HAIR CARE"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-MKTG_SKIN CARE",
+   "visible": false,
+   "type": "MISC CCD-MKTG_SKIN CARE"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-MODERN TRADE",
+   "visible": false,
+   "type": "MISC CCD-MODERN TRADE"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-NDPL",
+   "visible": false,
+   "type": "MISC CCD-NDPL"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-NFP SOAP",
+   "visible": false,
+   "type": "MISC CCD-NFP SOAP"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-NFP TALC",
+   "visible": false,
+   "type": "MISC CCD-NFP TALC"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-NRO COCO COOL",
+   "visible": false,
+   "type": "MISC CCD-NRO COCO COOL"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-OIL",
+   "visible": false,
+   "type": "MISC CCD-OIL"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Oil/ Shampoo",
+   "visible": false,
+   "type": "MISC CCD-Oil/ Shampoo"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Operations",
+   "visible": false,
+   "type": "MISC CCD-Operations"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-ORAL CARE",
+   "visible": false,
+   "type": "MISC CCD-ORAL CARE"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-E COMMERCE",
+   "visible": false,
+   "type": "MISC CCD-E COMMERCE"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Packaging",
+   "visible": false,
+   "type": "MISC CCD-Packaging"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Perfume",
+   "visible": false,
+   "type": "MISC CCD-Perfume"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-PM Scrapped",
+   "visible": false,
+   "type": "MISC CCD-PM Scrapped"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Power",
+   "visible": false,
+   "type": "MISC CCD-Power"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Production Planning",
+   "visible": false,
+   "type": "MISC CCD-Production Planning"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-PROJECT EXPEDITION",
+   "visible": false,
+   "type": "MISC CCD-PROJECT EXPEDITION"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-PROJECT GLOBAL",
+   "visible": false,
+   "type": "MISC CCD-PROJECT GLOBAL"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-PROV-7th Floor-Corp",
+   "visible": false,
+   "type": "MISC CCD-PROV-7th Floor-Corp"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Provisional",
+   "visible": false,
+   "type": "MISC CCD-Provisional"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Public Relation - Corp",
+   "visible": false,
+   "type": "MISC CCD-Public Relation - Corp"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Purchase",
+   "visible": false,
+   "type": "MISC CCD-Purchase"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-QC Sample Scrap",
+   "visible": false,
+   "type": "MISC CCD-QC Sample Scrap"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Quality Control",
+   "visible": false,
+   "type": "MISC CCD-Quality Control"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-R & D",
+   "visible": false,
+   "type": "MISC CCD-R & D"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-RM & PM Stores",
+   "visible": false,
+   "type": "MISC CCD-RM & PM Stores"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-SALES",
+   "visible": true,
+   "type": "MISC CCD-SALES"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Sales & Distribution",
+   "visible": false,
+   "type": "MISC CCD-Sales & Distribution"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-SCAP",
+   "visible": false,
+   "type": "MISC CCD-SCAP"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-SHABASH",
+   "visible": false,
+   "type": "MISC CCD-SHABASH"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-SHAMPOO",
+   "visible": false,
+   "type": "MISC CCD-SHAMPOO"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Shrink Wrapping",
+   "visible": false,
+   "type": "MISC CCD-Shrink Wrapping"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Special Cell",
+   "visible": false,
+   "type": "MISC CCD-Special Cell"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-SYSTEM",
+   "visible": false,
+   "type": "MISC CCD-SYSTEM"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-TEA",
+   "visible": false,
+   "type": "MISC CCD-TEA"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-THE MAN COMPANY",
+   "visible": false,
+   "type": "MISC CCD-THE MAN COMPANY"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Unabsorbed",
+   "visible": false,
+   "type": "MISC CCD-Unabsorbed"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-VASOCARE LIP MOISTURISER",
+   "visible": false,
+   "type": "MISC CCD-VASOCARE LIP MOISTURISER"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-VASOCARE LOTION",
+   "visible": false,
+   "type": "MISC CCD-VASOCARE LOTION"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Windmill Expense",
+   "visible": false,
+   "type": "MISC CCD-Windmill Expense"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Works Admn",
+   "visible": false,
+   "type": "MISC CCD-Works Admn"
+  },
+  {
+   "category": "OTHER / MISC CCD EXP",
+   "range": "OTHER / MISC CCD EXP",
+   "product": "MISC CCD-Zonal Commercial",
+   "visible": false,
+   "type": "MISC CCD-Zonal Commercial"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "NITYAM CHURNA",
+   "visible": false,
+   "type": "NITYAM"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "NITYAM TABLET",
+   "visible": true,
+   "type": "NITYAM"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "Z N ISABGOL BISCUIT",
+   "visible": false,
+   "type": "NITYAM"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "Zandu Nityam Isabgol",
+   "visible": false,
+   "type": "NITYAM"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "NITYAM GRANULES",
+   "visible": false,
+   "type": "NITYAM"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "Z PANCHARISHTA",
+   "visible": true,
+   "type": "PANCHARISTA"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "Z PANCHARISHTA SF",
+   "visible": false,
+   "type": "PANCHARISTA"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "Z CHYAVANPRASH",
+   "visible": true,
+   "type": "Z.CHAWANPRASH"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "Z CHYAVAN PRASHAD",
+   "visible": true,
+   "type": "Z.CHAWANPRASH"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "ZANDU GILOY JUICE",
+   "visible": false,
+   "type": "JUICE"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "ZANDU AMLA JUICE",
+   "visible": false,
+   "type": "JUICE"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "ZANDU ALOEVERA JUICE",
+   "visible": false,
+   "type": "JUICE"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "ZANDU KARELA JAMUN JUICE",
+   "visible": false,
+   "type": "JUICE"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "ZANDU TRIPHALA JUICE",
+   "visible": false,
+   "type": "JUICE"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "ZANDU WHEATGRASS JUICE",
+   "visible": false,
+   "type": "JUICE"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "ZANDU NONI JUICE",
+   "visible": false,
+   "type": "JUICE"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "OTHER HEALTH JUICE",
+   "visible": true,
+   "type": "JUICE"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "BLOOD PURIFIER",
+   "visible": false,
+   "type": "BLOOD PURIFIER"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "RHUMASYL GEL",
+   "visible": false,
+   "type": "RHUMASYL GEL"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "PARAD",
+   "visible": false,
+   "type": "PARAD"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "Z COUGH SYRUP",
+   "visible": true,
+   "type": "Z COUGH SYRUP"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "VIGOREX CAPSULES",
+   "visible": true,
+   "type": "VIGOREX CAPSULES"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "Z DIABRISHTA",
+   "visible": false,
+   "type": "Z DIABRISHTA"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "RIDAYARISHTA",
+   "visible": false,
+   "type": "RIDAYARISHTA"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "CONTROL-D TABLET",
+   "visible": false,
+   "type": "CONTROL-D TABLET"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "ZANDU BONE STRENGTH",
+   "visible": false,
+   "type": "ZANDU BONE STRENGTH"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "AYURSIP",
+   "visible": false,
+   "type": "AYURSIP"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "ZANDU IMMU SOFT CHEW",
+   "visible": false,
+   "type": "ZANDU IMMU SOFT CHEW"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "Z. PAPAYA L E",
+   "visible": false,
+   "type": "Z. PAPAYA L E"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "D.H.TONIC",
+   "visible": false,
+   "type": "D.H.TONIC"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "ASHOKARISHTA",
+   "visible": false,
+   "type": "ASHOKARISHTA"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "DASHMOOLARISHTA",
+   "visible": true,
+   "type": "DASHMOOLARISHTA"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "BHASKAR LAVAN CHURNA",
+   "visible": true,
+   "type": "BHASKAR LAVAN CHURNA"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "TRIFALA CHURNA",
+   "visible": true,
+   "type": "TRIFALA CHURNA"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "Z SANITIZER -HCD",
+   "visible": false,
+   "type": "Z SANITIZER -HCD"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "CHAWAYANPRASH SOFT CHEW",
+   "visible": false,
+   "type": "CHAWAYANPRASH SOFT CHEW"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "SINGLE HERBS",
+   "visible": false,
+   "type": "SINGLE HERBS"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "Z.AYUSH KWATH POWDER",
+   "visible": false,
+   "type": "Z.AYUSH KWATH POWDER"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "TULSI/ HALDI DROP",
+   "visible": false,
+   "type": "TULSI/ HALDI DROP"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "SWASTHYAVEDA H TONIC",
+   "visible": false,
+   "type": "SWASTHYAVEDA H TONIC"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "STRIVEDA M S",
+   "visible": false,
+   "type": "STRIVEDA M S"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "STRIVEDA L S",
+   "visible": false,
+   "type": "STRIVEDA L S"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "STRIVEDA",
+   "visible": false,
+   "type": "STRIVEDA"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "Zandu Stree Shakti Syrup",
+   "visible": false,
+   "type": "Zandu Stree Shakti Syrup"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "Zandu Stree Shakti Tablets",
+   "visible": false,
+   "type": "Zandu Stree Shakti Tablets"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "SUDH HONEY",
+   "visible": false,
+   "type": "SUDH HONEY"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "Z J T KIT",
+   "visible": false,
+   "type": "Z J T KIT"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "SWASTHYAVEDA EYE DROPS",
+   "visible": false,
+   "type": "SWASTHYAVEDA EYE DROPS"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "Almond Oil (Zandu Raughan E-Badam Shireen)",
+   "visible": false,
+   "type": "Almond Oil (Zandu Raughan E-Badam Shireen)"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "ZANDU OTC",
+   "visible": true,
+   "type": "ZANDU OTC"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "OTC RANGE",
+   "product": "ZANDU IMMU AYURVEDIC IMMUNITY BUILDER",
+   "visible": false,
+   "type": "ZANDU IMMU AYURVEDIC IMMUNITY BUILDER"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "GENERIC RANGE",
+   "product": "VATI / GUTI",
+   "visible": false,
+   "type": "VATI / GUTI"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "GENERIC RANGE",
+   "product": "CHURNA",
+   "visible": false,
+   "type": "CHURNA"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "GENERIC RANGE",
+   "product": "ASAVAS & ARISHTAS",
+   "visible": false,
+   "type": "ASAVAS & ARISHTAS"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "GENERIC RANGE",
+   "product": "OTHER GENERIC RANGE",
+   "visible": true,
+   "type": "OTHER GENERIC RANGE"
+  },
+  {
+   "category": "EXISTING-HCD",
+   "range": "ETHICAL RANGE",
+   "product": "ETHICAL",
+   "visible": true,
+   "type": "ETHICAL"
+  },
+  {
+   "category": "ZANDU CARE RANGE",
+   "range": "ZANDU CARE RANGE",
+   "product": "ZANDU CARE",
+   "visible": true,
+   "type": "ZANDU CARE"
+  },
+  {
+   "category": "ZANDU CARE RANGE",
+   "range": "ZANDU CARE RANGE",
+   "product": "LIV Ayur",
+   "visible": false,
+   "type": "LIV Ayur"
+  },
+  {
+   "category": "ZANDU CARE RANGE",
+   "range": "ZANDU CARE RANGE",
+   "product": "ZANDU TELECONSULTING",
+   "visible": false,
+   "type": "ZANDU TELECONSULTING"
+  },
+  {
+   "category": "INNOVATION-HCD",
+   "range": "INNOVATION-HCD",
+   "product": "ZP Digestive  Tablet",
+   "visible": false,
+   "type": "ZP Digestive  Tablet"
+  },
+  {
+   "category": "INNOVATION-HCD",
+   "range": "INNOVATION-HCD",
+   "product": "Excl Brand outlet",
+   "visible": false,
+   "type": "Excl Brand outlet"
+  },
+  {
+   "category": "INNOVATION-HCD",
+   "range": "INNOVATION-HCD",
+   "product": "Zandu Antacid",
+   "visible": true,
+   "type": "Zandu Antacid"
+  },
+  {
+   "category": "INNOVATION-HCD",
+   "range": "INNOVATION-HCD",
+   "product": "Pancharishta Tablets",
+   "visible": true,
+   "type": "Pancharishta Tablets"
+  },
+  {
+   "category": "INNOVATION-HCD",
+   "range": "INNOVATION-HCD",
+   "product": "ZCPD Tablets",
+   "visible": false,
+   "type": "ZCPD Tablets"
+  },
+  {
+   "category": "INNOVATION-HCD",
+   "range": "INNOVATION-HCD",
+   "product": "Zandu Sat Isabgol",
+   "visible": true,
+   "type": "Zandu Sat Isabgol"
+  },
+  {
+   "category": "OTHER / MISC HCD EXP",
+   "range": "OTHER / MISC HCD EXP",
+   "product": "HCD-FEMIPLUS",
+   "visible": false,
+   "type": "HCD-FEMIPLUS"
+  },
+  {
+   "category": "OTHER / MISC HCD EXP",
+   "range": "OTHER / MISC HCD EXP",
+   "product": "MISC HCD-AYUCARE",
+   "visible": false,
+   "type": "MISC HCD-AYUCARE"
+  },
+  {
+   "category": "OTHER / MISC HCD EXP",
+   "range": "OTHER / MISC HCD EXP",
+   "product": "MISC HCD-Ayush Gram Project-Uttarkhand",
+   "visible": false,
+   "type": "MISC HCD-Ayush Gram Project-Uttarkhand"
+  },
+  {
+   "category": "OTHER / MISC HCD EXP",
+   "range": "OTHER / MISC HCD EXP",
+   "product": "MISC HCD-CQA",
+   "visible": false,
+   "type": "MISC HCD-CQA"
+  },
+  {
+   "category": "OTHER / MISC HCD EXP",
+   "range": "OTHER / MISC HCD EXP",
+   "product": "MISC HCD-Dant Powder Lal",
+   "visible": false,
+   "type": "MISC HCD-Dant Powder Lal"
+  },
+  {
+   "category": "OTHER / MISC HCD EXP",
+   "range": "OTHER / MISC HCD EXP",
+   "product": "MISC HCD-GM",
+   "visible": false,
+   "type": "MISC HCD-GM"
+  },
+  {
+   "category": "OTHER / MISC HCD EXP",
+   "range": "OTHER / MISC HCD EXP",
+   "product": "MISC HCD-Granuels",
+   "visible": false,
+   "type": "MISC HCD-Granuels"
+  },
+  {
+   "category": "OTHER / MISC HCD EXP",
+   "range": "OTHER / MISC HCD EXP",
+   "product": "MISC HCD-Liquid",
+   "visible": false,
+   "type": "MISC HCD-Liquid"
+  },
+  {
+   "category": "OTHER / MISC HCD EXP",
+   "range": "OTHER / MISC HCD EXP",
+   "product": "MISC HCD-Marketing",
+   "visible": false,
+   "type": "MISC HCD-Marketing"
+  },
+  {
+   "category": "OTHER / MISC HCD EXP",
+   "range": "OTHER / MISC HCD EXP",
+   "product": "MISC HCD-MPLUS",
+   "visible": false,
+   "type": "MISC HCD-MPLUS"
+  },
+  {
+   "category": "OTHER / MISC HCD EXP",
+   "range": "OTHER / MISC HCD EXP",
+   "product": "MISC HCD-PUDINA",
+   "visible": false,
+   "type": "MISC HCD-PUDINA"
+  },
+  {
+   "category": "OTHER / MISC HCD EXP",
+   "range": "OTHER / MISC HCD EXP",
+   "product": "MISC HCD-SALES",
+   "visible": false,
+   "type": "MISC HCD-SALES"
+  },
+  {
+   "category": "OTHER / MISC HCD EXP",
+   "range": "OTHER / MISC HCD EXP",
+   "product": "MISC HCD-SANJEEVAN DHARA",
+   "visible": false,
+   "type": "MISC HCD-SANJEEVAN DHARA"
+  },
+  {
+   "category": "OTHER / MISC HCD EXP",
+   "range": "OTHER / MISC HCD EXP",
+   "product": "MISC HCD-Syrup",
+   "visible": false,
+   "type": "MISC HCD-Syrup"
+  },
+  {
+   "category": "OTHER / MISC HCD EXP",
+   "range": "OTHER / MISC HCD EXP",
+   "product": "MISC HCD-Tablet",
+   "visible": false,
+   "type": "MISC HCD-Tablet"
+  },
+  {
+   "category": "OTHER / MISC HCD EXP",
+   "range": "OTHER / MISC HCD EXP",
+   "product": "MISC HCD-ZANDU ANTI ALLERGIC [IMMBO TYPE]",
+   "visible": false,
+   "type": "MISC HCD-ZANDU ANTI ALLERGIC [IMMBO TYPE]"
+  },
+  {
+   "category": "OTHER / MISC HCD EXP",
+   "range": "OTHER / MISC HCD EXP",
+   "product": "MISC HCD-ZANDU BRAND DEVELOPMENT",
+   "visible": false,
+   "type": "MISC HCD-ZANDU BRAND DEVELOPMENT"
+  },
+  {
+   "category": "OTHER / MISC HCD EXP",
+   "range": "OTHER / MISC HCD EXP",
+   "product": "MISC HCD",
+   "visible": false,
+   "type": "MISC HCD"
+  },
+  {
+   "category": "OTHER / MISC HCD EXP",
+   "range": "OTHER / MISC HCD EXP",
+   "product": "DREAMWELL",
+   "visible": false,
+   "type": "DREAMWELL"
+  },
+  {
+   "category": "OTHER / MISC HCD EXP",
+   "range": "OTHER / MISC HCD EXP",
+   "product": "SARDIJA",
+   "visible": false,
+   "type": "SARDIJA"
+  }
+ ]
+}
