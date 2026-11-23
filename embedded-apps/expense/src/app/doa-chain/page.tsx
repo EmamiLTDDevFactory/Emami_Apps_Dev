@@ -16,6 +16,19 @@ const DOA_CTYPE_OPTIONS = [
   { value: 'MBS', label: 'MBS — Mobile (reserved, not used yet)' },
 ];
 
+// Expense group categories backend asked to expose here - no business description was given for
+// what B/C1-C4 mean, so these are shown as bare codes rather than invented labels. Empty stays the
+// default (today's only behavior per the original DOA spec: "only rows with an empty group are
+// used").
+const EXPGRP_OPTIONS = [
+  { value: '', label: '(none — default)' },
+  { value: 'B', label: 'B' },
+  { value: 'C1', label: 'C1' },
+  { value: 'C2', label: 'C2' },
+  { value: 'C3', label: 'C3' },
+  { value: 'C4', label: 'C4' },
+];
+
 const todayIso = () => new Date().toISOString().split('T')[0];
 const FAR_FUTURE = '9999-12-31';
 
@@ -36,9 +49,13 @@ const blankRow = (doaCtype: string, kostl: string, amtFrom: number, amtTo: numbe
 });
 
 const rowKey = (row: DoaChainRow) => `${row.DoaCtype}|${row.Kostl}|${row.Expgrp}|${row.AmtFrom}|${row.Seqno}`;
+// Expgrp is part of the composite key, so two slabs can legitimately share the same AmtFrom while
+// belonging to different expense groups - group/seqno/shared-AmtTo logic must key on both together,
+// not AmtFrom alone, or rows from different groups would wrongly merge.
+const slabKey = (amtFrom: number, expgrp: string) => `${amtFrom}|${expgrp}`;
 
-const nextSeqno = (rows: EditableDoaRow[], amtFrom: number) => {
-  const used = rows.filter((r) => r.AmtFrom === amtFrom).map((r) => parseInt(r.Seqno, 10) || 0);
+const nextSeqno = (rows: EditableDoaRow[], amtFrom: number, expgrp: string) => {
+  const used = rows.filter((r) => r.AmtFrom === amtFrom && r.Expgrp === expgrp).map((r) => parseInt(r.Seqno, 10) || 0);
   const next = (used.length ? Math.max(...used) : 0) + 1;
   return String(next).padStart(2, '0');
 };
@@ -51,34 +68,50 @@ function validateRow(row: EditableDoaRow): string | null {
   return null;
 }
 
-type Slab = { amtFrom: number; amtTo: number; rows: EditableDoaRow[] };
+type Slab = { amtFrom: number; amtTo: number; expgrp: string; rows: EditableDoaRow[] };
 
 function groupIntoSlabs(rows: EditableDoaRow[]): Slab[] {
-  const byAmtFrom = new Map<number, EditableDoaRow[]>();
+  const byKey = new Map<string, EditableDoaRow[]>();
   rows.forEach((r) => {
-    const list = byAmtFrom.get(r.AmtFrom) || [];
+    const key = slabKey(r.AmtFrom, r.Expgrp);
+    const list = byKey.get(key) || [];
     list.push(r);
-    byAmtFrom.set(r.AmtFrom, list);
+    byKey.set(key, list);
   });
-  return Array.from(byAmtFrom.entries())
-    .map(([amtFrom, slabRows]) => ({ amtFrom, amtTo: slabRows[0]?.AmtTo || 0, rows: slabRows.sort((a, b) => a.Seqno.localeCompare(b.Seqno)) }))
-    .sort((a, b) => a.amtFrom - b.amtFrom);
+  return Array.from(byKey.values())
+    .map((slabRows) => ({
+      amtFrom: slabRows[0].AmtFrom,
+      amtTo: slabRows[0]?.AmtTo || 0,
+      expgrp: slabRows[0].Expgrp,
+      rows: slabRows.sort((a, b) => a.Seqno.localeCompare(b.Seqno)),
+    }))
+    .sort((a, b) => a.amtFrom - b.amtFrom || a.expgrp.localeCompare(b.expgrp));
 }
 
-// Slabs of the same cost centre must not overlap (warn, don't block); gaps between slabs are
-// allowed but worth flagging too, per the DOA handover.
+// Slabs of the same cost centre AND expense group must not overlap (warn, don't block); gaps
+// between slabs are allowed but worth flagging too, per the DOA handover. Different expense
+// groups are independent chains, so overlap/gap checks only compare slabs within the same group.
 function findSlabWarnings(slabs: Slab[]): { overlaps: string[]; gaps: string[] } {
   const overlaps: string[] = [];
   const gaps: string[] = [];
-  for (let i = 0; i < slabs.length - 1; i++) {
-    const cur = slabs[i];
-    const next = slabs[i + 1];
-    if (cur.amtTo && cur.amtTo >= next.amtFrom) {
-      overlaps.push(`${cur.amtFrom}–${cur.amtTo || '∞'} overlaps ${next.amtFrom}–${next.amtTo || '∞'}`);
-    } else if (cur.amtTo && next.amtFrom > cur.amtTo + 0.01) {
-      gaps.push(`Gap between ${cur.amtTo} and ${next.amtFrom}`);
+  const byGroup = new Map<string, Slab[]>();
+  slabs.forEach((s) => {
+    const list = byGroup.get(s.expgrp) || [];
+    list.push(s);
+    byGroup.set(s.expgrp, list);
+  });
+  byGroup.forEach((groupSlabs, expgrp) => {
+    const label = expgrp ? ` (group ${expgrp})` : '';
+    for (let i = 0; i < groupSlabs.length - 1; i++) {
+      const cur = groupSlabs[i];
+      const next = groupSlabs[i + 1];
+      if (cur.amtTo && cur.amtTo >= next.amtFrom) {
+        overlaps.push(`${cur.amtFrom}–${cur.amtTo || '∞'} overlaps ${next.amtFrom}–${next.amtTo || '∞'}${label}`);
+      } else if (cur.amtTo && next.amtFrom > cur.amtTo + 0.01) {
+        gaps.push(`Gap between ${cur.amtTo} and ${next.amtFrom}${label}`);
+      }
     }
-  }
+  });
   return { overlaps, gaps };
 }
 
@@ -135,14 +168,15 @@ export default function DoaChainPage() {
     setRows((prev) => prev.map((r) => (rowKey(r) === key ? { ...r, ...patch } : r)));
   };
 
-  // Rows sharing a slab's AmtFrom must share the same AmtTo - editing it on one row updates the
-  // others together, per the DOA handover.
-  const setSlabAmtTo = (amtFrom: number, newAmtTo: number) => {
-    setRows((prev) => prev.map((r) => (r.AmtFrom === amtFrom ? { ...r, AmtTo: newAmtTo } : r)));
+  // Rows sharing a slab's AmtFrom AND Expgrp must share the same AmtTo - editing it on one row
+  // updates the others in that same group together, per the DOA handover. Must not cross into a
+  // different expense group that happens to share the same AmtFrom.
+  const setSlabAmtTo = (amtFrom: number, expgrp: string, newAmtTo: number) => {
+    setRows((prev) => prev.map((r) => (r.AmtFrom === amtFrom && r.Expgrp === expgrp ? { ...r, AmtTo: newAmtTo } : r)));
   };
 
   const handleAddApprover = (slab: Slab) => {
-    const row = blankRow(doaCtype, kostl, slab.amtFrom, slab.amtTo, nextSeqno(rows, slab.amtFrom));
+    const row = { ...blankRow(doaCtype, kostl, slab.amtFrom, slab.amtTo, nextSeqno(rows, slab.amtFrom, slab.expgrp)), Expgrp: slab.expgrp };
     setRows((prev) => [...prev, row]);
   };
 
@@ -279,8 +313,8 @@ export default function DoaChainPage() {
             ) : (
               <div className="mt-3 flex flex-col gap-2">
                 {previewLevels.map((s, idx) => (
-                  <div key={s.amtFrom} className="rounded-lg border border-border bg-appBg p-2">
-                    <p className="text-xs font-bold text-inkSoft">Level {idx + 1} · ₹{s.amtFrom}–{s.amtTo || '∞'}</p>
+                  <div key={`${s.amtFrom}|${s.expgrp}`} className="rounded-lg border border-border bg-appBg p-2">
+                    <p className="text-xs font-bold text-inkSoft">Level {idx + 1} · ₹{s.amtFrom}–{s.amtTo || '∞'}{s.expgrp ? ` · Group ${s.expgrp}` : ''}</p>
                     {s.rows.map((r) => (
                       <p key={rowKey(r)} className="text-sm text-ink">{r.ApprName || r.ApprEmail} ({r.ApprRule === 'A' ? 'all must approve' : 'any one approves'})</p>
                     ))}
@@ -295,9 +329,9 @@ export default function DoaChainPage() {
       {loading && <LoadingBlock label="Loading DOA chain…" />}
 
       {!loading && slabs.map((slab) => (
-        <Card key={slab.amtFrom} className="mb-3">
+        <Card key={`${slab.amtFrom}|${slab.expgrp}`} className="mb-3">
           <CardTitle
-            title={`₹${slab.amtFrom} – ${slab.amtTo || 'no cap'}`}
+            title={`₹${slab.amtFrom} – ${slab.amtTo || 'no cap'}${slab.expgrp ? ` · Group ${slab.expgrp}` : ''}`}
             hint={`${slab.rows.length} approver${slab.rows.length === 1 ? '' : 's'}`}
             actions={<Button variant="ghost" size="sm" icon={Plus} onClick={() => handleAddApprover(slab)}>Add approver to this slab</Button>}
           />
@@ -305,7 +339,7 @@ export default function DoaChainPage() {
             <Input
               type="number"
               value={slab.amtTo || ''}
-              onChange={(e) => setSlabAmtTo(slab.amtFrom, parseFloat(e.target.value) || 0)}
+              onChange={(e) => setSlabAmtTo(slab.amtFrom, slab.expgrp, parseFloat(e.target.value) || 0)}
               placeholder="Empty = no cap"
             />
           </Field>
@@ -317,13 +351,25 @@ export default function DoaChainPage() {
               <div key={key} className="mb-2 rounded-lg border border-border bg-white p-3">
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   {row._isNew && (
-                    <Field label="Amount From (₹)" required hint="Key field — can't be changed after saving">
-                      <Input
-                        type="number"
-                        value={row.AmtFrom || ''}
-                        onChange={(e) => updateRow(key, { AmtFrom: parseFloat(e.target.value) || 0 })}
-                      />
-                    </Field>
+                    <>
+                      <Field label="Amount From (₹)" required hint="Key field — can't be changed after saving">
+                        <Input
+                          type="number"
+                          value={row.AmtFrom || ''}
+                          onChange={(e) => updateRow(key, { AmtFrom: parseFloat(e.target.value) || 0 })}
+                        />
+                      </Field>
+                      <Field label="Expense Group" hint="Key field — can't be changed after saving. Only empty-group rows are used today.">
+                        <Select
+                          value={row.Expgrp}
+                          onChange={(v) => updateRow(key, { Expgrp: v })}
+                          options={EXPGRP_OPTIONS}
+                        />
+                      </Field>
+                    </>
+                  )}
+                  {!row._isNew && row.Expgrp && (
+                    <InfoField label="Expense Group" value={row.Expgrp} />
                   )}
                   <Field label="Department" className="md:col-span-2">
                     <Input value={row.DeptTxt} onChange={(e) => updateRow(key, { DeptTxt: e.target.value })} />

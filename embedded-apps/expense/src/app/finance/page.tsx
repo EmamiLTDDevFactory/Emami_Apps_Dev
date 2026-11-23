@@ -52,7 +52,7 @@ const TAX_RESULTS_LIMIT = 50;
 
 export default function FinancePage() {
   const router = useRouter();
-  const { filterClaims, validateClaimFinance, releasePayment, fetchTaxes, calculateTax, rejectClaimFinance, claims, fetchClaims, fetchHistorySet, historyEntries, claimSummaryCache, fetchClaimSummaries } = useClaim();
+  const { filterClaims, releasePayment, fetchTaxes, calculateTax, rejectClaimFinance, claims, fetchClaims, fetchHistorySet, historyEntries, claimSummaryCache, fetchClaimSummaries } = useClaim();
   const { currentUser } = useAuth();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -245,20 +245,6 @@ export default function FinancePage() {
 
   const showScreenMessage = (message: string, type: 'success' | 'error' = 'success', title?: string) => {
     setScreenMessage({ title: title || (type === 'error' ? 'Action Failed' : 'Success'), message, type });
-  };
-
-  const handleValidate = (id: string) => {
-    setMessageModal({
-      title: 'Simulate SAP Financial Validation',
-      message: `Run simulated SAP compliance checks and verify posting readiness for claim ${displayClaimNumber(id)}?`,
-      cancelLabel: 'Cancel',
-      confirmLabel: 'Validate Claim',
-      onConfirm: () => {
-        setMessageModal(null);
-        validateClaimFinance(id);
-        showScreenMessage(`Claim ${displayClaimNumber(id)} passed financial checks. Status changed to Parked.`, 'success');
-      },
-    });
   };
 
   // 'B' (Top Level) never picks a tax code here — Finance already selected and sent it to SAP on
@@ -585,9 +571,7 @@ export default function FinancePage() {
                   })()}
                 </button>
                 <div className="border-t border-line bg-appBg p-2">
-                  {claim.status === 'Approved' ? (
-                    <Button variant="secondary" className="w-full" icon={ShieldCheck} onClick={() => handleValidate(claim.id)}>Validate Claim (SAP Check)</Button>
-                  ) : claim.status === 'Paid' ? (
+                  {claim.status === 'Paid' ? (
                     <div className="flex items-center justify-center gap-1.5 rounded-lg border border-greenBg bg-greenBg py-2 text-sm font-bold text-green">
                       <CheckCircle2 size={18} /> Payment already released
                     </div>

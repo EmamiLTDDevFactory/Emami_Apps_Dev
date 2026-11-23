@@ -3,7 +3,7 @@
 import axios from 'axios';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { SAP_BASE_URL } from '../config/api';
-import { AreaCode, Attachment, ClaimKPIs, ClaimStatus, DoaChainRow, ExpenseClaim, SAPError, TaxCode } from '../types';
+import { AreaCode, Attachment, ClaimKPIs, ClaimStatus, DoaChainRow, ExpenseClaim, MobileMonthItem, SAPError, TaxCode } from '../types';
 import { getClaimCreatedTimestamp } from '../utils/claim-date';
 import { useAuth } from './AuthContext';
 
@@ -14,7 +14,13 @@ interface ClaimContextType {
   kpis: ClaimKPIs;
   policyLimit: number;
   // Claim Actions
-  addClaim: (claimData: Omit<ExpenseClaim, 'id' | 'status' | 'workflowHistory'>, isDraft: boolean, existingClaimId?: string) => Promise<{ success: boolean; warning?: string; claimId?: string }>;
+  addClaim: (claimData: Omit<ExpenseClaim, 'id' | 'status' | 'workflowHistory'>, isDraft: boolean, existingClaimId?: string, mobileMonthItems?: MobileMonthItem[]) => Promise<{ success: boolean; warning?: string; claimId?: string }>;
+  // Non-CTC: Mobile Exp - best-effort read of this employee's own earlier mobile claims (by EmpId,
+  // not the LoginId `claims` is scoped to - LoginId is cleared once a claim moves past them, so an
+  // already-approved/posted month would otherwise silently fall off the "already claimed" check).
+  // Returns [] on any failure (EmpId isn't confirmed filterable on ClaimHeaderSet yet) rather than
+  // blocking the UI - this is a defense-in-depth check layered on top of the local-claims one.
+  fetchClaimedMonthsForExpenseType: (expenseTypeId: string) => Promise<string[]>;
   updateDraft: (id: string, claimData: Partial<ExpenseClaim>, isDraft: boolean) => { success: boolean; warning?: string };
   deleteClaim: (id: string) => void;
   // Manager Actions
@@ -22,7 +28,6 @@ interface ClaimContextType {
   rejectClaim: (id: string, remarks: string) => Promise<{ success: boolean; error?: string }>;
   requestClarification: (id: string, remarks: string) => void;
   // Finance Actions
-  validateClaimFinance: (id: string) => void;
   releasePayment: (id: string, taxCode?: string, taxDescription?: string) => Promise<{ success: boolean; error?: string }>;
   fetchTaxes: (claimId: string) => Promise<TaxCode[]>;
   calculateTax: (totalAmount: number, currency: string, mwskz: string) => Promise<{ expenseAmt: number; taxAmt: number } | null>;
@@ -488,8 +493,14 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const addClaim = async (
     claimData: Omit<ExpenseClaim, 'id' | 'status' | 'workflowHistory'>,
     isDraft: boolean,
-    existingClaimId: string = ''
+    existingClaimId: string = '',
+    mobileMonthItems?: MobileMonthItem[]
   ) => {
+    // Non-CTC: Mobile Exp - one CLAIMNAV row per month card, each with its own Amount/
+    // ExpenseDate/ReceiptNo, instead of the generic "amount on row 0 only" shape every other
+    // expense type uses.
+    const isMobilePayload = !!mobileMonthItems && mobileMonthItems.length > 0;
+
     // 1. Local Validation
     if (!isDraft) {
       if (!claimData.claimDate || !claimData.expenseType || claimData.expenseType === 'Select Expense Type' || !claimData.amount || !claimData.costCenter) {
@@ -498,13 +509,15 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // BR-003: Mandatory attachment check — normally skipped when the chosen expense type's
       // ExptypeSet record has Flag = 'X' (that type doesn't require a supporting document).
       // Forced to false for now - attachment is mandatory for every expense type until the
-      // Flag X rule is revisited.
+      // Flag X rule is revisited. For mobile, each month card's own document is what's checked -
+      // claimData.attachments isn't where mobile's documents live.
       const attachmentsOptionalForType = false;
-      if (!attachmentsOptionalForType && (!claimData.attachments || claimData.attachments.length === 0)) {
-        return { success: false, warning: 'Supporting documents (at least 1 attachment) are mandatory for submitting a claim.' };
+      const attachmentsToValidate: Attachment[] = isMobilePayload ? mobileMonthItems!.map((i) => i.attachment) : (claimData.attachments || []);
+      if (!attachmentsOptionalForType && attachmentsToValidate.length === 0) {
+        return { success: false, warning: isMobilePayload ? 'Each month needs its invoice document before submitting.' : 'Supporting documents (at least 1 attachment) are mandatory for submitting a claim.' };
       }
 
-      const invalidAttachment = claimData.attachments.find((att) => {
+      const invalidAttachment = attachmentsToValidate.find((att) => {
         const extension = (att.name?.split('.').pop() || '').toLowerCase();
         const type = (att.type || '').toLowerCase();
         return !ALLOWED_ATTACHMENT_EXTENSIONS.has(extension) || !ALLOWED_ATTACHMENT_MIME_TYPES.has(type);
@@ -516,6 +529,8 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       // Second, separate attachment required when the chosen expense type's ExptypeSet.Flag
       // comes back blank - see requiresManagerApprovedAttachment in fetchExpenseTypes above.
+      // Applies to mobile too (first mobile claim of a new employee) - this check doesn't branch
+      // on isMobilePayload, so it was silently skipped before since mobile never reached addClaim.
       const requiresManagerApprovedAttachment = expenseTypes.find((et) => et.name === claimData.expenseType)?.requiresManagerApprovedAttachment === true;
       const managerApprovedAttachments = (claimData as any).managerApprovedAttachments || [];
       if (requiresManagerApprovedAttachment && managerApprovedAttachments.length === 0) {
@@ -529,25 +544,70 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // 2. Build the exact Deep Entity payload SAP expects
     const empIdNumeric = claimData.employeeId.replace(/\D/g, '').padStart(8, '0');
 
-    // SAP has no separate document-type field for the Manager Approved Attachment - it travels
-    // alongside the regular supporting documents as just another CLAIMNAV line/attachment.
-    const allAttachments = [...(claimData.attachments || []), ...((claimData as any).managerApprovedAttachments || [])];
-    const numAttachments = allAttachments.length > 0 ? allAttachments.length : 1;
+    // SAP has no separate document-type field for the Manager Approved Attachment or Finance
+    // Document - they travel alongside the regular supporting documents as just another CLAIMNAV
+    // line/attachment, at Amount 0.000, same convention every claim already uses for its secondary
+    // attachment(s).
+    const extraZeroAmountAttachments: Attachment[] = [
+      ...((claimData as any).managerApprovedAttachments || []),
+      ...((claimData as any).financeDocument || []),
+    ];
 
+    let allAttachments: Attachment[];
     const claimNavItems: any[] = [];
-    for (let i = 0; i < numAttachments; i++) {
-      claimNavItems.push({
-        ClaimId: existingClaimId ? existingClaimId : '',
-        ItemNo: i === 0 ? (claimData.itemNo || '000001') : (i + 1).toString().padStart(6, '0'),
-        ExpenseType: selectedSapType ? selectedSapType.id : claimData.expenseType,
-        ZglName: selectedSapType ? selectedSapType.name : claimData.expenseType,
-        Saknr: selectedSapType ? selectedSapType.saknr : '',
-        ExpenseDate: toODataDate(claimData.expenseDate),
-        Amount: i === 0 ? claimData.amount.toFixed(3) : '0.000',
-        Currency: 'INR',
-        Description: claimData.justification || 'Expense',
-        VendorName: claimData.name1 || 'External Vendor',
+
+    if (isMobilePayload) {
+      mobileMonthItems!.forEach((item, idx) => {
+        claimNavItems.push({
+          ClaimId: existingClaimId ? existingClaimId : '',
+          ItemNo: (idx + 1).toString().padStart(6, '0'),
+          ExpenseType: selectedSapType ? selectedSapType.id : claimData.expenseType,
+          ZglName: selectedSapType ? selectedSapType.name : claimData.expenseType,
+          Saknr: selectedSapType ? selectedSapType.saknr : '',
+          ExpenseDate: toODataDate(item.expenseDate),
+          Amount: item.amount.toFixed(3),
+          Currency: 'INR',
+          // Approval note has no dedicated SEGW property yet - rides inside the first row's
+          // Description as a stopgap per the Non-CTC Mobile Exp handover, until backend adds one.
+          Description: idx === 0 && (claimData as any).approvalNotes
+            ? `${claimData.justification || 'Mobile expense'} | Approval note: ${(claimData as any).approvalNotes}`
+            : (claimData.justification || 'Mobile expense'),
+          VendorName: claimData.name1 || 'External Vendor',
+          ReceiptNo: (item.receiptNo || '').slice(0, 40),
+        });
       });
+      extraZeroAmountAttachments.forEach((_, idx) => {
+        claimNavItems.push({
+          ClaimId: existingClaimId ? existingClaimId : '',
+          ItemNo: (mobileMonthItems!.length + idx + 1).toString().padStart(6, '0'),
+          ExpenseType: selectedSapType ? selectedSapType.id : claimData.expenseType,
+          ZglName: selectedSapType ? selectedSapType.name : claimData.expenseType,
+          Saknr: selectedSapType ? selectedSapType.saknr : '',
+          ExpenseDate: toODataDate(mobileMonthItems![0].expenseDate),
+          Amount: '0.000',
+          Currency: 'INR',
+          Description: claimData.justification || 'Supporting document',
+          VendorName: claimData.name1 || 'External Vendor',
+        });
+      });
+      allAttachments = [...mobileMonthItems!.map((i) => i.attachment), ...extraZeroAmountAttachments];
+    } else {
+      allAttachments = [...(claimData.attachments || []), ...extraZeroAmountAttachments];
+      const numAttachments = allAttachments.length > 0 ? allAttachments.length : 1;
+      for (let i = 0; i < numAttachments; i++) {
+        claimNavItems.push({
+          ClaimId: existingClaimId ? existingClaimId : '',
+          ItemNo: i === 0 ? (claimData.itemNo || '000001') : (i + 1).toString().padStart(6, '0'),
+          ExpenseType: selectedSapType ? selectedSapType.id : claimData.expenseType,
+          ZglName: selectedSapType ? selectedSapType.name : claimData.expenseType,
+          Saknr: selectedSapType ? selectedSapType.saknr : '',
+          ExpenseDate: toODataDate(claimData.expenseDate),
+          Amount: i === 0 ? claimData.amount.toFixed(3) : '0.000',
+          Currency: 'INR',
+          Description: claimData.justification || 'Expense',
+          VendorName: claimData.name1 || 'External Vendor',
+        });
+      }
     }
 
     const { costCenter: ccCode, ltext: ccLtext } = parseCostCenter(claimData.costCenter);
@@ -677,6 +737,38 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const message = err?.message || 'Failed to reach the backend server.';
       const cleanMessage = message.includes('Unexpected token <') ? 'Server returned an invalid response. Please try again.' : message;
       return { success: false, warning: `Failed to reach the backend server. ${cleanMessage}` };
+    }
+  };
+
+  // Non-CTC: Mobile Exp - reads this employee's own claim history by EmpId (not LoginId, which
+  // `claims` is scoped to and which clears once a claim moves past them) to find months already
+  // claimed for the given expense type, as a second check layered on top of the local-claims-only
+  // one the month picker already does. EmpId filterability on ClaimHeaderSet isn't confirmed yet
+  // (same open prerequisite as the Admin search screen's EmpId/EmpName/Status/CostCenter filters),
+  // so this fails soft to [] rather than blocking the month picker.
+  const fetchClaimedMonthsForExpenseType = async (expenseTypeId: string): Promise<string[]> => {
+    if (!currentUser?.employeeId) return [];
+    try {
+      const empIdNumeric = currentUser.employeeId.replace(/\D/g, '').padStart(8, '0');
+      const filter = encodeURIComponent(`EmpId eq '${empIdNumeric}'`);
+      const response = await sapClient.get(`${SAP_BASE_URL}/ClaimHeaderSet?$filter=${filter}&$expand=CLAIMNAV&$format=json`);
+      if (response.status < 200 || response.status >= 300) return [];
+
+      const sapClaims = extractSapResults(response.data);
+      const months = new Set<string>();
+      sapClaims.forEach((sap: any) => {
+        const navItems = sap.CLAIMNAV?.results || (Array.isArray(sap.CLAIMNAV) ? sap.CLAIMNAV : []);
+        navItems.forEach((item: any) => {
+          if (item.ExpenseType !== expenseTypeId || !item.ExpenseDate) return;
+          const dateStr = item.ExpenseDate as string;
+          const ts = dateStr.includes('Date(') ? parseInt(dateStr.replace(/\D/g, ''), 10) : new Date(dateStr).getTime();
+          if (!Number.isNaN(ts)) months.add(new Date(ts).toISOString().slice(0, 7));
+        });
+      });
+      return Array.from(months);
+    } catch (err) {
+      console.warn('[fetchClaimedMonthsForExpenseType] best-effort check failed:', err);
+      return [];
     }
   };
 
@@ -883,29 +975,6 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               timestamp: getCurrentTimestamp(),
               outcome: 'Clarification Requested',
               remarks: remarks || 'Please provide additional details regarding this claim.',
-            },
-          ],
-        };
-      }
-      return c;
-    }));
-  };
-
-  // BR-012, BR-014: Finance Validate Claim — local-only simulation, no real SAP transaction.
-  const validateClaimFinance = (id: string) => {
-    setClaims((prev) => prev.map((c) => {
-      if (c.id === id) {
-        return {
-          ...c,
-          status: 'Pending Release',
-          workflowHistory: [
-            ...c.workflowHistory,
-            {
-              step: 'Finance Review',
-              actor: `${currentUser?.employeeName} (Finance)`,
-              timestamp: getCurrentTimestamp(),
-              outcome: 'Validated',
-              remarks: 'Simulated SAP validation successful. Financial checks passed and posting readiness verified.',
             },
           ],
         };
@@ -1298,12 +1367,12 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         kpis,
         policyLimit,
         addClaim,
+        fetchClaimedMonthsForExpenseType,
         updateDraft,
         deleteClaim,
         approveClaim,
         rejectClaim,
         requestClarification,
-        validateClaimFinance,
         releasePayment,
         fetchTaxes,
         calculateTax,

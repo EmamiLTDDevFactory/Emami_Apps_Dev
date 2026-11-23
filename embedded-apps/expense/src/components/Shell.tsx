@@ -28,10 +28,14 @@ function TabBar() {
   const myNumeric = normalizeId(currentUser?.employeeId);
 
   const approvalsCount = claims.filter((c) => {
-    if (!c.currentApprover) return false;
     if (activeRole === 'manager') {
-      return normalizeId(c.currentApprover) === myNumeric && (c.rawStatus === 'N' || c.rawStatus === 'A');
+      // Under the DOA chain, SAP only ever returns ONE CurrentApprover even for a parallel (rule
+      // O/A) level, so this user can be a valid pending approver without being that single value.
+      // `claims` is already scoped server-side to this user's LoginId (see ClaimContext.fetchClaims),
+      // so status alone is the right check here too - same fix as ClaimContext.filterClaims('manager').
+      return c.rawStatus === 'N' || c.rawStatus === 'A';
     }
+    if (!c.currentApprover) return false;
     if (activeRole === 'B') {
       const employeeNumeric = normalizeId(c.employeeId);
       if (employeeNumeric === myNumeric) return false;

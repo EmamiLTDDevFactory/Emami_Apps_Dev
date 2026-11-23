@@ -18,6 +18,15 @@ export interface WorkflowEvent {
   remarks?: string;
 }
 
+// Non-CTC: Mobile Exp - one month's claim line, submitted as its own CLAIMNAV row with its own
+// amount (unlike every other expense type, where only row 0 carries a non-zero Amount).
+export interface MobileMonthItem {
+  expenseDate: string; // YYYY-MM-DD, first day of the card's month - backend derives the month from this
+  amount: number;
+  receiptNo?: string; // OCR-read invoice/bill number
+  attachment: Attachment;
+}
+
 export interface ExpenseClaim {
   id: string;
   employeeId: string;

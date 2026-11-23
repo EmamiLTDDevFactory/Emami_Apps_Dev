@@ -515,6 +515,11 @@ function ClaimDetailInner() {
           const nextApproverName = (entry.NextApproverName || '').toString().trim();
           const nextApproverValue = (entry.NextApprover || '').toString().trim();
           const shouldShowNextApprover = nextApproverName !== '' || (nextApproverValue !== '' && nextApproverValue !== '00000000');
+          // Non-CTC Mobile Exp: backend writes "Claim Amount Rs X is higher than eligibility
+          // Amount Rs Y. Need Approval" into the history row's Remarks when a claim needed DOA
+          // approval for exceeding the grade's eligibility cap - the approver needs to see this
+          // called out, not buried as a plain remark line like any other.
+          const isEligibilityException = /higher than eligibility/i.test(entry.Remarks || '');
           return (
             <div key={idx} className="rounded-lg border p-3" style={{ backgroundColor: palette.bg, borderColor: palette.border }}>
               <div className="flex items-start justify-between gap-2">
@@ -531,9 +536,13 @@ function ClaimDetailInner() {
                 // DOA handover, so this doesn't read as the exclusive next approver.
                 <p className="mt-2 text-xs"><span className="font-bold text-inkSoft">One of this level's approvers: </span><span className="text-ink">{nextApproverName || nextApproverValue}</span></p>
               )}
-              {entry.Remarks && (
+              {entry.Remarks && isEligibilityException ? (
+                <div className="mt-2">
+                  <Banner type="warn">{entry.Remarks}</Banner>
+                </div>
+              ) : entry.Remarks ? (
                 <p className="mt-2 text-xs"><span className="font-bold text-inkSoft">Remarks: </span><span className="text-ink">{entry.Remarks}</span></p>
-              )}
+              ) : null}
             </div>
           );
         })

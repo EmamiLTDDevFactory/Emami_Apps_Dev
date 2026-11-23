@@ -1,7 +1,7 @@
 'use client';
 
 import axios from 'axios';
-import { Check, CheckCircle2, ChevronDown, CloudUpload, Download, Eye, FileText, Info, Send, Trash2, X } from 'lucide-react';
+import { Check, CheckCircle2, ChevronDown, CloudUpload, Download, Eye, FileText, Send, Trash2, X } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { Banner, Button, Card, Chip, Field, Input, InfoField, MessageModal, type MessageModalState, Modal, Spinner, TextArea, YesNo } from '../../components/ui';
@@ -19,7 +19,7 @@ import {
 } from '../../lib/attachmentCompression';
 import { getDocumentAsync } from '../../lib/documentPicker';
 import { ensurePdfAttachmentUnderLimit } from '../../lib/pdfAttachment';
-import { Attachment } from '../../types';
+import { Attachment, MobileMonthItem } from '../../types';
 
 const COST_CENTERS = ['CC-SA', 'CC-ENG-GLOBAL', 'CC-MARKETING-UK', 'CC-FINANCE-HQ', 'CC-IT-INFRA'];
 
@@ -112,7 +112,7 @@ function CreateClaimInner() {
   const searchParams = useSearchParams();
   const { currentUser } = useAuth() as { currentUser: any };
   const editingClaimId = searchParams.get('claimId') || '';
-  const { addClaim, policyLimit, expenseTypes, fetchExpenseTypes, getClaimById, tempClaimForResubmit, setTempClaimForResubmit, claims, fetchAreas, fetchClaims } = useClaim();
+  const { addClaim, policyLimit, expenseTypes, fetchExpenseTypes, getClaimById, tempClaimForResubmit, setTempClaimForResubmit, claims, fetchAreas, fetchClaims, fetchClaimedMonthsForExpenseType } = useClaim();
 
   useEffect(() => {
     fetchExpenseTypes();
@@ -538,8 +538,26 @@ function CreateClaimInner() {
   // date/amount/document fields. Every other expense type is completely unaffected.
   const isMobileExpense = MOBILE_EXPENSE_TYPE_NAMES.has(expenseType);
 
-  // Months already claimed for this expense type, from claims the app has already fetched —
-  // no new backend call. Excluded from every slot's picker options below.
+  // Non-CTC: Mobile Exp — the local `claims` list only holds claims currently assigned to this
+  // user (LoginId is cleared once a claim moves past them, e.g. once approved/posted), so an
+  // older already-claimed month would silently stop being excluded here otherwise. This reads the
+  // employee's full claim history by EmpId as a second check - best-effort (fails to [] rather
+  // than blocking the picker if EmpId isn't filterable on this SAP landscape yet).
+  const [sapClaimedMonthKeys, setSapClaimedMonthKeys] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (!isMobileExpense) { setSapClaimedMonthKeys(new Set()); return; }
+    const sapTypeId = expenseTypes.find((et: any) => et.name === expenseType)?.id;
+    if (!sapTypeId) return;
+    let cancelled = false;
+    fetchClaimedMonthsForExpenseType(sapTypeId).then((months) => {
+      if (!cancelled) setSapClaimedMonthKeys(new Set(months));
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMobileExpense, expenseType, expenseTypes]);
+
+  // Months already claimed for this expense type - from claims the app has already fetched (no
+  // extra call) merged with the SAP-wide check above.
   const claimedMonthKeys = useMemo(() => {
     const set = new Set<string>();
     claims.forEach((c: any) => {
@@ -547,9 +565,10 @@ function CreateClaimInner() {
         set.add(String(c.expenseDate).slice(0, 7));
       }
     });
+    sapClaimedMonthKeys.forEach((mk) => set.add(mk));
     return set;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [claims]);
+  }, [claims, sapClaimedMonthKeys]);
 
   // The months actually picked across all slots, in slot order - what every card/total below
   // renders from. Empty slots (not yet picked) are filtered out.
@@ -703,14 +722,6 @@ function CreateClaimInner() {
   };
 
   const removeFinanceDocument = () => setFinanceDocument([]);
-
-  useEffect(() => {
-    if (parsedAmount > 20000) {
-      setAmountError('Amount cannot exceed ₹20,000');
-    } else {
-      setAmountError('');
-    }
-  }, [parsedAmount]);
 
   // Reads GSTIN / HSN / total amount off the first Supporting Document the user uploads, via a
   // backend endpoint that calls Claude's document understanding (not live yet - the backend
@@ -982,22 +993,83 @@ function CreateClaimInner() {
   };
 
   const handleSubmit = async (isDraft: boolean) => {
-    // Non-CTC: Mobile Exp — the per-month cards, OCR period/amount, and Finance Document/Approval
-    // Notes fields below are real and testable now. Actual submission to SAP is NOT wired yet:
-    // it needs the grade-eligibility table (to compute Eligible Amount) and the routing decision
-    // (auto-park vs HoD) before it can correctly build one or two CLAIMNAV submissions. Blocking
-    // here rather than sending an incomplete/wrong claim to real SAP.
+    // Non-CTC: Mobile Exp — one CLAIMNAV row per picked month, each with its own document/amount/
+    // receipt number, plus the Finance Document and Approval Notes as extra rows (see
+    // ClaimContext.addClaim's mobileMonthItems branch). Eligible-amount-vs-claim-amount routing
+    // (auto-park vs HoD) is still decided server-side by the DOA chain per the claim total, same
+    // as every other expense type now that the DOA chain is live - no separate client-side routing
+    // decision is needed here.
     if (isMobileExpense) {
-      setFormError('Submission for missed-months Mobile Expense claims is not available yet — the eligibility table and SAP routing are still pending. Everything above is saved as you fill it in; submission will be enabled once those land.');
+      if (pickedMonths.length === 0) {
+        setFormError('Please select at least one month to claim.');
+        return;
+      }
+      const missingDocMonth = pickedMonths.find((mk) => !getMonthEntry(mk).attachment);
+      if (missingDocMonth) {
+        setFormError(`Please add the invoice document for ${formatMonthLabel(missingDocMonth)}.`);
+        return;
+      }
+      const invalidAmountMonth = pickedMonths.find((mk) => !(parseFloat(getMonthEntry(mk).claimAmount) > 0));
+      if (invalidAmountMonth) {
+        setFormError(`Please enter a valid Claim Amount for ${formatMonthLabel(invalidAmountMonth)}.`);
+        return;
+      }
+
+      setAmountError('');
+      setFormError('');
+
+      const mobileMonthItems: MobileMonthItem[] = pickedMonths.map((monthKey) => {
+        const entry = getMonthEntry(monthKey);
+        const [y, m] = monthKey.split('-').map(Number);
+        return {
+          expenseDate: `${y}-${String(m).padStart(2, '0')}-01`,
+          amount: parseFloat(entry.claimAmount) || 0,
+          receiptNo: entry.invoiceNumber || undefined,
+          attachment: entry.attachment as Attachment,
+        };
+      });
+
+      const claimData: any = {
+        employeeId: currentUser.employeeId,
+        employeeName: currentUser.employeeName,
+        department: currentUser.department,
+        designation: currentUser.designation,
+        claimDate,
+        expenseType,
+        itemNo,
+        amount: totalClaimAmount,
+        costCenter,
+        justification: justification || 'Mobile Expense - missed months catch-up',
+        // Mobile's documents travel per-month via mobileMonthItems, not this combined list.
+        attachments: [],
+        managerApprovedAttachments,
+        financeDocument,
+        approvalNotes: approvalNotes || undefined,
+        lifnr: null,
+        name1: null,
+        stcd3: null,
+        bezei: null,
+        hsnSac: null,
+      };
+
+      const result = await addClaim(claimData, isDraft, existingClaimId, mobileMonthItems);
+      if (!result.success) {
+        setFormError(result.warning || 'Unable to submit claim. Please review the form and try again.');
+        return;
+      }
+
+      setSuccessMessage(
+        isDraft
+          ? 'Your expense claim has been saved as a draft.'
+          : 'Your claim has been successfully submitted.'
+      );
+      setSuccessModalVisible(true);
+      fetchClaims();
       return;
     }
 
     if (parsedAmount <= 0) {
       setAmountError('Amount must be greater than 0');
-      return;
-    }
-    if (parsedAmount > 20000) {
-      setAmountError('Amount cannot exceed ₹20,000');
       return;
     }
 
@@ -1350,14 +1422,6 @@ function CreateClaimInner() {
                           placeholder="0.00"
                           inputMode="decimal"
                         />
-                        {/* Same ₹20,000 per-claim cap the regular single-claim flow enforces (see
-                            parsedAmount above) - each month here is its own claim line, so it gets
-                            the same check individually rather than only on the combined total. */}
-                        {(parseFloat(entry!.claimAmount) || 0) > 20000 && (
-                          <div className="mt-2">
-                            <Banner type="error">Amount cannot exceed ₹20,000</Banner>
-                          </div>
-                        )}
                       </Field>
                     </div>
                   </>
@@ -1501,12 +1565,6 @@ function CreateClaimInner() {
       )}
 
       {/* Actions */}
-      {isMobileExpense && (
-        <div className="mb-3 flex items-start gap-2 rounded-lg border border-border bg-cream/50 px-3 py-2 text-xs text-inkSoft">
-          <Info size={14} className="mt-0.5 shrink-0" />
-          <span>Submission for this missed-months catch-up isn't enabled yet — the grade-eligibility table and SAP routing are still pending. Everything above saves locally as you fill it in.</span>
-        </div>
-      )}
       <div className="flex gap-3">
         <Button variant="secondary" className="flex-1" onClick={() => setCancelConfirmVisible(true)}>
           <X size={18} /> Cancel
