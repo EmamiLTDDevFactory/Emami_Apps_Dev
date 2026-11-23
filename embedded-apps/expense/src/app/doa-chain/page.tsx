@@ -283,6 +283,7 @@ export default function DoaChainPage() {
         };
       });
       setRows((prev) => [...prev, ...imported]);
+      setLoaded(true);
     } catch (err: any) {
       setImportError(err?.message || 'Could not read this file.');
     } finally {

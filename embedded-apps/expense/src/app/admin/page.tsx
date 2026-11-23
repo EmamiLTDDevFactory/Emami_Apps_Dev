@@ -66,17 +66,41 @@ export default function AdminPage() {
         icon={ShieldAlert}
       />
 
-      <Card className="mb-3">
-        <CardTitle
-          icon={Settings2}
-          title="DOA Chain Maintenance"
-          hint="Maintain approval-chain slabs, approvers and HoD routing per cost centre."
-        />
-        <Button variant="secondary" onClick={() => router.push('/doa-chain/')}>
-          Open DOA Chain Maintenance
-        </Button>
-      </Card>
+      {/* Tile-style launchers, same visual language as the bottom nav tabs (icon circle on a
+          tinted accent background, title + subtitle) - a quick way to tell the two admin
+          capabilities apart at a glance before diving into either one's content below. */}
+      <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={() => router.push('/doa-chain/')}
+          className="flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-colors hover:brightness-95"
+          style={{ backgroundColor: '#8B5CF60D', borderColor: '#8B5CF640' }}
+        >
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: '#8B5CF626' }}>
+            <Settings2 size={18} color="#8B5CF6" />
+          </span>
+          <span className="flex flex-col leading-tight">
+            <span className="text-sm font-bold text-ink">DOA Chain Maintenance</span>
+            <span className="text-2xs text-inkSoft">Slabs, approvers &amp; HoD routing</span>
+          </span>
+        </button>
 
+        <a
+          href="#claim-search"
+          className="flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-colors hover:brightness-95"
+          style={{ backgroundColor: '#DC26260D', borderColor: '#DC262640' }}
+        >
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: '#DC262626' }}>
+            <Search size={18} color="#DC2626" />
+          </span>
+          <span className="flex flex-col leading-tight">
+            <span className="text-sm font-bold text-ink">Claim Search &amp; Reject</span>
+            <span className="text-2xs text-inkSoft">Find any claim, reject while open</span>
+          </span>
+        </a>
+      </div>
+
+      <div id="claim-search" className="scroll-mt-4">
       <Card className="mb-3">
         <CardTitle icon={Search} title="Claim Search & Reject" hint="Search any claim in the system and reject it while it's still open." />
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -112,6 +136,7 @@ export default function AdminPage() {
           </Button>
         </div>
       </Card>
+      </div>
 
       {error && (
         <Banner type="error" onClose={() => setError(null)}>{error}</Banner>
