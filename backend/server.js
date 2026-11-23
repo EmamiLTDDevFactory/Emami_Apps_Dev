@@ -95,6 +95,14 @@ apiRouter.use('/me/mm-mdm-ph', require('./mmMdmPh'));
 apiRouter.use('/me/auditee', require('./auditeeResponse'));
 // SmarTruck TMS (rebuild of Instavans SmarTruck Shipper) -> own rules in tmsEngine.js, SAP ZTMS_SRV in tmsSap.js. Rides /api/me; see tms.js.
 apiRouter.use('/me/smartruck-tms', require('./tms'));
+// Publicity Expenses (ATL / BTL MIS) -> SAP CDS ZC_ATLBTL_EXP_SUMMARY / _DETAIL, read-only. Rides /api/me; see publicityExpenses/.
+// If it ever failed to load, only its routes answer 503.
+try {
+    apiRouter.use('/me/publicity-expenses', require('./publicityExpenses'));
+} catch (err) {
+    console.error('[publicity-expenses] failed to load:', err.message);
+    apiRouter.use('/me/publicity-expenses', (req, res) => res.status(503).json({ success: false, error: 'Publicity Expenses is temporarily unavailable.' }));
+}
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /** First and last name from a request body — both required, trimmed, single-spaced, max 60 chars. */

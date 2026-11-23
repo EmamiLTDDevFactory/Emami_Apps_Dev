@@ -2,7 +2,7 @@ import {
   Landmark, Truck, Activity, Receipt, Home, LayoutGrid, Star,
   HelpCircle, CircleUserRound, ShieldCheck, ClipboardCheck, TrendingUp, Code2, PackageSearch, Wallet,
   CalendarClock, FileCheck2, HeartPulse, LineChart, ScanSearch, ShieldAlert, FileSpreadsheet, FileSearch, Gavel, Calculator, Hourglass,
-  Bot, DoorOpen, UserCog, LifeBuoy, Layers, Contact, MessageSquareReply, Route,
+  Bot, DoorOpen, UserCog, LifeBuoy, Layers, Contact, MessageSquareReply, Route, Megaphone,
 } from 'lucide-react';
 import type { AppItem, NavItem, CategoryFilter } from '../types';
 
@@ -53,6 +53,7 @@ export const EMBEDDED_APP_URLS: Record<string, string> = {
   'mm-mdm': '/apps/mm-mdm', // Material Master (ZMM_MDM_SRV, material master requests)
   'smartruck-tms': '/apps/smartruck-tms', // SmarTruck TMS (rebuild of Instavans SmarTruck Shipper — demo data)
   'auditee-response': '/apps/auditee-response', // Auditee Response (replaces WDs ZAUDIT_TOOL + ZMSD_MIS_OBSERVATION; open to all, see OPEN_TO_ALL_APPS in backend/server.js)
+  'publicity-expenses': '/apps/publicity-expenses', // Publicity Expenses (ATL / BTL advertisement expenses MIS, SAP CDS ZC_ATLBTL_EXP_*)
 };
 
 const RAW_APPS: AppItem[] = [
@@ -85,6 +86,7 @@ const RAW_APPS: AppItem[] = [
   { id: 'mm-mdm', name: 'Material Master', desc: 'Request, review and approve material master records — key data, tabs, validation by SAP, workflow with send back and approval.', cat: 'Supply Chain', icon: PackageSearch, uses: 0, stage: 'WIP' },
   { id: 'smartruck-tms', name: 'SmarTruck TMS', desc: 'Transport management — orders, reverse-auction bidding, live fleet tracking and control tower, ePOD, carrier invoicing and reports. Demo build on sample data.', cat: 'Supply Chain', icon: Route, uses: 0, stage: 'WIP' },
   { id: 'auditee-response', name: 'Auditee Response', desc: 'Answer the internal audit and MIS observations assigned to you and submit your response to the reviewer, with attachments.', cat: 'MSD', icon: MessageSquareReply, uses: 0, stage: 'WIP' },
+  { id: 'publicity-expenses', name: 'Publicity Expenses', desc: 'ATL / BTL advertisement expenses MIS from SAP — brand-wise report with G/L drill-down to cost centre and SKU, A&P dashboards, media mix, budget vs actual and reconciliation.', cat: 'Finance', icon: Megaphone, uses: 0, stage: 'WIP' },
 ];
 
 export const APPS: AppItem[] = RAW_APPS.map((app) => ({
