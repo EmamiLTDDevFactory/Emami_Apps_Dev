@@ -48,10 +48,9 @@ interface ClaimContextType {
   adminSearchClaims: (adminLoginId: string, criteria: { claimId?: string }) => Promise<ExpenseClaim[]>;
   adminRejectClaim: (claimId: string, adminLoginId: string, reason: string) => Promise<{ Status?: string; Message?: string }>;
   // DOA Chain Maintenance Actions — CRUD against the new DoaChainSet entity.
-  fetchDoaChain: (doaCtype: string, kostl: string) => Promise<DoaChainRow[]>;
+  fetchDoaChain: (filters?: { doaCtype?: string; kostl?: string; expgrp?: string; amtFrom?: number; active?: boolean }) => Promise<DoaChainRow[]>;
   createDoaChainRow: (row: DoaChainRow, adminPernr: string) => Promise<DoaChainRow>;
   updateDoaChainRow: (row: DoaChainRow, adminPernr: string) => Promise<DoaChainRow>;
-  deactivateDoaChainRow: (row: DoaChainRow, adminPernr: string, validTo: string) => Promise<DoaChainRow>;
   // Error Management Actions
   retrySAPPosting: (errorId: string) => void;
   // Getters & Filters
@@ -1264,12 +1263,17 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return postClaimHeaderUpdate(putData, 'Admin reject failed');
   };
 
-  // DOA Chain Maintenance — new DoaChainSet entity. Likely can't be written/filtered yet (SEGW
-  // Creatable/Updatable/Filterable flags are off, transport EDSK9B0EN3 must land before
-  // EDSK9B0EMX) — these calls are wired up ready for when that lands; expect failures until then.
-  const fetchDoaChain = async (doaCtype: string, kostl: string): Promise<DoaChainRow[]> => {
-    const filter = encodeURIComponent(`DoaCtype eq '${doaCtype}' and Kostl eq '${kostl.toUpperCase()}'`);
-    const response = await sapClient.get(`${SAP_BASE_URL}/DoaChainSet?$filter=${filter}&$format=json`);
+  // DOA Chain Maintenance (SM30-style grid) — new DoaChainSet entity. All filters are optional;
+  // no filter at all returns every row, per the SM30 rebuild spec.
+  const fetchDoaChain = async (filters?: { doaCtype?: string; kostl?: string; expgrp?: string; amtFrom?: number; active?: boolean }): Promise<DoaChainRow[]> => {
+    const parts: string[] = [];
+    if (filters?.doaCtype) parts.push(`DoaCtype eq '${filters.doaCtype}'`);
+    if (filters?.kostl) parts.push(`Kostl eq '${filters.kostl.toUpperCase()}'`);
+    if (filters?.expgrp !== undefined) parts.push(`Expgrp eq '${filters.expgrp}'`);
+    if (filters?.amtFrom !== undefined) parts.push(`AmtFrom eq ${filters.amtFrom}M`);
+    if (filters?.active !== undefined) parts.push(`Active eq ${filters.active}`);
+    const filterQuery = parts.length ? `$filter=${encodeURIComponent(parts.join(' and '))}&` : '';
+    const response = await sapClient.get(`${SAP_BASE_URL}/DoaChainSet?${filterQuery}$format=json`);
     if (response.status < 200 || response.status >= 300) {
       const errData = response.data;
       const errMsg = errData?.error?.message?.value || errData?.error || errData?.d?.Message || errData?.Message || 'Failed to fetch DOA chain';
@@ -1302,11 +1306,6 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
     return handleSapWriteResponse(response, 'Failed to update DOA chain row');
   };
-
-  // There is no real delete — "removing" an approver row means marking it inactive with a
-  // ValidTo date, per spec.
-  const deactivateDoaChainRow = async (row: DoaChainRow, adminPernr: string, validTo: string): Promise<DoaChainRow> =>
-    updateDoaChainRow({ ...row, Active: false, ValidTo: validTo }, adminPernr);
 
   // BR-018, BR-019: Retry SAP Posting — local-only, backs the debug-only errors screen.
   const retrySAPPosting = (errorId: string) => {
@@ -1442,7 +1441,6 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         fetchDoaChain,
         createDoaChainRow,
         updateDoaChainRow,
-        deactivateDoaChainRow,
         retrySAPPosting,
         getClaimById,
         filterClaims,

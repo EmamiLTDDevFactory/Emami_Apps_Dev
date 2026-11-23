@@ -1,32 +1,44 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
-import { Plus, RefreshCw, ShieldAlert, Trash2 } from 'lucide-react';
+import React, { useMemo, useRef, useState } from 'react';
+import { Copy, Plus, RefreshCw, Save, ShieldAlert, Upload, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useClaim } from '../../context/ClaimContext';
 import { DoaChainRow } from '../../types';
-import { Banner, Button, Card, CardTitle, Checkbox, DateField, EmptyState, Field, Input, InfoField, LoadingBlock, Modal, PageHeader, Select } from '../../components/ui';
+import { Banner, Button, Card, Checkbox, DateField, EmptyState, Field, Input, LoadingBlock, PageHeader, Select } from '../../components/ui';
 
-// Local-only tracking of "not yet saved to SAP" - stripped before any create/update call.
-type EditableDoaRow = DoaChainRow & { _isNew?: boolean };
+// SM30-style flat maintenance grid for ZEXP_DOA_CHAIN (DoaChainSet) - replaces the earlier
+// slab-by-slab card editor per the rebuild spec. One row = one approver in one amount slab of one
+// cost centre; admins edit the whole table in place and save all changes together.
 
-// MBS is no longer used (per the 2026-11-23 night update) - only ADM and MBN (mobile non-sales,
-// which can carry the Hod flag) remain selectable.
+type GridRow = DoaChainRow & {
+  // Stable client-only identity, independent of the business composite key - AmtFrom/DoaCtype/
+  // Kostl are all editable on a new row before save, so using the composite key as a React key
+  // would remount (and lose focus in) the row on every keystroke.
+  _cid: string;
+  _isNew: boolean;
+  _dirty: boolean;
+  _rowError: string | null;
+  _saving: boolean;
+};
+
 const DOA_CTYPE_OPTIONS = [
   { value: 'ADM', label: 'ADM — Other Administrative Expenses' },
   { value: 'MBN', label: 'MBN — Mobile (non-sales)' },
 ];
+const DOA_CTYPE_FILTER_OPTIONS = [{ value: '', label: 'All types' }, ...DOA_CTYPE_OPTIONS];
 
 const todayIso = () => new Date().toISOString().split('T')[0];
 const FAR_FUTURE = '9999-12-31';
+const newCid = () => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `cid-${Math.random().toString(36).slice(2)}-${Date.now()}`);
 
-const blankRow = (doaCtype: string, kostl: string, amtFrom: number, amtTo: number, seqno: string): EditableDoaRow => ({
-  DoaCtype: doaCtype,
-  Kostl: kostl,
+const blankRow = (doaCtype: string, kostl: string): GridRow => ({
+  DoaCtype: doaCtype || 'ADM',
+  Kostl: kostl || '',
   Expgrp: '',
-  AmtFrom: amtFrom,
-  Seqno: seqno,
-  AmtTo: amtTo,
+  AmtFrom: 0,
+  Seqno: '01',
+  AmtTo: 0,
   DeptTxt: '',
   ApprEmail: '',
   ApprRule: 'O',
@@ -34,90 +46,87 @@ const blankRow = (doaCtype: string, kostl: string, amtFrom: number, amtTo: numbe
   ValidFrom: todayIso(),
   ValidTo: FAR_FUTURE,
   Hod: false,
+  _cid: newCid(),
   _isNew: true,
+  _dirty: false,
+  _rowError: null,
+  _saving: false,
 });
 
-const rowKey = (row: DoaChainRow) => `${row.DoaCtype}|${row.Kostl}|${row.Expgrp}|${row.AmtFrom}|${row.Seqno}`;
-// Expgrp is part of the composite key, so two slabs can legitimately share the same AmtFrom while
-// belonging to different expense groups - group/seqno/shared-AmtTo logic must key on both together,
-// not AmtFrom alone, or rows from different groups would wrongly merge.
-const slabKey = (amtFrom: number, expgrp: string) => `${amtFrom}|${expgrp}`;
-
-const nextSeqno = (rows: EditableDoaRow[], amtFrom: number, expgrp: string) => {
-  const used = rows.filter((r) => r.AmtFrom === amtFrom && r.Expgrp === expgrp).map((r) => parseInt(r.Seqno, 10) || 0);
-  const next = (used.length ? Math.max(...used) : 0) + 1;
-  return String(next).padStart(2, '0');
-};
-
-function validateRow(row: EditableDoaRow): string | null {
+function validateRow(row: GridRow): string | null {
+  if (!row.DoaCtype) return 'Type is mandatory';
+  if (!row.Kostl.trim()) return 'Cost centre is mandatory';
   if (row.AmtFrom < 0) return 'Amount From cannot be negative';
   if (row.AmtTo && row.AmtTo < row.AmtFrom) return 'Amount To must be greater than or equal to Amount From';
-  if (!row.ApprEmail.trim()) return 'Approver e-mail or PERNR is mandatory';
   if (row.ValidTo && row.ValidFrom && row.ValidTo < row.ValidFrom) return 'Valid To cannot be before Valid From';
+  if (row.ApprRule !== 'O' && row.ApprRule !== 'A') return 'Approver rule must be O (any one) or A (all)';
+  if (!row.ApprEmail.trim()) return 'Approver e-mail or PERNR is mandatory';
+  if (row.Hod && row.DoaCtype !== 'MBN') return "HoD flag is only allowed for mobile non-sales rows (type MBN)";
   return null;
 }
 
-type Slab = { amtFrom: number; amtTo: number; expgrp: string; rows: EditableDoaRow[] };
-
-function groupIntoSlabs(rows: EditableDoaRow[]): Slab[] {
-  const byKey = new Map<string, EditableDoaRow[]>();
-  rows.forEach((r) => {
-    const key = slabKey(r.AmtFrom, r.Expgrp);
-    const list = byKey.get(key) || [];
+// Active slabs of the same type+cost centre must not overlap; rows sharing AmtFrom are parallel
+// approvers in the same slab, not a conflict. Non-blocking (warn, don't block save).
+function findOverlapWarnings(rows: GridRow[]): string[] {
+  const warnings: string[] = [];
+  const byTypeKostl = new Map<string, GridRow[]>();
+  rows.filter((r) => r.Active).forEach((r) => {
+    const key = `${r.DoaCtype}|${r.Kostl}`;
+    const list = byTypeKostl.get(key) || [];
     list.push(r);
-    byKey.set(key, list);
+    byTypeKostl.set(key, list);
   });
-  return Array.from(byKey.values())
-    .map((slabRows) => ({
-      amtFrom: slabRows[0].AmtFrom,
-      amtTo: slabRows[0]?.AmtTo || 0,
-      expgrp: slabRows[0].Expgrp,
-      rows: slabRows.sort((a, b) => a.Seqno.localeCompare(b.Seqno)),
-    }))
-    .sort((a, b) => a.amtFrom - b.amtFrom || a.expgrp.localeCompare(b.expgrp));
-}
-
-// Slabs of the same cost centre AND expense group must not overlap (warn, don't block); gaps
-// between slabs are allowed but worth flagging too, per the DOA handover. Different expense
-// groups are independent chains, so overlap/gap checks only compare slabs within the same group.
-function findSlabWarnings(slabs: Slab[]): { overlaps: string[]; gaps: string[] } {
-  const overlaps: string[] = [];
-  const gaps: string[] = [];
-  const byGroup = new Map<string, Slab[]>();
-  slabs.forEach((s) => {
-    const list = byGroup.get(s.expgrp) || [];
-    list.push(s);
-    byGroup.set(s.expgrp, list);
-  });
-  byGroup.forEach((groupSlabs, expgrp) => {
-    const label = expgrp ? ` (group ${expgrp})` : '';
-    for (let i = 0; i < groupSlabs.length - 1; i++) {
-      const cur = groupSlabs[i];
-      const next = groupSlabs[i + 1];
-      if (cur.amtTo && cur.amtTo >= next.amtFrom) {
-        overlaps.push(`${cur.amtFrom}–${cur.amtTo || '∞'} overlaps ${next.amtFrom}–${next.amtTo || '∞'}${label}`);
-      } else if (cur.amtTo && next.amtFrom > cur.amtTo + 0.01) {
-        gaps.push(`Gap between ${cur.amtTo} and ${next.amtFrom}${label}`);
+  byTypeKostl.forEach((group, key) => {
+    const slabFroms = Array.from(new Set(group.map((r) => r.AmtFrom))).sort((a, b) => a - b);
+    for (let i = 0; i < slabFroms.length - 1; i++) {
+      const curTo = group.find((r) => r.AmtFrom === slabFroms[i])?.AmtTo || 0;
+      const nextFrom = slabFroms[i + 1];
+      if (curTo && curTo >= nextFrom) {
+        const [type, kostl] = key.split('|');
+        warnings.push(`${type}/${kostl}: slab ${slabFroms[i]}–${curTo} overlaps ${nextFrom}`);
       }
     }
   });
-  return { overlaps, gaps };
+  return warnings;
+}
+
+// Rows in the same slab must share the same AmtTo - the backend aligns them after save, so this
+// is informational only (reload after save shows the real, aligned values).
+function findAmtToMismatchWarnings(rows: GridRow[]): string[] {
+  const warnings: string[] = [];
+  const byKey = new Map<string, Set<number>>();
+  rows.forEach((r) => {
+    const key = `${r.DoaCtype}|${r.Kostl}|${r.AmtFrom}`;
+    const set = byKey.get(key) || new Set<number>();
+    set.add(r.AmtTo || 0);
+    byKey.set(key, set);
+  });
+  byKey.forEach((amtTos, key) => {
+    if (amtTos.size > 1) {
+      const [type, kostl, amtFrom] = key.split('|');
+      warnings.push(`${type}/${kostl} slab ${amtFrom}: mismatched Amount To (${Array.from(amtTos).join(', ')}) — backend will align these on save`);
+    }
+  });
+  return warnings;
 }
 
 export default function DoaChainPage() {
   const { currentUser } = useAuth();
-  const { fetchDoaChain, createDoaChainRow, updateDoaChainRow, deactivateDoaChainRow } = useClaim();
+  const { fetchDoaChain, createDoaChainRow, updateDoaChainRow } = useClaim();
 
-  const [doaCtype, setDoaCtype] = useState('ADM');
-  const [kostl, setKostl] = useState('');
-  const [rows, setRows] = useState<EditableDoaRow[]>([]);
+  const [doaCtypeFilter, setDoaCtypeFilter] = useState('');
+  const [kostlFilter, setKostlFilter] = useState('');
+  const [searchText, setSearchText] = useState('');
+  const [showInactive, setShowInactive] = useState(false);
+
+  const [rows, setRows] = useState<GridRow[]>([]);
+  const originalsRef = useRef<Record<string, DoaChainRow>>({});
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [rowErrors, setRowErrors] = useState<Record<string, string | null>>({});
-  const [savingKey, setSavingKey] = useState<string | null>(null);
-  const [deactivateTarget, setDeactivateTarget] = useState<EditableDoaRow | null>(null);
-  const [deactivateValidTo, setDeactivateValidTo] = useState(todayIso());
-  const [previewAmount, setPreviewAmount] = useState('');
+  const [savingAll, setSavingAll] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!currentUser?.isAdmin) {
     return (
@@ -132,14 +141,19 @@ export default function DoaChainPage() {
   const adminPernr = currentUser.employeeId;
 
   const handleLoad = async () => {
-    const kostlUpper = kostl.trim().toUpperCase();
-    if (!kostlUpper) { setLoadError('Enter a cost centre to load its DOA chain.'); return; }
-    setKostl(kostlUpper);
     setLoading(true);
     setLoadError(null);
     try {
-      const loaded = await fetchDoaChain(doaCtype, kostlUpper);
-      setRows(loaded.map((r) => ({ ...r, _isNew: false })));
+      const loadedRows = await fetchDoaChain({
+        doaCtype: doaCtypeFilter || undefined,
+        kostl: kostlFilter.trim() || undefined,
+      });
+      // Hod/Active must always be explicit booleans on save, never missing - coerce right on load
+      // in case an older row predates the Hod field or SAP returns it blank for a non-MBN row.
+      const gridRows: GridRow[] = loadedRows.map((r) => ({ ...r, Hod: !!r.Hod, Active: !!r.Active, _cid: newCid(), _isNew: false, _dirty: false, _rowError: null, _saving: false }));
+      originalsRef.current = Object.fromEntries(gridRows.map((r) => [r._cid, { ...r }]));
+      setRows(gridRows);
+      setLoaded(true);
     } catch (err: any) {
       // Shown verbatim - likely to fail until SEGW's Filterable flag and the transport land; that's
       // a backend prerequisite gap, not a frontend bug.
@@ -150,84 +164,156 @@ export default function DoaChainPage() {
     }
   };
 
-  const slabs = useMemo(() => groupIntoSlabs(rows), [rows]);
-  const { overlaps, gaps } = useMemo(() => findSlabWarnings(slabs), [slabs]);
-
-  const updateRow = (key: string, patch: Partial<EditableDoaRow>) => {
-    setRows((prev) => prev.map((r) => (rowKey(r) === key ? { ...r, ...patch } : r)));
+  const updateField = (cid: string, patch: Partial<DoaChainRow>) => {
+    setRows((prev) => prev.map((r) => (r._cid === cid ? { ...r, ...patch, _dirty: r._isNew ? r._dirty : true, _rowError: null } : r)));
   };
 
-  // Rows sharing a slab's AmtFrom AND Expgrp must share the same AmtTo - editing it on one row
-  // updates the others in that same group together, per the DOA handover. Must not cross into a
-  // different expense group that happens to share the same AmtFrom.
-  const setSlabAmtTo = (amtFrom: number, expgrp: string, newAmtTo: number) => {
-    setRows((prev) => prev.map((r) => (r.AmtFrom === amtFrom && r.Expgrp === expgrp ? { ...r, AmtTo: newAmtTo } : r)));
+  const handleAddRow = () => {
+    setRows((prev) => [...prev, blankRow(doaCtypeFilter, kostlFilter)]);
   };
 
-  const handleAddApprover = (slab: Slab) => {
-    const row = { ...blankRow(doaCtype, kostl, slab.amtFrom, slab.amtTo, nextSeqno(rows, slab.amtFrom, slab.expgrp)), Expgrp: slab.expgrp };
-    setRows((prev) => [...prev, row]);
+  const handleCopyRow = (row: GridRow) => {
+    const sameSlab = rows.filter((r) => r.DoaCtype === row.DoaCtype && r.Kostl === row.Kostl && r.Expgrp === row.Expgrp && r.AmtFrom === row.AmtFrom);
+    const usedSeq = sameSlab.map((r) => parseInt(r.Seqno, 10) || 0);
+    const nextSeq = String((usedSeq.length ? Math.max(...usedSeq) : 0) + 1).padStart(2, '0');
+    const copy: GridRow = {
+      ...row,
+      Seqno: nextSeq,
+      ApprPernr: undefined,
+      ApprName: undefined,
+      _cid: newCid(),
+      _isNew: true,
+      _dirty: false,
+      _rowError: null,
+      _saving: false,
+    };
+    setRows((prev) => [...prev, copy]);
   };
 
-  const handleAddSlab = () => {
-    const row = blankRow(doaCtype, kostl, 0, 0, '01');
-    setRows((prev) => [...prev, row]);
+  // No real delete - Deactivate sets Active=false + ValidTo=today, Reactivate the opposite. Both
+  // are local, staged changes included in the next Save (matching the grid's stage-then-save model),
+  // not immediate API calls.
+  const handleToggleActive = (cid: string) => {
+    setRows((prev) => prev.map((r) => {
+      if (r._cid !== cid) return r;
+      const willBeActive = !r.Active;
+      return {
+        ...r,
+        Active: willBeActive,
+        ValidTo: willBeActive ? (r.ValidTo && r.ValidTo > todayIso() ? r.ValidTo : FAR_FUTURE) : todayIso(),
+        _dirty: r._isNew ? r._dirty : true,
+      };
+    }));
   };
 
-  const handleSaveRow = async (row: EditableDoaRow) => {
-    const key = rowKey(row);
-    const validationError = validateRow(row);
-    if (validationError) { setRowErrors((prev) => ({ ...prev, [key]: validationError })); return; }
-    setRowErrors((prev) => ({ ...prev, [key]: null }));
-    setSavingKey(key);
-    try {
-      const { _isNew, ...plain } = row;
-      const saved = row._isNew
-        ? await createDoaChainRow(plain, adminPernr)
-        : await updateDoaChainRow(plain, adminPernr);
-      setRows((prev) => prev.map((r) => (rowKey(r) === key ? { ...(saved as DoaChainRow), _isNew: false } : r)));
-    } catch (err: any) {
-      // Shown verbatim - the DOA handover's business-error table (e.g. "Slab overlaps existing
-      // slab ...", "No employee found for e-mail ...") should reach the admin unmodified.
-      setRowErrors((prev) => ({ ...prev, [key]: err?.message || 'Failed to save row' }));
-    } finally {
-      setSavingKey(null);
-    }
+  const handleDiscardAll = () => {
+    setRows((prev) => prev
+      .filter((r) => !r._isNew)
+      .map((r) => {
+        if (!r._dirty) return r;
+        const original = originalsRef.current[r._cid];
+        return original ? { ...original, _cid: r._cid, _isNew: false, _dirty: false, _rowError: null, _saving: false } : r;
+      }));
   };
 
-  const handleConfirmDeactivate = async () => {
-    if (!deactivateTarget) return;
-    const key = rowKey(deactivateTarget);
-    setSavingKey(key);
-    try {
-      if (deactivateTarget._isNew) {
-        // Never saved - just drop it locally, nothing to tell SAP.
-        setRows((prev) => prev.filter((r) => rowKey(r) !== key));
-      } else {
-        const { _isNew, ...plain } = deactivateTarget;
-        const saved = await deactivateDoaChainRow(plain, adminPernr, deactivateValidTo);
-        setRows((prev) => prev.map((r) => (rowKey(r) === key ? { ...(saved as DoaChainRow), _isNew: false } : r)));
+  const handleSaveAll = async () => {
+    const toSave = rows.filter((r) => r._isNew || r._dirty);
+    if (toSave.length === 0) return;
+
+    // Validate every row being saved first - no network call at all if anything fails locally.
+    let hasError = false;
+    setRows((prev) => prev.map((r) => {
+      if (!(r._isNew || r._dirty)) return r;
+      const err = validateRow(r);
+      if (err) hasError = true;
+      return { ...r, _rowError: err };
+    }));
+    if (hasError) return;
+
+    setSavingAll(true);
+    for (const row of toSave) {
+      setRows((prev) => prev.map((r) => (r._cid === row._cid ? { ...r, _saving: true } : r)));
+      try {
+        // Audit fields are backend-set and read-only - never sent on create/update, same as the
+        // existing _cid/_isNew/etc UI-only props. Aenam is the one exception (handled by
+        // createDoaChainRow/updateDoaChainRow themselves).
+        const { _cid, _isNew, _dirty, _rowError, _saving, Ernam, Erdat, Erzet, Aedat, Aezet, ...plain } = row;
+        const saved = row._isNew
+          ? await createDoaChainRow(plain, adminPernr)
+          : await updateDoaChainRow(plain, adminPernr);
+        setRows((prev) => prev.map((r) => (r._cid === row._cid ? { ...r, ...(saved as DoaChainRow), _isNew: false, _dirty: false, _rowError: null, _saving: false } : r)));
+      } catch (err: any) {
+        // Shown verbatim - the DOA handover's business-error table (e.g. "Slab overlaps existing
+        // slab ...", "No employee found for e-mail ...") should reach the admin unmodified.
+        setRows((prev) => prev.map((r) => (r._cid === row._cid ? { ...r, _rowError: err?.message || 'Failed to save row', _saving: false } : r)));
       }
-      setDeactivateTarget(null);
+    }
+    setSavingAll(false);
+    // Always re-fetch after saving, so the grid shows what's really in SAP (e.g. AmtTo aligned
+    // across a slab, ApprPernr/ApprName resolved) rather than our own optimistic local state.
+    await handleLoad();
+  };
+
+  const handleImportFile = async (file: File) => {
+    setImportError(null);
+    try {
+      const XLSX = await import('xlsx');
+      const buf = await file.arrayBuffer();
+      const workbook = XLSX.read(buf, { type: 'array' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const parsed: any[] = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      if (parsed.length === 0) { setImportError('No rows found in the file.'); return; }
+
+      const imported: GridRow[] = parsed.map((line) => {
+        const doaCtype = String(line['Type'] || line['DoaCtype'] || 'ADM').trim();
+        const kostl = String(line['Cost Centre'] || line['Kostl'] || '').trim().toUpperCase();
+        const row = blankRow(doaCtype, kostl);
+        return {
+          ...row,
+          AmtFrom: parseFloat(line['Amount From'] || line['AmtFrom']) || 0,
+          AmtTo: parseFloat(line['Amount To'] || line['AmtTo']) || 0,
+          DeptTxt: String(line['Department'] || line['DeptTxt'] || ''),
+          ApprEmail: String(line['Approver Email'] || line['ApprEmail'] || '').trim(),
+          ApprRule: (String(line['Rule'] || line['ApprRule'] || 'O').trim().toUpperCase() === 'A') ? 'A' : 'O',
+          Hod: ['x', 'true', '1', 'yes'].includes(String(line['HoD'] || line['Hod'] || '').trim().toLowerCase()),
+          ValidFrom: String(line['Valid From'] || line['ValidFrom'] || todayIso()),
+          ValidTo: String(line['Valid To'] || line['ValidTo'] || FAR_FUTURE),
+        };
+      });
+      setRows((prev) => [...prev, ...imported]);
     } catch (err: any) {
-      setRowErrors((prev) => ({ ...prev, [key]: err?.message || 'Failed to deactivate row' }));
+      setImportError(err?.message || 'Could not read this file.');
     } finally {
-      setSavingKey(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
-  const previewLevels = useMemo(() => {
-    const amount = parseFloat(previewAmount);
-    if (Number.isNaN(amount)) return null;
-    return slabs.filter((s) => s.amtFrom <= amount);
-  }, [previewAmount, slabs]);
+  const overlapWarnings = useMemo(() => findOverlapWarnings(rows), [rows]);
+  const amtToMismatchWarnings = useMemo(() => findAmtToMismatchWarnings(rows), [rows]);
+  const dirtyCount = useMemo(() => rows.filter((r) => r._isNew || r._dirty).length, [rows]);
+
+  const visibleRows = useMemo(() => {
+    let list = rows;
+    if (!showInactive) list = list.filter((r) => r.Active || r._isNew);
+    if (searchText.trim()) {
+      const q = searchText.trim().toLowerCase();
+      list = list.filter((r) => r.Kostl.toLowerCase().includes(q) || (r.ApprName || '').toLowerCase().includes(q) || r.ApprEmail.toLowerCase().includes(q));
+    }
+    return [...list].sort((a, b) =>
+      a.DoaCtype.localeCompare(b.DoaCtype) ||
+      a.Kostl.localeCompare(b.Kostl) ||
+      a.AmtFrom - b.AmtFrom ||
+      a.Seqno.localeCompare(b.Seqno));
+  }, [rows, showInactive, searchText]);
+
+  const cellInputClass = 'input !h-8 !py-1 !px-1.5 text-xs';
 
   return (
     <div>
       <PageHeader
         eyebrow="Admin"
         title="DOA Chain Maintenance"
-        subtitle="Maintain approval-chain slabs and approvers per cost centre. Changes only affect new claims submitted after saving — claims already submitted keep the chain fixed at their own submit time."
+        subtitle="SM30-style maintenance of ZEXP_DOA_CHAIN — edit the table in place and save all changes together."
         icon={ShieldAlert}
       />
 
@@ -236,188 +322,177 @@ export default function DoaChainPage() {
       </Banner>
 
       <Card className="my-3">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-          <Field label="DOA Type">
-            <Select
-              value={doaCtype}
-              onChange={setDoaCtype}
-              options={DOA_CTYPE_OPTIONS}
-            />
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+          <Field label="Type">
+            <Select value={doaCtypeFilter} onChange={setDoaCtypeFilter} options={DOA_CTYPE_FILTER_OPTIONS} />
           </Field>
-          <Field label="Cost Centre" required hint="Upper-case, e.g. CORP16">
+          <Field label="Cost Centre" hint="Blank = all">
             <Input
-              value={kostl}
-              onChange={(e) => setKostl(e.target.value.toUpperCase())}
+              value={kostlFilter}
+              onChange={(e) => setKostlFilter(e.target.value.toUpperCase())}
               placeholder="e.g. CORP16"
               onKeyDown={(e) => { if (e.key === 'Enter') handleLoad(); }}
             />
           </Field>
-          <div className="flex items-end">
-            <Button variant="primary" icon={RefreshCw} loading={loading} onClick={handleLoad} className="w-full">
-              Load Chain
+          <Field label="Search" hint="Cost centre, approver name or email">
+            <Input value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Filter loaded rows…" />
+          </Field>
+          <div className="flex items-end gap-2">
+            <Button variant="primary" icon={RefreshCw} loading={loading} onClick={handleLoad} className="flex-1">
+              Load
             </Button>
           </div>
         </div>
+        <div className="mt-3 flex flex-wrap items-center gap-4">
+          <Checkbox checked={showInactive} onChange={setShowInactive} label="Show inactive rows" />
+          <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImportFile(f); }} />
+          <Button variant="secondary" size="sm" icon={Upload} onClick={() => fileInputRef.current?.click()}>
+            Import CSV/Excel
+          </Button>
+        </div>
+        {importError && <div className="mt-2"><Banner type="error" onClose={() => setImportError(null)}>{importError}</Banner></div>}
+        <p className="mt-2 text-2xs text-inkFaint">
+          Import columns: Type, Cost Centre, Amount From, Amount To, Department, Approver Email, Rule, HoD, Valid From, Valid To. Imported rows land in the grid for review — nothing is sent to SAP until you click Save.
+        </p>
       </Card>
 
       {loadError && <Banner type="error" onClose={() => setLoadError(null)}>{loadError}</Banner>}
 
-      {!loading && rows.length === 0 && !loadError && kostl && (
-        <EmptyState title="No slabs loaded" hint="Add a slab below, or confirm this cost centre has a DOA chain in SAP." />
-      )}
-
-      {overlaps.length > 0 && (
+      {overlapWarnings.length > 0 && (
         <div className="mb-2">
           <Banner type="warn">
-            <p className="font-bold">Overlapping slabs</p>
-            {overlaps.map((o) => <p key={o}>{o}</p>)}
+            <p className="font-bold">Overlapping active slabs</p>
+            {overlapWarnings.map((w) => <p key={w}>{w}</p>)}
           </Banner>
         </div>
       )}
-      {gaps.length > 0 && (
+      {amtToMismatchWarnings.length > 0 && (
         <div className="mb-2">
           <Banner type="warn">
-            <p className="font-bold">Gaps between slabs</p>
-            {gaps.map((g) => <p key={g}>{g}</p>)}
+            <p className="font-bold">Mismatched Amount To within a slab</p>
+            {amtToMismatchWarnings.map((w) => <p key={w}>{w}</p>)}
           </Banner>
         </div>
-      )}
-
-      {kostl && (
-        <Card className="mb-3">
-          <CardTitle title="Preview" hint="See which levels/approvers a test amount would produce, using the slabs loaded above." />
-          <div className="flex items-end gap-2">
-            <Field label="Test Amount (₹)" className="max-w-[200px]">
-              <Input value={previewAmount} onChange={(e) => setPreviewAmount(e.target.value)} placeholder="e.g. 40000" inputMode="decimal" />
-            </Field>
-          </div>
-          {previewLevels && (
-            previewLevels.length === 0 ? (
-              <p className="mt-3 text-sm text-inkSoft">No slab matches this amount — falls back to the old supervisor flow.</p>
-            ) : (
-              <div className="mt-3 flex flex-col gap-2">
-                {previewLevels.map((s, idx) => (
-                  <div key={`${s.amtFrom}|${s.expgrp}`} className="rounded-lg border border-border bg-appBg p-2">
-                    <p className="text-xs font-bold text-inkSoft">Level {idx + 1} · ₹{s.amtFrom}–{s.amtTo || '∞'}{s.expgrp ? ` · Group ${s.expgrp}` : ''}</p>
-                    {s.rows.map((r) => (
-                      <p key={rowKey(r)} className="text-sm text-ink">{r.ApprName || r.ApprEmail} ({r.ApprRule === 'A' ? 'all must approve' : 'any one approves'})</p>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            )
-          )}
-        </Card>
       )}
 
       {loading && <LoadingBlock label="Loading DOA chain…" />}
 
-      {!loading && slabs.map((slab) => (
-        <Card key={`${slab.amtFrom}|${slab.expgrp}`} className="mb-3">
-          <CardTitle
-            title={`₹${slab.amtFrom} – ${slab.amtTo || 'no cap'}${slab.expgrp ? ` · Group ${slab.expgrp}` : ''}`}
-            hint={`${slab.rows.length} approver${slab.rows.length === 1 ? '' : 's'}`}
-            actions={<Button variant="ghost" size="sm" icon={Plus} onClick={() => handleAddApprover(slab)}>Add approver to this slab</Button>}
-          />
-          <Field label="Amount To (₹, shared by this slab)" className="mb-3 max-w-[220px]">
-            <Input
-              type="number"
-              value={slab.amtTo || ''}
-              onChange={(e) => setSlabAmtTo(slab.amtFrom, slab.expgrp, parseFloat(e.target.value) || 0)}
-              placeholder="Empty = no cap"
-            />
-          </Field>
-
-          {slab.rows.map((row) => {
-            const key = rowKey(row);
-            const rowError = rowErrors[key];
-            return (
-              <div key={key} className="mb-2 rounded-lg border border-border bg-white p-3">
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  {row._isNew && (
-                    <Field label="Amount From (₹)" required hint="Key field — can't be changed after saving">
-                      <Input
-                        type="number"
-                        value={row.AmtFrom || ''}
-                        onChange={(e) => updateRow(key, { AmtFrom: parseFloat(e.target.value) || 0 })}
-                      />
-                    </Field>
-                  )}
-                  <Field label="Department" className="md:col-span-2">
-                    <Input value={row.DeptTxt} onChange={(e) => updateRow(key, { DeptTxt: e.target.value })} />
-                  </Field>
-                  <Field label="Approver Email" required>
-                    <Input value={row.ApprEmail} onChange={(e) => updateRow(key, { ApprEmail: e.target.value })} placeholder="approver@emamigroup.com" />
-                  </Field>
-                  <Field label="Approval Rule">
-                    <Select
-                      value={row.ApprRule}
-                      onChange={(v) => updateRow(key, { ApprRule: v as 'O' | 'A' })}
-                      options={[{ value: 'O', label: 'O — any one approver' }, { value: 'A', label: 'A — all must approve' }]}
-                    />
-                  </Field>
-                  {!row._isNew && (row.ApprPernr || row.ApprName) && (
-                    <>
-                      <InfoField label="Resolved PERNR" value={row.ApprPernr} />
-                      <InfoField label="Resolved Name" value={row.ApprName} />
-                    </>
-                  )}
-                  <Field label="Valid From">
-                    <DateField label="Valid From" value={row.ValidFrom} onChange={(v) => updateRow(key, { ValidFrom: v })} />
-                  </Field>
-                  <Field label="Valid To">
-                    <DateField label="Valid To" value={row.ValidTo} onChange={(v) => updateRow(key, { ValidTo: v })} />
-                  </Field>
-                  <Checkbox checked={row.Active} onChange={(v) => updateRow(key, { Active: v })} label="Active" />
-                  {/* Only allowed for MBN rows - backend rejects Hod on other types ("HoD flag is
-                      only allowed for mobile non-sales rows"). */}
-                  {doaCtype === 'MBN' && (
-                    <Checkbox checked={!!row.Hod} onChange={(v) => updateRow(key, { Hod: v })} label="HoD" />
-                  )}
-                </div>
-
-                {rowError && (
-                  <div className="mt-2"><Banner type="error">{rowError}</Banner></div>
-                )}
-
-                <div className="mt-3 flex gap-2">
-                  <Button variant="primary" size="sm" loading={savingKey === key} onClick={() => handleSaveRow(row)}>
-                    {row._isNew ? 'Create' : 'Save'}
-                  </Button>
-                  <Button variant="danger" size="sm" icon={Trash2} onClick={() => { setDeactivateTarget(row); setDeactivateValidTo(todayIso()); }}>
-                    Remove
-                  </Button>
-                </div>
-              </div>
-            );
-          })}
-        </Card>
-      ))}
-
-      {kostl && (
-        <Button variant="secondary" icon={Plus} onClick={handleAddSlab} className="mb-3">
-          Add new slab
-        </Button>
+      {!loading && loaded && rows.length === 0 && (
+        <EmptyState title="No rows loaded" hint="Add a row below, or confirm these filters have data in SAP." />
       )}
 
-      <Modal
-        open={!!deactivateTarget}
-        title="Remove approver"
-        onClose={() => setDeactivateTarget(null)}
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setDeactivateTarget(null)}>Cancel</Button>
-            <Button variant="danger" loading={!!deactivateTarget && savingKey === rowKey(deactivateTarget)} onClick={handleConfirmDeactivate}>Confirm</Button>
-          </>
-        }
-      >
-        <p className="mb-3 text-sm text-inkSoft">
-          There's no real delete — this marks the row inactive with a Valid To date instead. Existing claims already submitted keep whatever chain they were built with; this only affects new claims going forward.
-        </p>
-        <Field label="Valid To">
-          <DateField label="Valid To" value={deactivateValidTo} onChange={setDeactivateValidTo} />
-        </Field>
-      </Modal>
+      {!loading && loaded && (
+        <>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex gap-2">
+              <Button variant="secondary" size="sm" icon={Plus} onClick={handleAddRow}>Add row</Button>
+            </div>
+            <div className="flex items-center gap-2">
+              {dirtyCount > 0 && <span className="text-xs font-semibold text-amber">{dirtyCount} unsaved change{dirtyCount === 1 ? '' : 's'}</span>}
+              <Button variant="secondary" size="sm" icon={X} onClick={handleDiscardAll} disabled={dirtyCount === 0}>Discard</Button>
+              <Button variant="primary" size="sm" icon={Save} loading={savingAll} onClick={handleSaveAll} disabled={dirtyCount === 0}>Save all</Button>
+            </div>
+          </div>
+
+          <div className="card overflow-x-auto !p-0">
+            <table className="w-full min-w-[1400px] border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-border bg-appBg text-left">
+                  <th className="p-2">Type</th>
+                  <th className="p-2">Cost Centre</th>
+                  <th className="p-2">Amt From</th>
+                  <th className="p-2">Seq</th>
+                  <th className="p-2">Amt To</th>
+                  <th className="p-2">Department</th>
+                  <th className="p-2">Approver Email</th>
+                  <th className="p-2">PERNR</th>
+                  <th className="p-2">Name</th>
+                  <th className="p-2">Rule</th>
+                  <th className="p-2">HoD</th>
+                  <th className="p-2">Active</th>
+                  <th className="p-2">Valid From</th>
+                  <th className="p-2">Valid To</th>
+                  <th className="p-2">Audit</th>
+                  <th className="p-2">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleRows.map((row) => {
+                  const isKeyLocked = !row._isNew;
+                  return (
+                    <tr key={row._cid} className={row._isNew || row._dirty ? 'bg-amberBg/40' : 'border-b border-line'}>
+                      <td className="p-1.5 align-top">
+                        {row._isNew ? (
+                          <Select value={row.DoaCtype} onChange={(v) => updateField(row._cid, { DoaCtype: v, Hod: v === 'MBN' ? row.Hod : false })} options={DOA_CTYPE_OPTIONS} className="!h-8 !py-1 text-xs" />
+                        ) : row.DoaCtype}
+                      </td>
+                      <td className="p-1.5 align-top">
+                        {row._isNew ? (
+                          <Input value={row.Kostl} onChange={(e) => updateField(row._cid, { Kostl: e.target.value.toUpperCase() })} className={cellInputClass} />
+                        ) : row.Kostl}
+                      </td>
+                      <td className="p-1.5 align-top">
+                        {row._isNew ? (
+                          <Input type="number" value={row.AmtFrom || ''} onChange={(e) => updateField(row._cid, { AmtFrom: parseFloat(e.target.value) || 0 })} className={cellInputClass} />
+                        ) : row.AmtFrom}
+                      </td>
+                      <td className="p-1.5 align-top">
+                        {row._isNew ? (
+                          <Input value={row.Seqno} onChange={(e) => updateField(row._cid, { Seqno: e.target.value.slice(0, 2) })} className={`${cellInputClass} !w-14`} />
+                        ) : row.Seqno}
+                      </td>
+                      <td className="p-1.5 align-top">
+                        <Input type="number" value={row.AmtTo || ''} onChange={(e) => updateField(row._cid, { AmtTo: parseFloat(e.target.value) || 0 })} placeholder="No cap" className={cellInputClass} />
+                      </td>
+                      <td className="p-1.5 align-top">
+                        <Input value={row.DeptTxt} onChange={(e) => updateField(row._cid, { DeptTxt: e.target.value })} className={cellInputClass} />
+                      </td>
+                      <td className="p-1.5 align-top">
+                        <Input value={row.ApprEmail} onChange={(e) => updateField(row._cid, { ApprEmail: e.target.value })} placeholder="approver@emamigroup.com" className={`${cellInputClass} min-w-[180px]`} />
+                      </td>
+                      <td className="p-1.5 align-top text-inkSoft">{row.ApprPernr || '—'}</td>
+                      <td className="p-1.5 align-top text-inkSoft">{row.ApprName || '—'}</td>
+                      <td className="p-1.5 align-top">
+                        <Select value={row.ApprRule} onChange={(v) => updateField(row._cid, { ApprRule: v as 'O' | 'A' })} options={[{ value: 'O', label: 'O' }, { value: 'A', label: 'A' }]} className="!h-8 !py-1 text-xs" />
+                      </td>
+                      <td className="p-1.5 align-top">
+                        {row.DoaCtype === 'MBN' ? (
+                          <Checkbox checked={!!row.Hod} onChange={(v) => updateField(row._cid, { Hod: v })} />
+                        ) : '—'}
+                      </td>
+                      <td className="p-1.5 align-top">
+                        <Checkbox checked={row.Active} onChange={() => handleToggleActive(row._cid)} />
+                      </td>
+                      <td className="p-1.5 align-top">
+                        <DateField label="Valid From" value={row.ValidFrom} onChange={(v) => updateField(row._cid, { ValidFrom: v })} className={cellInputClass} />
+                      </td>
+                      <td className="p-1.5 align-top">
+                        <DateField label="Valid To" value={row.ValidTo} onChange={(v) => updateField(row._cid, { ValidTo: v })} className={cellInputClass} />
+                      </td>
+                      <td className="p-1.5 align-top text-2xs text-inkFaint">
+                        {row.Aenam ? <>{row.Aenam}<br />{row.Aedat || ''}</> : '—'}
+                      </td>
+                      <td className="p-1.5 align-top">
+                        <div className="flex items-center gap-1">
+                          <button type="button" title="Copy row (parallel approver)" onClick={() => handleCopyRow(row)} className="rounded p-1 text-inkSoft hover:bg-appBg hover:text-ink">
+                            <Copy size={14} />
+                          </button>
+                          <button type="button" title={row.Active ? 'Deactivate' : 'Reactivate'} onClick={() => handleToggleActive(row._cid)} className="rounded px-1.5 py-0.5 text-2xs font-semibold text-inkSoft hover:bg-appBg hover:text-ink">
+                            {row.Active ? 'Deactivate' : 'Reactivate'}
+                          </button>
+                        </div>
+                        {row._saving && <p className="mt-1 text-2xs text-brand">Saving…</p>}
+                        {row._rowError && <p className="mt-1 max-w-[220px] text-2xs font-semibold text-red">{row._rowError}</p>}
+                        {isKeyLocked && <p className="mt-1 text-2xs text-inkFaint">Key fields locked</p>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </div>
   );
 }

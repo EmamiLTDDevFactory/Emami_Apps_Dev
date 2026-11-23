@@ -2,14 +2,14 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { FileText, Search, ShieldAlert, Sliders } from 'lucide-react';
+import { FileText, Search, Settings2, ShieldAlert } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useClaim } from '../../context/ClaimContext';
 import { ExpenseClaim } from '../../types';
 import { formatCurrency } from '../../utils/currency';
 import { displayClaimNumber } from '../../utils/claim-number';
 import { formatClaimDisplayDate } from '../../utils/claim-date';
-import { Banner, Button, Card, EmptyState, Field, Input, LoadingBlock, PageHeader } from '../../components/ui';
+import { Banner, Button, Card, CardTitle, EmptyState, Field, Input, LoadingBlock, PageHeader } from '../../components/ui';
 
 // Non-CTC Expense: per the DOA handover, only ClaimId/LoginId/Zview are filterable server-side
 // today - EmpId/EmpName/Status/CostCenter need a backend metadata change first. The other fields
@@ -61,17 +61,24 @@ export default function AdminPage() {
     <div>
       <PageHeader
         eyebrow="Admin"
-        title="Claim Search & Reject"
-        subtitle="Search any claim in the system and reject it while it's still open."
+        title="Admin"
+        subtitle="Claim search/reject and DOA chain maintenance."
         icon={ShieldAlert}
-        actions={
-          <Button variant="secondary" size="sm" icon={Sliders} onClick={() => router.push('/doa-chain/')}>
-            DOA Chain Maintenance
-          </Button>
-        }
       />
 
       <Card className="mb-3">
+        <CardTitle
+          icon={Settings2}
+          title="DOA Chain Maintenance"
+          hint="Maintain approval-chain slabs, approvers and HoD routing per cost centre."
+        />
+        <Button variant="secondary" onClick={() => router.push('/doa-chain/')}>
+          Open DOA Chain Maintenance
+        </Button>
+      </Card>
+
+      <Card className="mb-3">
+        <CardTitle icon={Search} title="Claim Search & Reject" hint="Search any claim in the system and reject it while it's still open." />
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <Field label="Claim ID" required>
             <Input

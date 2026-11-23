@@ -127,4 +127,10 @@ export interface DoaChainRow {
   // choosable HoD for non-sales mobile claims above the employee's eligibility cap.
   Hod?: boolean;
   Aenam?: string; // logged-in admin's PERNR - UI must send this on every POST/PUT
+  // Audit fields - all backend-filled, read-only. Do not send Ernam/Erdat/Erzet/Aedat/Aezet.
+  Ernam?: string;
+  Erdat?: string;
+  Erzet?: string;
+  Aedat?: string;
+  Aezet?: string;
 }
