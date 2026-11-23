@@ -1,28 +1,39 @@
 /*
-   SAP OData V2 client for Publicity Expenses (server only: the browser never calls SAP or sees credentials).
+   SAP OData V2 client for Publicity Expenses (server only: the browser never calls SAP, its URLs or credentials).
 
-   Services (registered on SAP dev EDS, client 900):
-     ZC_ATLBTL_EXP_SUMMARY_CDS  ZC_ATLBTL_EXP_SUMMARY(P_FiscalYear='2026',P_FiscalPeriod='007')/Set
-     ZC_ATLBTL_EXP_DETAIL_CDS   ZC_ATLBTL_EXP_DETAIL(P_FiscalYear='2026',P_FiscalPeriod='007')/Set  (+ $expand=to_NetSaleMaster)
+   Services: ZC_ATLBTL_EXP_SUMMARY_CDS / ZC_ATLBTL_EXP_DETAIL_CDS (@OData.publish CDS views with parameters
+   P_FiscalYear / P_FiscalPeriod). Two ways to reach them:
+
+   direct  (SAP Gateway URL, e.g. https://<host>:<port>/sap/opu/odata/sap/<SERVICE>):
+     GET <base>/<VIEW>(P_FiscalYear='2026',P_FiscalPeriod='007')/Set?$format=json&$filter=..&sap-client=..   (+ __next paging)
+   gateway (Emami Azure SAP gateway, base https://<gateway>/api/<SYS>/<SERVICE>, e.g. SYS = NGD):
+     the gateway forwards ONE path segment after the service and signs in to SAP itself, so the results are read as
+     GET <base>/<VIEW>(P_FiscalYear='2026',P_FiscalPeriod='007')?$expand=Set      (all rows of the period in one answer)
+     filters are applied here, and the SKUs of a drill-down line as
+     GET <base>/<entity of that line, from its __metadata.uri>?$expand=to_NetSaleMaster
+   Gateway mode is used when the base looks like .../api/<SYS>/<SERVICE> (or PUBEXP_SAP_MODE=gateway).
 
    Env (server .env, never committed):
-     PUBEXP_SAP_ODATA_ROOT      e.g. https://<host>:<port>/sap/opu/odata/sap   (both services below it)
-     PUBEXP_SAP_SUMMARY_BASE    full service root of the summary service (overrides ROOT for it, e.g. an Azure gateway URL)
-     PUBEXP_SAP_DETAIL_BASE     full service root of the detail service
-     PUBEXP_SAP_CLIENT          sap-client, default 900
-     PUBEXP_SAP_USER / PUBEXP_SAP_PASSWORD   service user, Basic auth (falls back to SAP_USER / SAP_PASSWORD; none = no header,
-                                for a gateway that signs in itself)
-     PUBEXP_SAP_TIMEOUT_MS      default 90000
-   Read-only: only GET requests, so no CSRF token is needed.
+     PUBEXP_SAP_SUMMARY_BASE / PUBEXP_SAP_DETAIL_BASE   service roots (or PUBEXP_SAP_ODATA_ROOT for both, direct mode)
+     PUBEXP_SAP_MODE           direct | gateway (default: from the URL)
+     PUBEXP_SAP_CLIENT         sap-client, direct mode only (default 900)
+     PUBEXP_SAP_USER / PUBEXP_SAP_PASSWORD   Basic auth, direct mode only (falls back to SAP_USER / SAP_PASSWORD)
+     PUBEXP_SAP_SYSTEM         label shown in the app (default: <SYS> from a gateway URL)
+     PUBEXP_SAP_TIMEOUT_MS     default 90000
+   Read-only: GET only, no CSRF token.
 */
 const env = (...names) => { for (const n of names) { const v = (process.env[n] || '').trim(); if (v) return v; } return ''; };
 const strip = (s) => s.replace(/\/+$/, '');
+const GATEWAY_RE = /\/api\/[A-Z0-9]{3}\/[^/]+$/i;
 
 function config() {
     const root = strip(env('PUBEXP_SAP_ODATA_ROOT'));
+    const summaryBase = strip(env('PUBEXP_SAP_SUMMARY_BASE')) || (root ? `${root}/ZC_ATLBTL_EXP_SUMMARY_CDS` : '');
+    const detailBase = strip(env('PUBEXP_SAP_DETAIL_BASE')) || (root ? `${root}/ZC_ATLBTL_EXP_DETAIL_CDS` : '');
+    const forced = env('PUBEXP_SAP_MODE').toLowerCase();
     return {
-        summaryBase: strip(env('PUBEXP_SAP_SUMMARY_BASE')) || (root ? `${root}/ZC_ATLBTL_EXP_SUMMARY_CDS` : ''),
-        detailBase: strip(env('PUBEXP_SAP_DETAIL_BASE')) || (root ? `${root}/ZC_ATLBTL_EXP_DETAIL_CDS` : ''),
+        summaryBase, detailBase,
+        gateway: forced ? forced === 'gateway' : GATEWAY_RE.test(summaryBase),
         client: env('PUBEXP_SAP_CLIENT') || '900',
         user: env('PUBEXP_SAP_USER', 'SAP_USER'),
         password: env('PUBEXP_SAP_PASSWORD', 'SAP_PASSWORD'),
@@ -35,6 +46,7 @@ class SapError extends Error {
 }
 
 const isConfigured = () => { const c = config(); return !!(c.summaryBase && c.detailBase); };
+const isGateway = () => config().gateway;
 
 /** OData string literal: single quotes doubled. */
 const lit = (v) => `'${String(v).replace(/'/g, "''")}'`;
@@ -52,8 +64,17 @@ function filterOf(where) {
     return parts.join(' and ');
 }
 
+/** The same filter, in memory (gateway mode). */
+function matches(row, where) {
+    return Object.entries(where || {}).every(([k, v]) => {
+        const list = (Array.isArray(v) ? v : [v]).filter((x) => x !== undefined && x !== null && x !== '');
+        return !list.length || list.includes(row[k]);
+    });
+}
+
+const paramsKey = (fy, period) => `P_FiscalYear=${lit(fy)},P_FiscalPeriod=${lit(String(period).padStart(3, '0'))}`;
 function entityPath(view, fy, period) {
-    return `${view}(P_FiscalYear=${lit(fy)},P_FiscalPeriod=${lit(String(period).padStart(3, '0'))})/Set`;
+    return `${view}(${paramsKey(fy, period)})/Set`;
 }
 
 function buildUrl(base, path, { filter, expand, select } = {}) {
@@ -67,8 +88,8 @@ function buildUrl(base, path, { filter, expand, select } = {}) {
 }
 
 function authHeaders() {
-    const { user, password } = config();
-    return user ? { Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}` } : {};
+    const { user, password, gateway } = config();
+    return user && !gateway ? { Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}` } : {};
 }
 
 async function errorText(res) {
@@ -80,22 +101,27 @@ async function errorText(res) {
     return res.statusText || `HTTP ${res.status}`;
 }
 
-/** GET all rows of an entity set, following server-side paging (__next). */
-async function getAll(url) {
+async function getJson(url) {
     const { timeout } = config();
+    let res;
+    try {
+        res = await fetch(url, { headers: { Accept: 'application/json', ...authHeaders() }, cache: 'no-store', signal: AbortSignal.timeout(timeout) });
+    } catch (e) {
+        throw new SapError(e.name === 'TimeoutError' ? 'SAP did not answer in time.' : 'SAP is not reachable.');
+    }
+    if (res.status === 401 || res.status === 403) throw new SapError(`SAP refused the request (${res.status}): ${await errorText(res)}`);
+    if (!res.ok) throw new SapError(`SAP error: ${await errorText(res)}`);
+    const body = await res.json().catch(() => null);
+    if (!body) throw new SapError('SAP answered with something that is not JSON.');
+    return body;
+}
+
+/** GET all rows of an entity set, following server-side paging (__next). Direct mode. */
+async function getAll(url) {
     const rows = [];
     let next = url;
     for (let page = 0; next && page < 200; page++) {
-        let res;
-        try {
-            res = await fetch(next, { headers: { Accept: 'application/json', ...authHeaders() }, cache: 'no-store', signal: AbortSignal.timeout(timeout) });
-        } catch (e) {
-            throw new SapError(e.name === 'TimeoutError' ? 'SAP did not answer in time.' : 'SAP is not reachable.');
-        }
-        if (res.status === 401 || res.status === 403) throw new SapError('SAP refused the service user (check PUBEXP_SAP_USER / its roles).');
-        if (!res.ok) throw new SapError(`SAP error: ${await errorText(res)}`);
-        const body = await res.json().catch(() => null);
-        const d = body?.d;
+        const d = (await getJson(next))?.d;
         const list = Array.isArray(d?.results) ? d.results : Array.isArray(d) ? d : [];
         rows.push(...list);
         next = typeof d?.__next === 'string' ? d.__next : null;
@@ -103,16 +129,28 @@ async function getAll(url) {
     return rows;
 }
 
+/** All result rows of a period through the gateway: the parameters entity with its Set expanded. */
+async function getViaGateway(base, view, fy, period) {
+    const d = (await getJson(`${base}/${view}(${paramsKey(fy, period)})?$expand=Set`))?.d;
+    return Array.isArray(d?.Set?.results) ? d.Set.results : [];
+}
+
 const AMOUNTS = ['CYYTDAmount', 'PYYTDAmount', 'CYPeriodAmount', 'PYPeriodAmount', 'CYvsPYVariance', 'OBAnnualAmount', 'RBAnnualAmount', 'OBYTDAmount', 'RBYTDAmount', 'CYvsRBYTDDeviation'];
 
-/** Drop OData metadata / deferred links, amounts to numbers, strings trimmed. */
-function clean(row) {
+/**
+ * Drop OData metadata / deferred links, amounts to numbers, strings trimmed. With keepEntity the row keeps the last
+ * segment of its own __metadata.uri as `_entity` (to read its SKUs later through the gateway); it is never sent to the browser.
+ */
+function clean(row, { keepEntity = false } = {}) {
     const out = {};
     for (const [k, v] of Object.entries(row || {})) {
-        if (k === '__metadata') continue;
+        if (k === '__metadata') {
+            if (keepEntity && typeof v?.uri === 'string') { const seg = v.uri.split('?')[0].split('/').pop(); if (seg) out._entity = seg; }
+            continue;
+        }
         if (v && typeof v === 'object') {
             if (v.__deferred) continue;
-            if (Array.isArray(v.results)) { out[k] = v.results.map(clean); continue; }
+            if (Array.isArray(v.results)) { out[k] = v.results.map((x) => clean(x)); continue; }
             out[k] = clean(v);
             continue;
         }
@@ -122,27 +160,58 @@ function clean(row) {
     return out;
 }
 
+function requireBase(which) {
+    const c = config();
+    const base = which === 'summary' ? c.summaryBase : c.detailBase;
+    if (!base) throw new SapError('The SAP connection is not configured on the server (PUBEXP_SAP_SUMMARY_BASE / PUBEXP_SAP_DETAIL_BASE).', 503);
+    return { base, gateway: c.gateway };
+}
+
 async function fetchSummary(fy, period, where) {
-    const { summaryBase } = config();
-    if (!summaryBase) throw new SapError('The SAP connection is not configured on the server (PUBEXP_SAP_ODATA_ROOT).', 503);
-    const rows = await getAll(buildUrl(summaryBase, entityPath('ZC_ATLBTL_EXP_SUMMARY', fy, period), { filter: filterOf(where) }));
-    return rows.map(clean);
+    const { base, gateway } = requireBase('summary');
+    if (gateway) return (await getViaGateway(base, 'ZC_ATLBTL_EXP_SUMMARY', fy, period)).map((r) => clean(r)).filter((r) => matches(r, where));
+    return (await getAll(buildUrl(base, entityPath('ZC_ATLBTL_EXP_SUMMARY', fy, period), { filter: filterOf(where) }))).map((r) => clean(r));
 }
 
+/** Detail rows. Gateway mode: the whole period (filtered here); SKUs are added by expandSkus() for the lines shown. */
 async function fetchDetail(fy, period, where, { expand = false } = {}) {
-    const { detailBase } = config();
-    if (!detailBase) throw new SapError('The SAP connection is not configured on the server (PUBEXP_SAP_ODATA_ROOT).', 503);
-    const rows = await getAll(buildUrl(detailBase, entityPath('ZC_ATLBTL_EXP_DETAIL', fy, period), { filter: filterOf(where), expand: expand ? 'to_NetSaleMaster' : '' }));
-    return rows.map(clean);
+    const { base, gateway } = requireBase('detail');
+    if (gateway) {
+        const rows = (await getViaGateway(base, 'ZC_ATLBTL_EXP_DETAIL', fy, period)).map((r) => clean(r, { keepEntity: true })).filter((r) => matches(r, where));
+        return expand ? expandSkus(rows) : rows;
+    }
+    return (await getAll(buildUrl(base, entityPath('ZC_ATLBTL_EXP_DETAIL', fy, period), { filter: filterOf(where), expand: expand ? 'to_NetSaleMaster' : '' }))).map((r) => clean(r));
 }
 
-/** SAP system label for the header ("EDS 900"), from env or the gateway URL .../api/<SYS>/... */
+/** Gateway mode: read the SKUs (to_NetSaleMaster) of each line through its own entity, 4 at a time, at most 80 lines. */
+async function expandSkus(rows) {
+    const { base } = requireBase('detail');
+    const out = rows.map((r) => ({ ...r }));
+    let i = 0;
+    const work = out.slice(0, 80);
+    await Promise.all(Array.from({ length: Math.min(4, work.length) }, async () => {
+        while (i < work.length) {
+            const r = work[i++];
+            if (!r._entity || !/^[A-Za-z0-9_]+\(.*\)$/.test(r._entity)) continue;
+            try {
+                const d = (await getJson(`${base}/${r._entity}?$expand=to_NetSaleMaster`))?.d;
+                r.to_NetSaleMaster = Array.isArray(d?.to_NetSaleMaster?.results) ? d.to_NetSaleMaster.results.map((x) => clean(x)) : [];
+            } catch { r.to_NetSaleMaster = []; }
+        }
+    }));
+    return out;
+}
+
+/** Remove internal fields before rows leave the server. */
+const publicRow = ({ _entity, ...rest }) => rest; // eslint-disable-line no-unused-vars
+
+/** SAP system label for the app ("NGD", "EDS 900"), from env or the gateway URL .../api/<SYS>/... */
 function systemLabel() {
     const c = config();
     const explicit = env('PUBEXP_SAP_SYSTEM');
     const m = /\/api\/([A-Z0-9]{3})\//i.exec(`${c.summaryBase}/`);
     const sys = explicit || (m ? m[1] : '');
-    return [sys.toUpperCase(), c.client].filter(Boolean).join(' ');
+    return [sys.toUpperCase(), c.gateway ? '' : c.client].filter(Boolean).join(' ') + (c.gateway ? ' via Azure gateway' : '');
 }
 
-module.exports = { fetchSummary, fetchDetail, isConfigured, systemLabel, SapError, filterOf, entityPath, buildUrl, clean, AMOUNTS };
+module.exports = { fetchSummary, fetchDetail, expandSkus, isConfigured, isGateway, systemLabel, SapError, filterOf, entityPath, buildUrl, clean, publicRow, matches, AMOUNTS };

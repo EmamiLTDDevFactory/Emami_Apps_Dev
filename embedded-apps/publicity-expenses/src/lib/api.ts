@@ -5,7 +5,10 @@
  * /dev-api (same split as the sibling apps). NEXT_PUBLIC_PUBEXP_API_URL overrides the base (local development).
  */
 import { getHubToken } from './hub';
-import type { AppConfig, Breakdown, DetailRow, Meta, SummaryRow, TrendMonth } from './types';
+import type {
+  AppConfig, AuditEntry, Breakdown, BudgetLine, BudgetStatus, Candidate, DetailRow, Impact, MappingInfo, Mapping, Me, Meta, Rule, RuleWithImpact,
+  SummaryRow, TemplateLine, TrendMonth, UploadResult, UploadRow, ExclusionMeta, Dimension,
+} from './types';
 
 const API_HOST = 'https://audit-capa-api.emamiapps.in';
 
@@ -23,29 +26,54 @@ export class ApiError extends Error {
   }
 }
 
-async function get<T>(path: string, params: Record<string, string | number | undefined> = {}): Promise<T> {
+async function call<T>(method: string, path: string, params: Record<string, string | number | undefined> = {}, body?: unknown): Promise<T> {
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') q.set(k, String(v));
   let res: Response;
   try {
-    res = await fetch(`${apiBase()}${path}${q.toString() ? `?${q}` : ''}`, { headers: { Authorization: `Bearer ${getHubToken()}` }, cache: 'no-store' });
+    res = await fetch(`${apiBase()}${path}${q.toString() ? `?${q}` : ''}`, {
+      method,
+      headers: { Authorization: `Bearer ${getHubToken()}`, ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      cache: 'no-store',
+    });
   } catch {
     throw new ApiError('Could not reach the Emami Apps server. Check your connection and try again.', 0);
   }
-  const body = await res.json().catch(() => null);
-  if (!res.ok || !body || body.success === false) {
-    throw new ApiError(body?.error || `The server answered ${res.status}.`, res.status);
+  const answer = await res.json().catch(() => null);
+  if (!res.ok || !answer || answer.success === false) {
+    throw new ApiError(answer?.error || `The server answered ${res.status}.`, res.status);
   }
-  return body as T;
+  return answer as T;
 }
+const get = <T>(path: string, params: Record<string, string | number | undefined> = {}) => call<T>('GET', path, params);
 
-export interface Period { fy: string; period: number; company?: string; refresh?: boolean }
-const qp = (p: Period) => ({ fy: p.fy, period: p.period, company: p.company, refresh: p.refresh ? 1 : undefined });
+export interface Period { fy: string; period: number; company?: string; refresh?: boolean; excl?: boolean; /** settings revision: changes after a save so screens refetch */ rev?: number }
+const qp = (p: Period) => ({ fy: p.fy, period: p.period, company: p.company, refresh: p.refresh ? 1 : undefined, exclusions: p.excl === false ? 'off' : undefined });
+export type RuleInput = Omit<Rule, 'id' | 'createdBy' | 'createdAt' | 'updatedBy' | 'updatedAt'>;
 
 export const api = {
+  me: () => get<Me>('/me'),
   config: () => get<{ config: AppConfig }>('/config').then((b) => b.config),
   summary: (p: Period) => get<{ rows: SummaryRow[]; meta: Meta }>('/summary', qp(p)),
-  detail: (p: Period, cell: { key: string; gl?: string; site?: string }) => get<{ rows: DetailRow[]; meta: Meta }>('/detail', { ...qp(p), ...cell }),
+  detail: (p: Period, cell: { key: string; gl?: string; site?: string }) => get<{ rows: DetailRow[]; excluded: DetailRow[]; meta: Meta }>('/detail', { ...qp(p), ...cell }),
   trend: (p: Period) => get<{ months: TrendMonth[]; meta: Meta }>('/trend', qp(p)),
   breakdown: (p: Period) => get<Breakdown>('/breakdown', qp(p)),
+  // Admin
+  rules: (p: Period) => get<{ rules: RuleWithImpact[]; total: ExclusionMeta; reportTotal: number; dimensions: Dimension[] }>('/exclusions', qp(p)),
+  candidates: (p: Period, dimension: string) => get<{ values: Candidate[] }>('/exclusions/candidates', { ...qp(p), dimension }).then((b) => b.values),
+  previewRule: (p: Period, rule: Pick<RuleInput, 'dimension' | 'values' | 'pattern'>) => call<{ impact: Impact }>('POST', '/exclusions/preview', {}, { fy: p.fy, period: p.period, company: p.company, rule }).then((b) => b.impact),
+  createRule: (r: RuleInput) => call<{ rule: Rule }>('POST', '/exclusions', {}, r).then((b) => b.rule),
+  updateRule: (id: number, r: RuleInput) => call<{ rule: Rule }>('PUT', `/exclusions/${id}`, {}, r).then((b) => b.rule),
+  deleteRule: (id: number) => call<{ rule: Rule }>('DELETE', `/exclusions/${id}`),
+  bulkRules: (rows: unknown[], dryRun: boolean, fileName: string) => call<{ errors: { row: number; message: string }[]; valid: number; created: Rule[] }>('POST', '/exclusions/bulk', {}, { rows, dryRun, fileName }),
+  budget: (fy: string) => get<BudgetStatus>('/budget', { fy }),
+  budgetTemplate: (p: Period, kind: 'OB' | 'RB') => get<{ lines: TemplateLine[] }>('/budget/template', { ...qp(p), kind }).then((b) => b.lines),
+  uploadBudget: (body: { fy: number; kind: 'OB' | 'RB'; unit: string; rows: UploadRow[]; fileName: string; note: string; dryRun: boolean }) => call<UploadResult>('POST', '/budget/upload', {}, body),
+  budgetLines: (id: number) => get<{ lines: BudgetLine[] }>(`/budget/versions/${id}/lines`).then((b) => b.lines),
+  activateBudget: (id: number) => call('POST', `/budget/versions/${id}/activate`, {}, {}),
+  deactivateBudget: (fy: number, kind: 'OB' | 'RB') => call('POST', '/budget/deactivate', {}, { fy, kind }),
+  mapping: (p: Period) => get<MappingInfo>('/settings/mapping', qp(p)),
+  saveMapping: (mapping: Mapping) => call('PUT', '/settings/mapping', {}, { mapping }),
+  audit: () => get<{ entries: AuditEntry[] }>('/audit').then((b) => b.entries),
 };

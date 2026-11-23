@@ -30,10 +30,13 @@ export const lineOf = (r: SummaryRow) => r.MISHeading || r.Product || r.ProductG
 
 // ---------------------------------------------------------------- filters
 
+/** Rows with actual postings (not the budget-only rows of an uploaded OB / RB). */
+export const actuals = (rows: SummaryRow[]) => rows.filter((r) => !r.IsBudget);
+
 export function applyFilters(rows: SummaryRow[], f: Filters): SummaryRow[] {
   const site = new Set(f.site); const groups = new Set(f.groups); const cats = new Set(f.categories); const brands = new Set(f.brands);
   return rows.filter((r) =>
-    (!site.size || site.has(r.Site)) && (!groups.size || groups.has(r.HeaderGroup))
+    (!site.size || site.has(r.Site) || (r.IsBudget && !r.Site)) && (!groups.size || groups.has(r.HeaderGroup))
     && (!cats.size || cats.has(categoryOf(r))) && (!brands.size || brands.has(rangeOf(r))));
 }
 
@@ -52,6 +55,7 @@ export function groupColumns(rows: SummaryRow[], config: AppConfig): GroupCol[] 
       g = { id: r.HeaderGroup, label: r.HeaderLabel, cls: r.SpendClass, mis: false, gls: [], seq: 100 + (r.ReportHeaderSequence || 0) };
       extra.set(r.HeaderGroup, g);
     }
+    if (r.IsBudget || !r.GLAccount) continue; // budget-only rows have no G/L
     const m = glSeen.get(g.id) ?? new Map<string, string>();
     if (!m.has(r.GLAccount)) m.set(r.GLAccount, r.GLAccountName);
     glSeen.set(g.id, m);
@@ -82,6 +86,7 @@ function addRow(n: Node, r: SummaryRow) {
   const m = n.byGroup.get(r.HeaderGroup) ?? zero();
   add(m, r);
   n.byGroup.set(r.HeaderGroup, m);
+  if (r.IsBudget || !r.GLAccount) { if (r.VisibleInMIS && r.VisibleInMIS !== 'N') n.visibleInMIS = true; return; }
   const k = `${r.HeaderGroup}|${r.GLAccount}`;
   const g = n.byGl.get(k) ?? { ho: 0, un: 0 };
   if (r.Site === 'UN') g.un += r.CYYTDAmount; else g.ho += r.CYYTDAmount;

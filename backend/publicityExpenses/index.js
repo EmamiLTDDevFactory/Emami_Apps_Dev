@@ -1,18 +1,32 @@
 /*
    Publicity Expenses (embedded-apps/publicity-expenses): ATL / BTL advertisement expenses MIS on the SAP CDS views
    ZC_ATLBTL_EXP_SUMMARY / ZC_ATLBTL_EXP_DETAIL. Mounted at /api/me/publicity-expenses (rides the existing nginx /api/me
-   rule). Read-only.
+   rule). SAP is only read.
 
-     GET /health                                    { ok, source, budget, system }
-     GET /config                                    header groups, spend classes, totals, non-brand groups
-     GET /summary   ?fy=2026&period=7[&company=1000]  summary rows + HeaderGroup / SpendClass / Medium, mock budget
-     GET /detail    ?fy&period&company&gl&key&site   cost-centre rows of one report cell, SKUs in to_NetSaleMaster
-     GET /trend     ?fy&period[&company]              CY / PY amount of each period 1..period, by header group
-     GET /breakdown ?fy&period[&company]              detail rows totalled by site, profit centre, cost-centre type,
-                                                     mapping rule, top cost centres + reconciliation to the summary
-   Every call needs a hub session (Bearer JWT) and a Publicity Expenses grant in Manage Access.
-   Data source: SAP when PUBEXP_SAP_ODATA_ROOT (or both service bases) is set, else mock; PUBEXP_SOURCE=mock|sap forces it.
-   Answers are cached in memory for 10 minutes per query (?refresh=1 skips the cache). Logs: user, route, rows, ms.
+   Everyone with the app (Manage Access role User or Admin):
+     GET  /me                                  { email, role, admin }
+     GET  /config                              header groups (overrides applied), classes, media buckets, dimensions
+     GET  /summary   ?fy&period[&company][&exclusions=off]   summary rows (exclusions + budget applied) + meta
+     GET  /detail    ?fy&period&key[&gl][&site][&company][&exclusions=off]   one report cell: cost centres + SKUs
+     GET  /trend     ?fy&period[&company][&exclusions=off]   CY / PY per period 1..period, by header group
+     GET  /breakdown ?fy&period[&company][&exclusions=off]   detail totals by site, profit centre, type, rule, cost centre
+   Admin only (role Admin):
+     GET    /exclusions ?fy&period                   rules + what each removes in the selected period
+     GET    /exclusions/candidates ?dimension&fy&period[&company]   values found in the CDS results, with names and amounts
+     POST   /exclusions/preview                       impact of a rule before saving
+     POST   /exclusions  PUT /exclusions/:id  DELETE /exclusions/:id
+     POST   /exclusions/bulk                          Excel upload of rules ({ rows, dryRun })
+     GET    /budget ?fy                               source, active OB / RB versions, version history
+     GET    /budget/template ?fy&kind&period          lines to prefill the Excel template
+     POST   /budget/upload                            { fy, kind, unit, rows, fileName, note, dryRun }
+     GET    /budget/versions/:id/lines                lines of one version (download)
+     POST   /budget/versions/:id/activate             make an earlier version active again (rollback)
+     POST   /budget/deactivate                        { fy, kind }: no active upload -> back to the default source
+     GET    /settings/mapping ?fy&period  PUT /settings/mapping
+     GET    /audit
+   Exclusions apply to every screen and every user (the meta says what was excluded); ?exclusions=off shows the report
+   without them, for checking. Raw SAP answers are cached 10 minutes per query (?refresh=1 skips the cache); rules,
+   budget and mapping are read on every request, so a change shows at once.
 */
 const express = require('express');
 const jwt = require('jsonwebtoken');
@@ -20,8 +34,10 @@ const { pool } = require('../db');
 const { JWT_SECRET } = require('../sessionAuth');
 const sap = require('./sap');
 const mock = require('./mock');
-const { headerGroup, medium, publicConfig, isUnmapped } = require('./config');
-const { applyMockBudget, budgetSource } = require('./budget');
+const { headerGroup, medium, publicConfig, isUnmapped, validateMapping } = require('./config');
+const { applyMockBudget, envBudgetSource, validateUpload, applyUploadedBudget } = require('./budget');
+const R = require('./rules');
+const { getStore } = require('./store');
 
 const APP_ID = 'publicity-expenses';
 const TTL = 10 * 60 * 1000;
@@ -56,6 +72,7 @@ async function requireUser(req, res, next) {
             return res.status(403).json({ success: false, error: 'You do not have access to Publicity Expenses. Ask an Emami Apps admin for it in Admin Center.' });
         }
         req.email = email;
+        req.role = grant.rows[0].role === 'Admin' ? 'Admin' : 'User';
         next();
     } catch (e) {
         console.error('[publicity-expenses] access check', e.message);
@@ -63,9 +80,15 @@ async function requireUser(req, res, next) {
     }
 }
 
+function requireAdmin(req, res, next) {
+    if (req.role !== 'Admin') return res.status(403).json({ success: false, error: 'Only a Publicity Expenses admin can change settings (Manage Access role Admin).' });
+    next();
+}
+
 // ---------------------------------------------------------------- input
 
 class BadInput extends Error { constructor(m) { super(m); this.status = 400; } }
+const KEY_RE = /^[A-Za-z0-9 _\-/&.()]{1,30}$/;
 
 function params(q, { cell = false } = {}) {
     const fy = String(q.fy || '');
@@ -74,20 +97,20 @@ function params(q, { cell = false } = {}) {
     if (!Number.isInteger(period) || period < 1 || period > 12) throw new BadInput('Period must be 1 to 12.');
     const company = String(q.company || '').trim().toUpperCase();
     if (company && !/^[A-Z0-9]{4}$/.test(company)) throw new BadInput('Company code must be 4 letters or digits.');
-    const out = { fy, period, company, refresh: q.refresh === '1' };
+    const out = { fy, period, company, refresh: q.refresh === '1', exclusions: q.exclusions !== 'off' };
     if (cell) {
         const gl = String(q.gl || '').trim();
         const key = String(q.key || '').trim();
         const site = String(q.site || '').trim().toUpperCase();
         if (gl && !/^\d{1,10}$/.test(gl)) throw new BadInput('G/L account must be digits.');
-        if (!/^[A-Za-z0-9 _\-/&.()]{1,30}$/.test(key)) throw new BadInput('Reporting key is missing or not valid.');
+        if (!KEY_RE.test(key)) throw new BadInput('Reporting key is missing or not valid.');
         if (site && site !== 'HO' && site !== 'UN') throw new BadInput('Site must be HO or UN.');
         Object.assign(out, { gl: gl ? gl.padStart(10, '0') : '', key, site });
     }
     return out;
 }
 
-// ---------------------------------------------------------------- data
+// ---------------------------------------------------------------- raw SAP / mock data (cached)
 
 const cache = new Map();
 function cached(key, refresh, load) {
@@ -96,42 +119,100 @@ function cached(key, refresh, load) {
     const promise = load();
     cache.set(key, { at: Date.now(), promise });
     promise.catch(() => cache.delete(key));
-    if (cache.size > 80) cache.delete(cache.keys().next().value);
+    if (cache.size > 120) cache.delete(cache.keys().next().value);
     return promise;
 }
 
-/** Report header group, spend class and media bucket on each row. */
-function enrich(rows) {
-    for (const r of rows) {
-        const g = headerGroup(r.ReportHeader);
-        r.HeaderGroup = g.id;
-        r.HeaderLabel = g.label;
-        r.SpendClass = g.cls;
-        r.InMIS = g.mis;
-        r.Medium = medium(r.GLAccount, r.GLAccountName, g);
-        r.Unmapped = isUnmapped(r.ProductGroup);
-    }
-    return rows;
-}
-
-function summaryRows({ fy, period, company, refresh }) {
+function rawSummary({ fy, period, company, refresh }) {
     const src = source();
     return cached(`s|${src}|${fy}|${period}|${company}`, refresh, async () => {
         const where = company ? { CompanyCode: company } : {};
-        const rows = enrich(src === 'sap' ? await sap.fetchSummary(fy, period, where) : mock.summary(fy, period, where));
-        if (budgetSource() === 'mock') applyMockBudget(rows, fy, period);
-        return rows;
+        return src === 'sap' ? sap.fetchSummary(fy, period, where) : mock.summary(fy, period, where);
     });
 }
 
-function detailRows({ fy, period, company, refresh }, where = {}, opts = {}) {
+function rawDetail({ fy, period, company, refresh }, where = {}, opts = {}) {
     const src = source();
     const w = { ...(company ? { CompanyCode: company } : {}), ...where };
+    if (src === 'sap' && sap.isGateway() && Object.keys(where).length) {
+        // Gateway: one read of the whole period (cached), filtered here; SKUs only for the lines of this cell.
+        return cached(`d|${src}|${fy}|${period}|${JSON.stringify(w)}|${opts.expand ? 1 : 0}`, refresh, async () => {
+            const all = await rawDetail({ fy, period, company, refresh }, {}, {});
+            const rows = all.filter((r) => sap.matches(r, w));
+            return opts.expand ? sap.expandSkus(rows) : rows;
+        });
+    }
     return cached(`d|${src}|${fy}|${period}|${JSON.stringify(w)}|${opts.expand ? 1 : 0}`, refresh, async () =>
-        enrich(src === 'sap' ? await sap.fetchDetail(fy, period, w, opts) : mock.detail(fy, period, w, opts)));
+        (src === 'sap' ? sap.fetchDetail(fy, period, w, opts) : mock.detail(fy, period, w, opts)));
+}
+
+// ---------------------------------------------------------------- settings in force
+
+const store = () => getStore();
+/*
+   The report never fails because the settings store does (e.g. the database refuses CREATE SCHEMA): reads fall back to
+   no rules / default mapping / default budget and say so in the log; admin saves still report the error.
+*/
+let storeWarned = 0;
+async function safe(what, fn, fallback) {
+    try { return await fn(); } catch (e) {
+        if (Date.now() - storeWarned > 60_000) { console.error(`[publicity-expenses] settings store unavailable (${what}):`, e.message); storeWarned = Date.now(); }
+        return fallback;
+    }
+}
+async function mappingNow() { return (await safe('mapping', () => store().settings.get('mapping'), null)) || { groups: {}, aliases: {}, glMedia: {} }; }
+async function rulesNow() { return safe('rules', () => store().rules.list(), []); }
+const activeBudget = (fy) => safe('budget', () => store().budget.active(Number(fy)), {});
+
+/** Copies of the rows with header group, spend class, media bucket, unmapped flag. */
+function enrich(rows, mapping) {
+    return rows.map((src) => {
+        const r = { ...src };
+        const g = headerGroup(r.ReportHeader, mapping);
+        r.HeaderGroup = g.id; r.HeaderLabel = g.label; r.SpendClass = g.cls; r.InMIS = g.mis;
+        r.Medium = medium(r.GLAccount, r.GLAccountName, g, mapping);
+        r.Unmapped = isUnmapped(r.ProductGroup);
+        return r;
+    });
 }
 
 const r2 = (x) => Math.round(x * 100) / 100;
+
+/**
+ * The report rows of one period: SAP rows, exclusions (rules in force at asOf, default the period itself), budget.
+ * Returns { rows, excluded, rules (in force), budget: { source, versions } }.
+ */
+async function reportRows(p, { asOf, mapping, rules, budget = true } = {}) {
+    mapping = mapping || await mappingNow();
+    const rows0 = enrich(await rawSummary(p), mapping);
+    let rows = rows0; let excluded = null; let inForce = [];
+    if (p.exclusions) {
+        const all = rules || await rulesNow();
+        inForce = R.activeRules(all, asOf?.fy ?? p.fy, asOf?.period ?? p.period);
+        if (inForce.length) {
+            const detail = inForce.some((r) => r.level === 'detail') ? await rawDetail(p) : null;
+            const out = R.applyToSummary(rows0, inForce, detail);
+            rows = out.rows; excluded = out.excluded;
+        }
+    }
+    let b = { source: envBudgetSource(), versions: {} };
+    if (budget) {
+        const active = await activeBudget(p.fy);
+        if (Object.keys(active).length) {
+            rows = applyUploadedBudget(rows, active, p.period, mapping);
+            b = { source: 'upload', versions: Object.fromEntries(Object.entries(active).map(([k, v]) => [k, { id: v.version.id, version: v.version.version, uploadedBy: v.version.uploadedBy, uploadedAt: v.version.uploadedAt, total: v.version.total }])) };
+        } else if (b.source === 'mock') applyMockBudget(rows, p.fy, p.period);
+    }
+    return { rows, excluded, rules: inForce, budget: b, mapping, rawCount: rows0.length };
+}
+
+function exclusionMeta(excluded, inForce) {
+    if (!inForce.length) return { rules: 0, cy: 0, py: 0, lines: 0, byRule: [] };
+    return {
+        rules: inForce.length, cy: excluded?.cy ?? 0, py: excluded?.py ?? 0, cyP: excluded?.cyP ?? 0, lines: excluded?.lines ?? 0,
+        byRule: inForce.map((r) => ({ id: r.id, dimension: r.dimension, reason: r.reason, ...(excluded?.byRule?.[r.id] ?? { cy: 0, py: 0, lines: 0 }) })),
+    };
+}
 
 function totalBy(rows, keyOf, extra) {
     const m = new Map();
@@ -169,29 +250,40 @@ const handle = (name, fn) => async (req, res) => {
         res.status(status).json({ success: false, error: status === 500 ? 'Something went wrong while reading the expenses.' : e.message });
     }
 };
+const audit = (req, action, detail) => store().audit.add(req.email, action, detail);
 
-const meta = (p) => ({ source: source(), budget: budgetSource(), system: source() === 'sap' ? sap.systemLabel() : 'Mock data', fy: p.fy, period: p.period, company: p.company, fetchedAt: new Date().toISOString() });
+const meta = (p, extra = {}) => ({ source: source(), system: source() === 'sap' ? sap.systemLabel() : 'Mock data', fy: p.fy, period: p.period, company: p.company, exclusionsOn: p.exclusions, fetchedAt: new Date().toISOString(), ...extra });
 
-router.get('/health', handle('health', async () => ({ ok: true, source: source(), budget: budgetSource(), system: source() === 'sap' ? sap.systemLabel() : 'Mock data' })));
-
-router.get('/config', handle('config', async () => ({ config: publicConfig() })));
+router.get('/health', handle('health', async () => ({ ok: true, source: source(), budget: envBudgetSource(), system: source() === 'sap' ? sap.systemLabel() : 'Mock data' })));
+router.get('/me', handle('me', async (req) => ({ email: req.email, role: req.role, admin: req.role === 'Admin' })));
+router.get('/config', handle('config', async () => ({ config: { ...publicConfig(await mappingNow()), dimensions: Object.entries(R.DIMENSIONS).map(([id, d]) => ({ id, label: d.label, level: d.level })) } })));
 
 router.get('/summary', handle('summary', async (req) => {
     const p = params(req.query);
-    return { rows: await summaryRows(p), meta: meta(p) };
+    const out = await reportRows(p);
+    return { rows: out.rows, meta: meta(p, { sourceRows: out.rawCount, budget: out.budget.source, budgetVersions: out.budget.versions, exclusions: exclusionMeta(out.excluded, out.rules) }) };
 }));
 
 router.get('/detail', handle('detail', async (req) => {
     const p = params(req.query, { cell: true });
+    const mapping = await mappingNow();
     const where = { ReportingKey: p.key, ...(p.gl ? { GLAccount: p.gl } : {}), ...(p.site ? { Site: p.site } : {}) };
-    return { rows: await detailRows(p, where, { expand: true }), meta: meta(p) };
+    let rows = enrich(await rawDetail(p, where, { expand: true }), mapping);
+    let excluded = [];
+    if (p.exclusions) {
+        const inForce = R.activeRules(await rulesNow(), p.fy, p.period);
+        if (inForce.length) ({ rows, excluded } = R.applyToDetail(rows, inForce));
+    }
+    return { rows: rows.map(sap.publicRow), excluded: excluded.map(sap.publicRow), meta: meta(p) };
 }));
 
 router.get('/trend', handle('trend', async (req) => {
     const p = params(req.query);
+    const [mapping, rules] = await Promise.all([mappingNow(), rulesNow()]);
     const periods = Array.from({ length: p.period }, (_, i) => i + 1);
     const months = await mapLimit(periods, 3, async (period) => {
-        const rows = await summaryRows({ ...p, period });
+        // Rules in force for the selected period apply to every month, so the months add up to the YTD shown.
+        const { rows } = await reportRows({ ...p, period }, { asOf: p, mapping, rules, budget: false });
         const byGroup = {};
         let cy = 0; let py = 0;
         for (const r of rows) {
@@ -207,9 +299,17 @@ router.get('/trend', handle('trend', async (req) => {
 
 router.get('/breakdown', handle('breakdown', async (req) => {
     const p = params(req.query);
-    const [rows, summary] = await Promise.all([detailRows(p), summaryRows(p)]);
+    const mapping = await mappingNow();
+    const [detail0, summary0] = await Promise.all([rawDetail(p), rawSummary(p)]);
+    let rows = enrich(detail0, mapping);
+    const glTotal = r2(summary0.reduce((s, r) => s + r.CYYTDAmount, 0));
+    let excludedRows = [];
+    const inForce = p.exclusions ? R.activeRules(await rulesNow(), p.fy, p.period) : [];
+    if (inForce.length) ({ rows, excluded: excludedRows } = R.applyToDetail(rows, inForce));
+    const { rows: summary } = await reportRows(p, { mapping, budget: false });
     const detailCy = r2(rows.reduce((s, r) => s + r.CYYTDAmount, 0));
     const summaryCy = r2(summary.reduce((s, r) => s + r.CYYTDAmount, 0));
+    const excludedCy = r2(excludedRows.reduce((s, r) => s + r.CYYTDAmount, 0));
     const unmapped = rows.filter((r) => r.Unmapped);
     return {
         bySite: totalBy(rows, (r) => r.Site || '-'),
@@ -219,12 +319,252 @@ router.get('/breakdown', handle('breakdown', async (req) => {
         byProductGroup: totalBy(rows.filter((r) => !r.SerialNo), (r) => r.ProductGroup || '-'),
         topCostCenters: totalBy(rows, (r) => r.CostCenter || '-', (r) => ({ name: r.CostCenterName || '', site: r.Site || '', type: r.CostCenterType || '' })).slice(0, 25),
         unmapped: { cy: r2(unmapped.reduce((s, r) => s + r.CYYTDAmount, 0)), rows: unmapped.length, byGroup: totalBy(unmapped, (r) => r.ProductGroup) },
-        reconciliation: { detailCy, summaryCy, difference: r2(detailCy - summaryCy), costCenters: new Set(rows.map((r) => r.CostCenter)).size, lines: rows.length },
+        reconciliation: { detailCy, summaryCy, difference: r2(detailCy - summaryCy), glTotal, excludedCy, glCheck: r2(glTotal - summaryCy - excludedCy), costCenters: new Set(rows.map((r) => r.CostCenter)).size, lines: rows.length },
+        excludedByRule: totalBy(excludedRows, (r) => String(r.ExcludedBy)),
         meta: meta(p),
     };
 }));
 
+// ---------------------------------------------------------------- admin: exclusions
+
+/** Values of a dimension found in the CDS results of the period (CY or PY postings), with names and amounts. */
+async function candidates(p, dimension) {
+    const d = R.DIMENSIONS[dimension];
+    if (!d) throw new BadInput('Unknown dimension.');
+    const rows = d.level === 'summary' ? await rawSummary(p) : await rawDetail(p);
+    const m = new Map();
+    for (const r of rows) {
+        const v = String(r[d.field] ?? '').trim();
+        if (!v) continue;
+        const k = R.norm(v);
+        let c = m.get(k);
+        if (!c) {
+            c = { value: v, name: '', info: new Set(), cy: 0, py: 0, lines: 0 };
+            if (dimension === 'GL') c.name = r.GLAccountName || '';
+            if (dimension === 'COST_CENTER') c.name = r.CostCenterName || '';
+            if (dimension === 'MAPPING_RULE') c.name = r.LookupField ? `looked up in ${r.LookupField}` : '';
+            m.set(k, c);
+        }
+        if (dimension === 'GL') c.info.add(r.ReportHeader);
+        if (dimension === 'COST_CENTER') { c.info.add(r.Site); if (r.CostCenterType) c.info.add(`type ${r.CostCenterType}`); }
+        if (dimension === 'PROFIT_CENTER' || dimension === 'CC_TYPE') c.info.add(r.Site);
+        if (dimension === 'PRODUCT_GROUP') c.info.add(r.SerialNo ? 'brand rows' : 'non-brand');
+        c.cy += r.CYYTDAmount; c.py += r.PYYTDAmount; c.lines += 1;
+    }
+    return [...m.values()].map((c) => ({ value: c.value, name: c.name, info: [...c.info].filter(Boolean).join(' · '), cy: r2(c.cy), py: r2(c.py), lines: c.lines }))
+        .sort((a, b) => Math.abs(b.cy) - Math.abs(a.cy) || a.value.localeCompare(b.value));
+}
+
+/** What one rule would remove from the selected period on its own (ignores other rules), with the biggest lines. */
+async function impactAlone(p, rule) {
+    const [compiled] = R.activeRules([{ ...rule, id: rule.id || 0, active: true, fromFy: 2000, fromPeriod: 1, toFy: null, toPeriod: null }], p.fy, p.period);
+    const summary = await rawSummary(p);
+    if (compiled.level === 'summary') {
+        const hit = summary.filter((r) => compiled.match(r[compiled.field]));
+        return { cy: r2(hit.reduce((s, r) => s + r.CYYTDAmount, 0)), py: r2(hit.reduce((s, r) => s + r.PYYTDAmount, 0)), lines: hit.length, matched: new Set(hit.map((r) => R.norm(r[compiled.field]))).size };
+    }
+    const detail = await rawDetail(p);
+    const hit = detail.filter((r) => compiled.match(r[compiled.field]));
+    return { cy: r2(hit.reduce((s, r) => s + r.CYYTDAmount, 0)), py: r2(hit.reduce((s, r) => s + r.PYYTDAmount, 0)), lines: hit.length, matched: new Set(hit.map((r) => R.norm(r[compiled.field]))).size };
+}
+
+router.get('/exclusions', requireAdmin, handle('exclusions', async (req) => {
+    const p = params(req.query);
+    const rules = await rulesNow();
+    const { excluded, rules: inForce } = await reportRows({ ...p, exclusions: true }, { rules, budget: false });
+    const summaryTotal = r2((await rawSummary(p)).reduce((s, r) => s + r.CYYTDAmount, 0));
+    const inForceIds = new Set(inForce.map((r) => r.id));
+    const list = await Promise.all(rules.map(async (r) => ({
+        ...r,
+        inForce: inForceIds.has(r.id),
+        impact: inForceIds.has(r.id) ? (excluded?.byRule?.[r.id] ?? { cy: 0, py: 0, lines: 0 }) : await impactAlone(p, r),
+    })));
+    return { rules: list, total: exclusionMeta(excluded, inForce), reportTotal: summaryTotal, dimensions: Object.entries(R.DIMENSIONS).map(([id, d]) => ({ id, label: d.label, level: d.level })) };
+}));
+
+router.get('/exclusions/candidates', requireAdmin, handle('candidates', async (req) => {
+    const p = params(req.query);
+    const dimension = String(req.query.dimension || '').toUpperCase();
+    const list = await candidates(p, dimension);
+    const rules = (await rulesNow()).filter((r) => r.dimension === dimension);
+    const compiled = rules.map((r) => ({ id: r.id, active: r.active, match: R.compile(r) }));
+    return { values: list.map((c) => ({ ...c, ruleIds: compiled.filter((r) => r.match(c.value)).map((r) => r.id) })) };
+}));
+
+router.post('/exclusions/preview', requireAdmin, handle('rule-preview', async (req) => {
+    const p = params(req.body || {});
+    // Impact on the selected period only: the effective dates do not matter here.
+    const v = R.validateRule({ ...(req.body?.rule || {}), fromFy: Number(p.fy), fromPeriod: 1, toFy: null, toPeriod: null, reason: 'preview' });
+    if (v.error) throw new BadInput(v.error);
+    return { impact: await impactAlone(p, v.rule) };
+}));
+
+router.post('/exclusions', requireAdmin, handle('rule-create', async (req) => {
+    const v = R.validateRule(req.body);
+    if (v.error) throw new BadInput(v.error);
+    const rule = await store().rules.create(v.rule, req.email);
+    await audit(req, 'exclusion.create', { rule });
+    return { rule };
+}));
+
+router.put('/exclusions/:id', requireAdmin, handle('rule-update', async (req) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) throw new BadInput('Bad rule id.');
+    const v = R.validateRule(req.body);
+    if (v.error) throw new BadInput(v.error);
+    const before = (await rulesNow()).find((r) => r.id === id);
+    if (!before) { const e = new Error('Rule not found.'); e.status = 404; throw e; }
+    const rule = await store().rules.update(id, v.rule, req.email);
+    await audit(req, 'exclusion.update', { before, after: rule });
+    return { rule };
+}));
+
+router.delete('/exclusions/:id', requireAdmin, handle('rule-delete', async (req) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) throw new BadInput('Bad rule id.');
+    const rule = await store().rules.remove(id);
+    if (!rule) { const e = new Error('Rule not found.'); e.status = 404; throw e; }
+    await audit(req, 'exclusion.delete', { rule });
+    return { rule };
+}));
+
+router.post('/exclusions/bulk', requireAdmin, handle('rule-bulk', async (req) => {
+    const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+    if (!rows.length || rows.length > 500) throw new BadInput('Upload 1 to 500 rules.');
+    const errors = []; const ok = [];
+    rows.forEach((r, i) => { const v = R.validateRule(r); if (v.error) errors.push({ row: Number(r?.row) || i + 2, message: v.error }); else ok.push(v.rule); });
+    if (req.body?.dryRun || errors.length) return { errors, valid: ok.length, created: [] };
+    const created = [];
+    for (const r of ok) created.push(await store().rules.create(r, req.email));
+    await audit(req, 'exclusion.bulk', { count: created.length, ids: created.map((r) => r.id), fileName: String(req.body?.fileName || '').slice(0, 120) });
+    return { errors: [], valid: ok.length, created };
+}));
+
+// ---------------------------------------------------------------- admin: budget
+
+router.get('/budget', requireAdmin, handle('budget', async (req) => {
+    const fy = Number(req.query.fy);
+    if (!Number.isInteger(fy)) throw new BadInput('Fiscal year must be a year like 2026.');
+    const [active, versions] = await Promise.all([store().budget.active(fy), store().budget.versions(fy)]);
+    const byHeader = (lines) => { const o = {}; for (const l of lines) o[l.headerGroup] = r2((o[l.headerGroup] || 0) + l.annual); return o; };
+    return {
+        source: Object.keys(active).length ? 'upload' : envBudgetSource(),
+        active: Object.fromEntries(Object.entries(active).map(([k, v]) => [k, { ...v.version, byHeader: byHeader(v.lines) }])),
+        versions,
+    };
+}));
+
+router.get('/budget/template', requireAdmin, handle('budget-template', async (req) => {
+    const p = params(req.query);
+    const kind = String(req.query.kind || 'RB').toUpperCase() === 'OB' ? 'OB' : 'RB';
+    const mapping = await mappingNow();
+    const rows = enrich(await rawSummary(p), mapping);
+    const active = await store().budget.active(Number(p.fy));
+    const current = new Map((active[kind]?.lines || []).map((l) => [`${l.reportingKey}|${l.headerGroup}|${l.site}`, l]));
+    const m = new Map();
+    for (const r of rows) {
+        const k = `${r.ReportingKey}|${r.HeaderGroup}|`;
+        const t = m.get(k) || {
+            key: r.ReportingKey, company: r.CompanyCode, header: r.HeaderGroup, headerLabel: r.HeaderLabel, site: '',
+            category: r.ItemCategory || r.ProductGroup, range: r.ProductRange, brand: r.ProductType, line: r.MISHeading || r.Product || r.ProductGroup,
+            serial: r.SerialNo, t1: r.T1, t2: r.T2, t3: r.T3, cy: 0, py: 0,
+        };
+        t.cy += r.CYYTDAmount; t.py += r.PYYTDAmount;
+        m.set(k, t);
+    }
+    for (const l of current.values()) {
+        const k = `${l.reportingKey}|${l.headerGroup}|${l.site}`;
+        if (!m.has(k)) m.set(k, { key: l.reportingKey, company: l.companyCode, header: l.headerGroup, headerLabel: headerGroup(l.headerGroup, mapping).label, site: l.site, category: l.labels?.category || '', range: l.labels?.range || '', brand: l.labels?.brand || '', line: l.labels?.line || '', serial: '', cy: 0, py: 0 });
+    }
+    const lines = [...m.values()].map((t) => {
+        const c = current.get(`${t.key}|${t.header}|${t.site}`);
+        return { ...t, cy: r2(t.cy), py: r2(t.py), annual: c ? c.annual : null, months: c ? c.months : null };
+    }).sort((a, b) => `${(a.serial || '9999').padStart(4, '0')}|${a.t1 || ''}|${a.t2 || ''}|${a.t3 || ''}|${a.key}|${a.header}`.localeCompare(`${(b.serial || '9999').padStart(4, '0')}|${b.t1 || ''}|${b.t2 || ''}|${b.t3 || ''}|${b.key}|${b.header}`));
+    return { kind, lines, activeVersion: active[kind]?.version ?? null };
+}));
+
+router.post('/budget/upload', requireAdmin, handle('budget-upload', async (req) => {
+    const b = req.body || {};
+    const fy = Number(b.fy);
+    const mapping = await mappingNow();
+    // Reporting keys known in SAP for the year (period 12 = every row that has postings in the year so far or last year).
+    const known = new Map();
+    if (Number.isInteger(fy)) {
+        for (const r of await rawSummary({ fy: String(fy), period: 12, company: '' }).catch(() => [])) {
+            if (!known.has(r.ReportingKey)) known.set(r.ReportingKey, { key: r.ReportingKey, companyCode: r.CompanyCode });
+            if (!known.has(r.ReportingKey.toUpperCase())) known.set(r.ReportingKey.toUpperCase(), { key: r.ReportingKey, companyCode: r.CompanyCode });
+        }
+    }
+    const v = validateUpload(b, known, mapping);
+    const active = Number.isInteger(fy) ? await store().budget.active(fy) : {};
+    const kind = String(b.kind || '').toUpperCase();
+    const prev = active[kind];
+    const previous = prev ? { version: prev.version.version, total: prev.version.total, byHeader: prev.lines.reduce((o, l) => { o[l.headerGroup] = r2((o[l.headerGroup] || 0) + l.annual); return o; }, {}) } : null;
+    const summary = { errors: v.errors.slice(0, 500), errorCount: v.errors.length, warnings: v.warnings, lineCount: v.lines.length, skipped: v.skipped, totals: v.totals, phasing: v.phasing, previous };
+    if (b.dryRun || v.errors.length) return { ...summary, saved: null };
+    const note = String(b.note || '').trim().slice(0, 300);
+    const version = await store().budget.create({ fy, kind, note, fileName: String(b.fileName || '').slice(0, 120), unit: String(b.unit).toLowerCase(), phasing: v.phasing }, v.lines, req.email);
+    await audit(req, 'budget.upload', { fy, kind, version: version.version, id: version.id, lines: v.lines.length, total: v.totals.total, fileName: version.fileName, note });
+    return { ...summary, saved: version };
+}));
+
+router.get('/budget/versions/:id/lines', requireAdmin, handle('budget-lines', async (req) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) throw new BadInput('Bad version id.');
+    return { lines: await store().budget.lines(id) };
+}));
+
+router.post('/budget/versions/:id/activate', requireAdmin, handle('budget-activate', async (req) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) throw new BadInput('Bad version id.');
+    const v = await store().budget.activate(id);
+    if (!v) { const e = new Error('Version not found.'); e.status = 404; throw e; }
+    await audit(req, 'budget.activate', { id, fy: v.fy, kind: v.kind, version: v.version });
+    return { version: v };
+}));
+
+router.post('/budget/deactivate', requireAdmin, handle('budget-deactivate', async (req) => {
+    const fy = Number(req.body?.fy); const kind = String(req.body?.kind || '').toUpperCase();
+    if (!Number.isInteger(fy) || (kind !== 'OB' && kind !== 'RB')) throw new BadInput('Give fy and kind OB or RB.');
+    const versions = await store().budget.deactivate(fy, kind);
+    await audit(req, 'budget.deactivate', { fy, kind, versions: versions.map((v) => v.version) });
+    return { versions };
+}));
+
+// ---------------------------------------------------------------- admin: mapping, audit
+
+router.get('/settings/mapping', requireAdmin, handle('mapping', async (req) => {
+    const p = params(req.query);
+    const mapping = await mappingNow();
+    const raw = await rawSummary(p);
+    const headers = new Map(); const gls = new Map();
+    for (const r of raw) {
+        const g = headerGroup(r.ReportHeader, mapping);
+        const h = headers.get(r.ReportHeader) || { header: r.ReportHeader, groupId: g.id, cls: g.cls, cy: 0 };
+        h.cy += r.CYYTDAmount; headers.set(r.ReportHeader, h);
+        const n = String(r.GLAccount).replace(/^0+/, '');
+        const x = gls.get(n) || { gl: n, name: r.GLAccountName, groupId: g.id, header: g.label, bucket: medium(r.GLAccount, r.GLAccountName, g, mapping), defaultBucket: medium(r.GLAccount, r.GLAccountName, g, null), overridden: !!mapping.glMedia?.[n], cy: 0 };
+        x.cy += r.CYYTDAmount; gls.set(n, x);
+    }
+    return {
+        mapping, config: publicConfig(mapping),
+        headersSeen: [...headers.values()].map((h) => ({ ...h, cy: r2(h.cy) })).sort((a, b) => b.cy - a.cy),
+        gls: [...gls.values()].map((g) => ({ ...g, cy: r2(g.cy) })).sort((a, b) => a.gl.localeCompare(b.gl)),
+    };
+}));
+
+router.put('/settings/mapping', requireAdmin, handle('mapping-save', async (req) => {
+    const v = validateMapping(req.body?.mapping);
+    if (v.error) throw new BadInput(v.error);
+    const before = await mappingNow();
+    await store().settings.set('mapping', v.mapping, req.email);
+    await audit(req, 'mapping.save', { before, after: v.mapping });
+    return { mapping: v.mapping };
+}));
+
+router.get('/audit', requireAdmin, handle('audit', async () => ({ entries: await store().audit.list(300) })));
+
 router.use((req, res) => res.status(404).json({ success: false, error: 'Not found.' }));
 
 module.exports = router;
-module.exports._test = { params, enrich, totalBy, source };
+module.exports._test = { params, enrich, totalBy, source, reportRows };
