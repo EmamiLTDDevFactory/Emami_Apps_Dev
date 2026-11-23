@@ -9,6 +9,7 @@ import { normalizeEntity } from '../sap/normalize';
 import { odataString } from '../sap/filter';
 import { ENTITY_SET } from '../sap/entities';
 import { HIER_SET, hierRequest, type HierLevel } from '../client/hier';
+import { loadMgmt, mgmtBrand, mgmtProduct, mgmtSku, type MgmtData } from '../client/mgmtNames';
 import type { BudgetSummaryRow } from './types';
 import type { WacRow } from '../wac/types';
 
@@ -64,7 +65,7 @@ const avg = (rows: BudgetSummaryRow[], k: keyof BudgetSummaryRow, onlyPositive =
 };
 const sum = (rows: BudgetSummaryRow[], k: keyof BudgetSummaryRow) => rows.reduce((s, r) => s.plus(D(r[k] as string)), ZERO);
 
-export function rollup(rows: BudgetSummaryRow[], map: ReadonlyMap<string, MatHier>, names: HierNames, level: HierLevelKey, ly?: ReadonlyMap<string, LyAvg> | null): HierGroup[] {
+export function rollup(rows: BudgetSummaryRow[], map: ReadonlyMap<string, MatHier>, names: HierNames, level: HierLevelKey, ly?: ReadonlyMap<string, LyAvg> | null, mgmt: MgmtData | null = null): HierGroup[] {
   const by = new Map<string, { rows: BudgetSummaryRow[]; h: MatHier }>();
   for (const r of latestFgs(rows)) {
     const h = map.get(r.Matnr) ?? { brand: '', product: '', sku: '' };
@@ -89,7 +90,10 @@ export function rollup(rows: BudgetSummaryRow[], map: ReadonlyMap<string, MatHie
     const varAbs = lyG ? lyG.budgetMat.minus(lyG.mat) : null;
     return {
       ly: lyG, varAbs, varPct: varAbs && lyG && lyG.mat.gt(0) ? varAbs.div(lyG.mat).times(100) : null,
-      key, level, code, name: code ? nm(lv, code) || code : NONE, brand: nm('B', h.brand) || h.brand, product: nm('P', h.product) || h.product,
+      // management names (display only): the product hierarchy code of the FG carries banner + brand + product + size
+      key, level, code,
+      name: !code ? NONE : (level === 'brand' ? mgmtBrand(mgmt, code, nm(lv, code)) ?? mgmtBrand(mgmt, h.product) : level === 'product' ? mgmtProduct(mgmt, code, nm(lv, code)) ?? mgmtProduct(mgmt, h.product) : mgmtSku(mgmt, code) ?? mgmtSku(mgmt, h.product)) || nm(lv, code) || code,
+      brand: mgmtBrand(mgmt, h.brand, nm('B', h.brand)) ?? mgmtBrand(mgmt, h.product) ?? (nm('B', h.brand) || h.brand), product: mgmtProduct(mgmt, h.product, nm('P', h.product)) || nm('P', h.product) || h.product,
       fgs: l.length, avgBudget: avg(l, 'CostPerpc1', true), avgProjected: avg(l, 'PCostPerpc1', true), avgActual: avg(l, 'ACostPerpc1', true), withActual: l.filter((r) => D(r.ACostPerpc1).gt(0)).length,
       avgRm: avg(l, 'RmCost', true), avgPm: avg(l, 'PmCost', true), avgPerfume: avg(l, 'PerfumeCost', true), planQty: sum(l, 'PlanQty'), planCost: sum(l, 'PlanCost'),
     };

@@ -24,7 +24,7 @@ function LevelCombo({ label, opts, value, disabled, onPick }: { label: string; o
   const boxRef = useRef<HTMLDivElement>(null);
   const chosen = (opts ?? []).find((o) => o.code === value);
   const needle = text.trim().toLowerCase();
-  const shown = (opts ?? []).filter((o) => !needle || o.code.toLowerCase().includes(needle) || (o.descr ?? '').toLowerCase().includes(needle));
+  const shown = (opts ?? []).filter((o) => !needle || o.code.toLowerCase().includes(needle) || (o.descr ?? '').toLowerCase().includes(needle) || (o.sapDescr ?? '').toLowerCase().includes(needle));
   useEffect(() => {
     if (!open) return;
     const away = (e: MouseEvent) => { if (!boxRef.current?.contains(e.target as Node)) { setOpen(false); setText(''); } };

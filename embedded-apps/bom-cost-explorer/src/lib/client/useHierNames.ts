@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
+import { loadMgmt, type MgmtData } from './mgmtNames';
 import { EMPTY_NAMES, loadHierNames, withName, type HierNames } from './hierNames';
 
 /** Labels with the SAP description for brand and product codes (the code alone until / unless SAP answers). */
@@ -12,4 +13,11 @@ export function useHierNames() {
     brandList: [...names.brand].map(([code, descr]) => ({ code, descr })).sort((a, b) => a.descr.localeCompare(b.descr)),
     productList: [...names.product].map(([code, descr]) => ({ code, descr })).sort((a, b) => a.descr.localeCompare(b.descr)),
   }), [names]);
+}
+
+/** The management name data (null until loaded, or when switched off). */
+export function useMgmt(): MgmtData | null {
+  const [d, setD] = useState<MgmtData | null>(null);
+  useEffect(() => { let on = true; void loadMgmt().then((x) => { if (on) setD(x); }); return () => { on = false; }; }, []);
+  return d;
 }

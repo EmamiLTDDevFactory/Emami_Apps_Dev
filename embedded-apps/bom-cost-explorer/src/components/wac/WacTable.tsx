@@ -14,6 +14,8 @@ import { fmtNum, fmtQty } from '@/lib/format';
 import type { ColKey, SortDir, WacCol } from '@/lib/wac/columns';
 import type { WacFilterInput } from '@/lib/wac/filter';
 import type { WacRow } from '@/lib/wac/types';
+import { useMgmt } from '@/lib/client/useHierNames';
+import { mgmtBrand, mgmtProduct, mgmtSku } from '@/lib/client/mgmtNames';
 import { dec, flagOf, reconWarn, rowKey, type SelectionTotal } from '@/lib/wac/view';
 
 const inr = (v: string) => (dec(v) === null ? '—' : fmtNum(v, 4, 'INR'));
@@ -21,6 +23,7 @@ const ACTUAL: Partial<Record<ColKey, 'rm' | 'pm' | 'perf' | 'mat' | 'conv' | 'la
 const ACT_FIELD = { rm: 'ActRm', pm: 'ActPm', perf: 'ActPerf', mat: 'ActMat', conv: 'ActConv', landed: 'ActLanded' } as const;
 
 function Cell({ col, r, reconPct }: { col: WacCol; r: WacRow; reconPct: number }) {
+  const mg = useMgmt(); // management names, display only (the hierarchy code of the row carries brand / product / size)
   switch (col.key) {
     case 'fg':
       return (
@@ -31,8 +34,8 @@ function Cell({ col, r, reconPct }: { col: WacCol; r: WacRow; reconPct: number }
         </span>
       );
     case 'plant': return <span className="font-mono">{r.Werks}</span>;
-    case 'brand': return <>{r.Zbrand || '—'}</>;
-    case 'prodha': return <span className="font-mono text-xs">{r.Prodha || '—'}</span>;
+    case 'brand': { const n = mgmtBrand(mg, r.Zbrand) ?? mgmtBrand(mg, r.Prodha); return <>{n ? `${n}${r.Zbrand ? ` (${r.Zbrand})` : ''}` : r.Zbrand || '—'}</>; }
+    case 'prodha': { const n = mgmtProduct(mg, r.Prodha), k = mgmtSku(mg, r.Prodha); return <span className={n ? 'text-xs' : 'font-mono text-xs'} title={k ? `${k} (${r.Prodha})` : undefined}>{n ? `${k ?? n} (${r.Prodha})` : r.Prodha || '—'}</span>; }
     case 'crs': return <span className="truncate text-xs" title={`${r.Zskugrcodecrs} - ${r.Zskugroupcrs}`}>{[r.Zskugrcodecrs, r.Zskugroupcrs].filter(Boolean).join(' - ') || '—'}</span>;
     case 'qty': return <span className="num">{fmtQty(r.Qty)} <span className="text-muted">{r.Uom}</span></span>;
     case 'docs': return <span className="num">{r.Docs} / {r.Batches}</span>;
