@@ -1,14 +1,16 @@
 'use client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, BarChart3, Building2, Calendar, Gauge, LayoutDashboard, Megaphone, Menu, PieChart, Table2, Tags, X, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, BarChart3, Building2, Calendar, Gauge, LayoutDashboard, Megaphone, Menu, PieChart, Settings2, Table2, Tags, X, type LucideIcon } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { BASE_PATH } from '@/lib/config';
 import { AppContext, type Ctx, type View } from '@/lib/context';
-import { amt, defaultPeriod, fmtDateTime, type Unit } from '@/lib/format';
+import { amt, defaultPeriod, fmtDateTime, ytdLabel, type Unit } from '@/lib/format';
 import { getHubEmail, hasHubSession, nameFromEmail } from '@/lib/hub';
 import { applyFilters } from '@/lib/model';
-import type { AppConfig, Filters, Meta, SummaryRow } from '@/lib/types';
+import type { AppConfig, Filters, Me, Meta, SummaryRow } from '@/lib/types';
 import FilterBar from './FilterBar';
+import ExclusionBanner from './ExclusionBanner';
+import Settings from './settings/Settings';
 import Overview from './dash/Overview';
 import Report from './Report';
 import Brands from './dash/Brands';
@@ -17,13 +19,14 @@ import Budget from './dash/Budget';
 import CostCentres from './dash/CostCentres';
 import { Avatar, Button, Empty, Notice, Skeleton, cx } from './ui';
 
-const NAV: { id: View; label: string; hint: string; icon: LucideIcon }[] = [
+const NAV: { id: View; label: string; hint: string; icon: LucideIcon; admin?: boolean }[] = [
   { id: 'overview', label: 'Overview', hint: 'A&P spend at a glance', icon: LayoutDashboard },
   { id: 'report', label: 'MIS report', hint: 'Summary + G/L drill-down', icon: Table2 },
   { id: 'brands', label: 'Brands', hint: 'Portfolio, growth, Pareto', icon: Tags },
   { id: 'media', label: 'Media mix', hint: 'ATL / BTL, media, G/L', icon: PieChart },
   { id: 'budget', label: 'Budget vs actual', hint: 'OB / RB utilisation', icon: Gauge },
   { id: 'costcentres', label: 'Cost centres', hint: 'Sites, mapping, reconciliation', icon: Building2 },
+  { id: 'settings', label: 'Settings', hint: 'Exclusions, budget upload, mappings', icon: Settings2, admin: true },
 ];
 const VIEWS = new Set<View>(NAV.map((n) => n.id));
 
@@ -45,6 +48,7 @@ function readUrl(): { view: View; filters: Filters; unit: Unit } {
       period: Number.isInteger(period) && period >= 1 && period <= 12 ? period : d.period,
       company: (q.get('cc') || '').toUpperCase(),
       site: list('site'), groups: list('groups'), categories: list('categories'), brands: list('brands'),
+      excl: q.get('x') !== '0',
     },
   };
 }
@@ -53,6 +57,7 @@ function writeUrl(view: View, f: Filters, unit: Unit) {
   q.set('v', view); q.set('fy', f.fy); q.set('p', String(f.period));
   if (f.company) q.set('cc', f.company);
   if (unit !== 'lakh') q.set('u', unit);
+  if (!f.excl) q.set('x', '0');
   for (const k of LIST_KEYS) if (f[k].length) q.set(k, f[k].join('|'));
   try { window.history.replaceState(null, '', `${window.location.pathname}?${q}`); } catch { /* sandboxed */ }
 }
@@ -65,6 +70,7 @@ export default function App() {
   const [filters, setFiltersState] = useState<Filters | null>(null);
   const [unit, setUnit] = useState<Unit>('lakh');
   const [config, setConfig] = useState<AppConfig | null>(null);
+  const [me, setMe] = useState<Me | null>(null);
   const [load, setLoad] = useState<Load>({ kind: 'loading' });
   const [menu, setMenu] = useState(false);
   const [nonce, setNonce] = useState(0);
@@ -77,29 +83,40 @@ export default function App() {
 
   useEffect(() => { if (filters) writeUrl(view, filters, unit); }, [view, filters, unit]);
 
-  const fy = filters?.fy; const period = filters?.period;
+  const fy = filters?.fy; const period = filters?.period; const excl = filters?.excl;
+  const [settingsRev, setSettingsRev] = useState(0);
+  const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (!session || !fy || !period) return;
     let live = true;
-    setLoad({ kind: 'loading' });
-    Promise.all([config ? Promise.resolve(config) : api.config(), api.summary({ fy, period, refresh: nonce > 0 })])
-      .then(([c, s]) => { if (!live) return; setConfig(c); setLoad({ kind: 'ready', rows: s.rows, meta: s.meta }); })
-      .catch((e: ApiError) => live && setLoad({ kind: 'error', message: e.message, status: e.status }));
+    // Keep the current screen while new data loads (a thin bar shows it), so a screen keeps its state - e.g. the
+    // confirmation after a settings save. Only the very first load shows the skeleton.
+    setLoad((l) => (l.kind === 'ready' ? l : { kind: 'loading' }));
+    setBusy(true);
+    Promise.all([api.config(), api.summary({ fy, period, excl, refresh: nonce > 0 }), me ? Promise.resolve(me) : api.me()])
+      .then(([c, s, m]) => { if (!live) return; setConfig(c); setMe(m); setLoad({ kind: 'ready', rows: s.rows, meta: s.meta }); })
+      .catch((e: ApiError) => live && setLoad({ kind: 'error', message: e.message, status: e.status }))
+      .finally(() => live && setBusy(false));
     return () => { live = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- config is loaded once; nonce = manual refresh
-  }, [session, fy, period, nonce]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- me is read once; nonce = manual refresh; settingsRev = settings saved
+  }, [session, fy, period, excl, nonce, settingsRev]);
 
   const setFilters = useCallback((f: Partial<Filters>) => setFiltersState((old) => (old ? { ...old, ...f } : old)), []);
   const go = useCallback((v: View, f?: Partial<Filters>) => { setView(v); if (f) setFilters(f); setMenu(false); }, [setFilters]);
 
+  // Stable while fy / period / company / exclusions stay the same, so screens refetch only when these change (or settings are saved).
+  const company = filters?.company;
+  const q = useMemo(() => (fy && period ? { fy, period, company: company || undefined, excl: excl !== false, rev: settingsRev } : null), [fy, period, company, excl, settingsRev]);
+
   const ctx: Ctx | null = useMemo(() => {
-    if (!filters || !config || load.kind !== 'ready') return null;
-    const all = filters.company ? load.rows.filter((r) => r.CompanyCode === filters.company) : load.rows;
+    if (!filters || !config || !me || !q || load.kind !== 'ready') return null;
+    const all = filters.company ? load.rows.filter((r) => r.CompanyCode === filters.company || (r.IsBudget && !r.CompanyCode)) : load.rows;
     return {
-      config, meta: load.meta, all, companies: [...new Set(load.rows.map((r) => r.CompanyCode))].sort(), rows: applyFilters(all, filters), filters, setFilters, unit, setUnit,
+      me, q, refreshAll: () => setSettingsRev((n) => n + 1),
+      config, meta: load.meta, all, companies: [...new Set(load.rows.map((r) => r.CompanyCode).filter(Boolean))].sort(), rows: applyFilters(all, filters), filters, setFilters, unit, setUnit,
       fmt: (v: number) => amt(v, unit), go, reload: () => setNonce((n) => n + 1),
     };
-  }, [filters, config, load, unit, setFilters, go]);
+  }, [filters, config, me, q, load, unit, setFilters, go]);
 
   if (session === null || !filters) return <div className="p-6"><Skeleton rows={6} /></div>;
   if (!session) {
@@ -115,8 +132,10 @@ export default function App() {
     );
   }
 
+  const sapEmpty = load.kind === 'ready' && load.meta.source === 'sap' && load.meta.sourceRows === 0 ? load.meta : null;
   const email = getHubEmail();
-  const active = NAV.find((n) => n.id === view) ?? NAV[0];
+  const nav = NAV.filter((n) => !n.admin || me?.admin);
+  const active = nav.find((n) => n.id === view) ?? nav[0];
   return (
     <div className="flex h-screen overflow-clip bg-plum">
       {menu && <div className="fixed inset-0 z-30 bg-plum-deep/50 backdrop-blur-sm lg:hidden" onClick={() => setMenu(false)} />}
@@ -129,7 +148,7 @@ export default function App() {
           </a>
         </div>
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3" aria-label="Sections">
-          {NAV.map((n) => (
+          {nav.map((n) => (
             <button
               key={n.id}
               type="button"
@@ -147,7 +166,7 @@ export default function App() {
             <Avatar email={email} />
             <div className="min-w-0 flex-1">
               <div className="truncate text-[13px] font-semibold">{nameFromEmail(email)}</div>
-              <div className="truncate text-2xs text-muted">{email}</div>
+              <div className="truncate text-2xs text-muted">{me?.admin ? 'Admin' : 'Viewer'} · {email}</div>
             </div>
           </div>
           {load.kind === 'ready' && (
@@ -162,7 +181,8 @@ export default function App() {
         <div className="flex bg-plum">
           <a href="/" className="flex items-center gap-1.5 border-r border-white/20 bg-plum px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-plum-deep"><ArrowLeft size={14} /> Back</a>
         </div>
-        <header className="flex items-center gap-2.5 border-b border-line bg-panel px-4 py-2.5">
+        <header className="relative flex items-center gap-2.5 border-b border-line bg-panel px-4 py-2.5" aria-busy={busy}>
+          {busy && load.kind === 'ready' && <span aria-hidden data-testid="loading-bar" className="absolute inset-x-0 bottom-0 h-0.5 animate-pulse bg-accent" />}
           <button type="button" className="p-1 lg:hidden" onClick={() => setMenu(true)} aria-label="Open menu"><Menu size={22} /></button>
           <Megaphone size={18} className="text-accent" />
           <h1 className="text-[15px] font-extrabold">Publicity Expenses</h1>
@@ -198,8 +218,16 @@ export default function App() {
             )}
             {ctx && (
               <AppContext.Provider value={ctx}>
-                <FilterBar />
+                {view !== 'settings' && <FilterBar />}
+                {view !== 'settings' && <ExclusionBanner />}
+                {view !== 'settings' && sapEmpty && (
+                  <div className="mt-2"><Notice tone="warn">
+                    SAP ({sapEmpty.system}) answered but has <b>no rows</b> for {ytdLabel(sapEmpty.fy, sapEmpty.period)} (fiscal year {sapEmpty.fy}, period {String(sapEmpty.period).padStart(3, '0')}).
+                    The connection works; the CDS view ZC_ATLBTL_EXP_SUMMARY returned nothing - check in that SAP client that ZREP_SEQ_MAP and the FSV (FAGL_011ZC) are maintained, FAGLFLEXT has postings (ledger 0L, version 001) and ZNET_SALE_MASTER / ZPROD_HIERARCHY have data.
+                  </Notice></div>
+                )}
                 <div className="mt-3">
+                  {view === 'settings' && (me?.admin ? <Settings /> : <Notice tone="warn">Settings are for Publicity Expenses admins.</Notice>)}
                   {view === 'overview' && <Overview />}
                   {view === 'report' && <Report />}
                   {view === 'brands' && <Brands />}

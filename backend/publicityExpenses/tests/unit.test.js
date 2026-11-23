@@ -3,6 +3,7 @@
 process.env.HUB_AUTH_JWT_SECRET = process.env.HUB_AUTH_JWT_SECRET || 'test-secret-publicity-expenses';
 delete process.env.PUBEXP_SAP_ODATA_ROOT;
 delete process.env.PUBEXP_SOURCE;
+process.env.PUBEXP_STORE = 'memory';
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -130,6 +131,7 @@ test('SAP errors come back as a short message, never the raw page', async () => 
 
 function serve() {
     const app = express();
+    app.use(express.json({ limit: '6mb' }));
     app.use('/x', router);
     return new Promise((resolve) => { const s = http.createServer(app).listen(0, () => resolve(s)); });
 }

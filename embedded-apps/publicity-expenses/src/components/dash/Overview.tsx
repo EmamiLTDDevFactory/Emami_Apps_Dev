@@ -9,21 +9,21 @@ import { CalendarRange, Gauge, IndianRupee, Megaphone, Scale, TrendingUp } from 
 import { api } from '@/lib/api';
 import { useApp } from '@/lib/context';
 import { growth, monthOf, pct, pctPlain, periodLabel, share, short, ytdLabel } from '@/lib/format';
-import { projectFY, rangeOf, rollup, total } from '@/lib/model';
+import { actuals, projectFY, rangeOf, rollup, total } from '@/lib/model';
 import type { TrendMonth } from '@/lib/types';
 import { BarList, CLASS_COLOR, SERIES, SplitBar, TrendBars } from '../charts';
 import { Card, Kpi, Notice, Pill, Skeleton } from '../ui';
 
 export default function Overview() {
-  const { rows, filters, fmt, go } = useApp();
+  const { rows, filters, fmt, go, q } = useApp();
   const [trend, setTrend] = useState<TrendMonth[] | null | 'error'>(null);
 
   useEffect(() => {
     let live = true;
     setTrend(null);
-    api.trend({ fy: filters.fy, period: filters.period, company: filters.company || undefined }).then((b) => live && setTrend(b.months)).catch(() => live && setTrend('error'));
+    api.trend(q).then((b) => live && setTrend(b.months)).catch(() => live && setTrend('error'));
     return () => { live = false; };
-  }, [filters.fy, filters.period, filters.company]);
+  }, [q]);
 
   const k = useMemo(() => {
     const all = total(rows);
@@ -37,7 +37,7 @@ export default function Overview() {
 
   const groups = useMemo(() => rollup(rows, (r) => r.HeaderGroup, (r) => r.HeaderLabel), [rows]);
   const brands = useMemo(() => rollup(rows.filter((r) => r.SerialNo), rangeOf), [rows]);
-  const sites = useMemo(() => rollup(rows, (r) => r.Site), [rows]);
+  const sites = useMemo(() => rollup(actuals(rows), (r) => r.Site), [rows]);
   const watch = useMemo(() => brands.filter((b) => b.cy > k.all.cy * 0.005).map((b) => ({ ...b, g: growth(b.cy, b.py), u: b.rby ? (b.cy / b.rby) * 100 : null }))
     .filter((b) => (b.g !== null && Math.abs(b.g) >= 25) || (b.u !== null && b.u > 110)).slice(0, 8), [brands, k.all.cy]);
 

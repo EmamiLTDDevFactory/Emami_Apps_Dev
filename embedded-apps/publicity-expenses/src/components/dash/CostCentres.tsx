@@ -17,15 +17,15 @@ import { Card, Kpi, Notice, Pill, Skeleton } from '../ui';
 const CC_TYPE: Record<string, string> = { B: 'B · Brand', M: 'M · Marketing', S: 'S · Sales' };
 
 export default function CostCentres() {
-  const { filters, fmt } = useApp();
+  const { filters, fmt, q, meta } = useApp();
   const [data, setData] = useState<Breakdown | { error: string } | null>(null);
 
   useEffect(() => {
     let live = true;
     setData(null);
-    api.breakdown({ fy: filters.fy, period: filters.period, company: filters.company || undefined }).then((b) => live && setData(b)).catch((e: ApiError) => live && setData({ error: e.message }));
+    api.breakdown(q).then((b) => live && setData(b)).catch((e: ApiError) => live && setData({ error: e.message }));
     return () => { live = false; };
-  }, [filters.fy, filters.period, filters.company]);
+  }, [q]);
 
   if (!data) return <Card><Skeleton rows={10} /></Card>;
   if ('error' in data) return <Notice>{data.error}</Notice>;
@@ -38,9 +38,16 @@ export default function CostCentres() {
 
   return (
     <div className="space-y-3">
+      {rec.excludedCy !== 0 && (
+        <Card title="Excluded by rule" sub="Cost-centre lines taken out of this period by the exclusion rules">
+          <BarList rows={data.excludedByRule.map((b) => ({ key: b.key, label: `Rule #${b.key} · ${meta?.exclusions?.byRule.find((r) => String(r.id) === b.key)?.reason ?? ''}`, value: b.cy, compare: b.py, detail: `${b.rows} lines` }))} fmt={fmt} compareLabel="PY" />
+        </Card>
+      )}
       {filtered && <Notice tone="warn">This screen shows the whole period and company; the site, header, category and brand filters do not apply here.</Notice>}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Kpi icon={rec.difference === 0 ? CheckCircle2 : AlertTriangle} tone={Math.abs(rec.difference) < 1 ? 'good' : 'bad'} label="Report = G/L check" value={Math.abs(rec.difference) < 1 ? 'Reconciled' : fmt(rec.difference)} sub={`detail ${short(rec.detailCy)} · summary ${short(rec.summaryCy)}`} />
+        <Kpi icon={Math.abs(rec.glCheck) < 1 && Math.abs(rec.difference) < 1 ? CheckCircle2 : AlertTriangle} tone={Math.abs(rec.glCheck) < 1 && Math.abs(rec.difference) < 1 ? 'good' : 'bad'}
+          label="G/L = report + excluded" value={Math.abs(rec.glCheck) < 1 && Math.abs(rec.difference) < 1 ? 'Reconciled' : fmt(rec.glCheck || rec.difference)}
+          sub={`G/L ${short(rec.glTotal)} = report ${short(rec.summaryCy)} + excluded ${short(rec.excludedCy)}`} />
         <Kpi icon={AlertTriangle} tone={unPct > 2 ? 'warn' : 'good'} label="Unmapped spend" value={pctPlain(unPct)} sub={`${short(data.unmapped.cy)} in ${data.unmapped.rows} lines`} />
         <Kpi icon={Building2} label="Cost centres with postings" value={String(rec.costCenters)} sub={`${rec.lines} posting lines`} />
         <Kpi icon={Network} label="Profit centres" value={String(data.byProfitCenter.length)} sub={`top: ${data.byProfitCenter[0]?.key ?? '–'}`} />

@@ -29,10 +29,24 @@ const norm = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 const ALIAS = new Map();
 for (const g of GROUPS) for (const a of g.aliases) ALIAS.set(a, g);
 
-/** ReportHeader -> { id, label, cls, mis }. Unknown headers keep their own name (class UNMAPPED). */
-function headerGroup(reportHeader) {
-    const g = ALIAS.get(norm(reportHeader));
-    if (g) return { id: g.id, label: g.label, cls: g.cls, mis: g.mis };
+/*
+   Admin overrides (Settings > Mappings, stored as setting "mapping"):
+     { groups: { [groupId]: { cls, mis } },        spend class / GR Total MIS membership of a group
+       aliases: { [normalisedHeader]: groupId },    a ReportHeader from SAP the built-in list does not know -> a group
+       glMedia: { [glWithoutLeadingZeros]: bucket } }  media / activity bucket of a G/L account
+*/
+const CLASSES = ['ATL', 'BTL', 'OTHER'];
+
+function groupWith(g, mapping) {
+    const o = mapping?.groups?.[g.id];
+    return { id: g.id, label: g.label, cls: CLASSES.includes(o?.cls) ? o.cls : g.cls, mis: typeof o?.mis === 'boolean' ? o.mis : g.mis };
+}
+
+/** ReportHeader -> { id, label, cls, mis }. Unknown headers keep their own name (class UNMAPPED) unless an alias maps them. */
+function headerGroup(reportHeader, mapping) {
+    const n = norm(reportHeader);
+    const g = ALIAS.get(n) || GROUPS.find((x) => x.id === mapping?.aliases?.[n]);
+    if (g) return groupWith(g, mapping);
     const name = String(reportHeader || '').trim() || 'No report header';
     return { id: name.toUpperCase(), label: name, cls: 'UNMAPPED', mis: false };
 }
@@ -55,8 +69,13 @@ const KEYWORDS = [
     ['Production & creative', /FILM|CREATIVE|MODEL|PHOTOGRAPH|ART WORK|VIDEO/],
     ['Field force (DSR)', /DSR|MERC[HA]*NDISER|FIELD FORCE|DOCTOR/],
 ];
-function medium(glAccount, glName, group) {
+const BUCKETS = ['TV', 'Digital', 'Print', 'Radio', 'Cinema', 'Sponsorship', 'Other ATL', 'Free issue & sampling', 'Visibility & in-store',
+    'Consumer & trade promotion', 'E-commerce', 'Research', 'Production & creative', 'Field force (DSR)', 'Other BTL', 'Other'];
+
+function medium(glAccount, glName, group, mapping) {
     const n = String(glAccount || '').replace(/^0+/, '');
+    const o = mapping?.glMedia?.[n];
+    if (o && BUCKETS.includes(o)) return o;
     if (ATL_MEDIA[n]) return ATL_MEDIA[n];
     const name = String(glName || '').toUpperCase();
     for (const [label, re] of KEYWORDS) if (re.test(name)) return label;
@@ -72,16 +91,44 @@ const NON_BRAND = ['Misc - Unit non Brand', 'Misc - HO non Brand', 'IBD non Bran
 const UNMAPPED_GROUPS = new Set(['NOT COVERED BY MAPPING LOGIC', 'BRAND - HIERARCHY NOT FOUND']);
 const isUnmapped = (productGroup) => UNMAPPED_GROUPS.has(String(productGroup || '').trim().toUpperCase());
 
-/** What the app shows for the mapping (GET /config). */
-function publicConfig() {
+/** What the app shows for the mapping (GET /config), overrides applied. */
+function publicConfig(mapping) {
+    const groups = GROUPS.map((g) => groupWith(g, mapping));
     return {
-        groups: GROUPS.map(({ id, label, cls, mis }) => ({ id, label, cls, mis })),
+        groups,
+        defaults: GROUPS.map(({ id, label, cls, mis, aliases }) => ({ id, label, cls, mis, aliases })),
         totals: [
-            { id: 'GR TOTAL MIS', label: 'GR Total MIS', of: GROUPS.filter((g) => g.mis).map((g) => g.id) },
-            { id: 'GR TOTAL LR', label: 'GR Total LR', of: ['GR TOTAL MIS', ...GROUPS.filter((g) => !g.mis).map((g) => g.id)], includesUnmapped: true },
+            { id: 'GR TOTAL MIS', label: 'GR Total MIS', of: groups.filter((g) => g.mis).map((g) => g.id) },
+            { id: 'GR TOTAL LR', label: 'GR Total LR', of: ['GR TOTAL MIS', ...groups.filter((g) => !g.mis).map((g) => g.id)], includesUnmapped: true },
         ],
         nonBrand: NON_BRAND,
+        classes: CLASSES,
+        buckets: BUCKETS,
     };
 }
 
-module.exports = { GROUPS, headerGroup, medium, GL_NAMES, NON_BRAND, isUnmapped, publicConfig, norm };
+/** Validate a mapping from Settings. Returns { mapping } or { error }. */
+function validateMapping(input) {
+    const out = { groups: {}, aliases: {}, glMedia: {} };
+    for (const [id, o] of Object.entries(input?.groups || {})) {
+        if (!GROUPS.some((g) => g.id === id)) return { error: `Unknown header group ${id}.` };
+        if (!CLASSES.includes(o?.cls)) return { error: `Class of ${id} must be ATL, BTL or OTHER.` };
+        out.groups[id] = { cls: o.cls, mis: !!o.mis };
+    }
+    for (const [h, id] of Object.entries(input?.aliases || {})) {
+        const n = norm(h);
+        if (!n || n.length > 40) return { error: `Report header "${h}" is not valid.` };
+        if (!GROUPS.some((g) => g.id === id)) return { error: `"${h}" must map to a known header group.` };
+        out.aliases[n] = id;
+    }
+    for (const [gl, b] of Object.entries(input?.glMedia || {})) {
+        const n = String(gl).trim().replace(/^0+(?=\d)/, '');
+        if (!/^\d{1,10}$/.test(n)) return { error: `G/L "${gl}" must be digits.` };
+        if (!BUCKETS.includes(b)) return { error: `Bucket "${b}" for G/L ${n} is not one of the media / activity buckets.` };
+        out.glMedia[n] = b;
+    }
+    if (Object.keys(out.aliases).length > 200 || Object.keys(out.glMedia).length > 2000) return { error: 'Too many mapping entries.' };
+    return { mapping: out };
+}
+
+module.exports = { GROUPS, CLASSES, BUCKETS, headerGroup, medium, GL_NAMES, NON_BRAND, isUnmapped, publicConfig, validateMapping, norm };

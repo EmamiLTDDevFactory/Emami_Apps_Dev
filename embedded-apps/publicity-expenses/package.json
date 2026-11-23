@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "next lint --dir src --dir e2e --max-warnings 0",
     "test:e2e": "playwright test --config e2e/playwright.config.ts",
-    "test:unit": "node --test ../../backend/publicityExpenses/tests/unit.test.js"
+    "test:unit": "node --test ../../backend/publicityExpenses/tests/"
   },
   "dependencies": {
     "lucide-react": "^0.469.0",

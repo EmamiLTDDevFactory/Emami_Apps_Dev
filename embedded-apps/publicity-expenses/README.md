@@ -18,7 +18,35 @@ ATL / BTL advertisement expenses MIS for Emami on the SAP CDS views from
 | Brands | Category / brand family / brand: share of spend and its shift (pp), YoY, Pareto (how many brands make 80 %), top-5 share, ATL : BTL mix per brand, RB used |
 | Media mix | ATL media split (TV, digital, print, radio, cinema, sponsorship) and digital share of ATL, BTL activity split (free issue & sampling, visibility, consumer & trade promotion, e-commerce, research), mix shift vs PY, top G/L accounts |
 | Budget vs actual | OB / RB, utilisation, OB → RB revision, projected full year vs RB FY, over-running and under-utilised brands |
-| Cost centres | HO vs Units, cost-centre type, mapping rule, top cost centres, profit centres, non-brand and unmapped spend, report = G/L reconciliation |
+| Cost centres | HO vs Units, cost-centre type, mapping rule, top cost centres, profit centres, non-brand and unmapped spend, excluded by rule, G/L = report + excluded |
+| Settings (Admin) | Exclusion rules, budget upload (OB / RB versions), mapping overrides, audit log - see below |
+
+## Settings (Manage Access role Admin; role User only views)
+
+Stored in Postgres schema `publicity_expenses` (created on first use, additive only): `exclusion_rule`, `budget_version`,
+`budget_line`, `setting`, `audit`. Every change applies to every user at once and is written to the audit log.
+
+- **Exclusion rules** - take items out of the report: G/L account, cost centre, profit centre, cost-centre type (KOSAR),
+  company code, product group, mapping rule.
+  - Values are **picked from the CDS / AMDP results** of the selected period (multi-select with search, names, CY / PY
+    amounts, "already excluded by rule #"); an optional **pattern** (range `508000-508099`, wildcard `EH19*`, lists) catches
+    codes that come later. Picked values are exact - never read as a range.
+  - Each rule has a **reason** (shown in the report banner) and an **effective period**: it applies to reports whose
+    selected period lies in [from, to] and then removes the item from CY and PY alike (like-for-like), on every screen,
+    the drill-down, the trend and the reconciliation. A line matched by two rules counts once (first rule).
+  - **Impact preview** before saving; rules can be switched off, edited, deleted, uploaded / exported in Excel.
+  - Every screen shows what the rules remove; **Show without** displays the report without them (URL `x=0`).
+  - G/L rules act on the summary; cost-centre / profit-centre / type / mapping-rule rules use the detail view and are
+    subtracted at the summary grain, so G/L = report + excluded always holds (checked on the Cost centres screen).
+- **Budget upload** - OB and RB per reporting row x report header (x site, optional), annual or by month (else
+  straight-line). Template prefilled with every report line, PY / CY actuals for reference and the active version (for
+  round-trip edits); the file is checked first (dry run: unknown headers, months not adding up, duplicates, negatives,
+  unknown keys as warnings, totals vs the active version), then saved as a **new version**; earlier versions can be made
+  active again (rollback) or switched off (back to mock / SAP). Budget lines show as budget-only rows, so a budget
+  appears even where nothing has been spent yet. Exclusions do not change budgets.
+- **Mappings** - spend class (ATL / BTL / other) and GR Total MIS membership of each header group, a group for report
+  headers SAP sends that the app does not know, and the media / activity bucket of any G/L.
+- **Audit log** - who changed what, when.
 
 Filters (one row above every screen, kept in the URL): fiscal year, YTD period, company, site, report header, category,
 brand family, unit (₹ lakh default, crore, rupees).
@@ -45,11 +73,11 @@ structure from the layout sheet (labels only), synthetic amounts.
 
 ```bash
 npm install
-node e2e/mock-server.js 4195            # local backend: mock data, access check stubbed; prints TOKEN=...
+node e2e/mock-server.js 4195            # local backend: mock data, in-memory settings; prints TOKEN= (admin) and VIEWER_TOKEN=
 NEXT_PUBLIC_PUBEXP_API_URL=http://127.0.0.1:4195/api/me/publicity-expenses npm run dev   # http://localhost:3260/apps/publicity-expenses/
 npm run typecheck && npm run lint
 npm run test:unit                       # backend: mapping, OData client, mock, budget, routes (no DB, no SAP)
-E2E_TOKEN=<token> npm run test:e2e      # Edge, desktop + 360 px; E2E_BASE_URL to test a production build
+E2E_TOKEN=<token> E2E_VIEWER_TOKEN=<token> npm run test:e2e   # Edge, desktop + 360 px; E2E_BASE_URL to test a production build
 npm run build                           # static export -> dist/
 ```
 

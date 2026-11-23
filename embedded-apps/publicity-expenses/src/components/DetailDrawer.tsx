@@ -11,24 +11,25 @@ import { Button, Drawer, Empty, Notice, Pill, Skeleton, cx } from './ui';
 export interface Cell { key: string; label: string; group?: string; site?: string; gl?: string }
 
 export default function DetailDrawer({ cell, onClose }: { cell: Cell; onClose: () => void }) {
-  const { filters, fmt, unit, config } = useApp();
-  const [state, setState] = useState<{ rows: DetailRow[] } | { error: string } | null>(null);
+  const { filters, fmt, unit, config, q } = useApp();
+  const [state, setState] = useState<{ rows: DetailRow[]; excluded: DetailRow[] } | { error: string } | null>(null);
   const [open, setOpen] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     let live = true;
     setState(null);
-    api.detail({ fy: filters.fy, period: filters.period, company: filters.company || undefined }, { key: cell.key, gl: cell.gl, site: cell.site })
-      .then((b) => live && setState({ rows: b.rows }))
+    api.detail(q, { key: cell.key, gl: cell.gl, site: cell.site })
+      .then((b) => live && setState({ rows: b.rows, excluded: b.excluded ?? [] }))
       .catch((e: ApiError) => live && setState({ error: e.message }));
     return () => { live = false; };
-  }, [cell, filters.fy, filters.period, filters.company]);
+  }, [cell, q]);
 
   const rows = useMemo(() => {
     if (!state || !('rows' in state)) return [];
     return state.rows.filter((r) => !cell.group || r.HeaderGroup === cell.group).sort((a, b) => b.CYYTDAmount - a.CYYTDAmount);
   }, [state, cell.group]);
   const sum = (k: keyof DetailRow) => rows.reduce((s, r) => s + (Number(r[k]) || 0), 0);
+  const excluded = state && 'excluded' in state ? state.excluded.filter((r) => !cell.group || r.HeaderGroup === cell.group) : [];
   const groupLabel = config.groups.find((g) => g.id === cell.group)?.label ?? cell.group;
 
   async function exportXlsx() {
@@ -77,6 +78,11 @@ export default function DetailDrawer({ cell, onClose }: { cell: Cell; onClose: (
             ))}
             <div className="rounded-xl border border-line bg-panel p-3"><div className="text-2xs font-bold uppercase text-muted">Growth</div><div className="num text-lg font-extrabold">{pct(growth(sum('CYYTDAmount'), sum('PYYTDAmount')))}</div></div>
           </div>
+          {excluded.length > 0 && (
+            <Notice tone="warn">
+              {excluded.length} line{excluded.length === 1 ? '' : 's'} ({fmt(excluded.reduce((s, r) => s + r.CYYTDAmount, 0))} CY) excluded by rule{new Set(excluded.map((r) => r.ExcludedBy)).size === 1 ? '' : 's'} #{[...new Set(excluded.map((r) => r.ExcludedBy))].join(', #')}: {excluded.slice(0, 3).map((r) => `${r.CostCenter} / G/L ${r.GLAccount.replace(/^0+/, '')}`).join('; ')}{excluded.length > 3 ? ' …' : ''}
+            </Notice>
+          )}
           <div className="flex items-center justify-between">
             <p className="text-2xs text-muted">{rows.length} posting line{rows.length === 1 ? '' : 's'} (G/L × cost centre × profit centre). Open a line for its SKUs.</p>
             <Button size="sm" onClick={exportXlsx}><Download size={14} /> Excel</Button>

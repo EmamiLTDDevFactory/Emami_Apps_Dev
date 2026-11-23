@@ -12,7 +12,7 @@ async function signIn(page: Page) {
 
 async function open(page: Page, view: string, isMobile: boolean, name: string) {
   await page.goto(`${BASE}?v=${view}&fy=2026&p=7`);
-  await expect(page.getByText('Mock data').first()).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText(view === 'settings' ? 'Exclusion rules' : 'Mock data').first()).toBeVisible({ timeout: 60_000 });
   if (SHOTS && name.endsWith('-start')) await page.screenshot({ path: `${SHOTS}/${isMobile ? 'm' : 'd'}-${name}.png`, fullPage: !isMobile });
 }
 
@@ -27,7 +27,7 @@ test('every screen loads without errors and the page never scrolls sideways', as
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   await signIn(page);
   const mobile = info.project.name === 'mobile-360';
-  for (const [view, text] of [['overview', 'Total A&P spend'], ['report', 'Details of advertisement expenses'], ['brands', 'Spend concentration'], ['media', 'ATL media mix'], ['budget', 'mock figures'], ['costcentres', 'Report = G/L check']] as const) {
+  for (const [view, text] of [['overview', 'Total A&P spend'], ['report', 'Details of advertisement expenses'], ['brands', 'Spend concentration'], ['media', 'ATL media mix'], ['budget', 'Over-running brands'], ['costcentres', 'G/L = report + excluded'], ['settings', 'Exclusion rules']] as const) {
     await open(page, view, mobile, view);
     await expect(page.getByText(text).first()).toBeVisible({ timeout: 30_000 });
     await page.waitForTimeout(600); // charts settle (bar widths animate)
@@ -39,7 +39,8 @@ test('every screen loads without errors and the page never scrolls sideways', as
 });
 
 test('MIS report: G/L columns open, a figure drills down and the drill-down adds up to it', async ({ page }, info) => {
-  // Measured in the page: all G/L columns ~2 s, drawer ~0.5 s. Playwright's own checks on the ~40k-cell DOM are what is slow.
+  // Every G/L column at once (~40k cells) paints in ~2 s in the page, but Playwright's own checks on that DOM take minutes
+  // on a busy PC, so the test opens the G/L columns of one header group (same code path) and "All" only on desktop.
   test.setTimeout(240_000);
   await signIn(page);
   await open(page, 'report', info.project.name === 'mobile-360', 'report-start');
@@ -49,16 +50,25 @@ test('MIS report: G/L columns open, a figure drills down and the drill-down adds
     await page.getByRole('tab', { name: 'All rows' }).click();
   }
   const grid = page.getByTestId('mis-grid');
-  const before = await grid.locator('thead tr').nth(1).locator('th').count();
-  // CSS / test-id locators only here: with every G/L column open the grid has ~40k cells and role queries crawl.
-  const toggle = page.getByTestId('gl-toggle');
-  // dispatchEvent: Playwright's actionability checks on a 40k-cell page take ~30 s; in the page the toggle paints in ~2 s.
-  await toggle.dispatchEvent('click');
-  await expect(toggle).toHaveText(/Hide G\/L columns/, { timeout: 30_000 });
-  const after = await grid.locator('thead tr').nth(1).locator('th').count();
-  expect(after).toBeGreaterThan(before + 40);
-  await toggle.dispatchEvent('click');
-  await expect(toggle).toHaveText(/All G\/L columns/, { timeout: 30_000 });
+  const cols = () => grid.locator('thead tr').nth(1).locator('th').count();
+  const before = await cols();
+  // One group (the first heading with G/L columns, ATL): its G/L x site columns appear and go again.
+  const group = grid.locator('thead button[aria-expanded]').first();
+  await group.dispatchEvent('click');
+  await expect(group).toHaveAttribute('aria-expanded', 'true', { timeout: 30_000 });
+  expect(await cols()).toBeGreaterThan(before + 5);
+  await group.dispatchEvent('click');
+  await expect(group).toHaveAttribute('aria-expanded', 'false', { timeout: 30_000 });
+  expect(await cols()).toBe(before);
+  if (info.project.name !== 'mobile-360') {
+    // CSS / test-id locators only: with every G/L column open role queries crawl. dispatchEvent skips actionability checks.
+    const toggle = page.getByTestId('gl-toggle');
+    await toggle.dispatchEvent('click');
+    await expect(toggle).toHaveText(/Hide G\/L columns/, { timeout: 60_000 });
+    expect(await cols()).toBeGreaterThan(before + 40);
+    await toggle.dispatchEvent('click');
+    await expect(toggle).toHaveText(/All G\/L columns/, { timeout: 60_000 });
+  }
   // First reporting-row figure that can be drilled (a button inside a body cell).
   const fig = grid.locator('tbody button[data-drill]').first();
   const shown = (await fig.innerText()).trim();

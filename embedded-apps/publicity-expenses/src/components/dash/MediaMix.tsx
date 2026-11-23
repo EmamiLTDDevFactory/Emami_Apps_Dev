@@ -8,7 +8,7 @@ import { useMemo } from 'react';
 import { MonitorPlay, Smartphone, Store, Ticket } from 'lucide-react';
 import { useApp } from '@/lib/context';
 import { growth, pct, pctPlain, share, short } from '@/lib/format';
-import { rollup, type Roll } from '@/lib/model';
+import { actuals, rollup, type Roll } from '@/lib/model';
 import { BarList, OTHER, SERIES, SplitBar } from '../charts';
 import { Card, Kpi } from '../ui';
 
@@ -52,9 +52,9 @@ function ShiftTable({ rolls, list, fmt }: { rolls: Roll[]; list: string[]; fmt: 
 
 export default function MediaMix() {
   const { rows, fmt, go } = useApp();
-  const atl = useMemo(() => order(rollup(rows.filter((r) => r.SpendClass === 'ATL'), (r) => r.Medium), ATL_MEDIA), [rows]);
-  const btl = useMemo(() => order(rollup(rows.filter((r) => r.SpendClass === 'BTL'), (r) => r.Medium), BTL_ACT), [rows]);
-  const gls = useMemo(() => rollup(rows, (r) => r.GLAccount, (r) => `${r.GLAccount.replace(/^0+/, '')} ${r.GLAccountName}`), [rows]);
+  const atl = useMemo(() => order(rollup(actuals(rows).filter((r) => r.SpendClass === 'ATL'), (r) => r.Medium), ATL_MEDIA), [rows]);
+  const btl = useMemo(() => order(rollup(actuals(rows).filter((r) => r.SpendClass === 'BTL'), (r) => r.Medium), BTL_ACT), [rows]);
+  const gls = useMemo(() => rollup(actuals(rows), (r) => r.GLAccount, (r) => `${r.GLAccount.replace(/^0+/, '')} ${r.GLAccountName}`), [rows]);
 
   const sum = (rs: Roll[], f: 'cy' | 'py') => rs.reduce((s, r) => s + r[f], 0);
   const get = (rs: Roll[], k: string) => rs.find((r) => r.key === k) ?? { cy: 0, py: 0 };
