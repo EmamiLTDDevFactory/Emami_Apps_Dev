@@ -34,6 +34,8 @@ export const DASH_MARGIN_FIELDS = {
   Grain: ['Grain', 's'],
   Zbrand: ['Zbrand', 's'],
   Matnr: ['Matnr', 's'],
+  Bwtar: ['Bwtar', 's'],
+  Mtart: ['Mtart', 's'],
   Kunag: ['Kunag', 's'],
   Maktx: ['Maktx', 's'],
   Matkl: ['Matkl', 's'],

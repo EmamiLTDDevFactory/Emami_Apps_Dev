@@ -8,7 +8,7 @@ import type Decimal from 'decimal.js';
 import { Card, Drawer, Segmented, Spinner, cx } from '../ui';
 import { ErrorBox, errorText } from '../budget-mgmt/shared';
 import { fetchCdrill, type MarginSel } from '@/lib/dash/service';
-import { CAT_LABEL, parseCdrill, type Cat, type Cdrill } from '@/lib/dash/cdrill';
+import { CAT_LABEL, parseCdrill, type BudGroup, type Cat, type Cdrill } from '@/lib/dash/cdrill';
 import { money, tdCls, thCls } from './parts';
 
 export interface DrillTarget { matnr: string; label: string; invoice: { rm: Decimal; pm: Decimal; pf: Decimal; oh: Decimal } | null; sel: MarginSel; from: string; to: string }
@@ -73,6 +73,7 @@ export default function CdrillDrawer({ target, onClose }: { target: DrillTarget 
               </table>
             </div>
           )}
+          <BudgetBlock groups={data.budget} />
           <h4 className="text-xs font-extrabold uppercase tracking-wide text-muted">Sold batches</h4>
           <div className="max-h-[32vh] overflow-auto rounded-xl border border-line">
             <table className="w-full min-w-[720px] border-collapse">
@@ -91,5 +92,39 @@ export default function CdrillDrawer({ target, onClose }: { target: DrillTarget 
         </div>
       )}
     </Drawer>
+  );
+}
+
+/** Budget item level: ZMM_FBUDCOST_SUM matched on valuation type + CRSSKU + business + scheme + material type, items from ZMM_FBUDCOST_DET. */
+function BudgetBlock({ groups }: { groups: BudGroup[] }) {
+  if (!groups.length) return null;
+  return (
+    <div className="flex flex-col gap-2">
+      <h4 className="text-xs font-extrabold uppercase tracking-wide text-muted">Budget cost items (approved budget, per valuation type of the sold items)</h4>
+      {groups.map((g) => (
+        <div key={g.bwtar || '-'} className="rounded-xl border border-line">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-line/60 px-2.5 py-1.5 text-xs">
+            <span className="font-bold">Valuation type {g.bwtar || '(blank)'}</span>
+            {g.flag === 'NBC' ? <span className="rounded-full bg-warn/15 px-2 py-0.5 font-bold text-warn">NBC</span> : <span className="text-muted">version {g.version} · RM {num(g.rm)} · PM {num(g.pm)} · perfume {num(g.pf)} · other {num(g.oth)} · total {num(g.total)} per pc</span>}
+          </div>
+          {g.flag === 'NBC' ? <p className="p-2.5 text-xs text-muted">{g.msg}</p> : (
+            <div className="max-h-[30vh] overflow-auto">
+              <table className="w-full min-w-[640px] border-collapse">
+                <thead className="sticky top-0"><tr><th className={cx(thCls, '!text-left')}>Component</th><th className={cx(thCls, '!text-left')}>Type</th><th className={thCls}>Category</th><th className={thCls}>Qty</th><th className={thCls}>Budget cost / pc (₹)</th></tr></thead>
+                <tbody>
+                  {g.items.map((c, i) => (
+                    <tr key={`${c.matnr}-${i}`} className="border-t border-line/60">
+                      <td className="px-2.5 py-1.5 text-left text-xs"><span className="font-bold">{c.matnr.replace(/^0+/, '')}</span> <span className="text-muted" title={c.maktx}>{c.maktx}</span></td>
+                      <td className="px-2.5 py-1.5 text-left text-xs">{c.mtart}{c.matkl ? ` / ${c.matkl}` : ''}</td>
+                      <td className={tdCls}>{CAT_LABEL[c.cat]}</td><td className={tdCls}>{num(c.qty, 5)} {c.meins}</td><td className={tdCls}>{num(c.costPc)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }

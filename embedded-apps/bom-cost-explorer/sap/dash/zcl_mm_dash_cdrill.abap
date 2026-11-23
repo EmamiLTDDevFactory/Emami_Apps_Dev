@@ -22,6 +22,10 @@ CLASS zcl_mm_dash_cdrill DEFINITION PUBLIC FINAL CREATE PUBLIC.
                                   it_vbeln TYPE ty_r_vbeln OPTIONAL.
     METHODS run RETURNING VALUE(rt_rows) TYPE tt_cdrill.
   PRIVATE SECTION.
+    METHODS run_actual RETURNING VALUE(rt_rows) TYPE tt_cdrill.
+    "Budget side (grain T): for every valuation type (VBRP-BWTAR) of the sold items: ZMM_FBUDCOST_SUM with WERKS = valuation type, CRSSKU / business / scheme / MTART of MARA, GJAHR = financial year of the to date,
+    "latest approved VERSION; then ZMM_FBUDCOST_DET of that key = item level budget (component, quantity, cost per piece). CHARG carries the valuation type, FLAG the budget version.
+    METHODS budget_rows RETURNING VALUE(rt_rows) TYPE tt_cdrill.
     TYPES: BEGIN OF ty_q,
              charg TYPE charg_d,
              vbtyp TYPE vbtyp,
@@ -97,6 +101,60 @@ CLASS zcl_mm_dash_cdrill IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD run.
+    rt_rows = run_actual( ).
+    APPEND LINES OF budget_rows( ) TO rt_rows.
+  ENDMETHOD.
+
+  METHOD budget_rows.
+    DATA: lv_yr TYPE gjahr, ls_r TYPE zdash_s_cdrill.
+    SELECT SINGLE zskugrcodecrs, zbusiness, zscheme, mtart FROM mara WHERE matnr = @mv_matnr INTO @DATA(ls_m).
+    IF sy-subrc <> 0. RETURN. ENDIF.
+    SELECT DISTINCT p~bwtar AS bwtar
+      FROM vbrk AS h
+        INNER JOIN vbrp AS p ON p~vbeln = h~vbeln
+      WHERE p~matnr = @mv_matnr
+        AND h~fkdat BETWEEN @ms_par-date_from AND @ms_par-date_to
+        AND h~vbtyp IN ( 'M', 'N', 'O', 'P', 'S' )
+        AND h~waerk = 'INR'
+        AND p~werks IN @ms_par-werks
+        AND h~vbeln IN @mr_vbeln
+        AND h~vkorg IN @mr_vkorg
+        AND h~vtweg IN @mr_vtweg
+      INTO TABLE @DATA(lt_bw).
+    lv_yr = ms_par-date_to(4).
+    IF ms_par-date_to+4(2) < 4. lv_yr = lv_yr - 1. ENDIF.
+    LOOP AT lt_bw ASSIGNING FIELD-SYMBOL(<w>).
+      SELECT version FROM zmm_fbudcost_sum
+        WHERE werks = @<w>-bwtar AND zskugrcodecrs = @ls_m-zskugrcodecrs AND gjahr = @lv_yr AND zbusiness = @ls_m-zbusiness
+          AND zscheme = @ls_m-zscheme AND mtart = @ls_m-mtart AND status = 'A'
+        ORDER BY version DESCENDING
+        INTO @DATA(lv_ver) UP TO 1 ROWS.
+      ENDSELECT.
+      IF sy-subrc <> 0.
+        CLEAR ls_r. ls_r-grain = 'T'. ls_r-matnr = mv_matnr. ls_r-charg = <w>-bwtar. ls_r-flag = 'NBC'.
+        ls_r-msg = |No approved budget for valuation type '{ <w>-bwtar }', CRSSKU { ls_m-zskugrcodecrs }, scheme { ls_m-zscheme }, FY { lv_yr }|.
+        ls_r-date_from = ms_par-date_from. ls_r-date_to = ms_par-date_to.
+        APPEND ls_r TO rt_rows.
+        CONTINUE.
+      ENDIF.
+      SELECT idnrk, item_desc, mtart, matkl, menge, meins, cost_pc, stufe
+        FROM zmm_fbudcost_det
+        WHERE werks = @<w>-bwtar AND zskugrcodecrs = @ls_m-zskugrcodecrs AND gjahr = @lv_yr AND zbusiness = @ls_m-zbusiness
+          AND version = @lv_ver AND zscheme = @ls_m-zscheme AND mtart_fg = @ls_m-mtart
+        INTO TABLE @DATA(lt_dt).
+      LOOP AT lt_dt ASSIGNING FIELD-SYMBOL(<dt>).
+        CLEAR ls_r.
+        ls_r-grain = 'T'. ls_r-matnr = mv_matnr. ls_r-charg = <w>-bwtar. ls_r-idnrk = <dt>-idnrk. ls_r-maktx = <dt>-item_desc.
+        ls_r-mtart = <dt>-mtart. ls_r-matkl = <dt>-matkl. ls_r-meins = <dt>-meins. ls_r-flag = lv_ver.
+        ls_r-cat = category( iv_mtart = <dt>-mtart iv_matkl = <dt>-matkl ).
+        ls_r-avg_qty_pc = <dt>-menge. ls_r-avg_cost_pc = <dt>-cost_pc. ls_r-orders = <dt>-stufe.
+        ls_r-date_from = ms_par-date_from. ls_r-date_to = ms_par-date_to.
+        APPEND ls_r TO rt_rows.
+      ENDLOOP.
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD run_actual.
     DATA: lt_q    TYPE STANDARD TABLE OF ty_q,
           lt_b    TYPE SORTED TABLE OF ty_b WITH UNIQUE KEY charg,
           lt_bs   TYPE STANDARD TABLE OF ty_b,

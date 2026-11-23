@@ -26,7 +26,7 @@ const comp = (rm: Decimal, pm: Decimal, pf: Decimal, oh: Decimal): Comp => ({ rm
 
 export function parseMargin(rows: MarginRow[]): { sku: MLine[]; customers: MLine[] } {
   const line = (r: MarginRow): MLine => ({
-    grain: r.Grain, key: `${r.Grain}|${r.Zbrand}|${r.Matnr}|${r.Kunag}`, label: r.Grain === 'C' ? (r.KunagTxt || r.Kunag) : r.Maktx, brand: r.Zbrand, matkl: r.Matkl,
+    grain: r.Grain, key: `${r.Grain}|${r.Zbrand}|${r.Matnr}|${r.Bwtar ?? ''}|${r.Kunag}`, label: r.Grain === 'C' ? (r.KunagTxt || r.Kunag) : r.Maktx, brand: r.Zbrand, matkl: r.Matkl,
     matnr: r.Matnr, kunag: r.Kunag, scheme: r.Zscheme, crssku: r.Crssku, business: r.Zbusiness,
     qty: d(r.Qty), mrp: d(r.Mrp), sp: d(r.Sp), chRet: d(r.ChRet), chDis: d(r.ChDis), chSs: d(r.ChSs), gst: d(r.Gst),
     base: comp(d(r.Rm), d(r.Pm), d(r.Pf), d(r.Oh)),

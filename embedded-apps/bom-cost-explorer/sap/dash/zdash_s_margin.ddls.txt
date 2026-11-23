@@ -4,6 +4,8 @@ define type zdash_s_margin {
   grain       : abap.char(1);
   zbrand      : zpbrand;
   matnr       : matnr;
+  bwtar       : bwtar_d;
+  mtart       : mtart;
   kunag       : kunnr;
   maktx       : maktx;
   matkl       : matkl;

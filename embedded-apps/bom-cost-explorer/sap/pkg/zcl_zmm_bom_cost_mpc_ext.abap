@@ -340,11 +340,13 @@ CLASS zcl_zmm_bom_cost_mpc_ext IMPLEMENTATION.
     lo_p->set_sortable( abap_false ).
     lo_p->set_nullable( abap_false ).
     lo_p->set_filterable( abap_false ).
+    dash_str( io_et = lo_et iv_name = 'Bwtar' iv_field = 'BWTAR' iv_len = 10 iv_key = abap_true ).
     dash_str( io_et = lo_et iv_name = 'Kunag' iv_field = 'KUNAG' iv_len = 10 iv_key = abap_true ).
     dash_str( io_et = lo_et iv_name = 'Maktx' iv_field = 'MAKTX' iv_len = 40 ).
     dash_str( io_et = lo_et iv_name = 'Matkl' iv_field = 'MATKL' iv_len = 9 ).
     dash_str( io_et = lo_et iv_name = 'KunagTxt' iv_field = 'KUNAG_TXT' iv_len = 35 ).
     dash_str( io_et = lo_et iv_name = 'Zscheme' iv_field = 'ZSCHEME' iv_len = 1 ).
+    dash_str( io_et = lo_et iv_name = 'Mtart' iv_field = 'MTART' iv_len = 4 ).
     dash_str( io_et = lo_et iv_name = 'Crssku' iv_field = 'CRSSKU' iv_len = 30 ).
     lo_p = lo_et->get_property( 'Crssku' ).
     lo_p->set_filterable( abap_true ).

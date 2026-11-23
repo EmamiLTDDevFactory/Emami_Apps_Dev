@@ -13,7 +13,10 @@ export const CAT_LABEL: Record<Cat, string> = { R: 'Raw material', P: 'Packing m
 export interface CdrillSummary { rm: Decimal; pm: Decimal; pf: Decimal; oth: Decimal; total: Decimal; soldQty: Decimal; orders: number; msg: string; flag: string }
 export interface CdrillBatch { charg: string; sold: Decimal; prod: Decimal; orders: number; rm: Decimal; pm: Decimal; pf: Decimal; oth: Decimal; flag: string; msg: string }
 export interface CdrillComp { matnr: string; maktx: string; mtart: string; matkl: string; cat: Cat; meins: string; qty: Decimal; val: Decimal; qtyPc: Decimal; costPc: Decimal; share: Decimal | null }
-export interface Cdrill { summary: CdrillSummary | null; batches: CdrillBatch[]; comps: Record<Cat, CdrillComp[]>; costed: number; notCosted: number }
+export interface BudItem { matnr: string; maktx: string; mtart: string; matkl: string; cat: Cat; meins: string; qty: Decimal; costPc: Decimal; level: number }
+/** Budget side of one valuation type of the sold items (ZMM_FBUDCOST_SUM key, items from ZMM_FBUDCOST_DET). */
+export interface BudGroup { bwtar: string; version: string; flag: string; msg: string; items: BudItem[]; rm: Decimal; pm: Decimal; pf: Decimal; oth: Decimal; total: Decimal }
+export interface Cdrill { summary: CdrillSummary | null; batches: CdrillBatch[]; comps: Record<Cat, CdrillComp[]>; costed: number; notCosted: number; budget: BudGroup[] }
 
 export function parseCdrill(rows: CdrillRow[]): Cdrill {
   const s = rows.find((r) => r.Grain === 'S');
@@ -29,5 +32,22 @@ export function parseCdrill(rows: CdrillRow[]): Cdrill {
     const tot = comps[k].reduce((a, c) => a.plus(c.costPc), new Decimal(0));
     comps[k] = comps[k].map((c) => ({ ...c, share: tot.gt(0) ? c.costPc.div(tot).times(100) : null })).sort((a, b) => b.costPc.comparedTo(a.costPc));
   });
-  return { summary, batches, comps, costed: batches.filter((b) => b.flag === 'OK').length, notCosted: batches.filter((b) => b.flag !== 'OK').length };
+  return { summary, batches, comps, costed: batches.filter((b) => b.flag === 'OK').length, notCosted: batches.filter((b) => b.flag !== 'OK').length, budget: parseBudget(rows) };
+}
+
+/** Grain T rows: one group per valuation type; NBC when SAP found no approved budget for the key. Cost per piece of the components, summed by category. */
+export function parseBudget(rows: CdrillRow[]): BudGroup[] {
+  const by = new Map<string, BudGroup>();
+  for (const r of rows.filter((x) => x.Grain === 'T')) {
+    let g = by.get(r.Charg);
+    if (!g) { g = { bwtar: r.Charg, version: '', flag: 'OK', msg: '', items: [], rm: new Decimal(0), pm: new Decimal(0), pf: new Decimal(0), oth: new Decimal(0), total: new Decimal(0) }; by.set(r.Charg, g); }
+    if (r.Flag === 'NBC') { g.flag = 'NBC'; g.msg = r.Msg; continue; }
+    const cat = (['R', 'P', 'F'].includes(r.Cat) ? r.Cat : 'O') as Cat;
+    const cost = d(r.AvgCostPc);
+    g.version = r.Flag;
+    g.items.push({ matnr: r.Idnrk, maktx: r.Maktx, mtart: r.Mtart, matkl: r.Matkl, cat, meins: r.Meins, qty: d(r.AvgQtyPc), costPc: cost, level: r.Orders });
+    if (cat === 'R') g.rm = g.rm.plus(cost); else if (cat === 'P') g.pm = g.pm.plus(cost); else if (cat === 'F') g.pf = g.pf.plus(cost); else g.oth = g.oth.plus(cost);
+    g.total = g.total.plus(cost);
+  }
+  return Array.from(by.values()).map((g) => ({ ...g, items: g.items.sort((a, b) => b.costPc.comparedTo(a.costPc)) })).sort((a, b) => a.bwtar.localeCompare(b.bwtar));
 }
