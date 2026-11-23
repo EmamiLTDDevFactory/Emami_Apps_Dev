@@ -70,6 +70,7 @@ function Screen() {
   const plantsState: PlantsState = useMemo(() => ({ plants, loading: pl, error: plErr, reload: loadPlants }), [plants, pl, plErr, loadPlants]);
 
   const rep = useReport();
+  const hn = useHierNames();
 
   // COGM at a BOM-costing rate type: SAP costs the SKUs shown (on the person's button), every rate type comes back at once, the dropdown only picks one.
   const [costing, setCosting] = useState<{ status: 'idle' | 'running' | 'done' | 'error'; done: number; total: number; res: RateCogmResult | null; error: string }>({ status: 'idle', done: 0, total: 0, res: null, error: '' });
@@ -178,7 +179,6 @@ function Screen() {
     );
   }
 
-  const hn = useHierNames();
   const named = (o: { value: string; label: string }[], f: (c: string) => string) => o.map((x) => ({ value: x.value, label: f(x.value) || x.label })).sort((a, b) => a.label.localeCompare(b.label));
   const sel = (id: string, value: string, onChange: (v: string) => void, options: { value: string; label: string }[], all: string) => (
     <select id={id} className={cx(inputCls, 'w-56')} value={value} onChange={(e) => onChange(e.target.value)} disabled={!rep.rows}>
