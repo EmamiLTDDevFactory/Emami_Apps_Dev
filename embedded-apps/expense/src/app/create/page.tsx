@@ -4,7 +4,7 @@ import axios from 'axios';
 import { Check, CheckCircle2, ChevronDown, CloudUpload, Download, Eye, FileText, Send, Trash2, X } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { Banner, Button, Card, Chip, Field, Input, InfoField, MessageModal, type MessageModalState, Modal, Spinner, TextArea, YesNo } from '../../components/ui';
+import { Banner, Button, Card, Chip, Field, Input, InfoField, MessageModal, type MessageModalState, Modal, Select, Spinner, TextArea, YesNo } from '../../components/ui';
 import { API_BASE_URL, SAP_BASE_URL } from '../../config/api';
 import { useAuth } from '../../context/AuthContext';
 import { useClaim } from '../../context/ClaimContext';
@@ -73,6 +73,10 @@ type MonthClaimEntry = {
   // True once the EligibilitySet call has returned (success or fail) for this month - lets the UI
   // show "No Cap" instead of the "Auto-fetched..." placeholder once a real answer has come back.
   eligibilityChecked: boolean;
+  // Eligibility's Category field - 'B' = non-sales (HoD pick-list routing above the cap), 'C1'-'C4'
+  // = sales (straight to L1 supervisor, no choice). Same value expected on every month card for one
+  // employee, since it's a property of the employee, not the month.
+  category: string | null;
   // Set once OCR reads the invoice's own printed date off this card's document and it doesn't
   // fall inside this card's month — e.g. an August invoice dropped into the July card. Informational
   // only (doesn't block anything); the card's period stays whatever slot the user put it in.
@@ -81,7 +85,7 @@ type MonthClaimEntry = {
   invoiceNumber: string | null;
 };
 
-const BLANK_MONTH_ENTRY: MonthClaimEntry = { attachment: null, claimAmount: '', eligibleAmount: null, eligibilityChecked: false, dateMismatchWarning: null, invoiceNumber: null };
+const BLANK_MONTH_ENTRY: MonthClaimEntry = { attachment: null, claimAmount: '', eligibleAmount: null, eligibilityChecked: false, category: null, dateMismatchWarning: null, invoiceNumber: null };
 
 const blobToBase64 = (blob: Blob): Promise<string> => new Promise((resolve, reject) => {
   const reader = new FileReader();
@@ -118,7 +122,7 @@ function CreateClaimInner() {
   const searchParams = useSearchParams();
   const { currentUser } = useAuth() as { currentUser: any };
   const editingClaimId = searchParams.get('claimId') || '';
-  const { addClaim, policyLimit, expenseTypes, fetchExpenseTypes, getClaimById, tempClaimForResubmit, setTempClaimForResubmit, claims, fetchAreas, fetchClaims, fetchClaimedMonthsForExpenseType, fetchEligibility } = useClaim();
+  const { addClaim, policyLimit, expenseTypes, fetchExpenseTypes, getClaimById, tempClaimForResubmit, setTempClaimForResubmit, claims, fetchAreas, fetchClaims, fetchClaimedMonthsForExpenseType, fetchEligibility, fetchHodApprovers } = useClaim();
 
   useEffect(() => {
     fetchExpenseTypes();
@@ -237,6 +241,10 @@ function CreateClaimInner() {
   const [financeDocument, setFinanceDocument] = useState<Attachment[]>([]);
   const [pickingFinanceDocument, setPickingFinanceDocument] = useState(false);
   const [approvalNotes, setApprovalNotes] = useState('');
+  // Non-CTC: Mobile Exp, non-sales (Category='B') above the eligibility cap - HoD choice list.
+  const [hodApprovers, setHodApprovers] = useState<{ apprId: string; apprName: string; apprEmail: string }[]>([]);
+  const [selectedHodApprId, setSelectedHodApprId] = useState('');
+  const [hodLoading, setHodLoading] = useState(false);
   const normalizedGstin = gstinInput.replace(/\s+/g, '').toUpperCase();
   const [amountError, setAmountError] = useState('');
   const [messageModal, setMessageModal] = useState<MessageModalState>(null);
@@ -298,6 +306,8 @@ function CreateClaimInner() {
     setMonthClaims({});
     setFinanceDocument([]);
     setApprovalNotes('');
+    setHodApprovers([]);
+    setSelectedHodApprId('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, expenseTypes]);
 
@@ -606,7 +616,7 @@ function CreateClaimInner() {
     const result = await fetchEligibility(currentUser.employeeId, monthKey);
     setMonthClaims((prev) => {
       const entry = prev[monthKey] || BLANK_MONTH_ENTRY;
-      return { ...prev, [monthKey]: { ...entry, eligibleAmount: result ? result.eligibleAmount : null, eligibilityChecked: true } };
+      return { ...prev, [monthKey]: { ...entry, eligibleAmount: result ? result.eligibleAmount : null, eligibilityChecked: true, category: result?.category || null } };
     });
   };
 
@@ -632,6 +642,46 @@ function CreateClaimInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [pickedMonths, monthClaims],
   );
+
+  // Non-CTC: Mobile Exp - Category is a property of the employee (sales vs non-sales), not the
+  // month, but it only arrives via the per-month Eligibility call - any month card that's already
+  // resolved it carries the same value.
+  const employeeCategory = useMemo(
+    () => pickedMonths.map((mk) => getMonthEntry(mk).category).find(Boolean) || null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pickedMonths, monthClaims],
+  );
+  const anyMonthAboveEligibility = useMemo(
+    () => pickedMonths.some((mk) => {
+      const entry = getMonthEntry(mk);
+      return entry.eligibleAmount != null && (parseFloat(entry.claimAmount) || 0) > entry.eligibleAmount;
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pickedMonths, monthClaims],
+  );
+  const needsHodChoice = isMobileExpense && anyMonthAboveEligibility && employeeCategory === 'B';
+  const needsL1Notice = isMobileExpense && anyMonthAboveEligibility && !!employeeCategory && employeeCategory !== 'B';
+
+  // Re-fetches whenever the total claim amount changes, per the backend's "Amount = header
+  // TotalAmount" / "re-fetch when the total amount changes" instructions.
+  useEffect(() => {
+    if (!needsHodChoice || !currentUser?.employeeId || totalClaimAmount <= 0) {
+      setHodApprovers([]);
+      setSelectedHodApprId('');
+      return;
+    }
+    let cancelled = false;
+    setHodLoading(true);
+    fetchHodApprovers(currentUser.employeeId, totalClaimAmount).then((rows) => {
+      if (cancelled) return;
+      setHodApprovers(rows);
+      // A single candidate is auto-selected (no choice needed); 2+ requires the user to pick.
+      setSelectedHodApprId(rows.length === 1 ? rows[0].apprId : '');
+      setHodLoading(false);
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needsHodChoice, totalClaimAmount]);
 
   // Mirrors extractDocumentDetails above, but for one month card: reads the invoice's amount
   // (auto-fills Claim Amount if the user hasn't typed one yet) and its printed date (checked
@@ -1034,6 +1084,10 @@ function CreateClaimInner() {
         setFormError(`Please enter a valid Claim Amount for ${formatMonthLabel(invalidAmountMonth)}.`);
         return;
       }
+      if (needsHodChoice && hodApprovers.length >= 2 && !selectedHodApprId) {
+        setFormError('Please select the HoD to send this claim to.');
+        return;
+      }
 
       setAmountError('');
       setFormError('');
@@ -1065,6 +1119,9 @@ function CreateClaimInner() {
         managerApprovedAttachments,
         financeDocument,
         approvalNotes: approvalNotes || undefined,
+        // Chosen HoD (non-sales, 2+ candidates) or the single auto-selected one - undefined when
+        // there's nothing to choose (sales employee, or 0/1 HoD candidates).
+        selAppr: selectedHodApprId || undefined,
         lifnr: null,
         name1: null,
         stcd3: null,
@@ -1482,6 +1539,35 @@ function CreateClaimInner() {
                   <p className="text-lg font-extrabold text-ink">{totalClaimAmount.toFixed(2)}</p>
                 </div>
               </div>
+            </Card>
+          )}
+
+          {/* Non-CTC: Mobile Exp - HoD choice (non-sales, Category='B') or an L1-approver notice
+              (sales, Category C1-C4), only once the claim total is above the eligibility cap. */}
+          {needsHodChoice && (
+            <Card className="mb-3">
+              <h2 className="mb-2 text-sm font-bold text-ink">Approval Routing</h2>
+              {hodLoading ? (
+                <div className="flex items-center gap-2 text-xs text-inkSoft"><Spinner size={13} /> Checking HoD approvers…</div>
+              ) : hodApprovers.length === 0 ? (
+                <p className="text-xs text-inkSoft">This will go to your supervisor for approval.</p>
+              ) : hodApprovers.length === 1 ? (
+                <p className="text-sm text-ink">Will be sent to <span className="font-bold">{hodApprovers[0].apprName}</span> for approval.</p>
+              ) : (
+                <Field label="Send to HoD" required hint="More than one HoD can approve this amount - pick one.">
+                  <Select
+                    value={selectedHodApprId}
+                    onChange={setSelectedHodApprId}
+                    options={[{ value: '', label: 'Select an approver…' }, ...hodApprovers.map((a) => ({ value: a.apprId, label: a.apprName }))]}
+                  />
+                </Field>
+              )}
+            </Card>
+          )}
+          {needsL1Notice && (
+            <Card className="mb-3">
+              <h2 className="mb-2 text-sm font-bold text-ink">Approval Routing</h2>
+              <p className="text-sm text-ink">Will go to your L1 approver.</p>
             </Card>
           )}
 

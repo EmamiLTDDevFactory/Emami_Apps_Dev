@@ -109,9 +109,9 @@ export interface AreaCode {
 // One row = one approver in one amount slab of one cost centre's DOA (Delegation of Authority)
 // chain. Composite key: DoaCtype + Kostl + Expgrp + AmtFrom + Seqno.
 export interface DoaChainRow {
-  DoaCtype: string; // 'ADM' = Other Administrative Expenses (MBN/MBS mobile types reserved, unused yet)
+  DoaCtype: string; // 'ADM' = Other Administrative Expenses, 'MBN' = Mobile non-sales (MBS no longer used)
   Kostl: string; // cost centre, upper-case, e.g. 'CORP16'
-  Expgrp: string; // expense group - always '' for now, only empty-group rows are used
+  Expgrp: string; // expense group - no longer used in the DOA matrix; always sent blank
   AmtFrom: number; // slab start
   Seqno: string; // order within a slab for parallel approvers: '01', '02', ...
   AmtTo: number; // slab end; empty/0 = no cap
@@ -123,5 +123,8 @@ export interface DoaChainRow {
   Active: boolean;
   ValidFrom: string;
   ValidTo: string;
+  // HoD flag - only allowed for DoaCtype='MBN' rows. When set, this approver is offered as a
+  // choosable HoD for non-sales mobile claims above the employee's eligibility cap.
+  Hod?: boolean;
   Aenam?: string; // logged-in admin's PERNR - UI must send this on every POST/PUT
 }

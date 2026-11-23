@@ -26,6 +26,11 @@ interface ClaimContextType {
   // CapFound is blank (no cap row found for this grade) - both mean "don't enforce a cap or show a
   // warning", per the backend's EligibilitySet contract.
   fetchEligibility: (empId: string, monthKey: string) => Promise<{ eligibleAmount: number | null; grade?: string; category?: string } | null>;
+  // Non-CTC: Mobile Exp, non-sales (Category='B') above the eligibility cap - lists the HoD(s)
+  // flagged in the DOA chain (MBN, slab = claim amount) for the employee's cost centre. Empty
+  // array (not an error) when there's nothing to choose - the backend falls back to the
+  // supervisor flow in that case.
+  fetchHodApprovers: (empId: string, amount: number) => Promise<{ apprId: string; apprName: string; apprEmail: string }[]>;
   updateDraft: (id: string, claimData: Partial<ExpenseClaim>, isDraft: boolean) => { success: boolean; warning?: string };
   deleteClaim: (id: string) => void;
   // Manager Actions
@@ -640,6 +645,13 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // backend derives them from the month cards' own ExpenseDate values when omitted.
     if (isMobilePayload) {
       sapPayload.ApprNote = ((claimData as any).approvalNotes || '').slice(0, 255);
+      // Chosen HoD for a non-sales claim above the eligibility cap, when 2+ candidates exist.
+      // Omitted entirely when there's nothing to choose (sales employee, or 0/1 HoD candidates) -
+      // the backend errors "Please select the HoD ..." only when a choice was actually required.
+      const selAppr = (claimData as any).selAppr;
+      if (selAppr) {
+        sapPayload.SelAppr = String(selAppr).replace(/\D/g, '').padStart(8, '0').slice(0, 8);
+      }
     }
 
     // 3. Submit directly to SAP
@@ -679,9 +691,6 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // the raw string body — mirror the original's content-type sniffing exactly.
       let responseData: any = typeof response.data === 'string' ? { error: response.data || 'Server returned an unexpected response.' } : response.data;
 
-      console.log('[SUBMIT] Response Status:', response.status);
-      console.log('[SUBMIT] Response Data:', responseData);
-
       // 5. Handle SAP Errors — check Type==='E' even on HTTP 200, SAP's OData gateway sometimes
       // returns 200 with an error body.
       const bodyType = (responseData?.d?.Type || responseData?.Type || '').toString().toUpperCase();
@@ -695,7 +704,6 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         } else {
           sapErrorMessage = responseData?.error?.message?.value || responseData?.error || responseData?.d?.Message || responseData?.Message || 'Unknown SAP Error';
         }
-        console.error('[SUBMIT] Error:', sapErrorMessage);
         return { success: false, warning: sapErrorMessage };
       }
 
@@ -709,7 +717,6 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       // 6. Success! Update local UI state
       const newId = responseData?.ClaimId || `CLM-${Math.floor(1000 + Math.random() * 9000)}`;
-      console.log('[SUBMIT] Success! Claim ID:', newId);
 
       const status: ClaimStatus = isDraft ? 'Draft' : 'Submitted';
       const outcome = isDraft ? 'Draft' : 'Submitted';
@@ -738,10 +745,8 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       } else {
         setClaims((prev) => [newClaim, ...prev]);
       }
-      console.log('[SUBMIT] Returning success');
       return { success: true, claimId: newId };
     } catch (err: any) {
-      console.error('[SUBMIT] Catch Error:', err);
       const message = err?.message || 'Failed to reach the backend server.';
       const cleanMessage = message.includes('Unexpected token <') ? 'Server returned an invalid response. Please try again.' : message;
       return { success: false, warning: `Failed to reach the backend server. ${cleanMessage}` };
@@ -807,6 +812,23 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch (err) {
       console.warn('[fetchEligibility] best-effort check failed:', err);
       return null;
+    }
+  };
+
+  // Non-CTC: Mobile Exp - HoD choice list for non-sales (Category='B') claims above the cap.
+  // Amount is the OData decimal literal format the backend example gives (e.g. "Amount eq 1200m").
+  const fetchHodApprovers = async (empId: string, amount: number): Promise<{ apprId: string; apprName: string; apprEmail: string }[]> => {
+    try {
+      const empIdNumeric = empId.replace(/\D/g, '').padStart(8, '0');
+      const filter = encodeURIComponent(`EmpId eq '${empIdNumeric}' and Amount eq ${amount}m`);
+      const response = await sapClient.get(`${SAP_BASE_URL}/HodApproverSet?$filter=${filter}&$format=json`);
+      if (response.status < 200 || response.status >= 300) return [];
+
+      const rows = extractSapResults(response.data);
+      return rows.map((r: any) => ({ apprId: r.ApprId, apprName: r.ApprName, apprEmail: r.ApprEmail }));
+    } catch (err) {
+      console.warn('[fetchHodApprovers] best-effort check failed:', err);
+      return [];
     }
   };
 
@@ -1033,7 +1055,6 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const data = response.data;
       return data?.d?.results || data?.results || [];
     } catch (err) {
-      console.error('[TAXES] Fetch Error:', err);
       return [];
     }
   };
@@ -1059,7 +1080,6 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (Number.isNaN(expenseAmt) || Number.isNaN(taxAmt)) return null;
       return { expenseAmt, taxAmt };
     } catch (err) {
-      console.error('[CALCULATE_TAX] Error:', err);
       return null;
     }
   };
@@ -1073,7 +1093,6 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const data = response.data;
       return data?.d?.results || data?.results || [];
     } catch (err) {
-      console.error('[AREAS] Fetch Error:', err);
       return [];
     }
   };
@@ -1407,6 +1426,7 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         addClaim,
         fetchClaimedMonthsForExpenseType,
         fetchEligibility,
+        fetchHodApprovers,
         updateDraft,
         deleteClaim,
         approveClaim,

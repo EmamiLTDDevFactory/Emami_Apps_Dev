@@ -10,23 +10,11 @@ import { Banner, Button, Card, CardTitle, Checkbox, DateField, EmptyState, Field
 // Local-only tracking of "not yet saved to SAP" - stripped before any create/update call.
 type EditableDoaRow = DoaChainRow & { _isNew?: boolean };
 
+// MBS is no longer used (per the 2026-11-23 night update) - only ADM and MBN (mobile non-sales,
+// which can carry the Hod flag) remain selectable.
 const DOA_CTYPE_OPTIONS = [
   { value: 'ADM', label: 'ADM — Other Administrative Expenses' },
-  { value: 'MBN', label: 'MBN — Mobile' },
-  { value: 'MBS', label: 'MBS — Mobile' },
-];
-
-// Expense group categories backend asked to expose here - no business description was given for
-// what B/C1-C4 mean, so these are shown as bare codes rather than invented labels. Empty stays the
-// default (today's only behavior per the original DOA spec: "only rows with an empty group are
-// used").
-const EXPGRP_OPTIONS = [
-  { value: '', label: '(none — default)' },
-  { value: 'B', label: 'B' },
-  { value: 'C1', label: 'C1' },
-  { value: 'C2', label: 'C2' },
-  { value: 'C3', label: 'C3' },
-  { value: 'C4', label: 'C4' },
+  { value: 'MBN', label: 'MBN — Mobile (non-sales)' },
 ];
 
 const todayIso = () => new Date().toISOString().split('T')[0];
@@ -45,6 +33,7 @@ const blankRow = (doaCtype: string, kostl: string, amtFrom: number, amtTo: numbe
   Active: true,
   ValidFrom: todayIso(),
   ValidTo: FAR_FUTURE,
+  Hod: false,
   _isNew: true,
 });
 
@@ -346,25 +335,13 @@ export default function DoaChainPage() {
               <div key={key} className="mb-2 rounded-lg border border-border bg-white p-3">
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   {row._isNew && (
-                    <>
-                      <Field label="Amount From (₹)" required hint="Key field — can't be changed after saving">
-                        <Input
-                          type="number"
-                          value={row.AmtFrom || ''}
-                          onChange={(e) => updateRow(key, { AmtFrom: parseFloat(e.target.value) || 0 })}
-                        />
-                      </Field>
-                      <Field label="Expense Group" hint="Key field — can't be changed after saving. Only empty-group rows are used today.">
-                        <Select
-                          value={row.Expgrp}
-                          onChange={(v) => updateRow(key, { Expgrp: v })}
-                          options={EXPGRP_OPTIONS}
-                        />
-                      </Field>
-                    </>
-                  )}
-                  {!row._isNew && row.Expgrp && (
-                    <InfoField label="Expense Group" value={row.Expgrp} />
+                    <Field label="Amount From (₹)" required hint="Key field — can't be changed after saving">
+                      <Input
+                        type="number"
+                        value={row.AmtFrom || ''}
+                        onChange={(e) => updateRow(key, { AmtFrom: parseFloat(e.target.value) || 0 })}
+                      />
+                    </Field>
                   )}
                   <Field label="Department" className="md:col-span-2">
                     <Input value={row.DeptTxt} onChange={(e) => updateRow(key, { DeptTxt: e.target.value })} />
@@ -392,6 +369,11 @@ export default function DoaChainPage() {
                     <DateField label="Valid To" value={row.ValidTo} onChange={(v) => updateRow(key, { ValidTo: v })} />
                   </Field>
                   <Checkbox checked={row.Active} onChange={(v) => updateRow(key, { Active: v })} label="Active" />
+                  {/* Only allowed for MBN rows - backend rejects Hod on other types ("HoD flag is
+                      only allowed for mobile non-sales rows"). */}
+                  {doaCtype === 'MBN' && (
+                    <Checkbox checked={!!row.Hod} onChange={(v) => updateRow(key, { Hod: v })} label="HoD" />
+                  )}
                 </div>
 
                 {rowError && (
