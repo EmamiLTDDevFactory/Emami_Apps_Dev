@@ -73,7 +73,7 @@ const results = (j) => (j && j.d && (j.d.results || (Array.isArray(j.d) ? j.d : 
 
 // ===================================================================================================================== MAPPING
 // Everything below knows the SAP names. Adjust here (and only here) when the contract changes.
-const SET = { vendor: 'VendorSet', customer: 'CustomerSet', poso: 'PoSoCheckSet', invoice: 'FreightInvoiceSet', payment: 'PaymentStatusSet' };
+const SET = { vendor: 'VendorSet', customer: 'CustomerSet', poso: 'PoSoCheckSet', invoice: 'FreightInvoiceSet', payment: 'PaymentStatusSet', outDelivery: 'OutDeliverySet', outShipment: 'OutShipmentSet', lane: 'LaneSet' };
 
 const map = {
     vendor: (r) => ({ code: str(r.Lifnr), name: str(r.Name1), paymentTerms: str(r.Zterm) ? `Net ${parseInt(str(r.Zterm).replace(/\D/g, ''), 10) || 30}` : '', blocked: isX(r.Sperr) || isX(r.Loevm) }),
@@ -81,6 +81,10 @@ const map = {
     /** The app's invoice -> FreightInvoiceSet. ExtRef is the idempotency key: SAP returns the existing document for a repeat. */
     invoiceBody: (i) => ({ ExtRef: str(i.extRef), Lifnr: str(i.vendor), Amount: Number(i.amount).toFixed(2), Waers: 'INR', InvDate: toSapDate(i.invoiceDate), Werks: str(i.unit), Sin: str(i.sin), Miro: str(i.miro) }),
     invoiceResult: (r) => ({ docNo: str(r.BelnrFi || r.Belnr), fiscalYear: str(r.Gjahr), companyCode: str(r.Bukrs) }),
+    /** Outbound delivery with carton data and e-invoice / e-way bill status (read only). */
+    outDelivery: (r) => ({ no: str(r.Vbeln), plant: str(r.Werks), shipTo: str(r.ShipToName) || str(r.Kunnr), cartons: Number(r.Cartons) || 0, weightKg: Number(r.GrossWeightKg) || 0, volumeM3: Number(r.VolumeM3) || 0, pgi: isX(r.Pgi), irn: str(r.Irn), ewbNo: str(r.EwbNo), ewbValid: sapDate(r.EwbValid) }),
+    outShipment: (r) => ({ no: str(r.Tknum), type: str(r.Shtyp), serviceAgent: str(r.Tdlnr), deliveries: str(r.Vbelns).split(',').map((x) => x.trim()).filter(Boolean), cost: { net: Number(r.CostNet) || 0, tax: Number(r.CostTax) || 0, currency: str(r.Waers) || 'INR', status: str(r.CostStatus) } }),
+    lane: (r) => ({ fromLoc: str(r.FromLoc), toLoc: str(r.ToLoc), vendor: str(r.Lifnr), rate: Number(r.Rate) || 0, distanceKm: Number(r.Distance) || 0, transitH: Number(r.TransitH) || 0, priority: Number(r.Priority) || 0 }),
     payment: (r) => ({ doc: str(r.Belnr), cleared: isX(r.Cleared) || !!str(r.Augbl), clearingDoc: str(r.Augbl), clearedOn: sapDate(r.Augdt) }),
 };
 
@@ -114,6 +118,28 @@ const service = {
         const r = map.invoiceResult(((await request(caller, 'POST', SET.invoice, map.invoiceBody(inv))) || {}).d || {});
         if (!r.docNo) throw new SapError('SAP accepted the invoice but returned no document number.');
         return r;
+    },
+    /** Outbound deliveries by number -> { simulated, rows[] }. Simulated (no rows) until SAP is connected: the caller then asks the depot for the figures by hand. */
+    async deliveries(nos, caller) {
+        if (!isConfigured()) return { simulated: true, rows: [] };
+        const rows = [];
+        for (let i = 0; i < nos.length; i += 20) {
+            const f = nos.slice(i, i + 20).map((n) => `Vbeln eq ${enc(n)}`).join(' or ');
+            rows.push(...results(await request(caller, 'GET', `${SET.outDelivery}?$filter=${encodeURIComponent(f)}`)).map(map.outDelivery));
+        }
+        return { simulated: false, rows };
+    },
+    /** ECC shipment (header, linked deliveries, cost) -> object, or { simulated: true }. */
+    async shipment(no, caller) {
+        if (!isConfigured()) return { simulated: true };
+        const r = results(await request(caller, 'GET', `${SET.outShipment}?$filter=${encodeURIComponent(`Tknum eq ${enc(no)}`)}`))[0];
+        if (!r) throw new SapError(`Shipment ${no} was not found in SAP.`, 404);
+        return map.outShipment(r);
+    },
+    /** Lane freight master -> rows[] (or { simulated: true }). */
+    async lanes(caller) {
+        if (!isConfigured()) return { simulated: true };
+        return results(await request(caller, 'GET', SET.lane)).map(map.lane);
     },
     /** docs[] -> { [doc]: { cleared, clearingDoc } } */
     async paymentStatus(docs, caller) {

@@ -6,7 +6,7 @@ CLASS zcl_mm_dash_margin DEFINITION PUBLIC FINAL CREATE PUBLIC.
     "  Channel margin: retailer = ZREM + ZTDP, distributor = ZDIM + ZTDM, super stockist = ZSSM + ZTSM (tax on margin is added to its parent)
     "  Invoice cost: RM ZRMP, PM ZPMP, perfume ZPFP, overhead ZOHP; consumer scheme ZRSP/ZPSP/ZFCP/ZOSP; trade scheme ZRTS/ZPTP/ZFTS/ZOTP
     "  Sold qty in the base unit; invoice (M) and debit memo (P) +, cancellation (N), credit memo (O) -, cancellation of credit memo (S) +
-    "  Budget cost per piece: ZMM_FBUDCOST_SUM, latest approved VERSION of the financial year (of the to date), key CRSSKU + business vertical + scheme (MARA), FERT; none = flag NBC
+    "  Budget cost per piece: ZMM_FBUDCOST_SUM, latest approved VERSION of the financial year (of the to date), key WERKS (= valuation type VBRP-BWTAR, blank allowed) + CRSSKU + business vertical + scheme + MTART (MARA); none = flag NBC
     "  Grain S = SKU, C = customer, B = brand.   "As per current COGM" is not read here: it comes from the data set the business supplies.
     TYPES: ty_r_vkorg  TYPE RANGE OF vkorg,
            ty_r_vtweg  TYPE RANGE OF vtweg,
@@ -22,6 +22,7 @@ CLASS zcl_mm_dash_margin DEFINITION PUBLIC FINAL CREATE PUBLIC.
   PRIVATE SECTION.
     TYPES: BEGIN OF ty_k,
              matnr TYPE matnr,
+             bwtar TYPE bwtar_d,
              kunag TYPE kunag,
              vbtyp TYPE vbtyp,
              kschl TYPE kschl,
@@ -29,6 +30,7 @@ CLASS zcl_mm_dash_margin DEFINITION PUBLIC FINAL CREATE PUBLIC.
            END OF ty_k,
            BEGIN OF ty_q,
              matnr TYPE matnr,
+             bwtar TYPE bwtar_d,
              kunag TYPE kunag,
              vbtyp TYPE vbtyp,
              umvkz TYPE umvkz,
@@ -36,9 +38,11 @@ CLASS zcl_mm_dash_margin DEFINITION PUBLIC FINAL CREATE PUBLIC.
              qty   TYPE p LENGTH 15 DECIMALS 3,
            END OF ty_q,
            BEGIN OF ty_bud,
+             werks   TYPE werks_d,
              crssku  TYPE zskugrcodecrs,
              bus     TYPE zbusiness,
              scheme  TYPE zscheme,
+             mtart   TYPE mtart,
              version TYPE c LENGTH 2,
              n       TYPE i,
              rm      TYPE decfloat34,
@@ -119,9 +123,9 @@ CLASS zcl_mm_dash_margin IMPLEMENTATION.
   METHOD run.
     DATA: lt_k   TYPE STANDARD TABLE OF ty_k,
           lt_q   TYPE STANDARD TABLE OF ty_q,
-          lt_d   TYPE SORTED TABLE OF zdash_s_margin WITH UNIQUE KEY matnr kunag,
+          lt_d   TYPE SORTED TABLE OF zdash_s_margin WITH UNIQUE KEY matnr bwtar kunag,
           ls_d   TYPE zdash_s_margin,
-          lt_bud TYPE HASHED TABLE OF ty_bud WITH UNIQUE KEY crssku bus scheme,
+          lt_bud TYPE HASHED TABLE OF ty_bud WITH UNIQUE KEY werks crssku bus scheme mtart,
           ls_bud TYPE ty_bud,
           lv_sgn TYPE i,
           lv_v   TYPE decfloat34,
@@ -129,7 +133,7 @@ CLASS zcl_mm_dash_margin IMPLEMENTATION.
     FIELD-SYMBOLS <d> TYPE zdash_s_margin.
 
     " ---- quantities (one aggregated read)
-    SELECT p~matnr AS matnr, h~kunag AS kunag, h~vbtyp AS vbtyp, p~umvkz AS umvkz, p~umvkn AS umvkn, SUM( p~fkimg ) AS qty
+    SELECT p~matnr AS matnr, p~bwtar AS bwtar, h~kunag AS kunag, h~vbtyp AS vbtyp, p~umvkz AS umvkz, p~umvkn AS umvkn, SUM( p~fkimg ) AS qty
       FROM vbrk AS h
         INNER JOIN vbrp AS p ON p~vbeln = h~vbeln
         INNER JOIN mara AS m ON m~matnr = p~matnr
@@ -143,13 +147,13 @@ CLASS zcl_mm_dash_margin IMPLEMENTATION.
         AND m~zskugrcodecrs IN @mr_crssku
         AND p~umvkn > 0
         AND m~mtart = 'FERT'
-      GROUP BY p~matnr, h~kunag, h~vbtyp, p~umvkz, p~umvkn
+      GROUP BY p~matnr, p~bwtar, h~kunag, h~vbtyp, p~umvkz, p~umvkn
       INTO TABLE @lt_q.
     IF lt_q IS INITIAL. RETURN. ENDIF.
 
     " ---- conditions of the same items, one row per condition type (the inactive flag is ignored on purpose: the cost conditions carry it)
     " ---- price conditions, signed as stored (the inactive flag is ignored on purpose: the cost conditions carry it)
-    SELECT p~matnr AS matnr, h~kunag AS kunag, h~vbtyp AS vbtyp, k~kschl AS kschl, SUM( k~kwert ) AS kwert
+    SELECT p~matnr AS matnr, p~bwtar AS bwtar, h~kunag AS kunag, h~vbtyp AS vbtyp, k~kschl AS kschl, SUM( k~kwert ) AS kwert
       FROM vbrk AS h
         INNER JOIN vbrp AS p ON p~vbeln = h~vbeln
         INNER JOIN mara AS m ON m~matnr = p~matnr
@@ -164,10 +168,10 @@ CLASS zcl_mm_dash_margin IMPLEMENTATION.
         AND m~zskugrcodecrs IN @mr_crssku
         AND m~mtart = 'FERT'
         AND k~kschl IN ( 'ZP12', 'ZMRP', 'ZNMR', 'ZREM', 'ZTDP', 'ZDIM', 'ZTDM', 'ZSSM', 'ZTSM', 'JOIG', 'JOCG', 'JOSG' )
-      GROUP BY p~matnr, h~kunag, h~vbtyp, k~kschl
+      GROUP BY p~matnr, p~bwtar, h~kunag, h~vbtyp, k~kschl
       INTO TABLE @lt_k.
     " ---- cost conditions: always a POSITIVE amount per item (ABS), signed only by the billing category below; so COGS never turns negative on a sale
-    SELECT p~matnr AS matnr, h~kunag AS kunag, h~vbtyp AS vbtyp, k~kschl AS kschl, SUM( ABS( k~kwert ) ) AS kwert
+    SELECT p~matnr AS matnr, p~bwtar AS bwtar, h~kunag AS kunag, h~vbtyp AS vbtyp, k~kschl AS kschl, SUM( ABS( k~kwert ) ) AS kwert
       FROM vbrk AS h
         INNER JOIN vbrp AS p ON p~vbeln = h~vbeln
         INNER JOIN mara AS m ON m~matnr = p~matnr
@@ -182,22 +186,22 @@ CLASS zcl_mm_dash_margin IMPLEMENTATION.
         AND m~zskugrcodecrs IN @mr_crssku
         AND m~mtart = 'FERT'
         AND k~kschl IN ( 'ZRMP', 'ZPMP', 'ZPFP', 'ZOHP', 'ZRSP', 'ZPSP', 'ZFCP', 'ZOSP', 'ZRTS', 'ZPTP', 'ZFTS', 'ZOTP' )
-      GROUP BY p~matnr, h~kunag, h~vbtyp, k~kschl
+      GROUP BY p~matnr, p~bwtar, h~kunag, h~vbtyp, k~kschl
       APPENDING TABLE @lt_k.
 
     " ---- SKU x customer detail
     LOOP AT lt_q ASSIGNING FIELD-SYMBOL(<q>).
       lv_sgn = COND #( WHEN <q>-vbtyp = 'N' OR <q>-vbtyp = 'O' THEN -1 ELSE 1 ).
-      READ TABLE lt_d ASSIGNING <d> WITH TABLE KEY matnr = <q>-matnr kunag = <q>-kunag.
+      READ TABLE lt_d ASSIGNING <d> WITH TABLE KEY matnr = <q>-matnr bwtar = <q>-bwtar kunag = <q>-kunag.
       IF sy-subrc <> 0.
-        CLEAR ls_d. ls_d-grain = 'D'. ls_d-matnr = <q>-matnr. ls_d-kunag = <q>-kunag.
+        CLEAR ls_d. ls_d-grain = 'D'. ls_d-matnr = <q>-matnr. ls_d-bwtar = <q>-bwtar. ls_d-kunag = <q>-kunag.
         INSERT ls_d INTO TABLE lt_d ASSIGNING <d>.
       ENDIF.
       <d>-qty = <d>-qty + lv_sgn * <q>-qty * <q>-umvkz / <q>-umvkn.
     ENDLOOP.
     LOOP AT lt_k ASSIGNING FIELD-SYMBOL(<k>).
       lv_sgn = COND #( WHEN <k>-vbtyp = 'N' OR <k>-vbtyp = 'O' THEN -1 ELSE 1 ).
-      READ TABLE lt_d INTO ls_d WITH TABLE KEY matnr = <k>-matnr kunag = <k>-kunag.
+      READ TABLE lt_d INTO ls_d WITH TABLE KEY matnr = <k>-matnr bwtar = <k>-bwtar kunag = <k>-kunag.
       IF sy-subrc = 0.
         lv_v = lv_sgn * <k>-kwert.
         add_cond( EXPORTING iv_kschl = <k>-kschl iv_val = lv_v CHANGING cs = ls_d ).   "a sorted-table row is write-protected as a whole: work on a copy
@@ -210,23 +214,24 @@ CLASS zcl_mm_dash_margin IMPLEMENTATION.
 
     " ---- master data
     SELECT matnr, maktx FROM makt FOR ALL ENTRIES IN @lt_q WHERE matnr = @lt_q-matnr AND spras = @sy-langu INTO TABLE @DATA(lt_t).
-    SELECT matnr, zbrand, matkl, zscheme, zskugrcodecrs, zbusiness FROM mara FOR ALL ENTRIES IN @lt_q WHERE matnr = @lt_q-matnr INTO TABLE @DATA(lt_m).
+    SELECT matnr, zbrand, matkl, zscheme, zskugrcodecrs, zbusiness, mtart FROM mara FOR ALL ENTRIES IN @lt_q WHERE matnr = @lt_q-matnr INTO TABLE @DATA(lt_m).
     SELECT kunnr, name1 FROM kna1 FOR ALL ENTRIES IN @lt_q WHERE kunnr = @lt_q-kunag INTO TABLE @DATA(lt_c).
     SORT: lt_t BY matnr, lt_m BY matnr, lt_c BY kunnr.
 
     " ---- approved budget cost per piece: latest approved version of the financial year of the to date, averaged over the rows of that version
     lv_yr = ms_par-date_to(4).
     IF ms_par-date_to+4(2) < 4. lv_yr = lv_yr - 1. ENDIF.
-    SELECT zskugrcodecrs, zbusiness, zscheme, version, rm_cost, pm_cost, perfume_cost, machine, labour, power, steam, labour3p
+    " key per the costing team: WERKS = valuation type of the invoiced batch (blank is a valid value), CRSSKU, GJAHR, business vertical, latest VERSION, scheme, MTART (all from MARA)
+    SELECT werks, zskugrcodecrs, zbusiness, zscheme, mtart, version, rm_cost, pm_cost, perfume_cost, machine, labour, power, steam, labour3p
       FROM zmm_fbudcost_sum
-      WHERE gjahr = @lv_yr AND status = 'A' AND mtart = 'FERT'
+      WHERE gjahr = @lv_yr AND status = 'A'
       INTO TABLE @DATA(lt_bs).
-    SORT lt_bs BY zskugrcodecrs zbusiness zscheme version DESCENDING.
+    SORT lt_bs BY werks zskugrcodecrs zbusiness zscheme mtart version DESCENDING.
     LOOP AT lt_bs ASSIGNING FIELD-SYMBOL(<bs>).
-      READ TABLE lt_bud ASSIGNING FIELD-SYMBOL(<b>) WITH TABLE KEY crssku = <bs>-zskugrcodecrs bus = <bs>-zbusiness scheme = <bs>-zscheme.
+      READ TABLE lt_bud ASSIGNING FIELD-SYMBOL(<b>) WITH TABLE KEY werks = <bs>-werks crssku = <bs>-zskugrcodecrs bus = <bs>-zbusiness scheme = <bs>-zscheme mtart = <bs>-mtart.
       IF sy-subrc <> 0.
         CLEAR ls_bud.
-        ls_bud-crssku = <bs>-zskugrcodecrs. ls_bud-bus = <bs>-zbusiness. ls_bud-scheme = <bs>-zscheme. ls_bud-version = <bs>-version.
+        ls_bud-werks = <bs>-werks. ls_bud-mtart = <bs>-mtart. ls_bud-crssku = <bs>-zskugrcodecrs. ls_bud-bus = <bs>-zbusiness. ls_bud-scheme = <bs>-zscheme. ls_bud-version = <bs>-version.
         INSERT ls_bud INTO TABLE lt_bud ASSIGNING <b>.
       ENDIF.
       IF <b>-version = <bs>-version.   "the first (highest) version only
@@ -240,17 +245,17 @@ CLASS zcl_mm_dash_margin IMPLEMENTATION.
     DATA: lt_s TYPE tt_margin, ls_r TYPE zdash_s_margin.
     LOOP AT lt_d ASSIGNING <d>.
       " SKU
-      READ TABLE lt_s ASSIGNING FIELD-SYMBOL(<s>) WITH KEY grain = 'S' matnr = <d>-matnr.
+      READ TABLE lt_s ASSIGNING FIELD-SYMBOL(<s>) WITH KEY grain = 'S' matnr = <d>-matnr bwtar = <d>-bwtar.
       IF sy-subrc <> 0.
-        CLEAR ls_r. ls_r-grain = 'S'. ls_r-matnr = <d>-matnr.
+        CLEAR ls_r. ls_r-grain = 'S'. ls_r-matnr = <d>-matnr. ls_r-bwtar = <d>-bwtar.
         READ TABLE lt_t INTO DATA(ls_t) WITH KEY matnr = <d>-matnr BINARY SEARCH.
         IF sy-subrc = 0. ls_r-maktx = ls_t-maktx. ENDIF.
         READ TABLE lt_m INTO DATA(ls_m) WITH KEY matnr = <d>-matnr BINARY SEARCH.
         IF sy-subrc = 0.
-          ls_r-zbrand = ls_m-zbrand. ls_r-matkl = ls_m-matkl. ls_r-zscheme = ls_m-zscheme. ls_r-crssku = ls_m-zskugrcodecrs. ls_r-zbusiness = ls_m-zbusiness.
+          ls_r-zbrand = ls_m-zbrand. ls_r-matkl = ls_m-matkl. ls_r-zscheme = ls_m-zscheme. ls_r-crssku = ls_m-zskugrcodecrs. ls_r-zbusiness = ls_m-zbusiness. ls_r-mtart = ls_m-mtart.
         ENDIF.
         ls_r-date_from = ms_par-date_from. ls_r-date_to = ms_par-date_to.
-        READ TABLE lt_bud INTO ls_bud WITH TABLE KEY crssku = ls_r-crssku bus = ls_r-zbusiness scheme = ls_r-zscheme.
+        READ TABLE lt_bud INTO ls_bud WITH TABLE KEY werks = ls_r-bwtar crssku = ls_r-crssku bus = ls_r-zbusiness scheme = ls_r-zscheme mtart = ls_r-mtart.
         IF sy-subrc = 0 AND ls_bud-n > 0.
           ls_r-bud_ver = ls_bud-version.
           ls_r-bud_rm = ls_bud-rm / ls_bud-n. ls_r-bud_pm = ls_bud-pm / ls_bud-n. ls_r-bud_pf = ls_bud-pf / ls_bud-n.
@@ -258,10 +263,10 @@ CLASS zcl_mm_dash_margin IMPLEMENTATION.
           ls_r-bud_flag = 'OK'.
         ELSE.
           ls_r-bud_flag = 'NBC'.
-          ls_r-msg = 'No Budgeted Cost (NBC): no approved budget for this CRSSKU, business vertical and scheme'.
+          ls_r-msg = 'No Budgeted Cost (NBC): no approved budget for this valuation type, CRSSKU, business vertical, scheme and material type'.
         ENDIF.
         APPEND ls_r TO lt_s.
-        READ TABLE lt_s ASSIGNING <s> WITH KEY grain = 'S' matnr = <d>-matnr.
+        READ TABLE lt_s ASSIGNING <s> WITH KEY grain = 'S' matnr = <d>-matnr bwtar = <d>-bwtar.
       ENDIF.
       add_row( EXPORTING is_from = <d> CHANGING cs_to = <s> ).
       " customer
@@ -286,7 +291,7 @@ CLASS zcl_mm_dash_margin IMPLEMENTATION.
       add_row( EXPORTING is_from = <s> CHANGING cs_to = <br> ).
     ENDLOOP.
     rt_margin = lt_s.
-    SORT rt_margin BY grain zbrand matnr kunag.
+    SORT rt_margin BY grain zbrand matnr bwtar kunag.
   ENDMETHOD.
 
 ENDCLASS.

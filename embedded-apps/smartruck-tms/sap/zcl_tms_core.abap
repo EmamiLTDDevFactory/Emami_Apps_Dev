@@ -22,10 +22,26 @@ CLASS zcl_tms_core DEFINITION PUBLIC FINAL CREATE PUBLIC.
     CLASS-METHODS post_freight_invoice
       IMPORTING is_in TYPE zcl_tms_ty=>ts_freightinvoice iv_user TYPE string OPTIONAL
       RETURNING VALUE(rs_out) TYPE zcl_tms_ty=>ts_freightinvoice.
+    "! Outbound deliveries (read only): cartons (via MARM carton unit ZTMS_CARTON_UOM, default KAR), gross weight in kg, volume in m3, goods issue,
+    "! and e-invoice / e-way bill status of the billing document that followed the delivery. The e-invoice / e-way tables are read dynamically
+    "! (TVARVC ZTMS_EINV_TABLE / ZTMS_EWB_TABLE) and fail soft: unreadable means the fields stay empty.
+    CLASS-METHODS get_out_deliveries
+      IMPORTING it_vbeln TYPE string_table
+      RETURNING VALUE(rt_delivery) TYPE zcl_tms_ty=>tt_outdelivery.
+    "! One ECC shipment: header, linked deliveries (VTTP) and the shipment cost documents (VFKP, cancelled ones excluded). Initial = not found.
+    CLASS-METHODS get_out_shipment
+      IMPORTING iv_tknum TYPE tknum
+      RETURNING VALUE(rs_shipment) TYPE zcl_tms_ty=>ts_outshipment.
     CLASS-METHODS payment_status
       IMPORTING iv_belnr TYPE belnr_d
       RETURNING VALUE(rs_status) TYPE zcl_tms_ty=>ts_paymentstatus.
   PRIVATE SECTION.
+    CLASS-METHODS to_kg
+      IMPORTING iv_val TYPE p iv_unit TYPE meins RETURNING VALUE(rv_kg) TYPE zcl_tms_ty=>ts_outdelivery-grossweightkg.
+    CLASS-METHODS to_m3
+      IMPORTING iv_val TYPE p iv_unit TYPE meins RETURNING VALUE(rv_m3) TYPE zcl_tms_ty=>ts_outdelivery-volumem3.
+    CLASS-METHODS einvoice
+      IMPORTING iv_vbeln TYPE vbeln_vl CHANGING cs_out TYPE zcl_tms_ty=>ts_outdelivery.
     CLASS-METHODS fail
       IMPORTING is_in TYPE zcl_tms_ty=>ts_freightinvoice iv_text TYPE string
       RETURNING VALUE(rs_out) TYPE zcl_tms_ty=>ts_freightinvoice.
@@ -204,6 +220,105 @@ CLASS zcl_tms_core IMPLEMENTATION.
       rs_out-message = |Posted { rs_out-belnrfi }/{ rs_out-gjahr }.|.
     ELSE.
       rs_out = fail( is_in = is_in iv_text = `Posting returned no document key.` ).
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD to_kg.
+    rv_kg = SWITCH #( iv_unit WHEN 'KG' THEN iv_val WHEN 'G' THEN iv_val / 1000 WHEN 'TO' THEN iv_val * 1000 WHEN 'LB' THEN iv_val * '0.45359' ELSE iv_val ).
+  ENDMETHOD.
+
+  METHOD to_m3.
+    rv_m3 = SWITCH #( iv_unit WHEN 'M3' THEN iv_val WHEN 'L' THEN iv_val / 1000 WHEN 'CCM' THEN iv_val / 1000000 WHEN 'FT3' THEN iv_val * '0.0283168' ELSE iv_val ).
+  ENDMETHOD.
+
+  METHOD einvoice.
+    DATA: lv_bill TYPE vbrk-vbeln, lv_irn TYPE c LENGTH 64, lv_ewb TYPE c LENGTH 20, lv_valid TYPE d.
+    SELECT SINGLE vbeln FROM vbfa INTO @lv_bill WHERE vbelv = @iv_vbeln AND vbtyp_n = 'M'.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    DATA(lv_irn_tab) = get_param( iv_name = 'ZTMS_EINV_TABLE' iv_default = 'J_1IG_INVREFNUM' ).
+    DATA(lv_ewb_tab) = get_param( iv_name = 'ZTMS_EWB_TABLE' iv_default = 'J_1IG_EWAYBILL' ).
+    TRY.
+        SELECT SINGLE irn FROM (lv_irn_tab) INTO @lv_irn WHERE docno = @lv_bill AND cancel_date = '00000000'.
+        IF sy-subrc = 0.
+          cs_out-irn = lv_irn.
+        ENDIF.
+      CATCH cx_sy_dynamic_osql_error cx_sy_open_sql_db.
+        CLEAR cs_out-irn.
+    ENDTRY.
+    TRY.
+        SELECT SINGLE ebillno, vdtodate FROM (lv_ewb_tab) INTO ( @lv_ewb, @lv_valid ) WHERE docno = @lv_bill.
+        IF sy-subrc = 0.
+          cs_out-ewbno = lv_ewb.
+          cs_out-ewbvalid = lv_valid.
+        ENDIF.
+      CATCH cx_sy_dynamic_osql_error cx_sy_open_sql_db.
+        CLEAR: cs_out-ewbno, cs_out-ewbvalid.
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD get_out_deliveries.
+    DATA lt_range TYPE RANGE OF vbeln_vl.
+    LOOP AT it_vbeln INTO DATA(lv_in).
+      APPEND VALUE #( sign = 'I' option = 'EQ' low = |{ lv_in ALPHA = IN }| ) TO lt_range.
+    ENDLOOP.
+    IF lt_range IS INITIAL.
+      RETURN.
+    ENDIF.
+    DATA(lv_carton) = CONV meins( get_param( iv_name = 'ZTMS_CARTON_UOM' iv_default = 'KAR' ) ).
+    SELECT h~vbeln, h~kunnr, h~route, h~wadat_ist, h~btgew, h~gewei, h~volum, h~voleh, k~name1
+      FROM likp AS h LEFT OUTER JOIN kna1 AS k ON k~kunnr = h~kunnr
+      WHERE h~vbeln IN @lt_range
+      INTO TABLE @DATA(lt_h).
+    LOOP AT lt_h INTO DATA(ls_h).
+      DATA(ls_out) = VALUE zcl_tms_ty=>ts_outdelivery( vbeln = ls_h-vbeln kunnr = ls_h-kunnr shiptoname = ls_h-name1 route = ls_h-route
+                                                       pgi = COND #( WHEN ls_h-wadat_ist IS NOT INITIAL THEN 'X' ELSE '' ) ).
+      SELECT p~matnr, p~lgmng, p~werks, p~brgew, p~gewei, p~volum, p~voleh
+        FROM lips AS p WHERE p~vbeln = @ls_h-vbeln AND p~uecha = '000000'
+        INTO TABLE @DATA(lt_i).
+      DATA: lv_w TYPE p LENGTH 15 DECIMALS 3,
+            lv_v TYPE p LENGTH 15 DECIMALS 3.
+      CLEAR: lv_w, lv_v.
+      LOOP AT lt_i INTO DATA(ls_i).
+        IF ls_out-werks IS INITIAL.
+          ls_out-werks = ls_i-werks.
+        ENDIF.
+        SELECT SINGLE umrez, umren FROM marm INTO @DATA(ls_m) WHERE matnr = @ls_i-matnr AND meinh = @lv_carton.
+        IF sy-subrc = 0 AND ls_m-umrez > 0.
+          ls_out-cartons = ls_out-cartons + ls_i-lgmng * ls_m-umren / ls_m-umrez.
+        ENDIF.
+        lv_w = lv_w + to_kg( iv_val = ls_i-brgew iv_unit = ls_i-gewei ).
+        lv_v = lv_v + to_m3( iv_val = ls_i-volum iv_unit = ls_i-voleh ).
+      ENDLOOP.
+      " the delivery header weight / volume win when SAP has them (they include packaging), the item sums are the fallback
+      ls_out-grossweightkg = COND #( WHEN ls_h-btgew > 0 THEN to_kg( iv_val = ls_h-btgew iv_unit = ls_h-gewei ) ELSE lv_w ).
+      ls_out-volumem3 = COND #( WHEN ls_h-volum > 0 THEN to_m3( iv_val = ls_h-volum iv_unit = ls_h-voleh ) ELSE lv_v ).
+      einvoice( EXPORTING iv_vbeln = ls_h-vbeln CHANGING cs_out = ls_out ).
+      APPEND ls_out TO rt_delivery.
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD get_out_shipment.
+    SELECT SINGLE tknum, shtyp, tdlnr, route FROM vttk INTO @DATA(ls_k) WHERE tknum = @iv_tknum.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    rs_shipment = VALUE #( tknum = ls_k-tknum shtyp = ls_k-shtyp tdlnr = ls_k-tdlnr route = ls_k-route ).
+    SELECT vbeln FROM vttp INTO TABLE @DATA(lt_d) WHERE tknum = @iv_tknum ORDER BY vbeln.
+    LOOP AT lt_d INTO DATA(ls_d).
+      rs_shipment-vbelns = COND #( WHEN rs_shipment-vbelns IS INITIAL THEN ls_d-vbeln ELSE |{ rs_shipment-vbelns },{ ls_d-vbeln }| ).
+    ENDLOOP.
+    SELECT SUM( netwr ) AS net, SUM( mwsbp ) AS tax, waers FROM vfkp
+      WHERE rebel = @iv_tknum AND fksto = ''
+      GROUP BY waers INTO TABLE @DATA(lt_c).
+    IF lt_c IS NOT INITIAL.
+      rs_shipment-costnet = lt_c[ 1 ]-net.
+      rs_shipment-costtax = lt_c[ 1 ]-tax.
+      rs_shipment-waers = lt_c[ 1 ]-waers.
+      " settlement status of the cost documents (VFKP-STABR: C = fully settled): C when every document is, otherwise A
+      SELECT COUNT( * ) FROM vfkp WHERE rebel = @iv_tknum AND fksto = '' AND stabr <> 'C' INTO @DATA(lv_open).
+      rs_shipment-coststatus = COND #( WHEN lv_open > 0 THEN 'A' ELSE 'C' ).
     ENDIF.
   ENDMETHOD.
 

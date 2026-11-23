@@ -15,6 +15,10 @@ CLASS ltc_core DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
     METHODS invoice_unknown_vendor FOR TESTING.
     METHODS invoice_check_only FOR TESTING.
     METHODS payment_unknown_not_cleared FOR TESTING.
+    METHODS out_delivery_unknown_empty FOR TESTING.
+    METHODS out_delivery_known_sane FOR TESTING.
+    METHODS out_shipment_unknown_empty FOR TESTING.
+    METHODS out_shipment_has_deliveries FOR TESTING.
 ENDCLASS.
 
 CLASS ltc_core IMPLEMENTATION.
@@ -75,5 +79,27 @@ CLASS ltc_core IMPLEMENTATION.
   METHOD payment_unknown_not_cleared.
     DATA(ls) = zcl_tms_core=>payment_status( '0000000001' ).
     cl_abap_unit_assert=>assert_equals( act = ls-belnr exp = '0000000001' ).
+  ENDMETHOD.
+  METHOD out_delivery_unknown_empty.
+    cl_abap_unit_assert=>assert_initial( zcl_tms_core=>get_out_deliveries( VALUE #( ( `9999999990` ) ) ) ).
+    cl_abap_unit_assert=>assert_initial( zcl_tms_core=>get_out_deliveries( VALUE #( ) ) ).
+  ENDMETHOD.
+  METHOD out_delivery_known_sane.
+    SELECT SINGLE vbeln FROM likp INTO @DATA(lv_vbeln).
+    cl_abap_unit_assert=>assert_subrc( msg = 'no outbound delivery on this system' ).
+    DATA(lt) = zcl_tms_core=>get_out_deliveries( VALUE #( ( CONV string( lv_vbeln ) ) ) ).
+    cl_abap_unit_assert=>assert_equals( act = lines( lt ) exp = 1 ).
+    cl_abap_unit_assert=>assert_equals( act = lt[ 1 ]-vbeln exp = lv_vbeln ).
+    cl_abap_unit_assert=>assert_true( xsdbool( lt[ 1 ]-grossweightkg >= 0 AND lt[ 1 ]-volumem3 >= 0 AND lt[ 1 ]-cartons >= 0 ) ).
+  ENDMETHOD.
+  METHOD out_shipment_unknown_empty.
+    cl_abap_unit_assert=>assert_initial( zcl_tms_core=>get_out_shipment( '9999999990' )-tknum ).
+  ENDMETHOD.
+  METHOD out_shipment_has_deliveries.
+    SELECT SINGLE tknum FROM vttk INTO @DATA(lv_tknum).
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    cl_abap_unit_assert=>assert_equals( act = zcl_tms_core=>get_out_shipment( lv_tknum )-tknum exp = lv_tknum ).
   ENDMETHOD.
 ENDCLASS.

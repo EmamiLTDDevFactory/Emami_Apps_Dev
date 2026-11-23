@@ -1,5 +1,5 @@
 "! Data provider of OData service ZTMS_SRV (code based, no SEGW project): maps requests to ZCL_TMS_CORE. Reads: VendorSet, CustomerSet,
-"! PoSoCheckSet, PaymentStatusSet. The only write is POST FreightInvoiceSet (the gateway hub passes no function imports / PUT / DELETE).
+"! PoSoCheckSet, PaymentStatusSet, OutDeliverySet, OutShipmentSet (LaneSet answers 501 until the freight source is decided). The only write is POST FreightInvoiceSet (the gateway hub passes no function imports / PUT / DELETE).
 "! The hub login e-mail arrives as option emamiuser= or header X-Emami-User and is written into the FI item text for traceability.
 CLASS zcl_ztms_dpc DEFINITION PUBLIC INHERITING FROM /iwbep/cl_mgw_abs_data CREATE PUBLIC.
   PUBLIC SECTION.
@@ -90,6 +90,30 @@ CLASS zcl_ztms_dpc IMPLEMENTATION.
           APPEND zcl_tms_core=>payment_status( CONV #( |{ lv_b ALPHA = IN }| ) ) TO lt_ps.
         ENDLOOP.
         copy_data_to_ref( EXPORTING is_data = lt_ps CHANGING cr_data = er_entityset ).
+      WHEN 'OutDeliverySet'.
+        DATA(lt_vb) = filter_values( it_filter = it_filter_select_options iv_name = 'Vbeln' ).
+        IF lt_vb IS INITIAL.
+          busi( `Filter Vbeln eq '<delivery>' is mandatory.` ).
+        ENDIF.
+        IF lines( lt_vb ) > 50.
+          busi( `At most 50 deliveries per request.` ).
+        ENDIF.
+        DATA(lt_od) = zcl_tms_core=>get_out_deliveries( lt_vb ).
+        copy_data_to_ref( EXPORTING is_data = lt_od CHANGING cr_data = er_entityset ).
+      WHEN 'OutShipmentSet'.
+        DATA(lt_tk) = filter_values( it_filter = it_filter_select_options iv_name = 'Tknum' ).
+        IF lines( lt_tk ) <> 1.
+          busi( `Filter Tknum eq '<shipment>' is mandatory (one shipment).` ).
+        ENDIF.
+        DATA(ls_os) = zcl_tms_core=>get_out_shipment( CONV #( |{ lt_tk[ 1 ] ALPHA = IN }| ) ).
+        DATA(lt_os) = VALUE zcl_tms_ty=>tt_outshipment( ).
+        IF ls_os-tknum IS NOT INITIAL.
+          APPEND ls_os TO lt_os.
+        ENDIF.
+        copy_data_to_ref( EXPORTING is_data = lt_os CHANGING cr_data = er_entityset ).
+      WHEN 'LaneSet'.
+        " Where the lane freight lives (condition type / table) is a Logistics decision not yet taken: refuse clearly instead of returning nothing.
+        busi( iv_text = `The lane freight source is not configured yet (needs the SD freight condition type and key).` iv_status = '501' ).
       WHEN OTHERS.
         busi( iv_text = |Unknown entity set { iv_entity_set_name }| iv_status = '404' ).
     ENDCASE.
@@ -112,6 +136,18 @@ CLASS zcl_ztms_dpc IMPLEMENTATION.
       WHEN 'PoSoCheckSet'.
         DATA(ls_chk) = zcl_tms_core=>check_poso( iv_po = key_value( it_key = it_key_tab iv_name = 'Po' ) iv_so = key_value( it_key = it_key_tab iv_name = 'So' ) ).
         copy_data_to_ref( EXPORTING is_data = ls_chk CHANGING cr_data = er_entity ).
+      WHEN 'OutDeliverySet'.
+        DATA(lt_od1) = zcl_tms_core=>get_out_deliveries( VALUE #( ( key_value( it_key = it_key_tab iv_name = 'Vbeln' ) ) ) ).
+        IF lt_od1 IS INITIAL.
+          busi( iv_text = `Delivery was not found.` iv_status = '404' ).
+        ENDIF.
+        copy_data_to_ref( EXPORTING is_data = lt_od1[ 1 ] CHANGING cr_data = er_entity ).
+      WHEN 'OutShipmentSet'.
+        DATA(ls_os1) = zcl_tms_core=>get_out_shipment( CONV #( |{ key_value( it_key = it_key_tab iv_name = 'Tknum' ) ALPHA = IN }| ) ).
+        IF ls_os1-tknum IS INITIAL.
+          busi( iv_text = `Shipment was not found.` iv_status = '404' ).
+        ENDIF.
+        copy_data_to_ref( EXPORTING is_data = ls_os1 CHANGING cr_data = er_entity ).
       WHEN 'PaymentStatusSet'.
         DATA(ls_ps) = zcl_tms_core=>payment_status( CONV #( |{ key_value( it_key = it_key_tab iv_name = 'Belnr' ) ALPHA = IN }| ) ).
         copy_data_to_ref( EXPORTING is_data = ls_ps CHANGING cr_data = er_entity ).

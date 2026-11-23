@@ -26,6 +26,8 @@ export interface MarginRow {
   Zscheme: string;
   Crssku: string;
   Zbusiness: string;
+  Bwtar?: string;
+  Mtart?: string;
   BudVer: string;
   BudFlag: string;
   Msg: string;

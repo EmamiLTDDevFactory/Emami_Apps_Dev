@@ -18,6 +18,17 @@ ENT = [
   ('Message','message',S,255,False,'c')]),
  dict(name='PaymentStatus', set='PaymentStatusSet', create=False, props=[
   ('Belnr','belnr',S,10,True,'c'),('Cleared','cleared',S,1,False,'c'),('Augbl','augbl',S,10,False,'c'),('Augdt','augdt',DT,0,False,'d'),('Gjahr','gjahr',S,4,False,'c')]),
+ # Outward tracking (read only). Outbound delivery with carton data and e-invoice / e-way bill status; ECC shipment with its linked deliveries and cost; lane freight.
+ dict(name='OutDelivery', set='OutDeliverySet', create=False, props=[
+  ('Vbeln','vbeln',S,10,True,'c'),('Werks','werks',S,4,False,'c'),('Kunnr','kunnr',S,10,False,'c'),('ShipToName','shiptoname',S,35,False,'c'),
+  ('Cartons','cartons',D,13,False,'p'),('GrossWeightKg','grossweightkg',D,13,False,'p'),('VolumeM3','volumem3',D,13,False,'p'),
+  ('Pgi','pgi',S,1,False,'c'),('Route','route',S,6,False,'c'),('Irn','irn',S,64,False,'c'),('EwbNo','ewbno',S,20,False,'c'),('EwbValid','ewbvalid',DT,0,False,'d')]),
+ dict(name='OutShipment', set='OutShipmentSet', create=False, props=[
+  ('Tknum','tknum',S,10,True,'c'),('Shtyp','shtyp',S,4,False,'c'),('Tdlnr','tdlnr',S,10,False,'c'),('Route','route',S,6,False,'c'),('Vbelns','vbelns',S,255,False,'c'),
+  ('CostNet','costnet',D,13,False,'p'),('CostTax','costtax',D,13,False,'p'),('Waers','waers',S,5,False,'c'),('CostStatus','coststatus',S,1,False,'c')]),
+ dict(name='Lane', set='LaneSet', create=False, props=[
+  ('FromLoc','fromloc',S,20,True,'c'),('ToLoc','toloc',S,20,True,'c'),('Lifnr','lifnr',S,10,True,'c'),('Rate','rate',D,13,False,'p'),
+  ('Distance','distance',D,13,False,'p'),('TransitH','transith',D,13,False,'p'),('Priority','priority',S,2,False,'c')]),
 ]
 ASSOC = []
 ACT = []

@@ -26,6 +26,8 @@ const engine = require('./tmsEngine');
 const reports = require('./tmsReports');
 const sapSvc = require('./tmsSap');
 const integ = require('./tmsIntegrations');
+const ulip = require('./tmsUlip');
+const { MAX_FILE } = require('./tmsTrips');
 
 const APP_ID = 'smartruck-tms';
 const router = express.Router();
@@ -37,6 +39,7 @@ function pgStore() {
     const init = () => ready || (ready = (async () => {
         await pool.query(`CREATE TABLE IF NOT EXISTS emami_apps.tms_state (key text PRIMARY KEY, data jsonb NOT NULL, version integer NOT NULL DEFAULT 0, updated_at timestamptz NOT NULL DEFAULT now())`);
         await pool.query(`CREATE TABLE IF NOT EXISTS emami_apps.tms_audit (id bigserial PRIMARY KEY, at timestamptz NOT NULL DEFAULT now(), actor text NOT NULL, cmd text NOT NULL, ok boolean NOT NULL, detail text)`);
+        await pool.query(`CREATE TABLE IF NOT EXISTS emami_apps.tms_files (id bigserial PRIMARY KEY, sin text NOT NULL, name text NOT NULL, mime text NOT NULL, size integer NOT NULL, data bytea NOT NULL, by_user text, at timestamptz NOT NULL DEFAULT now())`);
         await pool.query(`INSERT INTO emami_apps.tms_state(key, data) VALUES ('db', $1) ON CONFLICT (key) DO NOTHING`, [JSON.stringify(engine.emptyDb())]);
     })().catch((e) => { ready = undefined; throw e; }));
     return {
@@ -53,20 +56,36 @@ function pgStore() {
                 return out;
             } catch (e) { await c.query('ROLLBACK').catch(() => null); throw e; } finally { c.release(); }
         },
+        files: {
+            async put({ sin, name, mime, dataBase64, by }) {
+                await init();
+                const r = await pool.query('INSERT INTO emami_apps.tms_files(sin, name, mime, size, data, by_user) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id', [sin, name, mime, Buffer.from(dataBase64, 'base64').length, Buffer.from(dataBase64, 'base64'), by]);
+                return `F${r.rows[0].id}`;
+            },
+            async get(fid) {
+                await init();
+                const n = /^F(\d{1,12})$/.exec(String(fid)); if (!n) return null;
+                const r = await pool.query('SELECT sin, name, mime, data FROM emami_apps.tms_files WHERE id = $1', [n[1]]);
+                return r.rows[0] ? { sin: r.rows[0].sin, name: r.rows[0].name, mime: r.rows[0].mime, buffer: r.rows[0].data } : null;
+            },
+            async mark() { /* no-op */ },
+        },
         async audit(actor, cmd, ok, detail) { try { await init(); await pool.query('INSERT INTO emami_apps.tms_audit(actor, cmd, ok, detail) VALUES ($1,$2,$3,$4)', [actor, cmd, ok, String(detail || '').slice(0, 500)]); } catch (e) { console.error('[tms] audit', e.message); } },
     };
 }
 function memoryStore(db = engine.emptyDb()) {
-    const auditLog = [];
+    const auditLog = [], fileMap = new Map();
     return {
         db, auditLog,
+        files: { async put(f) { const fid = `F${fileMap.size + 1}`; fileMap.set(fid, { sin: f.sin, name: f.name, mime: f.mime, buffer: Buffer.from(f.dataBase64, 'base64') }); return fid; }, async get(fid) { return fileMap.get(fid) || null; } },
         async withDb(fn, { write = true } = {}) { const copy = JSON.parse(JSON.stringify(this.db)); const out = await fn(copy); if (write) this.db = copy; return out; },
         async audit(actor, cmd, ok, detail) { auditLog.push({ actor, cmd, ok, detail }); },
     };
 }
 
 // ------------------------------------------------------------------ the service (what the routes and the tests call)
-function createService(store, depsFor) {
+function createService(store, depsForCaller) {
+    const depsFor = (caller) => ({ ...depsForCaller(caller), files: store.files });
     const sessionUser = (db, caller) => {
         let u = db.users.find((x) => x.email === caller.email);
         if (!u && caller.hubRole === 'Admin' && !db.users.some((x) => (x.roles || []).includes('Admin'))) {
@@ -90,18 +109,38 @@ function createService(store, depsFor) {
         },
         async run(caller, cmd) {
             const deps = depsFor(caller);
-            let consentRequest;
+            let consentRequest, mailRequest;
             const out = await store.withDb(async (db) => {
                 const u = sessionUser(db, caller);
                 try {
                     const { result } = await engine.apply(db, cmd, u, deps);
-                    consentRequest = result.consentRequest;
+                    consentRequest = result.consentRequest; mailRequest = result.mailRequest; delete result.mailRequest;
                     await store.audit(u.email, cmd.type, true, '');
                     return { result, db: engine.scopedDb(db, u, !!cmd.allUnits) };
                 } catch (e) { await store.audit(u.email, cmd && cmd.type, false, e.message); throw e; }
             });
+            if (mailRequest) {
+                const att = mailRequest.fileId ? await store.files.get(mailRequest.fileId).catch(() => null) : null;
+                const m = await deps.mail.send({ to: mailRequest.to, subject: mailRequest.subject, text: mailRequest.text, attachment: att ? { name: att.name, mime: att.mime, dataBase64: att.buffer.toString('base64') } : undefined }).catch((e) => ({ sent: false, error: e.message }));
+                out.result.mail = m;
+                if (m.sent) await store.withDb((db) => { const i = db.invoices.find((x) => x.id === mailRequest.invoiceId); if (i) { i.mailedAt = new Date().toISOString(); i.history.push({ at: i.mailedAt, actor: 'System', text: `Mailed to ${mailRequest.to}` }); } });
+            }
             if (consentRequest) { const r = await deps.consent.request(consentRequest).catch(() => ({ requested: false })); out.result.consent = r; }
             return out;
+        },
+        /** Recipient link: no session; the token is the credential. Returns only what publicTrack allows. */
+        async publicTrack(token) {
+            return store.withDb((db) => engine.trips.publicTrack(db, token, Date.now()), { write: false });
+        },
+        /** A stored file (POD, invoice, departure photo), only if the caller may see its trip. */
+        async file(caller, fid) {
+            const f = await store.files.get(fid);
+            if (!f) throw new engine.EngineError('File not found.', 404);
+            await store.withDb((db) => {
+                const u = sessionUser(db, caller);
+                if (!engine.scopedDb(db, u, true).shipments.some((x) => x.sin === f.sin)) throw new engine.EngineError('You cannot open that file.', 403);
+            }, { write: false });
+            return f;
         },
         async report(caller, name, allUnits) {
             return store.withDb((db) => {
@@ -139,17 +178,18 @@ function createService(store, depsFor) {
             const deps = depsFor({ email: '' });
             return store.withDb(async (db) => {
                 const s = engine.sweep(db, Date.now());
-                let p = { paid: 0 };
+                let p = { paid: 0 }, tr = { updated: 0, failed: 0 };
+                try { tr = await engine.trips.pollTracking(db, Date.now(), deps); } catch (e) { console.error('[tms] tracking poll', e.message); }
                 try { p = await engine.syncPayments(db, Date.now(), deps); } catch (e) { console.error('[tms] payment sync', e.message); }
-                return { ...s, ...p };
+                return { ...s, ...p, tracked: tr.updated, trackFailed: tr.failed };
             });
         },
     };
 }
 
 const depsFor = (caller) => ({
-    sap: { vendors: () => sapSvc.vendors(caller), customers: () => sapSvc.customers(caller), checkPoSo: (q) => sapSvc.checkPoSo(q, caller), postFreightInvoice: (i) => sapSvc.postFreightInvoice(i, caller), paymentStatus: (d) => sapSvc.paymentStatus(d, caller) },
-    consent: integ.consent, eway: integ.eway,
+    sap: { deliveries: (n) => sapSvc.deliveries(n, caller), shipment: (n) => sapSvc.shipment(n, caller), lanes: () => sapSvc.lanes(caller), vendors: () => sapSvc.vendors(caller), customers: () => sapSvc.customers(caller), checkPoSo: (q) => sapSvc.checkPoSo(q, caller), postFreightInvoice: (i) => sapSvc.postFreightInvoice(i, caller), paymentStatus: (d) => sapSvc.paymentStatus(d, caller) },
+    consent: integ.consent, eway: integ.eway, mail: integ.mail, ulip,
 });
 const service = createService(pgStore(), depsFor);
 
@@ -194,11 +234,23 @@ ingest.post('/ping', handle('ingest.ping', async (req) => { const list = Array.i
 ingest.post('/consent', handle('ingest.consent', (req) => service.ingestConsent(req.body || {})));
 router.use('/ingest', ingest);
 
+// Recipient tracking link: no hub session (the 128-bit token is the credential). Rate limited per IP; read only.
+const hits = new Map();
+const limited = (req) => { const k = req.ip || '-', now = Date.now(), e = hits.get(k) || { n: 0, t: now }; if (now - e.t > 60_000) { e.n = 0; e.t = now; } e.n++; hits.set(k, e); if (hits.size > 5000) hits.clear(); return e.n > 60; };
+router.get('/public/track/:token', async (req, res) => {
+    if (limited(req)) return res.status(429).json({ error: 'Too many requests. Try again in a minute.' });
+    try { const r = await service.publicTrack(String(req.params.token)); res.set('Cache-Control', 'no-store'); return r ? res.json(r) : res.status(404).json({ error: 'This tracking link is not valid.' }); } catch (e) { console.error('[tms] public track', e.message); return res.status(500).json({ error: 'Unexpected error.' }); }
+});
+
 router.use(requireUser);
 router.use(express.json({ limit: '8mb' }));
 router.get('/me', handle('me', (req) => service.me(req.caller)));
 router.get('/db', handle('db', (req) => service.snapshot(req.caller, req.query.allUnits === '1')));
 router.post('/cmd', handle('cmd', (req) => service.run(req.caller, req.body || {})));
+router.get('/file/:id', async (req, res) => {
+    try { const f = await service.file(req.caller, String(req.params.id)); res.set({ 'Content-Type': f.mime, 'Content-Disposition': `attachment; filename="${f.name.replace(/[^\w.\- ]/g, '_')}"`, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store' }); res.send(f.buffer); }
+    catch (e) { const st = e instanceof engine.EngineError ? e.status : 500; res.status(st).json({ error: st === 500 ? 'Unexpected error.' : e.message }); }
+});
 router.get('/reports/catalog', handle('reports.catalog', async () => ({ catalog: reports.catalog(), count: reports.count() })));
 router.get('/reports/:name', handle('report', (req) => service.report(req.caller, String(req.params.name), req.query.allUnits === '1')));
 router.post('/admin/import', handle('import', (req) => service.importData(req.caller, req.body, req.query.dryRun === '1')));

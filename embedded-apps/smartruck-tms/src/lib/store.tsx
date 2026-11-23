@@ -22,6 +22,8 @@ interface Ctx {
   catalog: () => Promise<Record<string, string[]> | null>;
   report: (name: string) => Promise<Record<string, string | number>[] | null>;
   importData: (payload: unknown, dryRun: boolean) => Promise<{ ok: boolean; errors?: string[]; counts: Record<string, number> }>;
+  /** Outward tracking command (live only). Resolves to the server result, or undefined after showing the server's message. */
+  cmd: <R = Record<string, unknown>>(c: Record<string, unknown>) => Promise<R | undefined>;
   orderAction: (id: string, a: 'cancel' | 'delete' | 'duplicate' | 'rebook' | 'toBid', remark?: string) => void;
   addRemark: (id: string, text: string) => void;
   allocate: (orderId: string, carrierId: string, price?: number) => void;
@@ -150,6 +152,7 @@ export function TmsProvider({ children }: { children: React.ReactNode }) {
     ewayCheck: async () => ({ simulated: true, status: 'ACTIVE' }),
     catalog: async () => null, report: async () => null,
     importData: async () => ({ ok: false, errors: ['Import is available in live mode only.'], counts: {} }),
+    cmd: async () => { toast('Outward tracking needs the live server. Open this app with ?mode=live.', 'err'); return undefined; },
     db, me, unitId, setUnitId, setMe: (id) => { setMeId(id); try { window.localStorage.setItem(KEY + '_me', id); } catch { /* ignore */ } }, allUnits, setAllUnits, now, can, scoped, toast, toasts,
     createOrder: async (o) => {
       let id = '';
@@ -222,6 +225,7 @@ export function TmsProvider({ children }: { children: React.ReactNode }) {
   const liveValue: Ctx = {
     ...value, mode: 'live', modeKnown, liveState: { ready: liveReady, error: liveErr, integrations: liveMe?.integrations },
     setMe: () => undefined, resetDemo: () => undefined,
+    cmd: (c) => run(c) as never,
     createOrder: async (o) => (await run<{ orderId: string }>({ type: 'createOrder', ...o }))?.orderId ?? '',
     orderAction: (id, action, remark) => { void run({ type: 'orderAction', id, action, remark }); },
     addRemark: (id, text) => { void run({ type: 'addRemark', id, text }); },
