@@ -128,3 +128,9 @@ added by `mediclaim/sap/maint_mpc.py`, which `gen/gen.py` calls, so regenerating
 `mediclaim/sap/README.md`. Term Life codes: `SLAB` = ZLIFE_AMT (Key1 slab no, Val1 sum assured, Val2 text, Val3 premium, Val4 GST, Val5 total; Year),
 `LPERIOD` = ZLIFE_PERIOD, `LIMIT` = ZLIFE_INS_LIMIT (Key1 employee, Val1 limit; Year), `DATE` row 2 = cut-off and HR mail, `AUTH` = ZMEDI_AUTH_USERS.
 Transport: `ZCL_ZLIFE_INS_MPC/DPC` and `ZCL_INS_MAINT` are in EDSK9B0EKB.
+
+## Hub Admin access
+A user who is Admin for the app in the hub (Manage Access) may do every maintenance, with or without a role R row in
+ZMEDI_AUTH_USERS. The app sends such a user's email as `<email>~HUB` on MaintRowSet / MaintCmdSet; `maint_admin` in the DPC
+strips the suffix and skips the ZMEDI_AUTH_USERS check (policy delete passes `iv_hub_admin` to `ZCL_MEDI_BL=>DELETE_POLICY`).
+SAP does not look the role up, it trusts the caller, as it already does for the Email on every call.

@@ -214,7 +214,7 @@ export default function RateSources({ rows, rates, query, onOpenRow, prio }: { r
             }
             if (it.kind === 'head') {
               return (
-                <div key={vi.key} style={style} className="flex items-center bg-sunken text-2xs font-bold uppercase tracking-wide text-muted">
+                <div key={vi.key} style={style} className="th-grid flex items-center text-2xs font-bold uppercase tracking-wide">
                   {colsFor(it.source).map((c) => <div key={c.id} style={{ width: c.width }} className={cx('px-2', c.right && 'text-right')}>{c.label}</div>)}
                   <div className="w-[120px] px-2">Mark</div>
                 </div>

@@ -40,3 +40,10 @@ Invoiced sales of finished goods (MARA-MTART FERT), INR invoices only, billing i
 - Test class ZCL_TMP_MGN_T in $TMP (classrun) can be deleted.
 - Selection (request EDSK9B0EN5): filter properties Werks, Vkorg (VBRK-VKORG), Vtweg (VBRK-VTWEG), Crssku (MARA-ZSKUGRCODECRS), Vbeln (invoice), DateFrom, DateTo. Empty = all; at least one of plant, sales org, CRSSKU or invoice; the date range always applies. Fields vkorg, vtweg, vbeln were added to ZDASH_S_MARGIN (filter use only, blank in rows).
 - Cost conditions (ZRMP, ZPMP, ZPFP, ZOHP and the scheme ones) are summed as ABS( KWERT ) per item, then signed only by billing category, so COGS is a positive amount on a sale whatever sign the condition has. Price conditions (ZP12, MRP, margins, GST) stay as stored.
+
+## Cost drill-down (DashCdrillSet, request EDSK9B0EN7)
+- Objects: structure ZDASH_S_CDRILL, class ZCL_MM_DASH_CDRILL, MPC_EXT `dash_cdrill_define`, DPC_EXT branch `DashCdrillSet`. Filter: Matnr (required, one finished good) + Werks, Vkorg, Vtweg, Vbeln, DateFrom, DateTo (the Margin report selection). No plant is needed for the breakup.
+- Flow (agreed 2026-11-20): sold batches of the material (VBRP-CHARG, base-unit qty, cancellation/credit memo -) -> ZMB31_POUTILITY (matnr + charg, POST_TYPE '01' only, no plant) -> ZCL_AUFM_UTILITY3=>get_mat_consumption_details( FERT, orders, 31.12.9999, abnormal blank ) in chunks of 25 orders.
+- Components = every row below level 0 except WIP (WIP cost / parent cost ignored, its own components at deeper levels kept). Per batch: component value / produced qty (level 0 MENGE) of its orders; average over batches weighted by SOLD qty. The class output is the truth for the order header (not the RM/PM columns of ZMB31_POUTILITY).
+- Category: VERP/PKGN = PM, ROH + material group 106 = perfume, other ROH = RM, else Other. Batch without an order = NBC / Trading goods. At most 150 orders per call (PARTIAL flag for the rest); about 0.3 s per order.
+- Rows: S summary (per piece by category), B per batch, C per component. Screen: Margin tab, group by Material, "Breakup" button.

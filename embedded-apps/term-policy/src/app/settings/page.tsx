@@ -78,7 +78,7 @@ function Settings() {
 
 export default function SettingsPage() {
   return (
-    <AdminGuard>
+    <AdminGuard maint>
       <Settings />
     </AdminGuard>
   );

@@ -3,6 +3,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { getHubEmail } from '../lib/hubEmailLogin';
 import { getContext } from '../lib/mediclaim';
+import { fetchMediclaimRole } from '../lib/hubAccessApi';
+import { setHubAdmin } from '../lib/maint';
 import { SapError } from '../lib/sap';
 import type { MediclaimContext } from '../lib/types';
 
@@ -12,11 +14,15 @@ interface AppContextValue {
   ctx: MediclaimContext | null;
   loading: boolean;
   error: SapError | Error | null;
-  /** Roles come from SAP (ZMEDI_AUTH_USERS), not from the hub's Admin role. */
+  /** SAP roles (ZMEDI_AUTH_USERS); the hub's Admin role is added on top for the maintenance screens. */
   isAuthUser: boolean;
   isHrAdmin: boolean;
   /** Admin menu: IsAuthUser or IsHrAdmin. */
   canAdmin: boolean;
+  /** Admin for Mediclaim in the hub's Manage Access: may do every maintenance (SAP accepts the hub's word). */
+  isHubAdmin: boolean;
+  /** Maintenance screens: HR admin in SAP or hub Admin. */
+  canMaintain: boolean;
   refresh: () => void;
 }
 
@@ -28,6 +34,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<SapError | Error | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
+  const [hubAdmin, setHubAdminState] = useState(false);
 
   const loadedOnce = useRef(false);
   const refresh = useCallback(() => setReloadToken((t) => t + 1), []);
@@ -40,6 +47,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return;
     }
     let cancelled = false;
+    fetchMediclaimRole(hubEmail).then((r) => {
+      if (cancelled) return;
+      setHubAdmin(r === 'Admin');
+      setHubAdminState(r === 'Admin');
+    });
     // Only the first load (or a retry after a failure) blanks the screen; later refreshes update ctx silently.
     if (!loadedOnce.current) setLoading(true);
     setError(null);
@@ -71,10 +83,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       error,
       isAuthUser: Boolean(ctx?.IsAuthUser),
       isHrAdmin: Boolean(ctx?.IsHrAdmin),
-      canAdmin: Boolean(ctx?.IsAuthUser || ctx?.IsHrAdmin),
+      canAdmin: Boolean(ctx?.IsAuthUser || ctx?.IsHrAdmin || hubAdmin),
+      isHubAdmin: hubAdmin,
+      canMaintain: Boolean(ctx?.IsHrAdmin || hubAdmin),
       refresh,
     }),
-    [email, ctx, loading, error, refresh]
+    [email, ctx, loading, error, hubAdmin, refresh]
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

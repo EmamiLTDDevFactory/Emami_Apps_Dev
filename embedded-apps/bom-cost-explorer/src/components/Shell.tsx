@@ -45,7 +45,7 @@ export function nameFromEmail(email: string): string {
 export type { PlanNav };
 
 function NavPane({ sections, active, onHome, open, onClose, wide }: { sections: NavSection[]; active?: SectionId; onHome?: (id: SectionId) => void; open: boolean; onClose: () => void; wide: boolean }) {
-  const dark = 'bg-gradient-to-b from-plum-deep via-plum to-[#2B2153] text-white';
+  const dark = 'bg-gradient-to-b from-plum-deep via-plum to-[#2A2A92] text-white';
   const pane = wide
     ? cx('relative w-64 shrink-0', dark)
     : cx('fixed inset-y-0 left-0 z-40 w-72 max-w-[85vw] shadow-pop transition-transform duration-200', dark, open ? 'translate-x-0' : '-translate-x-full');
@@ -53,8 +53,8 @@ function NavPane({ sections, active, onHome, open, onClose, wide }: { sections: 
     <>
       {!wide && open && <div className="fixed inset-0 z-30 bg-plum-deep/50 backdrop-blur-sm" onClick={onClose} />}
       <aside className={cx(pane, 'flex flex-col no-print')} aria-label="Sections">
-        <span aria-hidden className="pointer-events-none absolute -left-16 top-1/3 h-72 w-72 rounded-full bg-accent/25 blur-3xl" />
-        <span aria-hidden className="pointer-events-none absolute -right-20 bottom-10 h-64 w-64 rounded-full bg-sim/15 blur-3xl" />
+        <span aria-hidden className="pointer-events-none absolute -left-16 top-1/3 h-72 w-72 rounded-full bg-blue-500/25 blur-3xl" />
+        <span aria-hidden className="pointer-events-none absolute -right-20 bottom-10 h-64 w-64 rounded-full bg-orange/10 blur-3xl" />
         <div className="relative border-b border-white/10">
           {!wide && (
             <div className="flex justify-end px-3 pt-3">
@@ -83,10 +83,10 @@ function NavPane({ sections, active, onHome, open, onClose, wide }: { sections: 
 function SectionLink({ s, active, onHome, onClose }: { s: NavSection; active: boolean; onHome?: (id: SectionId) => void; onClose: () => void }) {
   const Icon = s.icon;
   const path = sectionPath(s);
-  const cls = cx('group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:translate-x-0.5', active ? 'bg-gradient-to-r from-accent to-accent-deep text-white shadow-glow ring-1 ring-white/20' : 'text-white/80 hover:bg-white/10 hover:text-white');
+  const cls = cx('group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:translate-x-0.5', active ? 'bg-gradient-to-r from-[#3B4FD8] to-accent text-white shadow-glow ring-1 ring-white/20' : 'text-white/80 hover:bg-white/10 hover:text-white');
   const body = (
     <>
-      {active && <span aria-hidden className="absolute inset-y-2 -left-3 w-1 rounded-full bg-gradient-to-b from-white to-white/30" />}
+      {active && <span aria-hidden className="absolute inset-y-2 -left-3 w-1 rounded-full bg-orange" />}
       <span className={cx('grid h-9 w-9 shrink-0 place-items-center rounded-lg transition', active ? 'bg-white/20 text-white shadow-sm' : 'bg-white/10 text-white/90 group-hover:bg-white/15')}>
         <Icon size={17} />
       </span>
@@ -102,16 +102,16 @@ function SectionLink({ s, active, onHome, onClose }: { s: NavSection; active: bo
 }
 
 /** SAP system + app environment, always visible; red for production SAP (NWP). */
-export function EnvBadge({ system, appEnv }: { system: string; appEnv: string }) {
+export function EnvBadge({ system, appEnv, onDark }: { system: string; appEnv: string; /** on the blue banner: translucent white instead of tinted green */ onDark?: boolean }) {
   const prod = system === 'NWP';
   return (
     <span
-      className={cx('inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wide ring-1', prod ? 'bg-gradient-to-r from-bad to-[#a03028] text-white ring-bad shadow-sm' : 'bg-good/10 text-good ring-good/30')}
+      className={cx('inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wide ring-1', prod ? 'bg-gradient-to-r from-bad to-[#a03028] text-white ring-bad shadow-sm' : onDark ? 'bg-white/15 text-white ring-white/30' : 'bg-good/10 text-good ring-good/30')}
       title={`SAP system ${system} · ${appEnv}`}
     >
       <span aria-hidden className="relative flex h-1.5 w-1.5">
         {prod && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white/70 motion-reduce:hidden" />}
-        <span className={cx('relative inline-flex h-1.5 w-1.5 rounded-full', prod ? 'bg-white' : 'bg-good')} />
+        <span className={cx('relative inline-flex h-1.5 w-1.5 rounded-full', prod ? 'bg-white' : onDark ? 'bg-emerald-300' : 'bg-good')} />
       </span>
       SAP {system} · {appEnv}
     </span>
@@ -141,33 +141,35 @@ export default function Shell({ mode, email, actions, children, env, onBack, pla
     <div className="flex h-screen overflow-clip bg-plum">
       <NavPane sections={sections} active={now.section?.id} onHome={onHome} open={open} onClose={() => setOpen(false)} wide={wide} />
       <div className="app-canvas flex min-w-0 flex-1 flex-col overflow-clip bg-bg">
-        <div className="flex bg-gradient-to-r from-plum-deep via-plum to-plum no-print">
-          {/* In-app "Back" to the previous screen; without a screen history it leaves the app. */}
-          <button type="button" onClick={onBack ?? leaveApp} className="group flex items-center gap-1.5 border-r border-white/15 px-4 py-2.5 text-[13px] font-semibold text-white transition-colors hover:bg-white/10 no-print">
-            <ArrowLeft size={14} className="transition-transform group-hover:-translate-x-0.5" /> Back
-          </button>
-        </div>
-        <header className="flex items-center gap-2.5 border-b border-line bg-panel px-4 py-2.5 no-print">
-          {!wide && (
-            <button type="button" onClick={() => setOpen(true)} aria-label="Open menu" className="p-1 text-ink"><Menu size={22} /></button>
-          )}
-          <h1 className="brand-text shrink-0 text-[15px] font-extrabold tracking-tight">Costing Cockpit</h1>
-          <span className="hidden items-center gap-1 rounded-full bg-accent/10 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-accent sm:inline-flex">
-            {now.section ? <><now.section.icon size={11} /> {now.section.label}{now.item ? <> <ChevronRight size={10} /> {now.item.label}</> : null}</> : planActive ? <><ClipboardList size={11} /> Production plan</> : <><Icon size={11} /> {MODE_LABEL[mode]}</>}
-          </span>
-          <EnvBadge {...env} />
-          <div className="flex-1" />
-          <div className="flex items-center gap-1.5"><PriceContextBar /><TutorialButton />{actions}</div>
-          <div className="hidden items-center gap-1.5 rounded-full border border-line bg-panel px-2.5 py-1 shadow-card sm:flex" title={email}>
-            <User size={13} className="text-accent" />
-            <span className="max-w-[160px] truncate text-[11.5px] font-bold text-ink">{nameFromEmail(email)}</span>
-          </div>
-          <div className="hidden items-center gap-1.5 rounded-full border border-line bg-panel px-2.5 py-1 shadow-card md:flex">
-            <Calendar size={13} className="text-accent" />
-            <span className="whitespace-nowrap text-[11.5px] font-bold text-ink">{today}</span>
+        <header className="no-print">
+          <div aria-hidden className="banner-line h-1" />
+          <div className="page-banner flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3.5 text-white sm:px-5">
+            {!wide && (
+              <button type="button" onClick={() => setOpen(true)} aria-label="Open menu" className="rounded-lg p-1.5 text-white hover:bg-white/10"><Menu size={22} /></button>
+            )}
+            {/* In-app "Back" to the previous screen; without a screen history it leaves the app. */}
+            <button type="button" onClick={onBack ?? leaveApp} aria-label="Back" title="Back" className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/30 bg-white/10 text-white transition hover:bg-white/20">
+              <ArrowLeft size={18} />
+            </button>
+            <div className="min-w-0">
+              <h1 className="truncate text-[22px] font-extrabold leading-tight tracking-tight sm:text-[26px]">Costing Cockpit</h1>
+              <p className="flex items-center gap-1 truncate text-[11.5px] font-bold uppercase tracking-[0.08em] text-white/80">
+                {now.section ? <><now.section.icon size={12} /> {now.section.label}{now.item ? <> <ChevronRight size={11} /> {now.item.label}</> : null}</> : planActive ? <><ClipboardList size={12} /> Production plan</> : <><Icon size={12} /> {MODE_LABEL[mode]}</>}
+              </p>
+            </div>
+            <EnvBadge {...env} onDark />
+            <div className="flex-1" />
+            <div className="flex flex-wrap items-center gap-1.5 rounded-2xl bg-white/95 px-1.5 py-1 shadow-card text-ink"><PriceContextBar /><TutorialButton />{actions}</div>
+            <div className="hidden items-center gap-1.5 rounded-full border border-white/25 bg-white/15 px-3 py-1.5 sm:flex" title={email}>
+              <User size={14} className="text-orange" />
+              <span className="max-w-[160px] truncate text-[12px] font-bold">{nameFromEmail(email)}</span>
+            </div>
+            <div className="hidden items-center gap-1.5 rounded-full border border-white/25 bg-white/15 px-3 py-1.5 md:flex">
+              <Calendar size={14} className="text-orange" />
+              <span className="whitespace-nowrap text-[12px] font-bold">{today}</span>
+            </div>
           </div>
         </header>
-        <div aria-hidden className="brand-hairline h-[2px] shrink-0 opacity-70 no-print" />
         <main className="flex min-h-0 flex-1 flex-col overflow-clip animate-pageIn">{children}</main>
       </div>
     </div>

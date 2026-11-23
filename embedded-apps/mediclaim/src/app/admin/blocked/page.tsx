@@ -200,7 +200,7 @@ function Blocked() {
 
 export default function BlockedPage() {
   return (
-    <AdminGuard hrOnly>
+    <AdminGuard maint>
       <Blocked />
     </AdminGuard>
   );

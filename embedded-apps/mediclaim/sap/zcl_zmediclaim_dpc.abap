@@ -17,6 +17,7 @@ CLASS zcl_zmediclaim_dpc DEFINITION
 
   PROTECTED SECTION.
     DATA mo_bl TYPE REF TO zcl_medi_bl.
+    DATA mv_hub TYPE abap_bool.
 
     METHODS bl
       RETURNING VALUE(ro_bl) TYPE REF TO zcl_medi_bl.
@@ -43,7 +44,7 @@ CLASS zcl_zmediclaim_dpc DEFINITION
       RETURNING VALUE(rv_mail) TYPE string
       RAISING   /iwbep/cx_mgw_busi_exception.
     METHODS maint_admin
-      IMPORTING iv_mail TYPE string RAISING /iwbep/cx_mgw_busi_exception.
+      IMPORTING iv_mail TYPE string RETURNING VALUE(rv_mail) TYPE string RAISING /iwbep/cx_mgw_busi_exception.
     METHODS add_success
       IMPORTING iv_text TYPE string.
     METHODS change_policy
@@ -67,7 +68,15 @@ CLASS zcl_zmediclaim_dpc IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD maint_admin.
-    IF bl( )->resolve_caller( iv_mail )-is_hr = abap_false.
+    " a hub Admin of the app is sent as <email>~HUB: the hub (Manage Access) has already vouched for the role
+    rv_mail = iv_mail.
+    mv_hub = abap_false.
+    IF strlen( rv_mail ) > 4 AND substring( val = rv_mail off = strlen( rv_mail ) - 4 len = 4 ) = '~HUB'.
+      rv_mail = substring( val = rv_mail len = strlen( rv_mail ) - 4 ).
+      mv_hub = abap_true.
+      RETURN.
+    ENDIF.
+    IF bl( )->resolve_caller( rv_mail )-is_hr = abap_false.
       busi( iv_text = `You are not authorized to maintain the master data.` iv_status = '403' ).
     ENDIF.
   ENDMETHOD.
@@ -244,7 +253,7 @@ CLASS zcl_zmediclaim_dpc IMPLEMENTATION.
         copy_data_to_ref( EXPORTING is_data = lt_rep CHANGING cr_data = er_entityset ).
 
       WHEN 'MaintRowSet'.
-        maint_admin( lv_mail ).
+        lv_mail = maint_admin( lv_mail ).
         TRY.
             DATA(lt_mrow) = zcl_ins_maint=>list( iv_tab  = filter_value( it_filter = it_filter_select_options iv_name = 'Table' )
                                                  iv_year = filter_value( it_filter = it_filter_select_options iv_name = 'Year' ) ).
@@ -473,12 +482,12 @@ CLASS zcl_zmediclaim_dpc IMPLEMENTATION.
         IF ls_mdeep-email IS INITIAL.
           busi( `Email is mandatory (every request carries the login email).` ).
         ENDIF.
-        maint_admin( CONV #( ls_mdeep-email ) ).
+        ls_mdeep-email = maint_admin( CONV #( ls_mdeep-email ) ).
         IF to_upper( condense( ls_mdeep-tab ) ) = 'POLICY'.
           " delete a policy (HR admin, current year): an entity create because the gateway passes no function imports
           TRY.
               READ TABLE ls_mdeep-rows INTO DATA(ls_prow) INDEX 1.
-              bl( )->delete_policy( iv_email = CONV #( ls_mdeep-email ) iv_reqno = CONV #( condense( ls_prow-key1 ) ) iv_simulate = is_simulate( ) ).
+              bl( )->delete_policy( iv_email = CONV #( ls_mdeep-email ) iv_reqno = CONV #( condense( ls_prow-key1 ) ) iv_simulate = is_simulate( ) iv_hub_admin = mv_hub ).
             CATCH zcx_medi_error INTO DATA(lx_pd).
               busi( iv_text = lx_pd->mv_text iv_status = '403' ).
           ENDTRY.

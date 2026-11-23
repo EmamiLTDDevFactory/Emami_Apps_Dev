@@ -40,8 +40,8 @@ export default function SidePane({
   isWideScreen: boolean;
 }) {
   const pathname = usePathname();
-  const { email, isAdmin } = useApp();
-  const items = isAdmin ? [...NAV_ITEMS, ...ADMIN_NAV_ITEMS] : NAV_ITEMS;
+  const { email, canMaintain } = useApp();
+  const items = [...NAV_ITEMS, ...(canMaintain ? ADMIN_NAV_ITEMS : [])];
 
   const paneClasses = isWideScreen
     ? 'relative w-56 shrink-0'

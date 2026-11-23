@@ -70,7 +70,7 @@ export default function WacTable({ rows, cols, sort, onSort, open, onToggle, run
   return (
     <div ref={parent} className="max-h-[72vh] overflow-auto rounded-2xl border border-line bg-panel shadow-card" role="table" aria-label="Actual cost per finished good and plant" aria-rowcount={rows.length + 1}>
       <div style={{ minWidth: width }}>
-        <div role="row" className="sticky top-0 z-10 grid items-center border-b border-line bg-sunken text-2xs font-bold uppercase tracking-wide text-muted" style={{ gridTemplateColumns: grid }}>
+        <div role="row" className="th-grid sticky top-0 z-10 grid items-center border-b border-line text-2xs font-bold uppercase tracking-wide" style={{ gridTemplateColumns: grid }}>
           <span role="columnheader" className="px-2"><span className="sr-only">Expand</span></span>
           {cols.map((c) => (
             <button key={c.key} type="button" role="columnheader" aria-sort={sort.key === c.key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'} onClick={() => onSort(c.key)}

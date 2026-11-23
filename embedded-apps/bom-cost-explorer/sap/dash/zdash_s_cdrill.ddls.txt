@@ -1,0 +1,32 @@
+@EndUserText.label : 'Costing dashboard: cost drill-down row'
+@AbapCatalog.enhancementCategory : #NOT_EXTENSIBLE
+define type zdash_s_cdrill {
+  grain       : abap.char(1);
+  matnr       : matnr;
+  charg       : charg_d;
+  idnrk       : matnr;
+  maktx       : maktx;
+  mtart       : mtart;
+  matkl       : matkl;
+  cat         : abap.char(1);
+  meins       : abap.char(3);
+  flag        : abap.char(10);
+  msg         : abap.char(120);
+  orders      : abap.int4;
+  werks       : werks_d;
+  vkorg       : vkorg;
+  vtweg       : vtweg;
+  vbeln       : vbeln_vf;
+  date_from   : dats;
+  date_to     : dats;
+  sold_qty    : abap.dec(23,3);
+  prod_qty    : abap.dec(23,3);
+  qty         : abap.dec(23,3);
+  val         : abap.dec(23,6);
+  avg_qty_pc  : abap.dec(23,6);
+  avg_cost_pc : abap.dec(23,6);
+  rm_pc       : abap.dec(23,6);
+  pm_pc       : abap.dec(23,6);
+  pf_pc       : abap.dec(23,6);
+  oth_pc      : abap.dec(23,6);
+}

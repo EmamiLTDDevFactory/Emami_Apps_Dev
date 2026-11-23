@@ -58,7 +58,7 @@ function Slabs() {
 
 export default function SlabsPage() {
   return (
-    <AdminGuard>
+    <AdminGuard maint>
       <Slabs />
     </AdminGuard>
   );

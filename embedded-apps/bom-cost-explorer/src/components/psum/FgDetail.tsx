@@ -24,7 +24,7 @@ const td = 'px-2.5 py-1.5 align-top';
 const tdN = `${td} num whitespace-nowrap text-right`;
 const NA = <span className="text-faint" title="No value from SAP">n/a</span>;
 const GRP: Record<string, string> = { RM: 'RM', PM: 'PM', PERF: 'Perfume' };
-const MIX = { rm: '#4F3FD6', pm: '#0e9fb5', perf: '#C2185B', conv: '#eda100', other: '#8B8FA3' } as const;
+const MIX = { rm: '#4338CA', pm: '#0e9fb5', perf: '#C2185B', conv: '#eda100', other: '#8B8FA3' } as const;
 const amt = (v: string, dp = 4) => (dec(v) === null ? NA : fmtNum(v, dp, 'INR'));
 
 export default function FgDetail({ v, period, totals, plants, loadedComps, onClose }: {

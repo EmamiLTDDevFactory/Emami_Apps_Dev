@@ -96,7 +96,7 @@ function LimitsInner() {
 
 export default function LimitsPage() {
   return (
-    <AdminGuard>
+    <AdminGuard maint>
       <LimitsInner />
     </AdminGuard>
   );

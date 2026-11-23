@@ -8,7 +8,11 @@
 import { getHubEmail } from './hubEmailLogin';
 import { sapCall } from './termPolicyApi';
 
-const email = () => (getHubEmail() ?? '').trim().toLowerCase();
+let hubAdmin = false;
+/** Set by the app context: the hub's Manage Access grants this user Admin on this app. The SAP maintenance
+ * service then gets the email as `<email>~HUB` (the hub has vouched for the role, SAP does not look it up). */
+export const setHubAdmin = (v: boolean) => { hubAdmin = v; };
+const email = () => (getHubEmail() ?? '').trim().toLowerCase() + (hubAdmin ? '~HUB' : '');
 const str = (v: unknown) => (v === null || v === undefined ? '' : String(v).trim());
 
 export interface MaintRow {

@@ -41,6 +41,32 @@ export const CASCADE_COLS: Column[] = [
   { key: 'VALIDTO', label: 'Valid To' },
 ];
 
+/** Cascade Details (admin): ZMM_CASCADE as it is stored, version by version. DETAIL_STATUS is worked out in the app from the flags. */
+export const DETAIL_COLS: Column[] = [
+  { key: 'DETAIL_STATUS', label: 'Status' },
+  { key: 'ZVERSION', label: 'Version' },
+  { key: 'S_LAND1', label: 'Selling Country' },
+  { key: 'D_LAND1', label: 'Dest. Country' },
+  { key: 'VKORG', label: 'Sales Org.' },
+  { key: 'KUNNR', label: 'Customer' },
+  { key: 'NAME1', label: 'Customer Name' },
+  { key: 'MATNR', label: 'Material Code' },
+  { key: 'MAKTX', label: 'Material Description' },
+  { key: 'CASCADE_DESC', label: 'Cascade Mat Desc' },
+  { key: 'ZSKUSIZE', label: 'SKU Size' },
+  { key: 'VALIDFROM', label: 'Valid From' },
+  { key: 'VALIDTO', label: 'Valid To' },
+  { key: 'ZSUB_DATE', label: 'Submitted On' },
+  { key: 'L_WAERK', label: 'Local Currency' },
+  { key: 'B_WAERK', label: 'Billing Currency' },
+  { key: 'ZPRICE_IN', label: 'Pricing Factor %' },
+  ...CASCADE_COLS.filter((c) => /^(ZI_RRP|ZVAT|ZE_RRP|ZRRP|ZRETAIL|ZPTT|ZAP|ZDAMGE|ZDMARGIN|ZDLC|ZCUS|ZCF|ZLC|ZCIF|ZDAM_ZDAX)/.test(c.key)),
+  { key: 'ZINITIATOR', label: 'Sent for Approval' },
+  { key: 'ZAPPROVE', label: 'Approved' },
+  { key: 'ZCOND_STAT', label: 'Condition Created' },
+  { key: 'ZREJECTED', label: 'Rejected' },
+];
+
 /** Cascade Material Extraction (CascadeMapSet). */
 export const MAP_COLS: Column[] = [
   { key: 'MATNR', label: 'Material Code' },
@@ -110,8 +136,8 @@ export const SIM_INPUT_COLS: Column[] = [
 export const SIM_COLS: Column[] = [{ key: 'ZPRICE_IN', label: 'Pricing Factor %', editable: true }, ...CASCADE_COLS];
 
 const NUMERIC_HINTS = ['RRP', 'CIF', 'DZ', 'PC', 'AP', 'DLC', 'DUTY', 'MARGIN', 'RETAIL', 'PTT', 'DAM', 'DEX', 'VAT', 'CF', 'CHARGE', 'PRICE'];
-const NEVER_NUMERIC: ReadonlySet<string> = new Set(['MATNR', 'KUNNR', 'VKORG', 'ZVERSION', 'VALIDFROM', 'VALIDTO', 'VFROM', 'VTO', 'PDATE']);
-export const DATE_KEYS: ReadonlySet<string> = new Set(['VALIDFROM', 'VALIDTO', 'VFROM', 'VTO', 'PDATE']);
+const NEVER_NUMERIC: ReadonlySet<string> = new Set(['MATNR', 'KUNNR', 'VKORG', 'ZVERSION', 'VALIDFROM', 'VALIDTO', 'VFROM', 'VTO', 'PDATE', 'ZSUB_DATE']);
+export const DATE_KEYS: ReadonlySet<string> = new Set(['VALIDFROM', 'VALIDTO', 'VFROM', 'VTO', 'PDATE', 'ZSUB_DATE']);
 
 /** Right-aligned, 2 decimals: keys ending in KBETR or containing one of the hints, and ZPRICE_IN. Condition types (…_KSCHL), codes and dates never. */
 export function isNumericKey(key: string): boolean {

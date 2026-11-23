@@ -45,8 +45,13 @@ export const IMPACT_WORD: Record<ImpactKind, string> = { loss: 'Loss', saving: '
 export interface ImpactBar { key: string; name: string; value: number; kind: ImpactKind }
 /** Bars of the chart: only groups with an impact from SAP (n/a is left out, never drawn as 0), in the table order, at most `max`. */
 export function impactBars(rows: MarginBoard[], max = 15): ImpactBar[] {
+  const seen = new Map<string, number>();
   return sortGroups(rows).filter((r) => dec(r.AnnualImpactInr) !== null).slice(0, max)
-    .map((r) => ({ key: r.GrpKey, name: r.GrpTxt ? `${r.GrpKey} ${r.GrpTxt}` : r.GrpKey, value: dec(r.AnnualImpactInr)!.toNumber(), kind: impactKind(r.AnnualImpactInr) }));
+    .map((r) => {
+      const base = (r.GrpTxt ? `${r.GrpKey} ${r.GrpTxt}` : r.GrpKey) || '(blank)';
+      const c = (seen.get(base) ?? 0) + 1; seen.set(base, c);   // the same group can come back from several live batches: every bar needs its own category
+      return { key: r.GrpKey, name: c > 1 ? `${base} (${c})` : base, value: dec(r.AnnualImpactInr)!.toNumber(), kind: impactKind(r.AnnualImpactInr) };
+    });
 }
 
 const n = (v: string, dp = 6) => { const d = dec(v); return d ? Number(d.toFixed(dp)) : null; };

@@ -283,6 +283,7 @@ CLASS zcl_medi_bl DEFINITION
       IMPORTING iv_email         TYPE csequence
                 iv_reqno         TYPE csequence
                 iv_simulate      TYPE abap_bool DEFAULT abap_false
+                iv_hub_admin     TYPE abap_bool DEFAULT abap_false
       RETURNING VALUE(rs_policy) TYPE ts_policy
       RAISING   zcx_medi_error.
     METHODS set_cutoff
@@ -1577,7 +1578,7 @@ CLASS zcl_medi_bl IMPLEMENTATION.
   METHOD delete_policy.
     DATA(ls_c) = resolve_caller( iv_email ).
     DATA(ls_per) = get_period( ).
-    IF ls_c-is_hr = abap_false.
+    IF ls_c-is_hr = abap_false AND iv_hub_admin = abap_false.
       RAISE EXCEPTION TYPE zcx_medi_error EXPORTING iv_text = 'You are not authorized to delete.Contact HR team for help.'.
     ENDIF.
     SELECT SINGLE * FROM zmedi_emp INTO @DATA(ls_emp) WHERE reqno = @iv_reqno.

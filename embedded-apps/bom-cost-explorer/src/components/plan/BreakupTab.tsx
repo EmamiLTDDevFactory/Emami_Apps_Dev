@@ -418,7 +418,7 @@ function LineDrawer({ line, onClose }: { line: (PlanCostLine & { RateOptions?: C
   );
 }
 
-const MTART_COLORS = ['#4F3FD6', '#0e9fb5', '#eda100', '#eb6834', '#008300', '#C2185B', '#8a8984', '#2a78d6'];
+const MTART_COLORS = ['#4338CA', '#0e9fb5', '#eda100', '#eb6834', '#008300', '#C2185B', '#8a8984', '#2a78d6'];
 
 /** Monthly cost by rate source and by material type (leaf rows), and the top components. */
 export function PlanCharts({ rows }: { rows: PlanCostLine[] }) {

@@ -1,9 +1,10 @@
 'use client';
 /**
- * The selection of every Margin screen: materials, plants, price source (uploaded prices with optional Market / Channel, or the latest sales order
+ * The selection of every Margin screen: materials, plants, price source (the latest sales order
  * with the Sales price selection), live or snapshot, freight and price date. It loads nothing by itself: the sales-area / filter lists load on their
  * own buttons. `extra` carries the fields of one screen (what-if inputs, grouping, days ...). The URL keeps the selection (see lib/margin/selection).
  */
+import { useHierNames } from '@/lib/client/useHierNames';
 import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { ChevronDown, ChevronRight, Play, RefreshCw, Square } from 'lucide-react';
 import { MaterialHierarchyPicker, MaterialPicker, PlantPicker } from '../Pickers';
@@ -44,10 +45,12 @@ export default function MarginSelection({ sel, onChange, plantsState, email, err
   summary?: string; /** hide the live / snapshot choice (History reads stored snapshots only) */ noSource?: boolean; noMaterialsHint?: string;
 }) {
   const [open, setOpen] = useState(true);
+  const hn = useHierNames();
   const order = sel.priceSrc === 'O';
   const mats = sel.materials.slice(0, SO_MAX_MATERIALS);
-  const areaQ = useMemo(() => ({ materials: mats, daysBack: sel.days, onlyOrd: true }), [mats.join(','), sel.days]); // eslint-disable-line react-hooks/exhaustive-deps
-  const areaKey = order && mats.length ? safe(() => `so|AREA|${buildSoFilter(areaQ, 'AREA')}`) : null;
+  const areaQ = useMemo(() => ({ materials: mats, daysBack: sel.days, onlyOrd: mats.length > 0 }), [mats.join(','), sel.days]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Sales areas can be listed without finished goods too (every area the person may see): a Portfolio / Alerts run by plant, hierarchy or brand needs a sales organisation as well.
+  const areaKey = order ? safe(() => `so|AREA|${buildSoFilter(areaQ, 'AREA')}`) : null;
   const areas = useEntry<SoAreaRow>(areaKey);
   const COND_KEY = 'so|COND|';
   const cond = useEntry<SoCondRow>(order ? COND_KEY : null);
@@ -59,6 +62,8 @@ export default function MarginSelection({ sel, onChange, plantsState, email, err
     void ensure<SoAreaRow>(areaKey, PAGE_CTX, 'AREA', (signal) => fetchSo('AREA', areaQ, { signal }));
     void ensure<SoCondRow>(COND_KEY, PAGE_CTX, 'COND', (signal) => fetchSo('COND', {}, { signal }));
   };
+  // The sales organisation is required (prices come from the latest sales order), so its list is read as soon as the card shows; the button stays for a retry.
+  useEffect(() => { if (areaKey && !areas) loadAreas(); }, [areaKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const loadFilters = () => { if (filterKey) void ensure<SoFilterRow>(filterKey, PAGE_CTX, 'FILTER', (signal) => fetchSo('FILTER', listQ, { signal })); };
   const value: SalesFiltersValue = { vkorg: sel.vkorg, vtweg: sel.vtweg, segment: sel.segment ? [sel.segment] : [], days: sel.days, auart: sel.auart, pstyv: sel.pstyv, kdgrp: sel.kdgrp, kunnr: sel.kunnr };
   const applyValue = (p: Partial<SalesFiltersValue>) => {
@@ -74,7 +79,7 @@ export default function MarginSelection({ sel, onChange, plantsState, email, err
     <div className="rounded-2xl border border-line bg-panel shadow-card">
       <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-bold">
         {open ? <ChevronDown size={14} aria-hidden /> : <ChevronRight size={14} aria-hidden />} Selection
-        <span className="ml-2 truncate text-xs font-normal text-muted">{summary ?? `${sel.materials.length || 'no'} material(s) · ${sel.plants.join(', ') || 'no plant'} · ${order ? 'latest sales order' : 'uploaded prices'} · ${sel.source === 'L' ? 'live' : 'snapshot'}`}</span>
+        <span className="ml-2 truncate text-xs font-normal text-muted">{summary ?? `${sel.materials.length || 'no'} material(s) · ${sel.plants.join(', ') || 'no plant'} · latest sales order · ${sel.source === 'L' ? 'live' : 'snapshot'}`}</span>
       </button>
       {open && (
         <div className="flex flex-col gap-3 border-t border-line px-4 py-3">
@@ -85,15 +90,13 @@ export default function MarginSelection({ sel, onChange, plantsState, email, err
             <Field label="Plants" hint="Only plants SAP lists for you can be used." error={errors.plants}>
               {(id) => <PlantPicker id={id} values={sel.plants} onChange={(plants) => onChange({ plants })} state={plantsState} invalid={!!errors.plants} />}
             </Field>
-            <Field label="Product hierarchy (optional)">{(id) => <input id={id} className={inputCls} placeholder="e.g. 0101160653" value={sel.prodha} onChange={(e) => onChange({ prodha: e.target.value })} />}</Field>
-            <Field label="Brand (optional)">{(id) => <input id={id} className={inputCls} value={sel.brand} onChange={(e) => onChange({ brand: e.target.value })} />}</Field>
+            <Field label="Product hierarchy (optional)" hint="Type a code or a name; the list shows the descriptions.">{(id) => (<><input id={id} list={`${id}-prod`} className={inputCls} placeholder="e.g. 0101160653" value={sel.prodha} onChange={(e) => onChange({ prodha: e.target.value })} /><datalist id={`${id}-prod`}>{hn.productList.map((o) => <option key={o.code} value={o.code}>{o.descr}</option>)}</datalist></>)}</Field>
+            <Field label="Brand (optional)" hint={sel.brand && hn.brand(sel.brand) !== sel.brand ? hn.brand(sel.brand) : 'Type a code or a name; the list shows the descriptions.'}>{(id) => (<><input id={id} list={`${id}-brand`} className={inputCls} value={sel.brand} onChange={(e) => onChange({ brand: e.target.value })} /><datalist id={`${id}-brand`}>{hn.brandList.map((o) => <option key={o.code} value={o.code}>{o.descr}</option>)}</datalist></>)}</Field>
           </div>
           <div className="flex flex-wrap items-start gap-x-8 gap-y-3">
-            <fieldset className="flex flex-col gap-1"><legend className="text-2xs font-bold uppercase tracking-wide text-muted">Price source</legend>
-              <div className="flex gap-1.5" role="radiogroup" aria-label="Price source">
-                {([['U', 'Uploaded prices'], ['O', 'Latest sales order']] as const).map(([k, l]) => <button key={k} type="button" role="radio" aria-checked={sel.priceSrc === k} onClick={() => onChange({ priceSrc: k })} className={cx('rounded-full border px-3 py-1 text-xs font-bold', sel.priceSrc === k ? 'border-accent bg-accent/10 text-accent' : 'border-line text-muted hover:text-ink')}>{l}</button>)}
-              </div>
-            </fieldset>
+            <div className="flex max-w-xs flex-col gap-1"><span className="text-2xs font-bold uppercase tracking-wide text-muted">Prices</span>
+              <p className="text-xs text-muted">Selling price and MRP of the latest sales order, with the costed RM / PM / perfume cost. Uploaded prices are not used.</p>
+            </div>
             {!noSource && (
               <fieldset className="flex flex-col gap-1"><legend className="text-2xs font-bold uppercase tracking-wide text-muted">Data</legend>
                 <div className="flex gap-1.5" role="radiogroup" aria-label="Live or snapshot">
@@ -106,12 +109,6 @@ export default function MarginSelection({ sel, onChange, plantsState, email, err
             <Field label="Price date (optional)">{(id) => <input id={id} type="date" className={cx(inputCls, 'w-40')} value={sel.priceDate} onChange={(e) => onChange({ priceDate: e.target.value })} />}</Field>
             <Field label="Explosion quantity (optional)">{(id) => <input id={id} inputMode="decimal" className={cx(inputCls, 'w-32')} placeholder="SAP default" value={sel.explQty} onChange={(e) => onChange({ explQty: e.target.value.replace(',', '.') })} />}</Field>
           </div>
-          {!order && (
-            <div className="grid gap-3 sm:grid-cols-2 lg:w-2/3">
-              <Field label="Market (optional)" hint="Of the uploaded prices.">{(id) => <input id={id} className={inputCls} value={sel.market} onChange={(e) => onChange({ market: e.target.value })} />}</Field>
-              <Field label="Channel (optional)">{(id) => <input id={id} className={inputCls} value={sel.channel} onChange={(e) => onChange({ channel: e.target.value })} />}</Field>
-            </div>
-          )}
           {order && (
             <SalesFiltersEditor areas={areas?.data ?? []} areasLoading={areas?.status === 'loading'} areasError={areas?.status === 'error' ? areas.error : errors.areas ?? null} onLoadAreas={loadAreas} canLoadAreas={!!areaKey}
               segments={segments} value={value} onChange={applyValue} filterRows={filters?.status === 'done' ? filters.data ?? [] : null} filterLoading={filters?.status === 'loading'} filterError={filters?.status === 'error' ? filters.error : null}

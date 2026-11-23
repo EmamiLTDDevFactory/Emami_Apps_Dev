@@ -4,9 +4,10 @@
           lt_sal TYPE zcl_mm_dash_sales=>tt_sales,
           lt_pvm TYPE zcl_sales_pvm_bridge=>tt_pvm,
           lt_mgn TYPE zcl_mm_dash_margin=>tt_margin,
+          lt_cdr TYPE zcl_mm_dash_cdrill=>tt_cdrill,
           lt_thr TYPE STANDARD TABLE OF zmis_alert_thr,
           ls_par TYPE zif_mm_wac_types=>ty_par.
-    IF iv_entity_set_name <> 'DashMisSet' AND iv_entity_set_name <> 'DashSalesSet' AND iv_entity_set_name <> 'DashPvmSet' AND iv_entity_set_name <> 'DashThreshSet' AND iv_entity_set_name <> 'DashMarginSet'.
+    IF iv_entity_set_name <> 'DashMisSet' AND iv_entity_set_name <> 'DashSalesSet' AND iv_entity_set_name <> 'DashPvmSet' AND iv_entity_set_name <> 'DashThreshSet' AND iv_entity_set_name <> 'DashMarginSet' AND iv_entity_set_name <> 'DashCdrillSet'.
       super->/iwbep/if_mgw_appl_srv_runtime~get_entityset(
         EXPORTING
           iv_entity_name           = iv_entity_name
@@ -31,6 +32,35 @@
       RETURN.
     ENDIF.
     ls_par = wac_par( io_tech_request_context->get_filter( )->get_filter_select_options( ) ).
+    IF iv_entity_set_name = 'DashCdrillSet'.
+      DATA: lr_dkorg TYPE zcl_mm_dash_cdrill=>ty_r_vkorg,
+            lr_dtweg TYPE zcl_mm_dash_cdrill=>ty_r_vtweg,
+            lr_dbeln TYPE zcl_mm_dash_cdrill=>ty_r_vbeln.
+      LOOP AT io_tech_request_context->get_filter( )->get_filter_select_options( ) INTO DATA(ls_cf).
+        CHECK lines( ls_cf-select_options ) > 0.
+        DATA(lv_cp) = to_upper( CONV string( ls_cf-property ) ).
+        REPLACE ALL OCCURRENCES OF '_' IN lv_cp WITH ''.
+        CASE lv_cp.
+          WHEN 'VKORG'. lr_dkorg = CORRESPONDING #( ls_cf-select_options ).
+          WHEN 'VTWEG'. lr_dtweg = CORRESPONDING #( ls_cf-select_options ).
+          WHEN 'VBELN'. lr_dbeln = CORRESPONDING #( ls_cf-select_options ).
+        ENDCASE.
+      ENDLOOP.
+      LOOP AT lr_dbeln ASSIGNING FIELD-SYMBOL(<cv>).
+        <cv>-low = |{ <cv>-low ALPHA = IN }|.
+        IF <cv>-high IS NOT INITIAL. <cv>-high = |{ <cv>-high ALPHA = IN }|. ENDIF.
+      ENDLOOP.
+      IF ls_par-matnr IS INITIAL.
+        raise_busi( 'Give the finished good (Matnr)' ).
+      ENDIF.
+      TRY.
+          lt_cdr = NEW zcl_mm_dash_cdrill( is_par = ls_par iv_matnr = ls_par-matnr[ 1 ]-low it_vkorg = lr_dkorg it_vtweg = lr_dtweg it_vbeln = lr_dbeln )->run( ).
+        CATCH cx_root INTO DATA(lx5).
+          raise_busi( |Cost drill-down failed: { lx5->get_text( ) }| ).
+      ENDTRY.
+      copy_data_to_ref( EXPORTING is_data = lt_cdr CHANGING cr_data = er_entityset ).
+      RETURN.
+    ENDIF.
     IF iv_entity_set_name = 'DashMarginSet'.
       DATA: lr_vkorg  TYPE zcl_mm_dash_margin=>ty_r_vkorg,
             lr_vtweg  TYPE zcl_mm_dash_margin=>ty_r_vtweg,

@@ -4,15 +4,17 @@
  * Brand rows are quantity-weighted. A budget split by group and the scheme dimension need SAP objects that do not exist yet.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Card, Empty, Spinner, cx, inputCls } from '../ui';
+import { Button, Card, Empty, Spinner, cx, inputBase, inputCls } from '../ui';
 import { ErrorBox, errorText } from '../budget-mgmt/shared';
 import { fetchWac } from '@/lib/wac/service';
 import { breakupByBrand, breakupByFg, type BreakupView } from '@/lib/dash/logic';
 import type { WacRow } from '@/lib/wac/types';
 import { ls } from '@/lib/client/storage';
+import { useHierNames } from '@/lib/client/useHierNames';
 import { NeedsSap, fyStart, money, pct, tdCls, thCls, today } from './parts';
 
 export default function BreakupView() {
+  const hn = useHierNames();
   const [plants, setPlants] = useState('');
   const [from, setFrom] = useState(fyStart(today()));
   const [to, setTo] = useState(today());
@@ -56,15 +58,15 @@ export default function BreakupView() {
       {rows && fgs.length > 0 && (
         <>
           <p className="text-xs text-muted">{ran} · actual cost per piece in INR (SAP): RM, PM, Perfume and Conversion; COGM = their sum. Brand rows are weighted by produced quantity.</p>
-          <Table title="By brand" rows={brands} first="Brand" />
+          <Table title="By brand" rows={brands} first="Brand" bn={hn.brand} />
           <Card className="p-3">
             <div className="mb-2 flex items-center gap-2">
               <h3 className="text-sm font-extrabold">By finished good</h3>
-              <select aria-label="Filter by brand" className={cx(inputCls, 'ml-auto w-40')} value={brand} onChange={(e) => setBrand(e.target.value)}>
-                <option value="">All brands</option>{brands.map((b) => <option key={b.brand} value={b.brand}>{b.brand || '(none)'}</option>)}
+              <select aria-label="Filter by brand" className={cx(inputBase, 'h-9 ml-auto w-56')} value={brand} onChange={(e) => setBrand(e.target.value)}>
+                <option value="">All brands</option>{brands.map((b) => <option key={b.brand} value={b.brand}>{hn.brand(b.brand) || '(none)'}</option>)}
               </select>
             </div>
-            <Table rows={shown} first="SKU" scroll />
+            <Table rows={shown} first="SKU" scroll bn={hn.brand} />
           </Card>
         </>
       )}
@@ -74,20 +76,20 @@ export default function BreakupView() {
   );
 }
 
-function Table({ rows, first, title, scroll }: { rows: BreakupView[]; first: string; title?: string; scroll?: boolean }) {
+function Table({ rows, first, title, scroll, bn }: { rows: BreakupView[]; first: string; title?: string; scroll?: boolean; bn: (c: string) => string }) {
   const cell = (v: BreakupView['rm'], p: BreakupView['shareRm']) => (<><td className={tdCls}>{money(v, 4)}</td><td className={cx(tdCls, 'text-muted')}>{pct(p)}</td></>);
   return (
     <div className={cx('overflow-auto rounded-2xl border border-line bg-panel', scroll ? 'max-h-[60vh]' : 'shadow-card')}>
       {title && <div className="border-b border-line px-3 py-2 text-sm font-extrabold">{title}</div>}
       <table className="w-full min-w-[960px] border-collapse">
         <thead className="sticky top-0"><tr>
-          <th className={cx(thCls, 'text-left')}>{first}</th><th className={thCls}>Produced qty</th>
+          <th className={cx(thCls, '!text-left')}>{first}</th><th className={thCls}>Produced qty</th>
           <th className={thCls}>RM / pc</th><th className={thCls}>%</th><th className={thCls}>PM / pc</th><th className={thCls}>%</th><th className={thCls}>Perfume / pc</th><th className={thCls}>%</th><th className={thCls}>Conversion / pc</th><th className={thCls}>%</th><th className={thCls}>COGM / pc</th>
         </tr></thead>
         <tbody>
           {rows.map((r) => (
             <tr key={r.key} className="border-t border-line/60">
-              <td className="px-2.5 py-1.5 text-left text-xs"><span className="font-bold">{(r.matnr ? r.matnr.replace(/^0+/, '') : r.brand) || '(none)'}</span> <span className="text-muted" title={r.maktx}>{r.maktx}{r.werks ? ` · ${r.werks}` : ''}</span></td>
+              <td className="px-2.5 py-1.5 text-left text-xs"><span className="font-bold">{(r.matnr ? r.matnr.replace(/^0+/, '') : bn(r.brand)) || '(none)'}</span> <span className="text-muted" title={r.maktx}>{r.maktx}{r.werks ? ` · ${r.werks}` : ''}</span></td>
               <td className={tdCls}>{r.qty.toNumber().toLocaleString('en-IN')}</td>
               {cell(r.rm, r.shareRm)}{cell(r.pm, r.sharePm)}{cell(r.perf, r.sharePerf)}{cell(r.conv, r.shareConv)}
               <td className={cx(tdCls, 'font-bold')}>{money(r.cogm, 4)}</td>

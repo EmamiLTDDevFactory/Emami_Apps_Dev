@@ -44,7 +44,7 @@ function Users() {
 
 export default function UsersPage() {
   return (
-    <AdminGuard hrOnly>
+    <AdminGuard maint>
       <Users />
     </AdminGuard>
   );

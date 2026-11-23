@@ -465,10 +465,6 @@ CLASS zcl_mm_mdm_adm_wf IMPLEMENTATION.
       SELECT SINGLE u~bname FROM usr21 AS u INNER JOIN adr6 AS a ON a~addrnumber = u~addrnumber AND a~persnumber = u~persnumber
         WHERE a~smtp_addr = @lv_mail INTO @rv_user.
       IF sy-subrc <> 0.
-        SELECT SINGLE u~bname FROM usr21 AS u INNER JOIN adr6 AS a ON a~addrnumber = u~addrnumber AND a~persnumber = u~persnumber
-          WHERE a~smtp_srch = @lv_mail INTO @rv_user.
-      ENDIF.
-      IF sy-subrc <> 0.
         SPLIT iv_actor AT '@' INTO DATA(lv_name) DATA(lv_dom).
         rv_user = to_upper( lv_name ).
       ENDIF.

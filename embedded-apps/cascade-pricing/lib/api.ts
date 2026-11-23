@@ -84,6 +84,23 @@ async function call<T>(path: string, init?: { method: 'POST'; body: unknown }, w
   return body as T;
 }
 
+/** The person's Cascade Pricing role (Manage Access). Fails closed: not admin. */
+export async function getMe(): Promise<{ role: string; isAdmin: boolean }> {
+  try {
+    const r = await call<{ role?: string; isAdmin?: boolean }>('/me', undefined, 'your access');
+    return { role: String(r?.role ?? ''), isAdmin: r?.isAdmin === true };
+  } catch {
+    return { role: '', isAdmin: false };
+  }
+}
+
+/** Cascade Details (admin only): every row of ZMM_CASCADE, all versions. */
+export async function getCascadeDetails(): Promise<Row[]> {
+  const rows = await call<unknown>('/details', undefined, 'the cascade details');
+  if (!Array.isArray(rows)) throw new ApiError('Unexpected answer from the pricing service.', 502);
+  return rows as Row[];
+}
+
 /** Rows of an entity set. */
 export async function getCascade(set: CascadeSet): Promise<Row[]> {
   const rows = await call<unknown>(`/cascade/${encodeURIComponent(set)}`, undefined, SET_LABEL[set] ?? set);

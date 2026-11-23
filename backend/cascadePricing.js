@@ -3,6 +3,8 @@
    (rides the existing nginx /api/me rule). The app is a static export, so these routes are its "route handlers":
 
      GET  /health          { ok: true, count, system } | 502 { ok: false, error, system }   (sapGet('CascadeMapSet'); system NGD / NGQ / NWP)
+     GET  /me              { role, isAdmin }   (the person's Cascade Pricing role from Manage Access)
+     GET  /details         every row of ZMM_CASCADE, all versions (CascadeRowSet); Admin role only, else 403
      GET  /cascade/:set    rows of CascadeMapSet | ApprovalSet | ConditionPendingSet, other sets 404
      POST /action          { action, vfrom?, vto?, payload? } -> { processed, failed, message, data }
                            (sent as ActionRequestSet { Requestid, Action, Validfrom?, Validto?, Payload })
@@ -118,6 +120,8 @@ async function requireUser(req, res, next) {
         ]);
         if (!grant.rows.length || user.rows[0]?.is_active === false) return res.status(403).json({ error: 'You do not have access to Cascade Pricing. Ask an Emami Apps admin for it in Admin Center.' });
         req.email = email;
+        req.role = String(grant.rows[0].role || '');
+        req.isAdmin = req.role.toLowerCase() === 'admin';
         next();
     } catch (e) {
         console.error('[cascade-pricing] access check', e.message);
@@ -134,6 +138,22 @@ router.get('/health', async (req, res) => {
         res.json({ ok: true, count: rows.length, system: sapSystem() });
     } catch (e) {
         res.status(502).json({ ok: false, error: e.message, system: sapSystem() });
+    }
+});
+
+router.get('/me', (req, res) => res.json({ role: req.role, isAdmin: req.isAdmin }));
+
+/* Cascade Details: the whole ZMM_CASCADE table, every version. SAP runs as one technical user, so the Admin check is here. */
+router.get('/details', async (req, res) => {
+    if (!req.isAdmin) return res.status(403).json({ error: 'Cascade Details is for Cascade Pricing admins only.' });
+    const t0 = Date.now();
+    try {
+        const rows = (await sapGet('CascadeRowSet')).map(toAbapRow);
+        console.info(`[cascade-pricing] ${req.email} GET details rows=${rows.length} ms=${Date.now() - t0}`);
+        res.json(rows);
+    } catch (e) {
+        console.error(`[cascade-pricing] ${req.email} GET details failed: ${e.message}`);
+        res.status(502).json({ error: e.message });
     }
 });
 

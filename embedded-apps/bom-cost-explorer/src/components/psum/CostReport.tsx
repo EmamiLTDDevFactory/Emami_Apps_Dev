@@ -4,6 +4,7 @@
  * plant's actual cost per piece (RM, PM, Perfume, Overheads, COGM), the latest MRP and selling price, the COGM at a BOM-costing rate type and the margins. The variance
  * cell opens the reasons (components that pushed the cost up or down). Read-only; nothing loads until Run; no request has a time limit (Stop ends a run).
  */
+import { useHierNames } from '@/lib/client/useHierNames';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { FileSpreadsheet, Lock, Play, RefreshCw, Square } from 'lucide-react';
 import PlanFrame from '../plan/PlanFrame';
@@ -69,6 +70,7 @@ function Screen() {
   const plantsState: PlantsState = useMemo(() => ({ plants, loading: pl, error: plErr, reload: loadPlants }), [plants, pl, plErr, loadPlants]);
 
   const rep = useReport();
+  const hn = useHierNames();
 
   // COGM at a BOM-costing rate type: SAP costs the SKUs shown (on the person's button), every rate type comes back at once, the dropdown only picks one.
   const [costing, setCosting] = useState<{ status: 'idle' | 'running' | 'done' | 'error'; done: number; total: number; res: RateCogmResult | null; error: string }>({ status: 'idle', done: 0, total: 0, res: null, error: '' });
@@ -177,6 +179,7 @@ function Screen() {
     );
   }
 
+  const named = (o: { value: string; label: string }[], f: (c: string) => string) => o.map((x) => ({ value: x.value, label: f(x.value) || x.label })).sort((a, b) => a.label.localeCompare(b.label));
   const sel = (id: string, value: string, onChange: (v: string) => void, options: { value: string; label: string }[], all: string) => (
     <select id={id} className={cx(inputCls, 'w-56')} value={value} onChange={(e) => onChange(e.target.value)} disabled={!rep.rows}>
       <option value="">{all}</option>{options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -235,8 +238,8 @@ function Screen() {
       {rep.rows && (
         <>
           <div className="flex flex-wrap items-end gap-x-5 gap-y-2 rounded-2xl border border-line bg-panel px-4 py-3 shadow-card">
-            <Field label="Select Brand">{(id) => sel(id, form.brand, (v) => patch({ brand: v, prodha: '', matnr: '' }), opts.brands, 'All brands')}</Field>
-            <Field label="Select Product">{(id) => sel(id, form.prodha, (v) => patch({ prodha: v, matnr: '' }), opts.products, 'All products')}</Field>
+            <Field label="Select Brand">{(id) => sel(id, form.brand, (v) => patch({ brand: v, prodha: '', matnr: '' }), named(opts.brands, hn.brand), 'All brands')}</Field>
+            <Field label="Select Product">{(id) => sel(id, form.prodha, (v) => patch({ prodha: v, matnr: '' }), named(opts.products, hn.product), 'All products')}</Field>
             <Field label={wip ? 'Select WIP' : 'Select SKU'}>{(id) => sel(id, form.matnr, (v) => patch({ matnr: v }), opts.skus, wip ? 'All WIP codes' : 'All SKUs')}</Field>
             <Field label="Search">{(id) => <input id={id} className={cx(inputCls, 'w-48')} placeholder="code, description…" value={form.search} onChange={(e) => patch({ search: e.target.value })} />}</Field>
             <Field label="COGM at rate type" hint="Runs BOM costing for the SKUs shown.">{(id) => <select id={id} className={cx(inputCls, 'w-44')} value={form.rateType} onChange={(e) => patch({ rateType: e.target.value as RateType })}>{COGM_RATE_TYPES.map((t) => <option key={t} value={t}>{COGM_RATE_LABEL(t)}</option>)}</select>}</Field>

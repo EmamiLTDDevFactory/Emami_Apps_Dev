@@ -9,6 +9,7 @@
  */
 import { handleHier } from './hier';
 import { handleWac } from './wac';
+import { handleDash } from './dash';
 import { handleBudget } from './budget';
 import {
   COST_LINE, ENTITY_TYPE_RATE_OPTION, FIELDS_BY_SET, FREIGHT_ROW, MATERIAL, PLANT, RATE_OPTION, RATE_ROW, RMPM_ROW,
@@ -593,6 +594,9 @@ export async function mockSapFetch(input: string | URL | Request, init?: Request
   // HierVHSet + MaterialVHSet filtered by Brand / Product / CRS (mock/hier.ts).
   const hierRes = handleHier(set, sp, { json, odataError, parseFilter });
   if (hierRes) { await sleep(60, signal); return hierRes; }
+  // Costing dashboard sets (mock/dash.ts): invented figures for local design review.
+  const dashRes = handleDash(set, sp, { json, odataError, parseFilter });
+  if (dashRes) { await sleep(60, signal); return dashRes; }
   // Weighted average actual cost sets (mock/wac.ts).
   const wacRes = handleWac(set, sp, { json, odataError, parseFilter });
   // Budget costing sets (mock/budget.ts).

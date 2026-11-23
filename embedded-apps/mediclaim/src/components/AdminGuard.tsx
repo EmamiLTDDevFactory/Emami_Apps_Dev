@@ -4,9 +4,9 @@ import Link from 'next/link';
 import { useApp } from '../context/AppContext';
 
 /** Admin screens: IsAuthUser or IsHrAdmin from ContextSet; `hrOnly` screens need IsHrAdmin (SAP enforces it again on every call). */
-export default function AdminGuard({ hrOnly, children }: { hrOnly?: boolean; children: React.ReactNode }) {
-  const { canAdmin, isHrAdmin } = useApp();
-  if (hrOnly ? isHrAdmin : canAdmin) return <>{children}</>;
+export default function AdminGuard({ hrOnly, maint, children }: { hrOnly?: boolean; maint?: boolean; children: React.ReactNode }) {
+  const { canAdmin, isHrAdmin, canMaintain } = useApp();
+  if (maint ? canMaintain : hrOnly ? isHrAdmin : canAdmin) return <>{children}</>;
   return (
     <div className="glass-card mx-auto max-w-sm p-4 text-center">
       <p className="text-[13px] font-semibold text-ink">{hrOnly ? 'HR admins only' : 'Authorised users only'}</p>

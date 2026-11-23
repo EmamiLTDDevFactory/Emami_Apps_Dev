@@ -14,7 +14,7 @@ import type { Policy } from '../../lib/types';
 const PAGE = 50;
 
 function Policies() {
-  const { ctx, isHrAdmin } = useApp();
+  const { ctx, canMaintain } = useApp();
   const [empId, setEmpId] = useState('');
   const [year, setYear] = useState(ctx?.Year ?? '');
   const [rows, setRows] = useState<Policy[] | null>(null);
@@ -88,7 +88,7 @@ function Policies() {
   const pageRows = rows?.slice(page * PAGE, (page + 1) * PAGE) ?? [];
 
   if (detail) {
-    const canDelete = isHrAdmin && !detail.DelFlag && detail.Year === ctx?.Year;
+    const canDelete = canMaintain && !detail.DelFlag && detail.Year === ctx?.Year;
     return (
       <div>
         <div className="mb-3 flex flex-wrap items-center gap-2">

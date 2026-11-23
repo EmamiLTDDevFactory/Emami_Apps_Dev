@@ -7,7 +7,8 @@ export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Bool
 // Explicit class map: Tailwind purges dynamically built class names.
 const BTN: Record<string, string> = {
   primary: 'bg-gradient-to-br from-accent to-accent-deep text-accent-ink border-transparent shadow-sm hover:-translate-y-px hover:shadow-glow',
-  secondary: 'bg-panel text-ink border-line hover:border-accent/40 hover:bg-sunken',
+  cta: 'bg-orange text-white border-transparent shadow-sm hover:-translate-y-px hover:brightness-105 hover:shadow-glowOrange',
+  secondary: 'bg-panel text-ink border-line hover:border-accent/40 hover:bg-accent/5',
   ghost: 'bg-transparent text-ink border-transparent hover:bg-sunken',
   danger: 'bg-panel text-bad border-bad/60 hover:bg-bad/10',
 };
@@ -26,12 +27,16 @@ export const Button = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLBut
   },
 );
 
-export function Card({ title, actions, children, className, bodyClass }: { title?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string; bodyClass?: string }) {
+export type Accent = 'accent' | 'good' | 'warn' | 'bad' | 'orange' | 'sim';
+/** Left edge colour of a card / tile (status at a glance, like the analytics KPI cards). */
+export const ACCENT_EDGE: Record<Accent, string> = { accent: 'border-l-accent', good: 'border-l-good', warn: 'border-l-orange', bad: 'border-l-bad', orange: 'border-l-orange', sim: 'border-l-sim' };
+
+export function Card({ title, actions, children, className, bodyClass, accent }: { title?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string; bodyClass?: string; accent?: Accent }) {
   return (
-    <section className={cx('rounded-2xl border border-line bg-panel shadow-card transition-shadow duration-300 hover:shadow-cardHover', className)}>
+    <section className={cx('rounded-2xl border border-line bg-panel shadow-card transition-shadow duration-300 hover:shadow-cardHover', accent && cx('border-l-4', ACCENT_EDGE[accent]), className)}>
       {(title || actions) && (
         <header className="flex items-center justify-between gap-2 border-b border-line px-4 py-2.5">
-          <h3 className="text-sm font-bold">{title}</h3>
+          <h3 className="text-sm font-extrabold tracking-tight">{title}</h3>
           <div className="flex items-center gap-1.5">{actions}</div>
         </header>
       )}
@@ -64,7 +69,7 @@ export function SimTag({ className }: { className?: string }) {
 
 export function Pill({ children, tone = 'neutral', title }: { children: ReactNode; tone?: 'neutral' | 'good' | 'warn' | 'bad' | 'accent' | 'sim'; title?: string }) {
   const t = { neutral: 'bg-sunken text-muted', good: 'bg-good/15 text-good', warn: 'bg-warn/15 text-warn', bad: 'bg-bad/15 text-bad', accent: 'bg-accent/15 text-accent', sim: 'bg-sim/15 text-sim' }[tone];
-  return <span title={title} className={cx('inline-flex items-center rounded px-1.5 py-px text-2xs font-semibold', t)}>{children}</span>;
+  return <span title={title} className={cx('inline-flex items-center rounded-full px-2 py-0.5 text-2xs font-bold', t)}>{children}</span>;
 }
 
 export function Field({ label, hint, error, children, className }: { label: string; hint?: string; error?: string; children: (id: string) => ReactNode; className?: string }) {
@@ -104,7 +109,7 @@ export function Toggle({ checked, onChange, label, disabled }: { checked: boolea
 export function Tabs<T extends string>({ tabs, value, onChange, label }: { tabs: { id: T; label: ReactNode; badge?: ReactNode }[]; value: T; onChange: (t: T) => void; label: string }) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   return (
-    <div role="tablist" aria-label={label} className="inline-flex max-w-full gap-1 overflow-x-auto rounded-2xl border border-line bg-panel p-1 shadow-card">
+    <div role="tablist" aria-label={label} className="scroll-thin flex w-full max-w-full gap-1 overflow-x-auto rounded-2xl border border-line bg-panel px-2 py-1.5 shadow-card">
       {tabs.map((t, i) => (
         <button
           key={t.id}
@@ -123,7 +128,7 @@ export function Tabs<T extends string>({ tabs, value, onChange, label }: { tabs:
             onChange(tabs[n].id);
             refs.current[n]?.focus();
           }}
-          className={cx('flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3.5 py-1.5 text-sm font-semibold transition', value === t.id ? 'bg-gradient-to-br from-accent to-accent-deep text-accent-ink shadow-sm' : 'text-muted hover:bg-sunken hover:text-ink')}
+          className={cx('flex items-center gap-1.5 whitespace-nowrap rounded-xl px-4 py-2 text-sm font-bold transition', value === t.id ? 'bg-accent/10 text-accent ring-1 ring-inset ring-accent/15' : 'text-ink/70 hover:bg-sunken hover:text-ink')}
         >
           {t.label}
           {t.badge}
@@ -150,7 +155,7 @@ export function Skeleton({ rows = 8 }: { rows?: number }) {
 export function Empty({ title, children, icon = '∅' }: { title: string; children?: ReactNode; icon?: ReactNode }) {
   return (
     <div className="flex animate-pageIn flex-col items-center justify-center gap-2 px-6 py-16 text-center">
-      <div aria-hidden className="grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-accent/10 to-sim/10 text-2xl text-accent/70 shadow-card">{icon}</div>
+      <div aria-hidden className="grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-accent/10 to-blue-500/10 text-2xl text-accent/70 shadow-card">{icon}</div>
       <p className="font-medium">{title}</p>
       {children && <div className="max-w-md text-sm text-muted">{children}</div>}
     </div>
@@ -186,7 +191,7 @@ export function Drawer({ open, onClose, title, children, width = 720, trapFocus 
     <div className="fixed inset-0 z-50 flex justify-end no-print" role="dialog" aria-modal="true" aria-label={typeof title === 'string' ? title : 'Details'}>
       <div className="absolute inset-0 animate-fadeIn bg-plum-deep/40 backdrop-blur-[2px]" onClick={onClose} />
       <div ref={ref} tabIndex={-1} className="relative flex h-full w-full animate-slideIn flex-col border-l border-line bg-panel shadow-2xl outline-none" style={{ maxWidth: width }}>
-        <div className="flex items-start justify-between gap-3 border-b border-line px-4 py-3">
+        <div className="flex items-start justify-between gap-3 border-b border-line bg-sunken px-4 py-3">
           <div className="min-w-0">{title}</div>
           <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close">✕</Button>
         </div>
@@ -214,7 +219,7 @@ export function Modal({ open, onClose, title, children, footer }: { open: boolea
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 no-print" role="dialog" aria-modal="true" aria-label={title}>
       <div className="absolute inset-0 animate-fadeIn bg-plum-deep/50 backdrop-blur-sm" onClick={onClose} />
       <div ref={ref} tabIndex={-1} className="relative w-full max-w-lg animate-slideUp rounded-2xl border border-line bg-panel shadow-pop outline-none">
-        <div className="border-b border-line px-4 py-3 text-sm font-bold">{title}</div>
+        <div className="border-b border-line bg-sunken px-4 py-3 text-sm font-extrabold">{title}</div>
         <div className="max-h-[70vh] overflow-auto p-4">{children}</div>
         {footer && <div className="flex justify-end gap-2 border-t border-line px-4 py-3">{footer}</div>}
       </div>
@@ -222,15 +227,16 @@ export function Modal({ open, onClose, title, children, footer }: { open: boolea
   );
 }
 
-export function Stat({ label, value, sub, tone, sim, title }: { label: string; value: ReactNode; sub?: ReactNode; tone?: 'good' | 'warn' | 'bad'; sim?: boolean; title?: string }) {
+export function Stat({ label, value, sub, tone, sim, title, icon }: { label: string; value: ReactNode; sub?: ReactNode; tone?: 'good' | 'warn' | 'bad'; sim?: boolean; title?: string; /** optional tinted icon tile (top right) */ icon?: ReactNode }) {
+  const edge: Accent = sim ? 'sim' : tone === 'good' ? 'good' : tone === 'warn' ? 'orange' : tone === 'bad' ? 'bad' : 'accent';
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-line bg-panel px-4 py-3 shadow-card transition duration-300 hover:-translate-y-0.5 hover:shadow-cardHover" title={title}>
-      <span aria-hidden className="pointer-events-none absolute -right-7 -top-9 h-24 w-24 rounded-full bg-accent/[0.08] blur-2xl" />
-      <div className="flex items-center gap-1.5 text-2xs font-bold uppercase tracking-wide text-muted">
+    <div className={cx('relative overflow-hidden rounded-2xl border border-l-4 border-line bg-panel px-4 py-3 shadow-card transition duration-300 hover:-translate-y-0.5 hover:shadow-cardHover', ACCENT_EDGE[edge])} title={title}>
+      {icon && <span aria-hidden className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-xl bg-accent/10 text-accent">{icon}</span>}
+      <div className="flex items-center gap-1.5 text-2xs font-extrabold uppercase tracking-wider text-muted">
         {label}
         {sim && <SimTag />}
       </div>
-      <div className={cx('num mt-1 text-2xl font-extrabold tracking-tight', tone === 'good' && 'text-good', tone === 'warn' && 'text-warn', tone === 'bad' && 'text-bad', sim && 'sim-val')}>{value}</div>
+      <div className={cx('num mt-1.5 text-[26px] font-extrabold leading-tight tracking-tight', tone === 'good' && 'text-good', tone === 'warn' && 'text-warn', tone === 'bad' && 'text-bad', sim && 'sim-val')}>{value}</div>
       {sub && <div className="num mt-0.5 text-2xs text-muted">{sub}</div>}
     </div>
   );

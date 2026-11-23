@@ -6,18 +6,20 @@
  * (DashPvmSet, from the sales budget ZSALES_BUD_TGT); alert bands per SKU category come from ZMIS_ALERT_THR.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Card, Empty, Spinner, Stat, cx, inputCls } from '../ui';
+import { Button, Card, Empty, Spinner, Stat, cx, inputBase, inputCls } from '../ui';
 import { ErrorBox, errorText } from '../budget-mgmt/shared';
 import { fetchPvm, fetchSales, fetchThresholds } from '@/lib/dash/service';
 import { brandSales, gmBands, pvmSteps, salesTotals, salesViews, skuSales, type GmBands, type PvmStep, type SalesView as Row } from '@/lib/dash/logic';
 import type { PvmRow, SalesRow, ThreshRow } from '@/lib/dash/types';
 import { ls } from '@/lib/client/storage';
+import { useHierNames } from '@/lib/client/useHierNames';
 import { BAND, NeedsSap, fyStart, lakh, money, pct, tdCls, thCls, today } from './parts';
 
 const ALERT: Record<string, string> = { good: 'Green', amber: 'Amber', red: 'Red', none: '-' };
 const PILL: Record<string, string> = { good: 'bg-good/15 text-good', amber: 'bg-warn/15 text-warn', red: 'bg-bad/15 text-bad', none: 'text-muted' };
 
 export default function SalesView() {
+  const hn = useHierNames();
   const [plants, setPlants] = useState('');
   const [from, setFrom] = useState(fyStart(today()));
   const [to, setTo] = useState(today());
@@ -55,7 +57,7 @@ export default function SalesView() {
   const all = useMemo(() => (rows ? salesViews(rows, bands) : []), [rows, bands]);
   const steps = useMemo(() => (pvm ? pvmSteps(pvm) : []), [pvm]);
   const brands = useMemo(() => brandSales(all), [all]);
-  const skus = useMemo(() => skuSales(all), [all]);
+  const skus = useMemo(() => skuSales(all).sort((a, b) => b.nsv.comparedTo(a.nsv)), [all]);
   const tot = useMemo(() => salesTotals(brands), [brands]);
   const channels = useMemo(() => Array.from(new Set(skus.map((s) => s.channel))).sort(), [skus]);
   const shownSkus = useMemo(() => skus.filter((s) => (!brand || s.brand === brand) && (!channel || s.channel === channel)), [skus, brand, channel]);
@@ -86,18 +88,18 @@ export default function SalesView() {
             Plants {ran?.plants} · {ran?.from} to {ran?.to} · finished goods (FERT), INR invoices; invoices and debit memos add, cancellations and credit memos subtract.
             COGM = SAP's actual cost per piece of the same period x sold quantity. GM % bands per SKU category come from SAP ({thr.length ? `${thr.length} band rows` : 'none set: red below 18 %, amber below 22 %'}).
           </p>
-          <BrandTable rows={brands} tot={tot} />
+          <BrandTable rows={brands} tot={tot} bn={hn.brand} />
           <Card className="p-3">
             <div className="mb-2 flex flex-wrap items-center gap-2">
               <h3 className="text-sm font-extrabold">Net realization vs COGM by SKU and channel</h3>
-              <select aria-label="Filter by brand" className={cx(inputCls, 'ml-auto w-40')} value={brand} onChange={(e) => setBrand(e.target.value)}>
-                <option value="">All brands</option>{brands.map((b) => <option key={b.brand} value={b.brand}>{b.brand || '(none)'}</option>)}
+              <select aria-label="Filter by brand" className={cx(inputBase, 'h-9 ml-auto w-56')} value={brand} onChange={(e) => setBrand(e.target.value)}>
+                <option value="">All brands</option>{brands.map((b) => <option key={b.brand} value={b.brand}>{hn.brand(b.brand) || '(none)'}</option>)}
               </select>
-              <select aria-label="Filter by channel" className={cx(inputCls, 'w-48')} value={channel} onChange={(e) => setChannel(e.target.value)}>
+              <select aria-label="Filter by channel" className={cx(inputBase, 'h-9 w-48')} value={channel} onChange={(e) => setChannel(e.target.value)}>
                 <option value="">All channels</option>{channels.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
-            <SkuTable rows={shownSkus} />
+            <SkuTable rows={shownSkus} bn={hn.brand} />
           </Card>
         </>
       )}
@@ -106,26 +108,26 @@ export default function SalesView() {
   );
 }
 
-function BrandTable({ rows, tot }: { rows: Row[]; tot: ReturnType<typeof salesTotals> }) {
+function BrandTable({ rows, tot, bn }: { rows: Row[]; tot: ReturnType<typeof salesTotals>; bn: (c: string) => string }) {
   return (
     <div className="overflow-x-auto rounded-2xl border border-line bg-panel shadow-card">
       <table className="w-full min-w-[960px] border-collapse">
         <thead><tr>
-          <th className={cx(thCls, 'text-left')}>Brand</th><th className={thCls}>Sold qty (L pc)</th><th className={thCls}>GSV (L)</th><th className={thCls}>Deductions (L)</th><th className={thCls}>NSV (L)</th>
-          <th className={thCls}>COGM (L)</th><th className={thCls}>Gross margin (L)</th><th className={thCls}>GM %</th><th className={cx(thCls, 'text-left')}>Note</th>
+          <th className={cx(thCls, '!text-left')}>Brand</th><th className={thCls}>Sold qty (pc)</th><th className={thCls}>GSV (L)</th><th className={thCls}>Deductions (L)</th><th className={thCls}>NSV (L)</th>
+          <th className={thCls}>COGM (L)</th><th className={thCls}>Gross margin (L)</th><th className={thCls}>GM %</th><th className={cx(thCls, '!text-left')}>Note</th>
         </tr></thead>
         <tbody>
           {rows.map((b) => (
             <tr key={b.brand || '-'} className="border-t border-line/60">
-              <td className="px-2.5 py-1.5 text-left text-xs font-bold">{b.brand || '(none)'}</td>
-              <td className={tdCls}>{lakh(b.soldQty, 2)}</td><td className={tdCls}>{lakh(b.gsv)}</td><td className={tdCls}>{lakh(b.deductions)}</td><td className={tdCls}>{lakh(b.nsv)}</td>
+              <td className="px-2.5 py-1.5 text-left text-xs font-bold">{bn(b.brand) || '(none)'}</td>
+              <td className={tdCls}>{money(b.soldQty, 0)}</td><td className={tdCls}>{lakh(b.gsv)}</td><td className={tdCls}>{lakh(b.deductions)}</td><td className={tdCls}>{lakh(b.nsv)}</td>
               <td className={tdCls}>{lakh(b.cogm)}</td><td className={tdCls}>{lakh(b.gm)}</td><td className={cx(tdCls, 'font-bold', BAND[b.band])}>{pct(b.gmPct)}</td>
               <td className="px-2.5 py-1.5 text-left text-2xs text-muted">{b.msg}</td>
             </tr>
           ))}
         </tbody>
         <tfoot><tr className="border-t border-line font-extrabold">
-          <td className="px-2.5 py-1.5 text-left text-xs">All brands</td><td className={tdCls}>{lakh(tot.soldQty, 2)}</td><td className={tdCls}>{lakh(tot.gsv)}</td><td className={tdCls}>{lakh(tot.deductions)}</td><td className={tdCls}>{lakh(tot.nsv)}</td>
+          <td className="px-2.5 py-1.5 text-left text-xs">All brands</td><td className={tdCls}>{money(tot.soldQty, 0)}</td><td className={tdCls}>{lakh(tot.gsv)}</td><td className={tdCls}>{lakh(tot.deductions)}</td><td className={tdCls}>{lakh(tot.nsv)}</td>
           <td className={tdCls}>{lakh(tot.cogm)}</td><td className={tdCls}>{lakh(tot.gm)}</td><td className={tdCls}>{pct(tot.gmPct)}</td><td />
         </tr></tfoot>
       </table>
@@ -133,21 +135,21 @@ function BrandTable({ rows, tot }: { rows: Row[]; tot: ReturnType<typeof salesTo
   );
 }
 
-function SkuTable({ rows }: { rows: Row[] }) {
+function SkuTable({ rows, bn }: { rows: Row[]; bn: (c: string) => string }) {
   if (!rows.length) return <p className="text-sm text-muted">No SKU lines for this choice.</p>;
   return (
     <div className="max-h-[60vh] overflow-auto rounded-xl border border-line">
       <table className="w-full min-w-[980px] border-collapse">
         <thead className="sticky top-0"><tr>
-          <th className={cx(thCls, 'text-left')}>SKU</th><th className={cx(thCls, 'text-left')}>Brand</th><th className={cx(thCls, 'text-left')}>Channel</th><th className={thCls}>Sold qty (L pc)</th>
+          <th className={cx(thCls, '!text-left')}>SKU</th><th className={cx(thCls, '!text-left')}>Brand</th><th className={cx(thCls, '!text-left')}>Channel</th><th className={thCls}>Sold qty (pc)</th>
           <th className={thCls}>Net realization / pc</th><th className={thCls}>COGM / pc</th><th className={thCls}>GM / pc</th><th className={thCls}>GM %</th><th className={thCls}>Alert</th>
         </tr></thead>
         <tbody>
           {rows.map((s) => (
             <tr key={`${s.matnr}|${s.vtweg}`} className="border-t border-line/60">
               <td className="px-2.5 py-1.5 text-left text-xs"><span className="font-bold">{s.matnr.replace(/^0+/, '')}</span> <span className="text-muted" title={s.maktx}>{s.maktx}</span></td>
-              <td className="px-2.5 py-1.5 text-left text-xs">{s.brand || '(none)'}</td><td className="px-2.5 py-1.5 text-left text-xs">{s.channel}</td>
-              <td className={tdCls}>{lakh(s.soldQty, 2)}</td><td className={tdCls}>{money(s.netRealPc)}</td><td className={tdCls}>{money(s.cogmPc)}</td><td className={tdCls}>{money(s.gmPc)}</td>
+              <td className="px-2.5 py-1.5 text-left text-xs">{bn(s.brand) || '(none)'}</td><td className="px-2.5 py-1.5 text-left text-xs">{s.channel}</td>
+              <td className={tdCls}>{money(s.soldQty, 0)}</td><td className={tdCls}>{money(s.netRealPc)}</td><td className={tdCls}>{money(s.cogmPc)}</td><td className={tdCls}>{money(s.gmPc)}</td>
               <td className={cx(tdCls, 'font-bold', BAND[s.band])}>{pct(s.gmPct)}</td>
               <td className={tdCls}><span className={cx('rounded-full px-2 py-0.5 text-2xs font-bold', PILL[s.band])}>{ALERT[s.band]}</span></td>
             </tr>

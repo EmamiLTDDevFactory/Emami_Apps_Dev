@@ -8,15 +8,25 @@ import type { MarginQuery } from './filter';
 export interface MarginSel {
   materials: string[]; plants: string[]; market: string; channel: string; prodha: string; brand: string;
   source: 'L' | 'S'; priceDate: string; freight: boolean; explQty: string;
-  /** U = uploaded prices (Market / Channel optional), O = latest sales order (the sales-area part applies) */
+  /** O = latest sales order (the sales-area part applies); 'U' (uploaded prices) is retired and never set by the screens */
   priceSrc: 'U' | 'O';
   vkorg: string[]; vtweg: string[]; segment: string; days: number;
   auart: ListFilter; pstyv: ListFilter; kdgrp: ListFilter; kunnr: ListFilter;
 }
 export const DEFAULT_SEL: MarginSel = {
-  materials: [], plants: [], market: '', channel: '', prodha: '', brand: '', source: 'L', priceDate: '', freight: true, explQty: '', priceSrc: 'U',
+  materials: [], plants: [], market: '', channel: '', prodha: '', brand: '', source: 'L', priceDate: '', freight: true, explQty: '', priceSrc: 'O',
   vkorg: [], vtweg: [], segment: '', days: 90, auart: EMPTY_LIST, pstyv: EMPTY_LIST, kdgrp: EMPTY_LIST, kunnr: EMPTY_LIST,
 };
+
+/** SAP's live costing costs a finished good IN A PLANT: without a plant, or without finished goods / a hierarchy / a brand, it answers with an empty list and no message.
+ * So a live run must name both (a snapshot read is not limited this way). Returns the text for the field that is missing. */
+export function liveSelectionErrors(s: MarginSel): { materials?: string; plants?: string } {
+  if (s.source !== 'L') return {};
+  const e: { materials?: string; plants?: string } = {};
+  if (!s.plants.length) e.plants = 'Pick at least one plant: SAP costs a finished good in a plant, so a live run needs one (without it SAP returns nothing).';
+  if (!s.materials.length && !s.prodha.trim() && !s.brand.trim()) e.materials = 'Pick at least one finished good (or a product hierarchy or brand).';
+  return e;
+}
 
 export function toMarginQuery(s: MarginSel): MarginQuery {
   const order = s.priceSrc === 'O';
@@ -42,7 +52,7 @@ export function parseMarginSearch(search: string): MarginSel {
   const pd = p.get('pd'); s.priceDate = pd && DAY.test(pd) ? pd : '';
   s.freight = p.get('frt') !== '0';
   const q = p.get('qty'); s.explQty = q && /^\d+(\.\d+)?$/.test(q) ? q : '';
-  s.priceSrc = p.get('ps') === 'O' ? 'O' : 'U';
+  s.priceSrc = 'O';   // prices always come from the latest sales order (selling price, MRP) and the costed components; uploaded prices are no longer used
   s.vkorg = list(p.get('vk')); s.vtweg = list(p.get('vt')); s.segment = p.get('seg') ?? '';
   const d = Number(p.get('days')); s.days = Number.isInteger(d) && d >= 1 ? d : DEFAULT_SEL.days;
   for (const [k, i, e] of LISTS) s[k] = { in: list(p.get(i)), ex: list(p.get(e)) };

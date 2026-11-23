@@ -68,3 +68,12 @@ export const DASH_MARGIN_FIELDS = {
   BudPf: ['BudPf', 'd'],
   BudOh: ['BudOh', 'd'],
 } as const satisfies FieldMap;
+
+/** DashCdrillSet: item level breakup of ONE finished good: S = summary (cost per piece by category), B = one row per sold batch, C = one row per component (average over the costed batches, weighted by sold quantity). */
+export const DASH_CDRILL_SET = 'DashCdrillSet';
+export const DASH_CDRILL_FIELDS = {
+  Grain: ['Grain', 's'], Matnr: ['Matnr', 's'], Charg: ['Charg', 's'], Idnrk: ['Idnrk', 's'], Maktx: ['Maktx', 's'], Mtart: ['Mtart', 's'], Matkl: ['Matkl', 's'], Cat: ['Cat', 's'], Meins: ['Meins', 's'],
+  Flag: ['Flag', 's'], Msg: ['Msg', 's'], Orders: ['Orders', 'i'],
+  SoldQty: ['SoldQty', 'd'], ProdQty: ['ProdQty', 'd'], Qty: ['Qty', 'd'], Val: ['Val', 'd'], AvgQtyPc: ['AvgQtyPc', 'd'], AvgCostPc: ['AvgCostPc', 'd'],
+  RmPc: ['RmPc', 'd'], PmPc: ['PmPc', 'd'], PfPc: ['PfPc', 'd'], OthPc: ['OthPc', 'd'],
+} as const satisfies FieldMap;

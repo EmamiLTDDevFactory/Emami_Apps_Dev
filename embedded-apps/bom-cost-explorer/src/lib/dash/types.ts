@@ -53,3 +53,9 @@ export interface MarginRow {
   BudPf: string;
   BudOh: string;
 }
+
+/** DashCdrillSet row (grain S = summary, B = sold batch, C = component). Decimals are strings. */
+export interface CdrillRow {
+  Grain: string; Matnr: string; Charg: string; Idnrk: string; Maktx: string; Mtart: string; Matkl: string; Cat: string; Meins: string; Flag: string; Msg: string; Orders: number;
+  SoldQty: string; ProdQty: string; Qty: string; Val: string; AvgQtyPc: string; AvgCostPc: string; RmPc: string; PmPc: string; PfPc: string; OthPc: string;
+}

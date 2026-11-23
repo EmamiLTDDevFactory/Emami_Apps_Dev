@@ -6,12 +6,14 @@
  */
 import type Decimal from 'decimal.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Card, Empty, Segmented, Spinner, Stat, cx, inputCls } from '../ui';
+import { Button, Card, Empty, Segmented, Spinner, Stat, cx, inputBase, inputCls } from '../ui';
 import { ErrorBox, errorText } from '../budget-mgmt/shared';
-import { fetchMargin } from '@/lib/dash/service';
+import { fetchMargin, type MarginSel } from '@/lib/dash/service';
+import CdrillDrawer, { type DrillTarget } from './CdrillDrawer';
 import { NO_DRIVERS, cogmDrivers, groupBy, marginNotes, parseCurrentCogm, parseMargin, promoBreakeven, sensitivity, totalOf, type Basis, type Cur, type Drivers, type Group, type MLine, type Result } from '@/lib/dash/margin';
 import type { MarginRow } from '@/lib/dash/types';
 import { ls } from '@/lib/client/storage';
+import { useHierNames } from '@/lib/client/useHierNames';
 import { fyStart, lakh, money, pct, tdCls, thCls, today } from './parts';
 
 type By = 'brand' | 'cat' | 'sku' | 'cust';
@@ -23,6 +25,7 @@ const SLIDERS: { k: keyof Drivers; label: string; min: number; max: number }[] =
 const gmTone = (p: Result['gmPct']) => (p === null ? 'text-muted' : p.lt(0) ? 'text-bad' : p.lt(18) ? 'text-warn' : 'text-good');
 
 export default function MarginView() {
+  const hn = useHierNames();
   const [plants, setPlants] = useState('');
   const [vkorg, setVkorg] = useState('');
   const [vtweg, setVtweg] = useState('');
@@ -40,6 +43,8 @@ export default function MarginView() {
   const [useCur, setUseCur] = useState(true);
   const [fileMsg, setFileMsg] = useState('');
   const [brand, setBrand] = useState('');
+  const [ran, setRan] = useState<{ sel: MarginSel; from: string; to: string } | null>(null);
+  const [drill, setDrill] = useState<DrillTarget | null>(null);
   const ctl = useRef<AbortController | null>(null);
   useEffect(() => { setPlants(ls.get<string>('bce:dash-plants', '')); setCurText(ls.get<string>('bce:dash-curcogm', '')); return () => ctl.current?.abort(); }, []);
 
@@ -49,8 +54,9 @@ export default function MarginView() {
     setBusy(true); setError('');
     try {
       const sp = (x: string) => x.split(/[\s,;]+/).filter(Boolean);
-      const r = await fetchMargin({ plants: sp(plants), vkorg: sp(vkorg), vtweg: sp(vtweg), crssku: sp(crssku), vbeln: sp(vbeln) }, from, to, c.signal);
-      setRows(r.rows); setBrand(''); ls.set('bce:dash-plants', plants);
+      const sel = { plants: sp(plants), vkorg: sp(vkorg), vtweg: sp(vtweg), crssku: sp(crssku), vbeln: sp(vbeln) };
+      const r = await fetchMargin(sel, from, to, c.signal);
+      setRows(r.rows); setRan({ sel, from, to }); setBrand(''); ls.set('bce:dash-plants', plants);
     } catch (e) { if (!c.signal.aborted) { setRows(null); setError(errorText(e)); } }
     if (!c.signal.aborted) setBusy(false);
   }
@@ -74,9 +80,9 @@ export default function MarginView() {
   const groups = useMemo<Group[]>(() => {
     if (by === 'cust') return groupBy(parsed.customers, (l) => l.kunag, (l) => l.label, dr, basis);
     const key = by === 'brand' ? (l: MLine) => l.brand : by === 'cat' ? (l: MLine) => l.matkl : (l: MLine) => l.matnr;
-    const lab = by === 'sku' ? (l: MLine) => `${l.matnr.replace(/^0+/, '')} ${l.label}` : key;
+    const lab = by === 'sku' ? (l: MLine) => `${l.matnr.replace(/^0+/, '')} ${l.label}` : by === 'brand' ? (l: MLine) => hn.brand(l.brand) : key;
     return groupBy(skus, key, lab, dr, basis, cur);
-  }, [by, skus, parsed.customers, dr, basis, cur]);
+  }, [by, skus, parsed.customers, dr, basis, cur, hn]);
   const sens = useMemo(() => sensitivity(skus, dr, basis, cur), [skus, dr, basis, cur]);
   const brk = useMemo(() => promoBreakeven(skus, dr.promo, basis, cur), [skus, dr.promo, basis, cur]);
   const drivers = useMemo(() => (cur ? cogmDrivers(skus, cur) : []), [skus, cur]);
@@ -107,7 +113,9 @@ export default function MarginView() {
         <label className="flex flex-col gap-1 text-xs font-semibold">To<input type="date" className={cx(inputCls, 'w-40')} value={to} onChange={(e) => setTo(e.target.value)} /></label>
         <Button variant="primary" disabled={busy || !(plants.trim() || vkorg.trim() || crssku.trim() || vbeln.trim()) || !from || !to} onClick={() => void run()}>{busy ? <><Spinner className="h-4 w-4" /> Running</> : 'Run'}</Button>
         {busy && <Button onClick={() => { ctl.current?.abort(); setBusy(false); }}>Stop</Button>}
-        <Segmented label="Revenue basis" size="sm" value={basis} onChange={setBasis} options={[{ value: 'gross', label: 'Gross sales (with GST)', hint: 'Selling price + GST, as in the Gross Margin Analysis report' }, { value: 'sp', label: 'Selling price' }]} />
+        <div className="w-full max-w-[460px]">
+          <Segmented label="Revenue basis" size="sm" value={basis} onChange={setBasis} options={[{ value: 'gross', label: 'Gross sales (with GST)', hint: 'Selling price + GST, as in the Gross Margin Analysis report' }, { value: 'sp', label: 'Selling price' }]} />
+        </div>
       </div>
       {error && <ErrorBox>{error}</ErrorBox>}
       {!rows && !busy && !error && <Card><Empty title="Choose a plant, sales organisation, CRSSKU or invoice number and the period, then press Run">Invoice conditions of finished goods: MRP, channel margins, selling price, GST, cost per component and schemes.</Empty></Card>}
@@ -160,9 +168,12 @@ export default function MarginView() {
           <Card className="p-3">
             <div className="mb-2 flex flex-wrap items-center gap-2">
               <Segmented label="Group by" size="sm" value={by} onChange={setBy} options={[{ value: 'brand', label: 'Brand' }, { value: 'cat', label: 'Product category' }, { value: 'sku', label: 'Material' }, { value: 'cust', label: 'Customer' }]} />
-              {by !== 'cust' && <select aria-label="Filter by brand" className={cx(inputCls, 'ml-auto w-40')} value={brand} onChange={(e) => setBrand(e.target.value)}><option value="">All brands</option>{brands.map((b) => <option key={b} value={b}>{b || '(none)'}</option>)}</select>}
+              {by !== 'cust' && <select aria-label="Filter by brand" className={cx(inputBase, 'h-9 ml-auto w-56')} value={brand} onChange={(e) => setBrand(e.target.value)}><option value="">All brands</option>{brands.map((b) => <option key={b} value={b}>{hn.brand(b) || '(none)'}</option>)}</select>}
             </div>
-            <GroupTable groups={groups} material={by === 'sku'} />
+            <GroupTable groups={groups} material={by === 'sku'} onBreakup={ran ? (g) => {
+              const q = g.base.qty;
+              setDrill({ matnr: g.lines[0].matnr, label: g.label, sel: ran.sel, from: ran.from, to: ran.to, invoice: q.isZero() ? null : { rm: g.base.rm.div(q), pm: g.base.pm.div(q), pf: g.base.pf.div(q), oh: g.base.oh.div(q) } });
+            } : undefined} />
             {by === 'cust' && <p className="mt-2 text-2xs text-muted">Customer lines use the invoice cost (the current COGM data set is by SKU).</p>}
           </Card>
           <Card className="p-4">
@@ -172,6 +183,7 @@ export default function MarginView() {
           </Card>
         </>
       )}
+      <CdrillDrawer target={drill} onClose={() => setDrill(null)} />
     </>
   );
 }
@@ -186,7 +198,7 @@ function Waterfall({ base, scen, changed, budGap }: { base: Result; scen: Result
   return (
     <div className="overflow-x-auto rounded-2xl border border-line bg-panel shadow-card">
       <table className="w-full min-w-[520px] border-collapse">
-        <thead><tr><th className={cx(thCls, 'text-left')}>₹ lakh</th><th className={thCls}>As invoiced</th>{changed && <th className={thCls}>Scenario</th>}</tr></thead>
+        <thead><tr><th className={cx(thCls, '!text-left')}>₹ lakh</th><th className={thCls}>As invoiced</th>{changed && <th className={thCls}>Scenario</th>}</tr></thead>
         <tbody>
           {L.map((x) => <tr key={x.label} className={cx('border-t border-line/60', x.bold && 'font-extrabold')}><td className="px-2.5 py-1.5 text-left text-xs">{x.label}</td><td className={tdCls}>{lakh(x.get(base), 2)}</td>{changed && <td className={tdCls}>{lakh(x.get(scen), 2)}</td>}</tr>)}
           <tr className="border-t border-line font-extrabold"><td className="px-2.5 py-1.5 text-left text-xs">GM %</td><td className={cx(tdCls, gmTone(base.gmPct))}>{pct(base.gmPct)}</td>{changed && <td className={cx(tdCls, gmTone(scen.gmPct))}>{pct(scen.gmPct)}</td>}</tr>
@@ -197,7 +209,7 @@ function Waterfall({ base, scen, changed, budGap }: { base: Result; scen: Result
   );
 }
 
-function GroupTable({ groups, material }: { groups: Group[]; material: boolean }) {
+function GroupTable({ groups, material, onBreakup }: { groups: Group[]; material: boolean; onBreakup?: (g: Group) => void }) {
   const qty = (v: Decimal) => (material ? money(v, 0) : lakh(v, 2));
   const val = (v: Decimal) => (material ? money(v, 0) : lakh(v));
   if (!groups.length) return <p className="text-sm text-muted">No lines for this choice.</p>;
@@ -205,7 +217,7 @@ function GroupTable({ groups, material }: { groups: Group[]; material: boolean }
     <div className="max-h-[60vh] overflow-auto rounded-xl border border-line">
       <table className="w-full min-w-[1100px] border-collapse">
         <thead className="sticky top-0"><tr>
-          <th className={cx(thCls, 'text-left')}>{material ? 'Material' : 'Group'}</th><th className={thCls}>{material ? 'Qty (pc)' : 'Qty (L pc)'}</th><th className={thCls}>{material ? 'Selling price (₹)' : 'Selling price (L)'}</th><th className={thCls}>{material ? 'Gross sales (₹)' : 'Gross sales (L)'}</th><th className={thCls}>{material ? 'Revenue (₹)' : 'Revenue (L)'}</th><th className={thCls}>{material ? 'COGS (₹)' : 'COGS (L)'}</th><th className={thCls}>{material ? 'Gross margin (₹)' : 'Gross margin (L)'}</th><th className={thCls}>GM %</th><th className={thCls}>GM / pc</th><th className={thCls}>vs invoiced (L)</th><th className={thCls}>Budget flag</th>
+          <th className={cx(thCls, '!text-left')}>{material ? 'Material' : 'Group'}</th><th className={thCls}>{material ? 'Qty (pc)' : 'Qty (L pc)'}</th><th className={thCls}>{material ? 'Selling price (₹)' : 'Selling price (L)'}</th><th className={thCls}>{material ? 'Gross sales (₹)' : 'Gross sales (L)'}</th><th className={thCls}>{material ? 'Revenue (₹)' : 'Revenue (L)'}</th><th className={thCls}>{material ? 'COGS (₹)' : 'COGS (L)'}</th><th className={thCls}>{material ? 'Gross margin (₹)' : 'Gross margin (L)'}</th><th className={thCls}>GM %</th><th className={thCls}>GM / pc</th><th className={thCls}>vs invoiced (L)</th>{material && onBreakup && <th className={thCls}>Cost breakup</th>}<th className={thCls}>Budget flag</th>
         </tr></thead>
         <tbody>
           {groups.map((g) => {
@@ -217,6 +229,7 @@ function GroupTable({ groups, material }: { groups: Group[]; material: boolean }
                 <td className={cx(tdCls, 'font-bold', gmTone(g.scen.gmPct))}>{pct(g.scen.gmPct)}</td>
                 <td className={tdCls}>{g.scen.qty.isZero() ? '-' : money(g.scen.gm.div(g.scen.qty))}</td>
                 <td className={cx(tdCls, g.scen.gm.gte(g.base.gm) ? 'text-good' : 'text-bad')}>{lakh(g.scen.gm.minus(g.base.gm), 2)}</td>
+                {material && onBreakup && <td className={tdCls}><button type="button" className="rounded-lg border border-line px-2 py-0.5 text-2xs font-bold text-accent hover:bg-sunken" onClick={() => onBreakup(g)}>Breakup</button></td>}
                 <td className={tdCls}>{g.lines[0]?.grain === 'C' ? '-' : nbc ? <span className="rounded-full bg-warn/15 px-2 py-0.5 text-2xs font-bold text-warn" title="No Budgeted Cost / trading goods">NBC {nbc}</span> : 'OK'}</td>
               </tr>
             );
