@@ -12,8 +12,8 @@ type EditableDoaRow = DoaChainRow & { _isNew?: boolean };
 
 const DOA_CTYPE_OPTIONS = [
   { value: 'ADM', label: 'ADM — Other Administrative Expenses' },
-  { value: 'MBN', label: 'MBN — Mobile (reserved, not used yet)' },
-  { value: 'MBS', label: 'MBS — Mobile (reserved, not used yet)' },
+  { value: 'MBN', label: 'MBN — Mobile' },
+  { value: 'MBS', label: 'MBS — Mobile' },
 ];
 
 // Expense group categories backend asked to expose here - no business description was given for
@@ -269,11 +269,6 @@ export default function DoaChainPage() {
             </Button>
           </div>
         </div>
-        {doaCtype !== 'ADM' && (
-          <div className="mt-3">
-            <Banner type="warn">MBN/MBS mobile DOA types are reserved — the backend doesn't use them yet.</Banner>
-          </div>
-        )}
       </Card>
 
       {loadError && <Banner type="error" onClose={() => setLoadError(null)}>{loadError}</Banner>}

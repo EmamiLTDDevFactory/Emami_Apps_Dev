@@ -21,6 +21,11 @@ interface ClaimContextType {
   // Returns [] on any failure (EmpId isn't confirmed filterable on ClaimHeaderSet yet) rather than
   // blocking the UI - this is a defense-in-depth check layered on top of the local-claims one.
   fetchClaimedMonthsForExpenseType: (expenseTypeId: string) => Promise<string[]>;
+  // Non-CTC: Mobile Exp - grade-based monthly cap lookup. Returns null on any failure (best-effort,
+  // doesn't block the month card). eligibleAmount is null when NoCap='X' (explicitly uncapped) or
+  // CapFound is blank (no cap row found for this grade) - both mean "don't enforce a cap or show a
+  // warning", per the backend's EligibilitySet contract.
+  fetchEligibility: (empId: string, monthKey: string) => Promise<{ eligibleAmount: number | null; grade?: string; category?: string } | null>;
   updateDraft: (id: string, claimData: Partial<ExpenseClaim>, isDraft: boolean) => { success: boolean; warning?: string };
   deleteClaim: (id: string) => void;
   // Manager Actions
@@ -567,13 +572,9 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           ExpenseDate: toODataDate(item.expenseDate),
           Amount: item.amount.toFixed(3),
           Currency: 'INR',
-          // Approval note has no dedicated SEGW property yet - rides inside the first row's
-          // Description as a stopgap per the Non-CTC Mobile Exp handover, until backend adds one.
-          Description: idx === 0 && (claimData as any).approvalNotes
-            ? `${claimData.justification || 'Mobile expense'} | Approval note: ${(claimData as any).approvalNotes}`
-            : (claimData.justification || 'Mobile expense'),
+          Description: claimData.justification || 'Mobile expense',
           VendorName: claimData.name1 || 'External Vendor',
-          ReceiptNo: (item.receiptNo || '').slice(0, 40),
+          ReceiptNo: (item.receiptNo || '').slice(0, 30), // SAP field is C(30)
         });
       });
       extraZeroAmountAttachments.forEach((_, idx) => {
@@ -633,6 +634,13 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       HsnSac: (claimData as any).hsnSac || '',
       CLAIMNAV: claimNavItems,
     };
+
+    // Non-CTC: Mobile Exp - approval note is a real header field now (max 255), not a CLAIMNAV
+    // Description stopgap. PeriodFrom/PeriodTo are deliberately NOT sent - optional, and the
+    // backend derives them from the month cards' own ExpenseDate values when omitted.
+    if (isMobilePayload) {
+      sapPayload.ApprNote = ((claimData as any).approvalNotes || '').slice(0, 255);
+    }
 
     // 3. Submit directly to SAP
     // Attachments travel as base64 inside the JSON body rather than a raw multipart upload.
@@ -757,6 +765,9 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const sapClaims = extractSapResults(response.data);
       const months = new Set<string>();
       sapClaims.forEach((sap: any) => {
+        // A rejected claim's month is available again for a fresh claim - only count months from
+        // claims that are still live (not R).
+        if (sap.Status === 'R') return;
         const navItems = sap.CLAIMNAV?.results || (Array.isArray(sap.CLAIMNAV) ? sap.CLAIMNAV : []);
         navItems.forEach((item: any) => {
           if (item.ExpenseType !== expenseTypeId || !item.ExpenseDate) return;
@@ -769,6 +780,33 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch (err) {
       console.warn('[fetchClaimedMonthsForExpenseType] best-effort check failed:', err);
       return [];
+    }
+  };
+
+  // Non-CTC: Mobile Exp - grade-based monthly eligibility cap. The backend uses the employee's
+  // CURRENT grade regardless of which month is asked about - Month only picks the entity key.
+  const fetchEligibility = async (empId: string, monthKey: string): Promise<{ eligibleAmount: number | null; grade?: string; category?: string } | null> => {
+    try {
+      const empIdNumeric = empId.replace(/\D/g, '').padStart(8, '0');
+      const yyyymm = monthKey.replace('-', '');
+      const url = `${SAP_BASE_URL}/EligibilitySet(EmpId='${empIdNumeric}',Month='${yyyymm}')?$format=json`;
+      const response = await sapClient.get(url);
+      if (response.status < 200 || response.status >= 300) return null;
+
+      const data = response.data?.d || response.data;
+      if (!data) return null;
+
+      // NoCap/CapFound are 'X'/blank strings, not booleans. CapFound blank means no cap row was
+      // found for this grade at all (e.g. a grade not in the cap table) - treated the same as an
+      // explicit NoCap='X': no limit, no "above eligibility" warning.
+      const noCap = data.NoCap === 'X';
+      const capFound = data.CapFound === 'X';
+      const eligibleAmount = (!capFound || noCap) ? null : (parseFloat(data.EligibleAmount) || 0);
+
+      return { eligibleAmount, grade: data.Grade, category: data.Category };
+    } catch (err) {
+      console.warn('[fetchEligibility] best-effort check failed:', err);
+      return null;
     }
   };
 
@@ -1368,6 +1406,7 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         policyLimit,
         addClaim,
         fetchClaimedMonthsForExpenseType,
+        fetchEligibility,
         updateDraft,
         deleteClaim,
         approveClaim,

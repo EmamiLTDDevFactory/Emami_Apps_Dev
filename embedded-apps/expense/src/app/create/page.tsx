@@ -66,9 +66,13 @@ const getPeriodPickerOptions = () => {
 type MonthClaimEntry = {
   attachment: Attachment | null;
   claimAmount: string;
-  // Eligible Amount is grade-table-driven (not built yet — see RoutingBadge below). Left in the
-  // shape now so wiring it in later doesn't require touching every call site again.
+  // Eligible Amount is grade-table-driven (EligibilitySet). Null means either "not fetched yet"
+  // or "no cap to enforce" (NoCap='X' or CapFound blank) - eligibilityChecked disambiguates the two
+  // for display purposes.
   eligibleAmount: number | null;
+  // True once the EligibilitySet call has returned (success or fail) for this month - lets the UI
+  // show "No Cap" instead of the "Auto-fetched..." placeholder once a real answer has come back.
+  eligibilityChecked: boolean;
   // Set once OCR reads the invoice's own printed date off this card's document and it doesn't
   // fall inside this card's month — e.g. an August invoice dropped into the July card. Informational
   // only (doesn't block anything); the card's period stays whatever slot the user put it in.
@@ -76,6 +80,8 @@ type MonthClaimEntry = {
   // OCR-read invoice/bill number, shown read-only on the card for reference back to the document.
   invoiceNumber: string | null;
 };
+
+const BLANK_MONTH_ENTRY: MonthClaimEntry = { attachment: null, claimAmount: '', eligibleAmount: null, eligibilityChecked: false, dateMismatchWarning: null, invoiceNumber: null };
 
 const blobToBase64 = (blob: Blob): Promise<string> => new Promise((resolve, reject) => {
   const reader = new FileReader();
@@ -112,7 +118,7 @@ function CreateClaimInner() {
   const searchParams = useSearchParams();
   const { currentUser } = useAuth() as { currentUser: any };
   const editingClaimId = searchParams.get('claimId') || '';
-  const { addClaim, policyLimit, expenseTypes, fetchExpenseTypes, getClaimById, tempClaimForResubmit, setTempClaimForResubmit, claims, fetchAreas, fetchClaims, fetchClaimedMonthsForExpenseType } = useClaim();
+  const { addClaim, policyLimit, expenseTypes, fetchExpenseTypes, getClaimById, tempClaimForResubmit, setTempClaimForResubmit, claims, fetchAreas, fetchClaims, fetchClaimedMonthsForExpenseType, fetchEligibility } = useClaim();
 
   useEffect(() => {
     fetchExpenseTypes();
@@ -593,13 +599,25 @@ function CreateClaimInner() {
     setSelectedMonths((prev) => (prev.length <= 1 ? [''] : prev.filter((_, i) => i !== slotIndex)));
   };
 
+  // Non-CTC: Mobile Exp - kicks off the grade-based eligibility cap lookup as soon as a month is
+  // picked, so it's usually already back by the time the invoice document is uploaded/OCR'd.
+  const fetchEligibilityForMonth = async (monthKey: string) => {
+    if (!currentUser?.employeeId) return;
+    const result = await fetchEligibility(currentUser.employeeId, monthKey);
+    setMonthClaims((prev) => {
+      const entry = prev[monthKey] || BLANK_MONTH_ENTRY;
+      return { ...prev, [monthKey]: { ...entry, eligibleAmount: result ? result.eligibleAmount : null, eligibilityChecked: true } };
+    });
+  };
+
   const selectMonthForSlot = (slotIndex: number, monthKey: string) => {
     setSelectedMonths((prev) => prev.map((mk, i) => (i === slotIndex ? monthKey : mk)));
     setMonthPickerSlotIndex(null);
+    if (monthKey) fetchEligibilityForMonth(monthKey);
   };
 
   const getMonthEntry = (monthKey: string): MonthClaimEntry =>
-    monthClaims[monthKey] || { attachment: null, claimAmount: '', eligibleAmount: null, dateMismatchWarning: null, invoiceNumber: null };
+    monthClaims[monthKey] || BLANK_MONTH_ENTRY;
 
   // Running totals across every picked month - so the employee sees the overall numbers without
   // manually adding up each card. Null Eligible Amount (not fetched yet) counts as 0, not
@@ -637,9 +655,11 @@ function CreateClaimInner() {
       const { totalAmount, invoiceDate, invoiceNumber } = response.data || {};
 
       setMonthClaims((prev) => {
-        const entry = prev[monthKey] || { attachment: null, claimAmount: '', eligibleAmount: null, dateMismatchWarning: null, invoiceNumber: null };
+        const entry = prev[monthKey] || BLANK_MONTH_ENTRY;
+        // Default Claim Amount to the invoice amount, capped at the grade's Eligible Amount if one
+        // applies (null eligibleAmount = no cap) - only when the user hasn't already typed a value.
         const claimAmount = (!entry.claimAmount && totalAmount && Number(totalAmount) > 0)
-          ? Number(totalAmount).toString()
+          ? (entry.eligibleAmount != null ? Math.min(Number(totalAmount), entry.eligibleAmount) : Number(totalAmount)).toString()
           : entry.claimAmount;
 
         let dateMismatchWarning: string | null = null;
@@ -1413,7 +1433,11 @@ function CreateClaimInner() {
                         <Input value={entry!.invoiceNumber || ''} placeholder="Auto-fetched from invoice" disabled />
                       </Field>
                       <Field label="Eligible Amount (₹)">
-                        <Input value={entry!.eligibleAmount != null ? String(entry!.eligibleAmount) : ''} placeholder="Auto-fetched from grade table" disabled />
+                        <Input
+                          value={entry!.eligibleAmount != null ? String(entry!.eligibleAmount) : (entry!.eligibilityChecked ? 'No Cap' : '')}
+                          placeholder="Auto-fetched from grade table"
+                          disabled
+                        />
                       </Field>
                       <Field label="Claim Amount (₹)" required>
                         <Input
@@ -1422,6 +1446,13 @@ function CreateClaimInner() {
                           placeholder="0.00"
                           inputMode="decimal"
                         />
+                        {entry!.eligibleAmount != null && (parseFloat(entry!.claimAmount) || 0) > entry!.eligibleAmount && (
+                          <div className="mt-2">
+                            <Banner type="warn">
+                              Rs {(parseFloat(entry!.claimAmount) || 0).toFixed(2)} is higher than eligibility Rs {entry!.eligibleAmount.toFixed(2)}. Approval needed.
+                            </Banner>
+                          </div>
+                        )}
                       </Field>
                     </div>
                   </>

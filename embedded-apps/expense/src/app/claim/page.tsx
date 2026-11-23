@@ -436,6 +436,10 @@ function ClaimDetailInner() {
           <div><p className="text-2xs font-bold text-inkSoft">Designation</p><p className="text-sm font-extrabold text-ink">{header.Designation || '-'}</p></div>
           {postingDoc && <div><p className="text-2xs font-bold text-inkSoft">Document Number</p><p className="text-sm font-extrabold text-ink">{postingDoc}</p></div>}
           {fiscalYear && <div><p className="text-2xs font-bold text-inkSoft">Financial Year</p><p className="text-sm font-extrabold text-ink">{fiscalYear}</p></div>}
+          {/* Non-CTC: Mobile Exp - PeriodFrom/PeriodTo/ApprNote are real header fields now; both
+              period dates come back null for non-mobile claims, so only render when present. */}
+          {header.PeriodFrom && <div><p className="text-2xs font-bold text-inkSoft">Claim Period From</p><p className="text-sm font-extrabold text-ink">{formatDate(header.PeriodFrom)}</p></div>}
+          {header.PeriodTo && <div><p className="text-2xs font-bold text-inkSoft">Claim Period To</p><p className="text-sm font-extrabold text-ink">{formatDate(header.PeriodTo)}</p></div>}
           {hasPersistedTaxSplit && (
             <>
               <div><p className="text-2xs font-bold text-inkSoft">Expense Amount</p><p className="text-sm font-extrabold text-ink">₹{formatCurrency(persistedExpenseAmt)}</p></div>
@@ -443,6 +447,12 @@ function ClaimDetailInner() {
             </>
           )}
         </div>
+        {header.ApprNote && (
+          <div className="mt-3">
+            <p className="text-2xs font-semibold text-inkSoft">Approval Note</p>
+            <p className="mt-0.5 text-sm font-semibold text-ink">{header.ApprNote}</p>
+          </div>
+        )}
         {(header.Status === 'R' || String(header.Status).toLowerCase() === 'rejected') && header.RejReason && (
           <div className="mt-3">
             <p className="text-2xs font-semibold text-inkSoft">Rejection Reason</p>
