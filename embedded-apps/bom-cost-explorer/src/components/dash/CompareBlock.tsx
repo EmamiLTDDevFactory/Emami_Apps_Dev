@@ -5,7 +5,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type Decimal from 'decimal.js';
-import { Button, Segmented, Spinner, cx, inputCls } from '../ui';
+import { Button, Segmented, SourceBadge, Spinner, cx, inputCls } from '../ui';
 import { ErrorBox, errorText } from '../budget-mgmt/shared';
 import { CAT_LABEL, type BudGroup, type Cat, type Cdrill } from '@/lib/dash/cdrill';
 import { atRateType, buildCompare, costRun, varTone, type CmpRow, type CmpTotals, type RateRun } from '@/lib/dash/compare';
@@ -86,20 +86,20 @@ export default function CompareBlock({ matnr, data, defaultPlant }: { matnr: str
       {bud?.flag === 'NBC' && <p className="rounded-xl border border-warn/40 bg-warn/10 p-2.5 text-xs">{bud.msg}. The budget column is empty, so variances show the full cost.</p>}
       <Segmented label="Category" size="sm" value={cat} onChange={setCat} options={[{ value: 'ALL' as const, label: 'All' }, ...(['R', 'P', 'F', 'O'] as Cat[]).map((k) => ({ value: k, label: CAT_LABEL[k] }))]} />
       <div className="max-h-[48vh] overflow-auto rounded-xl border border-line">
-        <table className="w-full min-w-[900px] border-collapse">
+        <table className="w-full min-w-[980px] border-collapse">
           <thead className="sticky top-0">
             <tr>
               <th className={cx(thCls, '!text-left')} rowSpan={2}>Component</th>
-              <th className={thCls} colSpan={2}>Actual (process orders)</th><th className={thCls} colSpan={2}>Budget (approved)</th><th className={thCls} colSpan={3}>{label} rate</th>
+              <th className={thCls} colSpan={2}>Actual (process orders)</th><th className={thCls} colSpan={2}>Budget (approved)</th><th className={thCls} colSpan={4}>{label} rate</th>
               <th className={thCls} colSpan={2}>Actual - budget</th>
             </tr>
             <tr>
-              {['Qty / pc', '₹ / pc', 'Qty / pc', '₹ / pc', 'Qty / pc', 'Rate', '₹ / pc', '₹', '%'].map((h, i) => <th key={i} className={thCls}>{h}</th>)}
+              {['Qty / pc', '₹ / pc', 'Qty / pc', '₹ / pc', 'Qty / pc', 'Rate', 'Source', '₹ / pc', '₹', '%'].map((h, i) => <th key={i} className={thCls}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => <Row key={r.key} r={r} hasRate={!!shownRate} />)}
-            {rows.length === 0 && <tr><td colSpan={10} className="p-3 text-center text-xs text-muted">No components.</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={11} className="p-3 text-center text-xs text-muted">No components.</td></tr>}
           </tbody>
           <tfoot>
             {(['R', 'P', 'F', 'O'] as Cat[]).filter((k) => cat === 'ALL' || k === cat).map((k) => <Tot key={k} label={CAT_LABEL[k]} t={cmp.byCat[k]} hasRate={!!shownRate} />)}
@@ -119,7 +119,7 @@ function Row({ r, hasRate }: { r: CmpRow; hasRate: boolean }) {
       <td className="px-2.5 py-1.5 text-left text-xs"><span className="font-bold">{r.key}</span> <span className="text-muted" title={r.maktx}>{r.maktx}</span>{note && <span className="ml-1 rounded-full bg-warn/15 px-1.5 py-0.5 text-2xs font-bold text-warn">{note}</span>}</td>
       <td className={tdCls}>{num(r.actQty, 5)}</td><td className={tdCls}>{num(r.actCost)}</td>
       <td className={tdCls}>{num(r.budQty, 5)}</td><td className={tdCls}>{num(r.budCost)}</td>
-      <td className={tdCls}>{hasRate ? num(r.rateQty, 5) : '-'}</td><td className={tdCls}>{hasRate ? num(r.rate) : '-'}</td><td className={tdCls}>{hasRate ? num(r.rateCost) : '-'}</td>
+      <td className={tdCls}>{hasRate ? num(r.rateQty, 5) : '-'}</td><td className={tdCls}>{hasRate ? num(r.rate) : '-'}</td><td className={cx(tdCls, '!text-left')}>{hasRate && r.rateSrc ? <SourceBadge source={r.rateSrc} /> : hasRate && r.rateQty ? <span className="text-2xs font-semibold text-bad">NO RATE</span> : ''}</td><td className={tdCls}>{hasRate ? num(r.rateCost) : '-'}</td>
       <td className={cx(tdCls, a)}>{sgn(r.actVar)}</td><td className={cx(tdCls, a)}>{pc(r.actVarPct)}</td>
     </tr>
   );
@@ -132,7 +132,7 @@ function Tot({ label, t, hasRate, bold }: { label: string; t: CmpTotals; hasRate
     <tr className={cx('border-t border-line bg-line/20', bold ? 'font-extrabold' : 'font-bold')}>
       <td className="px-2.5 py-1.5 text-left text-xs">{label}</td>
       <td className={tdCls} /><td className={tdCls}>{num(t.actual)}</td><td className={tdCls} /><td className={tdCls}>{num(t.budget)}</td>
-      <td className={tdCls} /><td className={tdCls} /><td className={tdCls}>{hasRate ? num(t.rate) : '-'}</td>
+      <td className={tdCls} /><td className={tdCls} /><td className={tdCls} /><td className={tdCls}>{hasRate ? num(t.rate) : '-'}</td>
       <td className={cx(tdCls, a)}>{sgn(t.actVar)}</td><td className={cx(tdCls, a)}>{p(t.actVar)}</td>
     </tr>
   );
