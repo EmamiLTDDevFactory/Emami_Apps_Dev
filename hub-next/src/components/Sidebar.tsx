@@ -213,7 +213,7 @@ export default function Sidebar({ compact = false }: SidebarProps) {
         <p style={{ color: colors.sidebarTextSoft, fontSize: 10.5, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, letterSpacing: 0.8, textTransform: 'uppercase', margin: '10px 7px 6px' }}>
           Categories
         </p>
-        {CATEGORIES.filter((c) => c !== 'All').map((c) => (
+        {CATEGORIES.filter((c) => c !== 'All' && !isCategoryLocked(c) && APPS.some((a) => a.cat === c)).map((c) => (
           <NavButton
             key={c}
             icon={CATEGORY_ICONS[c] || Grid3x3}

@@ -61,7 +61,7 @@ const FAQ_GROUPS: FaqGroup[] = [
     items: [
       {
         q: "Why can't I find an application I'm looking for?",
-        a: "Every application shows as a tile, but one you haven't been granted appears locked — ask your Admin to grant it from Manage Access.",
+        a: "You only see the applications you've been granted — if one is missing, ask your Admin to grant it from Manage Access.",
       },
       {
         q: 'How do I get access to an application?',
