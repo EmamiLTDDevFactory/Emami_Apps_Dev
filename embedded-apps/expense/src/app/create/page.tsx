@@ -232,9 +232,6 @@ function CreateClaimInner() {
   const [monthClaims, setMonthClaims] = useState<Record<string, MonthClaimEntry>>({});
   const [monthPickingKey, setMonthPickingKey] = useState<string | null>(null);
   const [monthExtractingKey, setMonthExtractingKey] = useState<string | null>(null);
-  const [financeDocument, setFinanceDocument] = useState<Attachment[]>([]);
-  const [pickingFinanceDocument, setPickingFinanceDocument] = useState(false);
-  const [approvalNotes, setApprovalNotes] = useState('');
   // Non-CTC: Mobile Exp, non-sales (Category='B') above the eligibility cap - HoD choice list.
   const [hodApprovers, setHodApprovers] = useState<{ apprId: string; apprName: string; apprEmail: string }[]>([]);
   const [selectedHodApprId, setSelectedHodApprId] = useState('');
@@ -298,8 +295,6 @@ function CreateClaimInner() {
     setExistingClaimId('');
     setSelectedMonths(['']);
     setMonthClaims({});
-    setFinanceDocument([]);
-    setApprovalNotes('');
     setHodApprovers([]);
     setSelectedHodApprId('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -763,36 +758,6 @@ function CreateClaimInner() {
     setMonthClaims((prev) => ({ ...prev, [monthKey]: { ...getMonthEntry(monthKey), claimAmount: value } }));
   };
 
-  const pickFinanceDocument = async () => {
-    if (financeDocument.length >= 1) {
-      setFormError('Remove the current Finance Document before adding another.');
-      return;
-    }
-    setPickingFinanceDocument(true);
-    try {
-      setFormError('');
-      const result = await getDocumentAsync({ multiple: false });
-      if (result.canceled) return;
-      const asset = result.assets[0];
-      if (!asset || !asset.uri) return;
-
-      const mimeType = getMimeTypeForFile(asset.name, asset.mimeType);
-      if (!isAttachmentAllowed(asset.name, mimeType)) {
-        setFormError(`Unsupported attachment type. Allowed file types: ${ALLOWED_ATTACHMENT_LABEL}.`);
-        return;
-      }
-
-      const newAtt: Attachment = { id: `fin-doc-${Date.now()}`, name: asset.name || 'document', uri: asset.uri, size: asset.size || 0, type: mimeType };
-      setFinanceDocument([newAtt]);
-    } catch {
-      setFormError('Unable to add attachment. Please try again with a supported file.');
-    } finally {
-      setPickingFinanceDocument(false);
-    }
-  };
-
-  const removeFinanceDocument = () => setFinanceDocument([]);
-
   // Reads GSTIN / HSN / total amount off the first Supporting Document the user uploads, via a
   // backend endpoint that calls Claude's document understanding (not live yet - the backend
   // returns 503 until ANTHROPIC_API_KEY is configured there, in which case this just no-ops and
@@ -1117,8 +1082,6 @@ function CreateClaimInner() {
         // Mobile's documents travel per-month via mobileMonthItems, not this combined list.
         attachments: [],
         managerApprovedAttachments,
-        financeDocument,
-        approvalNotes: approvalNotes || undefined,
         // Chosen HoD (non-sales, 2+ candidates) or the single auto-selected one - undefined when
         // there's nothing to choose (sales employee, or 0/1 HoD candidates).
         selAppr: selectedHodApprId || undefined,
@@ -1571,43 +1534,6 @@ function CreateClaimInner() {
               <p className="text-sm text-ink">Will go to your L1 approver.</p>
             </Card>
           )}
-
-          {/* Finance Document + Approval Notes - both manual-entry, per the requirement sheet. */}
-          <Card className="mb-3">
-            <h2 className="text-sm font-bold text-ink">Finance Document</h2>
-            <p className="mb-3 text-xs text-inkSoft">Manual input — attach any supporting finance document for this claim</p>
-
-            {financeDocument.length > 0 ? (
-              <div className="mb-2 flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-2">
-                <FileText size={20} className="shrink-0 text-brand" />
-                <span className="min-w-0 flex-1 truncate text-sm text-ink">{financeDocument[0].name}</span>
-                <button type="button" onClick={() => handlePreviewAttachment(financeDocument[0])} aria-label="View document" className="rounded p-1.5 text-brand hover:bg-cream">
-                  <Eye size={18} />
-                </button>
-                <button type="button" onClick={removeFinanceDocument} aria-label="Remove document" className="rounded p-1.5 text-red hover:bg-redBg">
-                  <Trash2 size={18} />
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={pickFinanceDocument}
-                disabled={pickingFinanceDocument}
-                className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-brand/40 bg-cream/40 py-3 text-sm font-semibold text-brand hover:bg-cream disabled:opacity-60"
-              >
-                <CloudUpload size={18} /> Add Finance Document
-              </button>
-            )}
-            {pickingFinanceDocument && (
-              <div className="mt-2 flex items-center gap-2 text-xs text-inkSoft"><Spinner size={13} /> Processing document…</div>
-            )}
-
-            <div className="mt-4">
-              <Field label="Approval Notes">
-                <TextArea value={approvalNotes} onChange={(e) => setApprovalNotes(e.target.value)} placeholder="Manual input — any note relevant to approval" />
-              </Field>
-            </div>
-          </Card>
         </>
       )}
 

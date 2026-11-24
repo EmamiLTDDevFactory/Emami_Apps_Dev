@@ -602,13 +602,11 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // 2. Build the exact Deep Entity payload SAP expects
     const empIdNumeric = claimData.employeeId.replace(/\D/g, '').padStart(8, '0');
 
-    // SAP has no separate document-type field for the Manager Approved Attachment or Finance
-    // Document - they travel alongside the regular supporting documents as just another CLAIMNAV
-    // line/attachment, at Amount 0.000, same convention every claim already uses for its secondary
-    // attachment(s).
+    // SAP has no separate document-type field for the Manager Approved Attachment - it travels
+    // alongside the regular supporting documents as just another CLAIMNAV line/attachment, at
+    // Amount 0.000, same convention every claim already uses for its secondary attachment(s).
     const extraZeroAmountAttachments: Attachment[] = [
       ...((claimData as any).managerApprovedAttachments || []),
-      ...((claimData as any).financeDocument || []),
     ];
 
     let allAttachments: Attachment[];
@@ -697,11 +695,9 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       CLAIMNAV: claimNavItems,
     };
 
-    // Non-CTC: Mobile Exp - approval note is a real header field now (max 255), not a CLAIMNAV
-    // Description stopgap. PeriodFrom/PeriodTo are deliberately NOT sent - optional, and the
+    // Non-CTC: Mobile Exp - PeriodFrom/PeriodTo are deliberately NOT sent - optional, and the
     // backend derives them from the month cards' own ExpenseDate values when omitted.
     if (isMobilePayload) {
-      sapPayload.ApprNote = ((claimData as any).approvalNotes || '').slice(0, 255);
       // Chosen HoD for a non-sales claim above the eligibility cap, when 2+ candidates exist.
       // Omitted entirely when there's nothing to choose (sales employee, or 0/1 HoD candidates) -
       // the backend errors "Please select the HoD ..." only when a choice was actually required.
