@@ -116,6 +116,16 @@ describe('conversion from SAP routing activities (ActivityCostSet)', () => {
     expect(activityElement({ ActGrp: 'LABOUR', Lstar: 'X1', ActName: '' })).toBe('LABOUR');
   });
 
+  it('two valid routings of one semi-finished material: only the latest is used, not both (WIP 250005590 @ UN02 on NWP)', () => {
+    const wip = (Plnnr: string, ActQty: string, Rowid: number) => act({ Matnr: 'WIP1', Werks: 'UN02', Plnnr, Lstar: 'MACHRS', BomQty: '100.000', BomUnit: 'L', RcpQty: '500', ActQty, ActPrice: '96.68', ActValue: String(Number(ActQty) * 96.68), Rowid });
+    const rows = [wip('50033142', '48.000', 1), wip('50033142', '48.000', 2), wip('50033181', '24.000', 3), wip('50033181', '24.000', 4)];
+    const m = activitiesPerUnit(rows, '001').get('UN02|WIP1')!;
+    expect(m.plnnr).toBe('50033181'); expect(m.otherRoutings).toEqual(['50033142']);
+    expect(m.lines).toHaveLength(1);
+    expect(m.byElement.MACHINE!.qty.MIN.toFixed(3)).toBe('0.240'); // 24 min / 100 L, so 40.2 L = 9.648 min as in CK13N
+    expect(activitiesPerUnit([wip('50033142', '48.000', 1)], '001').get('UN02|WIP1')!.otherRoutings).toEqual([]);
+  });
+
   it('per BOM unit: duplicates dropped, one BOM alternative, priced period over 000 (the live NWP rows of 400008523 @ UN13)', () => {
     const live = ['1', '2'].flatMap((Stlal) => [
       act({ Stlal, Lstar: 'MACHRS', ActQty: '2.470', ActPrice: '69.84', ActValue: '172.50' }), act({ Stlal, Lstar: 'MACHRS', ActQty: '2.470', ActPrice: '69.84', ActValue: '172.50', Rowid: 2 }),

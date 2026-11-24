@@ -81,8 +81,8 @@
         <mv>-low = |{ <mv>-low ALPHA = IN }|.
         IF <mv>-high IS NOT INITIAL. <mv>-high = |{ <mv>-high ALPHA = IN }|. ENDIF.
       ENDLOOP.
-      IF ls_par-werks IS INITIAL AND lr_vkorg IS INITIAL AND lr_crssku IS INITIAL AND lr_vbeln IS INITIAL.
-        raise_busi( 'Select a plant, a sales organisation, a CRSSKU or an invoice number' ).
+      IF ls_par-werks IS INITIAL AND ls_par-matnr IS INITIAL AND lr_vkorg IS INITIAL AND lr_crssku IS INITIAL AND lr_vbeln IS INITIAL.
+        raise_busi( 'Select materials, a plant, a sales organisation, a CRSSKU or an invoice number' ).
       ENDIF.
       TRY.
           lt_mgn = NEW zcl_mm_dash_margin( is_par = ls_par it_vkorg = lr_vkorg it_vtweg = lr_vtweg it_crssku = lr_crssku it_vbeln = lr_vbeln )->run( ).
@@ -105,8 +105,19 @@
       RETURN.
     ENDIF.
     IF iv_entity_set_name = 'DashSalesSet'.
+      DATA: lr_skorg TYPE zcl_mm_dash_sales=>ty_r_vkorg,
+            lr_stweg TYPE zcl_mm_dash_sales=>ty_r_vtweg.
+      LOOP AT io_tech_request_context->get_filter( )->get_filter_select_options( ) INTO DATA(ls_sf).
+        CHECK lines( ls_sf-select_options ) > 0.
+        DATA(lv_sp) = to_upper( CONV string( ls_sf-property ) ).
+        REPLACE ALL OCCURRENCES OF '_' IN lv_sp WITH ''.
+        CASE lv_sp.
+          WHEN 'VKORG'. lr_skorg = CORRESPONDING #( ls_sf-select_options ).
+          WHEN 'VTWEG'. lr_stweg = CORRESPONDING #( ls_sf-select_options ).
+        ENDCASE.
+      ENDLOOP.
       TRY.
-          lt_sal = NEW zcl_mm_dash_sales( ls_par )->run( ).
+          lt_sal = NEW zcl_mm_dash_sales( is_par = ls_par it_vkorg = lr_skorg it_vtweg = lr_stweg )->run( ).
         CATCH cx_root INTO DATA(lx2).
           raise_busi( |Sales view failed: { lx2->get_text( ) }| ).
       ENDTRY.

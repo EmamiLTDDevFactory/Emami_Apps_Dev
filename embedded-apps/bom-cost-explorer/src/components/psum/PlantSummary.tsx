@@ -29,6 +29,7 @@ import { buildWacFilter } from '@/lib/wac/filter';
 import { parseWacUrl, wacSearch } from '@/lib/wac/url';
 import type { WacCompRow, WacRow } from '@/lib/wac/types';
 import type Decimal from 'decimal.js';
+import { useHierNames } from '@/lib/client/useHierNames';
 
 const PRESETS: PsumPreset[] = ['full6', 'full3', 'full12', 'td6', 'custom'];
 const MIX_COLOR: Record<string, string> = { rm: '#4338CA', pm: '#0e9fb5', perf: '#C2185B', conv: '#eda100', other: '#8B8FA3' };
@@ -42,6 +43,7 @@ const pct = (v: Decimal | null) => (v === null ? '—' : `${v.toFixed(1)} %`);
 type Tab = 'fg' | 'rmpm' | 'comp' | 'trend';
 
 function Screen() {
+  const hn = useHierNames();
   const hub = useHubSession();
   const email = hub && hub !== 'checking' ? hub.email : '';
   const [admin, setAdmin] = useState<'checking' | 'yes' | 'no'>('checking');
@@ -272,7 +274,7 @@ function Screen() {
                     {fgRows.map((v) => (
                       <tr key={v.key} className="cursor-pointer border-t border-line/60 hover:bg-sunken focus:bg-sunken focus:outline-none" tabIndex={0} role="button" aria-label={`Open costing of ${v.row.Matnr}`} onClick={() => setOpen(v)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(v); } }}>
                         <td className={td}><span className="font-mono font-bold">{v.row.Matnr}</span> <span className="text-muted">{v.row.Maktx}</span></td>
-                        <td className={td}>{v.row.Zbrand || NA}</td>
+                        <td className={td}>{v.row.Zbrand ? hn.brand(v.row.Zbrand) : NA}</td>
                         <td className={tdN}>{fmtNum(v.qty, 0, 'X')} {v.row.Uom}</td>
                         <td className={tdN}>{fmtNum(v.landed.div(v.qty), 4, 'INR')}</td>
                         <td className={tdN}>{fmtNum(v.rm, 0, 'INR')}</td><td className={tdN}>{fmtNum(v.pm, 0, 'INR')}</td><td className={tdN}>{fmtNum(v.perf, 0, 'INR')}</td><td className={tdN}>{fmtNum(v.conv, 0, 'INR')}</td>

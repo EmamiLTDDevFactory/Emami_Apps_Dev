@@ -7,7 +7,12 @@ CLASS zcl_mm_dash_sales DEFINITION PUBLIC FINAL CREATE PUBLIC.
     "  Deductions = GSV - NSV
     "  Sold qty   = billed quantity in the base unit; invoice (M) and debit memo (P) +, cancellation (N), credit memo (O) -, cancellation of credit memo (S) +
     "  COGM       = SAP actual cost per piece of the same period (ZCL_MM_WAC_ACTUAL: RM + PM + perfume + conversion / produced qty, all selected plants) x SOLD qty
-    METHODS constructor IMPORTING is_par TYPE zif_mm_wac_types=>ty_par.
+    TYPES: ty_r_vkorg TYPE RANGE OF vkorg,
+           ty_r_vtweg TYPE RANGE OF vtweg.
+    "Selection: plants (is_par-werks, they carry the cost), materials (is_par-matnr), sales organisation and distribution channel; an empty range means all.
+    METHODS constructor IMPORTING is_par TYPE zif_mm_wac_types=>ty_par
+                                  it_vkorg TYPE ty_r_vkorg OPTIONAL
+                                  it_vtweg TYPE ty_r_vtweg OPTIONAL.
     METHODS run RETURNING VALUE(rt_sales) TYPE tt_sales.
   PRIVATE SECTION.
     TYPES: BEGIN OF ty_b,
@@ -26,6 +31,8 @@ CLASS zcl_mm_dash_sales DEFINITION PUBLIC FINAL CREATE PUBLIC.
              cost  TYPE decfloat34,
            END OF ty_c.
     DATA ms_par TYPE zif_mm_wac_types=>ty_par.
+    DATA: mr_vkorg TYPE ty_r_vkorg,
+          mr_vtweg TYPE ty_r_vtweg.
 ENDCLASS.
 
 
@@ -33,6 +40,7 @@ CLASS zcl_mm_dash_sales IMPLEMENTATION.
 
   METHOD constructor.
     ms_par = is_par.
+    mr_vkorg = it_vkorg. mr_vtweg = it_vtweg.
     IF ms_par-date_to IS INITIAL. ms_par-date_to = sy-datum. ENDIF.
     IF ms_par-date_from IS INITIAL.
       ms_par-date_from = ms_par-date_to.
@@ -66,6 +74,9 @@ CLASS zcl_mm_dash_sales IMPLEMENTATION.
         AND h~vbtyp IN ( 'M', 'N', 'O', 'P', 'S' )
         AND h~waerk = 'INR'
         AND p~werks IN @ms_par-werks
+        AND p~matnr IN @ms_par-matnr
+        AND h~vkorg IN @mr_vkorg
+        AND h~vtweg IN @mr_vtweg
         AND p~umvkn > 0
         AND m~mtart = 'FERT'
       GROUP BY p~matnr, h~vtweg, h~vbtyp, p~umvkz, p~umvkn

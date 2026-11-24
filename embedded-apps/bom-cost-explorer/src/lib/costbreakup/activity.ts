@@ -84,6 +84,8 @@ export function activityElement(r: Pick<ActivityRow, 'ActGrp' | 'Lstar' | 'ActNa
 export interface ActivityLine { row: ActivityRow; el: Element; qtyPerUnit: Decimal; valuePerUnit: Decimal; valuePerUnitInr: Decimal | null }
 export interface MatActivity {
   werks: string; matnr: string; maktx: string; bomQty: Decimal; bomUnit: string; stlal: string; priced: boolean;
+  /** the task list used, and other valid task lists of the same alternative that were left out (data quality: SAP takes one) */
+  plnnr: string; otherRoutings: string[];
   /** per BOM unit of the material, by element: quantity per activity unit, value in the plant currency, INR when SAP gives it */
   byElement: Partial<Record<Element, { qty: QtyByUom; loc: Decimal; inr: Decimal | null }>>;
   lines: ActivityLine[];
@@ -110,10 +112,17 @@ export function activitiesPerUnit(rows: ActivityRow[], poper?: string): Map<stri
     const priced = list.filter((r) => r.Poper !== '000' && (!poper || r.Poper === poper));
     const use0 = priced.length ? priced : list;
     const stlal = use0.map((r) => r.Stlal).sort((a, b) => Number(a) - Number(b) || a.localeCompare(b))[0];
-    const use = use0.filter((r) => r.Stlal === stlal);
+    const sameAlt = use0.filter((r) => r.Stlal === stlal);
+    // One routing only. A material can have several valid task lists (same alternative, same plant, full lot size range, e.g. WIP 250005590 in UN02 has 50033142 and
+    // 50033181): SAP costing takes ONE of them (the latest created = highest group number), so adding all of them counts the semi-finished routing two or three times.
+    const plans = [...new Set(sameAlt.map((r) => `${r.Plnnr}|${r.Plnal}`))];
+    const num = (x: string) => (/^\d+$/.test(x) ? Number(x) : -1);
+    const chosen = plans.slice().sort((a, b) => { const [pa, la] = a.split('|'), [pb, lb] = b.split('|'); return num(pb) - num(pa) || pb.localeCompare(pa) || num(la) - num(lb); })[0];
+    const use = plans.length > 1 ? sameAlt.filter((r) => `${r.Plnnr}|${r.Plnal}` === chosen) : sameAlt;
+    const otherRoutings = plans.filter((x) => x !== chosen).map((x) => x.split('|')[0]);
     const first = use[0];
     const bomQty = D(first.BomQty).gt(0) ? D(first.BomQty) : D(1);
-    const m: MatActivity = { werks: first.Werks.toUpperCase(), matnr: first.Matnr, maktx: first.Maktx, bomQty, bomUnit: first.BomUnit, stlal, priced: priced.length > 0, byElement: {}, lines: [] };
+    const m: MatActivity = { werks: first.Werks.toUpperCase(), matnr: first.Matnr, maktx: first.Maktx, bomQty, bomUnit: first.BomUnit, stlal, priced: priced.length > 0, plnnr: first.Plnnr, otherRoutings: plans.length > 1 ? otherRoutings : [], byElement: {}, lines: [] };
     for (const r of use) {
       const el = activityElement(r);
       const bq = D(r.BomQty).gt(0) ? D(r.BomQty) : bomQty;

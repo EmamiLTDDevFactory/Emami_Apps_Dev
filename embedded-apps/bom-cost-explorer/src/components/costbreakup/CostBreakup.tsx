@@ -286,6 +286,7 @@ function ActivityTable({ el, scope, showFg, period }: { el: Element; scope: FgBr
           </tbody>
         </table>
       </div>
+      {scope.flatMap((f) => f.activity.filter((u) => u.act && u.act.otherRoutings.length > 0).map((u) => <p key={`${f.key}-${u.matnr}`} className="text-2xs text-warn">{u.matnr} {u.maktx} has {u.act!.otherRoutings.length + 1} valid routings in {u.werks} (same alternative and lot size range). Only routing {u.act!.plnnr} (the latest, as SAP costing takes it) is used; left out: {u.act!.otherRoutings.join(', ')}. Ask the routing owner to keep one.</p>))}
       {skipped.length > 0 && <p className="text-2xs text-warn">Not added (struck through): {skipped.map(({ u }) => `${u.matnr} - BOM line in ${u.unit}, routing in ${u.act!.bomUnit}`).join('; ')}.</p>}
     </div>
   );

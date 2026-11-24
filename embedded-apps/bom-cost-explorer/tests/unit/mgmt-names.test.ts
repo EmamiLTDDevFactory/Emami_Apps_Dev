@@ -10,6 +10,12 @@ describe('management names', () => {
     expect(mgmtBrand(d, 'X', '7 OIL')).toBe('7 Oil');
     expect(mgmtBrand(d, 'X', 'NO SUCH BRAND')).toBeUndefined();
   });
+  it('brand by the 4 character brand code; a code used by two banners needs the SAP text', () => {
+    expect(mgmtBrand(d, '0001')).toBe('BoroPlus');
+    expect(mgmtBrand(d, '0004')).toBe('7 Oil');
+    expect(mgmtBrand(d, '0007')).toBeUndefined();
+    expect(mgmtBrand(d, '0007', 'Himani Gold Turmeric')).toBe('Himani Gold Turmeric');
+  });
   it('product by key (also from a longer hierarchy code)', () => {
     expect(mgmtProduct(d, '0100010601')).toBe('Lotion');
     expect(mgmtProduct(d, '010001060100000000')).toBe('Lotion');
