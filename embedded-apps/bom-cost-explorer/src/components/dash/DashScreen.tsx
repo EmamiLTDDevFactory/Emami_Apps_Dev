@@ -11,6 +11,7 @@ import { ErrorBox } from '../budget-mgmt/shared';
 import { errorText } from '../budget-mgmt/shared';
 import { fetchMis, fetchMisDetail } from '@/lib/dash/service';
 import { MisFgTable } from './MisDetail';
+import BridgeBlock from './BridgeBlock';
 import { brandViews, insights, totals, type BrandView, type Window } from '@/lib/dash/logic';
 import { BAND, Link, NeedsSap, lakh, pct, tdCls, thCls, today } from './parts';
 import SalesView from './SalesView';
@@ -110,7 +111,7 @@ export default function DashScreen() {
                 <MisTable brands={brands} tot={tot} bn={hn.brand} detail={detail} busy={detailBusy} err={detailErr} onNeed={loadDetail} />
               </>
             )}
-            <NeedsSap title="Variance bridge (rate, usage, mix, overheads, currency)" object="ZCL_MM_COGM_BRIDGE" why="Nothing in SAP splits the COGM variance into these five effects yet. The bridge appears here when that class exists." />
+            {rows && ran && <BridgeBlock plants={ran.plants} asOf={ran.asOf} bn={hn.brand} />}
           </>
         )}
 

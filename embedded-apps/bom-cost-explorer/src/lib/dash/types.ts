@@ -63,3 +63,5 @@ export interface CdrillRow {
   Grain: string; Matnr: string; Charg: string; Idnrk: string; Maktx: string; Mtart: string; Matkl: string; Cat: string; Meins: string; Flag: string; Msg: string; Orders: number;
   SoldQty: string; ProdQty: string; Qty: string; Val: string; AvgQtyPc: string; AvgCostPc: string; RmPc: string; PmPc: string; PfPc: string; OthPc: string;
 }
+
+export interface BridgeRow { Zbrand: string; Effect: string; SortNo: number; Value: string; Msg: string }

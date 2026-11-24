@@ -7,7 +7,7 @@
           lt_cdr TYPE zcl_mm_dash_cdrill=>tt_cdrill,
           lt_thr TYPE STANDARD TABLE OF zmis_alert_thr,
           ls_par TYPE zif_mm_wac_types=>ty_par.
-    IF iv_entity_set_name <> 'DashMisSet' AND iv_entity_set_name <> 'DashSalesSet' AND iv_entity_set_name <> 'DashPvmSet' AND iv_entity_set_name <> 'DashThreshSet' AND iv_entity_set_name <> 'DashMarginSet' AND iv_entity_set_name <> 'DashCdrillSet'.
+    IF iv_entity_set_name <> 'DashMisSet' AND iv_entity_set_name <> 'DashSalesSet' AND iv_entity_set_name <> 'DashPvmSet' AND iv_entity_set_name <> 'DashThreshSet' AND iv_entity_set_name <> 'DashMarginSet' AND iv_entity_set_name <> 'DashCdrillSet' AND iv_entity_set_name <> 'DashBridgeSet'.
       super->/iwbep/if_mgw_appl_srv_runtime~get_entityset(
         EXPORTING
           iv_entity_name           = iv_entity_name
@@ -32,6 +32,18 @@
       RETURN.
     ENDIF.
     ls_par = wac_par( io_tech_request_context->get_filter( )->get_filter_select_options( ) ).
+    IF iv_entity_set_name = 'DashBridgeSet'.
+      IF ls_par-werks IS INITIAL.
+        raise_busi( 'Select at least one plant' ).
+      ENDIF.
+      TRY.
+          DATA(lt_brg) = NEW zcl_mm_cogm_bridge( ls_par )->run( ).
+        CATCH cx_root INTO DATA(lx_br).
+          raise_busi( |Variance bridge failed: { lx_br->get_text( ) }| ).
+      ENDTRY.
+      copy_data_to_ref( EXPORTING is_data = lt_brg CHANGING cr_data = er_entityset ).
+      RETURN.
+    ENDIF.
     IF iv_entity_set_name = 'DashCdrillSet'.
       DATA: lr_dkorg TYPE zcl_mm_dash_cdrill=>ty_r_vkorg,
             lr_dtweg TYPE zcl_mm_dash_cdrill=>ty_r_vtweg,

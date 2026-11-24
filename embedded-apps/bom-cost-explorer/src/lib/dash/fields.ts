@@ -18,6 +18,10 @@ export const DASH_MIS_FG_FIELDS = {
   Grain: ['Grain', 's'], Matnr: ['Matnr', 's'], Maktx: ['Maktx', 's'], BudPc: ['BudPc', 'd'], ActPc: ['ActPc', 'd'], BudSrc: ['BudSrc', 's'],
 } as const satisfies FieldMap;
 
+/** DashBridgeSet (ZCL_MM_COGM_BRIDGE): year-to-date COGM variance bridge per brand, one row per effect; Value in INR. Werks / DateTo are $filter properties only. */
+export const DASH_BRIDGE_SET = 'DashBridgeSet';
+export const DASH_BRIDGE_FIELDS = { Zbrand: ['Zbrand', 's'], Effect: ['Effect', 's'], SortNo: ['SortNo', 'i'], Value: ['Value', 'd'], Msg: ['Msg', 's'] } as const satisfies FieldMap;
+
 /** DashSalesSet: invoiced sales of finished goods. Grain 'B' = one row per brand, 'S' = one row per SKU x distribution channel. GSV = condition ZSAL (the item's net value when it has none),
  *  NSV = VBRP-NETWR, Deductions = GSV - NSV; COGM = SAP's actual cost per piece of the period x sold quantity. Werks / DateFrom / DateTo are $filter properties only. */
 export const DASH_SALES_SET = 'DashSalesSet';

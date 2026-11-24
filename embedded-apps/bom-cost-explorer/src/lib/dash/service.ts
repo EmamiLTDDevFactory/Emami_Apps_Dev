@@ -1,7 +1,7 @@
 import { odataDate, odataString } from '../sap/filter';
 import { readSet, type Read } from '../price-context/odata';
-import { DASH_FILTER as F, DASH_CDRILL_FIELDS, DASH_CDRILL_SET, DASH_MARGIN_FIELDS, DASH_MARGIN_FILTER as MF, DASH_MARGIN_SET, DASH_MIS_FG_FIELDS, DASH_MIS_FIELDS, DASH_PVM_FIELDS, DASH_PVM_SET, DASH_SALES_FIELDS, DASH_SALES_SET, DASH_SET, DASH_THRESH_FIELDS, DASH_THRESH_SET } from './fields';
-import type { CdrillRow, MarginRow, MisFgRow, MisRow, PvmRow, SalesRow, ThreshRow } from './types';
+import { DASH_FILTER as F, DASH_CDRILL_FIELDS, DASH_CDRILL_SET, DASH_MARGIN_FIELDS, DASH_MARGIN_FILTER as MF, DASH_MARGIN_SET, DASH_BRIDGE_FIELDS, DASH_BRIDGE_SET, DASH_MIS_FG_FIELDS, DASH_MIS_FIELDS, DASH_PVM_FIELDS, DASH_PVM_SET, DASH_SALES_FIELDS, DASH_SALES_SET, DASH_SET, DASH_THRESH_FIELDS, DASH_THRESH_SET } from './fields';
+import type { BridgeRow, CdrillRow, MarginRow, MisFgRow, MisRow, PvmRow, SalesRow, ThreshRow } from './types';
 
 const NONE: ReadonlySet<string> = new Set();
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -22,6 +22,10 @@ export const fetchMis = (plants: string[], dateTo: string, signal?: AbortSignal)
 /** The same read at finished-good level (SAP: Grain eq 'F'): per material the actual, the budget and the budget key that was matched. */
 export const fetchMisDetail = (plants: string[], dateTo: string, signal?: AbortSignal): Promise<Read<MisFgRow>> =>
   readSet<MisFgRow>(DASH_SET, DASH_MIS_FG_FIELDS, NONE, `${buildMisFilter(plants, dateTo)} and Grain eq 'F'`, signal);
+
+/** COGM variance bridge per brand (heavy: SAP reads the component consumption of the largest variances): plants and the as-of date, like the MIS read. */
+export const fetchBridge = (plants: string[], dateTo: string, signal?: AbortSignal): Promise<Read<BridgeRow>> =>
+  readSet<BridgeRow>(DASH_BRIDGE_SET, DASH_BRIDGE_FIELDS, NONE, buildMisFilter(plants, dateTo), signal);
 
 /** $filter of the Sales view read: plants, from and to date. */
 export interface SalesExtra { matnr?: string[]; vkorg?: string[]; vtweg?: string[]; requirePlant?: boolean }
