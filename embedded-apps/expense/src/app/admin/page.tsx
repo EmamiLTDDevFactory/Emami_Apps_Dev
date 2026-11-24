@@ -2,37 +2,46 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Building2, ChevronRight, FileText, IndianRupee, Lock, RefreshCw, Search, Settings2, ShieldAlert, Tag, User } from 'lucide-react';
+import { Building2, ChevronRight, FileText, IndianRupee, RefreshCw, Search, Settings2, ShieldAlert, User } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useClaim } from '../../context/ClaimContext';
 import { ExpenseClaim } from '../../types';
 import { formatCurrency } from '../../utils/currency';
 import { displayClaimNumber } from '../../utils/claim-number';
 import { formatClaimDisplayDate } from '../../utils/claim-date';
-import { Banner, Button, Card, CardTitle, EmptyState, Field, Input, LoadingBlock, PageHeader } from '../../components/ui';
+import { Banner, Button, Card, CardTitle, EmptyState, Field, Input, LoadingBlock, PageHeader, Select } from '../../components/ui';
 import type { LucideIcon } from 'lucide-react';
 
-// A locked field shows its own icon + a trailing lock, same brand/inkFaint colors as the rest of
-// the app's inputs - not a new visual language, just marking "not enabled yet" at a glance.
-function LockedField({ icon: LeadIcon, placeholder }: { icon: LucideIcon; placeholder: string }) {
+// Same leading-icon input look every search field here already used - a plain Input with an icon
+// positioned over its left padding, not a new component.
+function IconInput({ icon: LeadIcon, ...rest }: { icon: LucideIcon } & React.ComponentProps<typeof Input>) {
   return (
     <div className="relative">
       <LeadIcon size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-inkFaint" />
-      <Input disabled placeholder={placeholder} className="pl-8 pr-8" />
-      <Lock size={12} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-inkFaint" />
+      <Input {...rest} className={`pl-8 ${rest.className || ''}`} />
     </div>
   );
 }
 
-// Non-CTC Expense: per the DOA handover, only ClaimId/LoginId/Zview are filterable server-side
-// today - EmpId/EmpName/Status/CostCenter need a backend metadata change first. The other fields
-// are rendered disabled below rather than omitted, so the gap is visible instead of silent.
+const STATUS_OPTIONS = [
+  { value: '', label: 'Any status' },
+  { value: 'N', label: 'N — Submitted' },
+  { value: 'A', label: 'A — Approved' },
+  { value: 'H', label: 'H — Pending at Finance' },
+  { value: 'S', label: 'S — Posted' },
+  { value: 'R', label: 'R — Rejected' },
+];
+
 export default function AdminPage() {
   const router = useRouter();
   const { currentUser } = useAuth();
   const { adminSearchClaims } = useClaim();
 
   const [claimId, setClaimId] = useState('');
+  const [empId, setEmpId] = useState('');
+  const [empName, setEmpName] = useState('');
+  const [status, setStatus] = useState('');
+  const [costCenter, setCostCenter] = useState('');
   const [searching, setSearching] = useState(false);
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,20 +58,26 @@ export default function AdminPage() {
   }
 
   const handleSearch = async () => {
-    const trimmed = claimId.trim();
-    if (!trimmed) {
-      setError('Enter Claim Id, Employee, Status or Cost Centre to search');
+    const criteria = {
+      claimId: claimId.trim() || undefined,
+      empId: empId.trim() || undefined,
+      empName: empName.trim() || undefined,
+      status: status || undefined,
+      costCenter: costCenter.trim() || undefined,
+    };
+    if (!criteria.claimId && !criteria.empId && !criteria.empName && !criteria.status && !criteria.costCenter) {
+      setError('Enter at least one of Claim ID, Employee ID, Employee Name, Status or Cost Centre to search');
       return;
     }
     setError(null);
     setSearching(true);
     setSearched(true);
     try {
-      const claims = await adminSearchClaims(currentUser.employeeId, { claimId: trimmed });
+      const claims = await adminSearchClaims(currentUser.employeeId, criteria);
       setResults(claims);
     } catch (err: any) {
-      // Shown verbatim - the DOA handover's admin business-error table should reach the admin
-      // unmodified (e.g. "Not authorised for admin claim search").
+      // Shown verbatim - the backend's own business-error table should reach the admin unmodified
+      // (e.g. "Not authorised for admin claim search").
       setError(err?.message || 'Admin claim search failed');
       setResults([]);
     } finally {
@@ -72,6 +87,10 @@ export default function AdminPage() {
 
   const handleClear = () => {
     setClaimId('');
+    setEmpId('');
+    setEmpName('');
+    setStatus('');
+    setCostCenter('');
     setError(null);
     setSearched(false);
     setResults([]);
@@ -125,34 +144,45 @@ export default function AdminPage() {
       <Card className="mb-3">
         <CardTitle icon={Search} title="Claim Search & Reject" hint="Search any claim in the system and reject it while it's still open." />
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <Field label="Claim ID" required>
-            <div className="relative">
-              <FileText size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-inkFaint" />
-              <Input
-                value={claimId}
-                onChange={(e) => setClaimId(e.target.value)}
-                placeholder="e.g. 1800000123"
-                onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
-                className="pl-8"
-              />
-            </div>
+          <Field label="Claim ID">
+            <IconInput
+              icon={FileText}
+              value={claimId}
+              onChange={(e) => setClaimId(e.target.value)}
+              placeholder="e.g. 1800000123"
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
+            />
           </Field>
-          <Field label="Employee ID / Name">
-            <LockedField icon={User} placeholder="Not enabled yet" />
+          <Field label="Employee ID">
+            <IconInput
+              icon={User}
+              value={empId}
+              onChange={(e) => setEmpId(e.target.value)}
+              placeholder="e.g. 90000367"
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
+            />
+          </Field>
+          <Field label="Employee Name" hint="Exact match, not partial">
+            <IconInput
+              icon={User}
+              value={empName}
+              onChange={(e) => setEmpName(e.target.value)}
+              placeholder="e.g. John Doe"
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
+            />
           </Field>
           <Field label="Status">
-            <LockedField icon={Tag} placeholder="Not enabled yet" />
+            <Select value={status} onChange={setStatus} options={STATUS_OPTIONS} />
           </Field>
           <Field label="Cost Centre">
-            <LockedField icon={Building2} placeholder="Not enabled yet" />
+            <IconInput
+              icon={Building2}
+              value={costCenter}
+              onChange={(e) => setCostCenter(e.target.value.toUpperCase())}
+              placeholder="e.g. CORP16"
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
+            />
           </Field>
-        </div>
-
-        <div className="mt-3">
-          <Banner type="info">
-            Employee, Status and Cost Centre search aren't enabled yet — SAP hasn't opened those fields
-            for filtering on the admin view yet. Search by Claim ID for now.
-          </Banner>
         </div>
 
         <div className="mt-3 flex items-center gap-2">
@@ -172,7 +202,7 @@ export default function AdminPage() {
       {searching && <LoadingBlock label="Searching claims…" />}
 
       {!searching && searched && results.length === 0 && !error && (
-        <EmptyState icon={Search} title="No claims found" hint="Try a different Claim ID." />
+        <EmptyState icon={Search} title="No claims found" hint="Try different search criteria." />
       )}
 
       {!searching && results.length > 0 && (
