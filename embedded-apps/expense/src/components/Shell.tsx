@@ -30,9 +30,13 @@ function TabBar() {
   const approvalsCount = claims.filter((c) => {
     if (activeRole === 'manager') {
       // Under the DOA chain, SAP only ever returns ONE CurrentApprover even for a parallel (rule
-      // O/A) level, so this user can be a valid pending approver without being that single value.
-      // `claims` is already scoped server-side to this user's LoginId (see ClaimContext.fetchClaims),
-      // so status alone is the right check here too - same fix as ClaimContext.filterClaims('manager').
+      // O/A) level, so this user can be a valid pending approver without being that single value -
+      // re-checking currentApprover here would wrongly drop that case. But `claims` (scoped
+      // server-side to this user's LoginId) also includes the viewer's OWN open claims routed to
+      // someone else's approval, not just ones actually pending this user - same gap just fixed in
+      // ClaimContext.filterClaims('manager'), mirrored here so the badge count and the list agree.
+      const employeeNumeric = normalizeId(c.employeeId);
+      if (employeeNumeric === myNumeric) return false;
       return c.rawStatus === 'N' || c.rawStatus === 'A';
     }
     if (!c.currentApprover) return false;

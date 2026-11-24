@@ -1537,11 +1537,19 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           // Under the DOA chain, a level can have parallel approvers (rule O: any one closes it,
           // rule A: all must approve) and SAP only ever returns ONE CurrentApprover PERNR even
           // then - so this user can be a valid pending approver for a claim without being the
-          // single value c.currentApprover happens to hold. fetchClaims() already scopes `claims`
-          // to `LoginId eq <me>` server-side, i.e. SAP has already decided this claim is waiting
-          // on this user at their level; re-checking currentApprover here would wrongly drop
-          // exactly the parallel-approver case the DOA chain introduces. Status is still the
-          // right local check: only N/A claims are still open at some approval level.
+          // single value c.currentApprover happens to hold. fetchClaims() scopes `claims` to
+          // `LoginId eq <me>` server-side, but that filter returns every claim this PERNR is
+          // associated with in ANY capacity - including their OWN submitted claims still open at
+          // someone else's approval level, not only ones actually waiting on this user (confirmed
+          // live 2026-11-24: a test account's own open claims, routed to a different approver
+          // PERNR, still came back from this fetch and were wrongly shown as pending the viewer's
+          // own approval). Re-checking currentApprover would wrongly drop the real parallel-
+          // approver case (see above), but excluding the viewer's own claims is always safe -
+          // nobody approves their own expense claim, same guard the finance branch below already
+          // applies.
+          const employeeNumericM = c.employeeId?.replace(/\D/g, '').padStart(8, '0') || '';
+          const userNumericM = currentUser?.employeeId?.replace(/\D/g, '').padStart(8, '0') || '';
+          if (currentUser && employeeNumericM === userNumericM) return false;
           if (c.rawStatus !== 'N' && c.rawStatus !== 'A') return false;
         } else if (roleFilter === 'finance') {
           const userNumericF = currentUser?.employeeId?.replace(/\D/g, '').padStart(8, '0') || '';
