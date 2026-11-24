@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Mail, CheckCircle2, MailCheck } from 'lucide-react';
 import { colors, fonts, fontWeights } from '../../theme/tokens';
 import { getMicrosoftSignInUrl, requestMagicLink, checkStillAuthorized } from '../../lib/authApi';
+import SigningInScreen from '../../components/SigningInScreen';
 import { useAuth, getLastLoginEmail } from '../../context/AuthContext';
 
 /**
@@ -146,6 +147,8 @@ export default function LoginPage() {
     }
     setLinkSentTo(trimmedEmail);
   };
+
+  if (verifyingAuth) return <SigningInScreen />;
 
   const shownError = authError || localError;
   const busy = verifyingAuth || checkingAccess;
