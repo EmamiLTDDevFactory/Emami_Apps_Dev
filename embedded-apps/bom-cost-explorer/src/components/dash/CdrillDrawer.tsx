@@ -46,7 +46,7 @@ export default function CdrillDrawer({ target, onClose }: { target: DrillTarget 
         <div className="flex flex-col gap-3">
           <p className="text-xs text-muted">{s.msg}. Average cost per piece, weighted by the sold quantity of the costed batches ({num(s.soldQty, 0)} pcs). WIP cost is ignored; its own components are included.</p>
           {s.flag === 'NBC' && <p className="rounded-xl border border-warn/40 bg-warn/10 p-2.5 text-xs">No Budgeted Cost / Trading Goods: none of the sold batches has a process order (post type 01), so there is no component breakup.</p>}
-          {data.notCosted > 0 && s.flag !== 'NBC' && <p className="text-xs text-muted">{data.notCosted} batch(es) are not costed (no process order, or beyond the 150-order limit): see the batch list.</p>}
+          {data.notCosted > 0 && s.flag !== 'NBC' && <p className="text-xs text-muted">{data.notCosted} batch(es) are not costed (no process order for the batch): see the batch list.</p>}
           <Card className="overflow-x-auto p-0">
             <table className="w-full min-w-[520px] border-collapse">
               <thead><tr><th className={cx(thCls, '!text-left')}>Per piece (₹)</th><th className={thCls}>Component breakup (avg)</th><th className={thCls}>Invoice condition</th><th className={thCls}>Difference</th></tr></thead>
@@ -74,7 +74,7 @@ export default function CdrillDrawer({ target, onClose }: { target: DrillTarget 
               </table>
             </div>
           )}
-          <CompareBlock matnr={target!.matnr} data={data} defaultPlant={target!.sel.plants.find((x) => data.budget.some((g) => g.bwtar === x)) ?? ''} />
+          {target && <CompareBlock matnr={target.matnr} data={data} defaultPlant={target.sel.plants.find((x) => data.budget.some((g) => g.bwtar === x)) ?? ''} />}
           <BudgetBlock groups={data.budget} />
           <h4 className="text-xs font-extrabold uppercase tracking-wide text-muted">Sold batches</h4>
           <div className="max-h-[32vh] overflow-auto rounded-xl border border-line">
