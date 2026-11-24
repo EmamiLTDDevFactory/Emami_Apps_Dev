@@ -1,0 +1,78 @@
+<mvc:View
+    controllerName="zcapexportal.controller.ICList"
+    xmlns="sap.m"
+    xmlns:mvc="sap.ui.core.mvc"
+    xmlns:core="sap.ui.core"
+    height="100%">
+
+    <Page id="pageICList" showHeader="false" class="zcpxApp">
+        <content>
+            <VBox class="zcpxScreen">
+
+                <HBox class="zcpxHero zcpxSection" justifyContent="SpaceBetween" alignItems="Center" wrap="Wrap">
+                    <VBox>
+                        <Text text="{i18n>icListTitle}" class="zcpxHeroTitle"/>
+                        <Text text="Commissioning evidence and capitalization cost" class="zcpxHeroSub"/>
+                    </VBox>
+                    <Button
+                        text="{i18n>icCreateTitle}"
+                        icon="sap-icon://add"
+                        type="Emphasized"
+                        press=".onCreate"/>
+                </HBox>
+
+                <VBox class="zcpxCard zcpxSection">
+                    <Table
+                        id="tblIC"
+                        items="{asset>/ic}"
+                        growing="true"
+                        growingThreshold="20"
+                        noDataText="{i18n>noData}"
+                        sticky="ColumnHeaders">
+                        <headerToolbar>
+                            <OverflowToolbar>
+                                <Title text="{i18n>icListTitle}" level="H3"/>
+                                <ToolbarSpacer/>
+                                <SearchField
+                                    id="sfIC"
+                                    width="16rem"
+                                    placeholder="IC or CPE number"
+                                    search=".onFilter"
+                                    liveChange=".onFilter"/>
+                            </OverflowToolbar>
+                        </headerToolbar>
+                        <columns>
+                            <Column width="10rem"><Text text="{i18n>icNumber}"/></Column>
+                            <Column minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="Description"/></Column>
+                            <Column minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>plant}"/></Column>
+                            <Column minScreenWidth="Desktop" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>commissioningDate}"/></Column>
+                            <Column hAlign="End"><Text text="{i18n>totalCapitalCost}"/></Column>
+                            <Column minScreenWidth="Desktop" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>assetNumber}"/></Column>
+                            <Column hAlign="End" width="9.5rem"><Text text="{i18n>status}"/></Column>
+                        </columns>
+                        <items>
+                            <ColumnListItem type="Navigation" press=".onRowPress">
+                                <cells>
+                                    <ObjectIdentifier title="{asset>icId}" text="{asset>cpeId}"/>
+                                    <Text text="{asset>title}"/>
+                                    <Text text="{asset>plantName}"/>
+                                    <Text text="{path: 'asset>commissioningDate', formatter: '.formatter.date'}"/>
+                                    <ObjectNumber
+                                        number="{path: 'asset>totalCapitalCost', formatter: '.formatter.inLakhs'}"
+                                        emphasized="true"/>
+                                    <Text text="{path: 'asset>assetNumber', formatter: '.formatter.orDash'}"/>
+                                    <ObjectStatus
+                                        text="{path: 'asset>status', formatter: '.formatter.statusText'}"
+                                        state="{path: 'asset>status', formatter: '.formatter.statusState'}"
+                                        icon="{path: 'asset>status', formatter: '.formatter.statusIcon'}"/>
+                                </cells>
+                            </ColumnListItem>
+                        </items>
+                    </Table>
+                </VBox>
+
+            </VBox>
+        </content>
+    </Page>
+
+</mvc:View>

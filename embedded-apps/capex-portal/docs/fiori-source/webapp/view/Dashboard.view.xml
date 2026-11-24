@@ -1,0 +1,313 @@
+<mvc:View
+    controllerName="zcapexportal.controller.Dashboard"
+    xmlns="sap.m"
+    xmlns:mvc="sap.ui.core.mvc"
+    xmlns:core="sap.ui.core"
+    xmlns:l="sap.ui.layout"
+    xmlns:f="sap.f"
+    height="100%">
+
+    <Page id="pageDashboard" showHeader="false" class="zcpxApp">
+        <content>
+            <VBox class="zcpxScreen">
+
+                <!-- ==========================================================
+                     HERO  -  headline budget position
+                     ========================================================== -->
+                <VBox class="zcpxHero zcpxSection">
+                    <HBox justifyContent="SpaceBetween" alignItems="Start" wrap="Wrap">
+                        <VBox>
+                            <Text text="{i18n>dashTitle}" class="zcpxHeroTitle"/>
+                            <Text text="{i18n>dashSubtitle}" class="zcpxHeroSub"/>
+                        </VBox>
+                        <VBox alignItems="End" visible="{= !${device>/system/phone} }">
+                            <Text text="{app>/fiscalYear}" class="zcpxHeroSub"/>
+                            <Text
+                                text="{path: 'app>/dashboard/totalBudget', formatter: '.formatter.money'}"
+                                class="zcpxHeroTitle"/>
+                        </VBox>
+                    </HBox>
+
+                    <!-- Utilisation meter -->
+                    <VBox class="sapUiMediumMarginTop">
+                        <Text text="{i18n>budgetUtilisation}" class="zcpxHeroSub"/>
+                        <core:HTML
+                            content="{parts: [
+                                'app>/dashboard/spent',
+                                'app>/dashboard/committed',
+                                'app>/dashboard/approvedCPE',
+                                'app>/dashboard/totalBudget'
+                            ], formatter: '.formatMeter'}"/>
+                        <HBox class="zcpxMeterLegend" wrap="Wrap">
+                            <HBox alignItems="Center" class="sapUiTinyMarginEnd">
+                                <core:Icon src="sap-icon://circle-task-2" size="0.625rem" color="#0040B0"/>
+                                <Text text="{i18n>legendSpent}" class="sapUiTinyMarginBegin zcpxHeroSub"/>
+                                <Text text="{path: 'app>/dashboard/spent', formatter: '.formatter.money'}" class="sapUiTinyMarginBegin zcpxHeroSub"/>
+                            </HBox>
+                            <HBox alignItems="Center" class="sapUiTinyMarginEnd">
+                                <core:Icon src="sap-icon://circle-task-2" size="0.625rem" color="#0064D9"/>
+                                <Text text="{i18n>legendCommitted}" class="sapUiTinyMarginBegin zcpxHeroSub"/>
+                                <Text text="{path: 'app>/dashboard/committed', formatter: '.formatter.money'}" class="sapUiTinyMarginBegin zcpxHeroSub"/>
+                            </HBox>
+                            <HBox alignItems="Center" class="sapUiTinyMarginEnd">
+                                <core:Icon src="sap-icon://circle-task-2" size="0.625rem" color="#B8C7D6"/>
+                                <Text text="{i18n>legendAvailable}" class="sapUiTinyMarginBegin zcpxHeroSub"/>
+                                <Text text="{path: 'app>/dashboard/available', formatter: '.formatter.money'}" class="sapUiTinyMarginBegin zcpxHeroSub"/>
+                            </HBox>
+                        </HBox>
+                    </VBox>
+                </VBox>
+
+                <!-- ==========================================================
+                     KPI GRID
+                     ========================================================== -->
+                <VBox class="zcpxSection">
+                    <Text text="{i18n>overview}" class="zcpxSectionLabel"/>
+                    <f:GridContainer class="zcpxKpiGridWrap" snapToRow="true">
+                        <f:layout>
+                            <f:GridContainerSettings rowSize="5.5rem" columnSize="8.25rem" gap="0.75rem"/>
+                        </f:layout>
+                        <f:layoutS>
+                            <f:GridContainerSettings rowSize="5rem" columnSize="9rem" gap="0.5rem" columns="4"/>
+                        </f:layoutS>
+
+                        <VBox id="tileApprovedCPE" class="zcpxKpi zcpxKpi--brand sapMPointer">
+                            <Text text="{i18n>kpiApprovedCPE}" class="zcpxKpiLabel"/>
+                            <Text text="{path: 'app>/dashboard/approvedCPE', formatter: '.formatter.money'}" class="zcpxKpiValue"/>
+                            <Text text="{parts: ['app>/dashboard/approvedCPE','app>/dashboard/totalBudget'], formatter: '.formatShareText'}" class="zcpxKpiFoot"/>
+                            <layoutData><f:GridContainerItemLayoutData columns="2" rows="1"/></layoutData>
+                        </VBox>
+
+                        <VBox id="tileCommitted" class="zcpxKpi zcpxKpi--teal sapMPointer">
+                            <Text text="{i18n>kpiCommitted}" class="zcpxKpiLabel"/>
+                            <Text text="{path: 'app>/dashboard/committed', formatter: '.formatter.money'}" class="zcpxKpiValue"/>
+                            <Text text="{parts: ['app>/dashboard/committed','app>/dashboard/totalBudget'], formatter: '.formatShareText'}" class="zcpxKpiFoot"/>
+                            <layoutData><f:GridContainerItemLayoutData columns="2" rows="1"/></layoutData>
+                        </VBox>
+
+                        <VBox id="tileSpent" class="zcpxKpi zcpxKpi--purple sapMPointer">
+                            <Text text="{i18n>kpiSpent}" class="zcpxKpiLabel"/>
+                            <Text text="{path: 'app>/dashboard/spent', formatter: '.formatter.money'}" class="zcpxKpiValue"/>
+                            <Text text="{parts: ['app>/dashboard/spent','app>/dashboard/totalBudget'], formatter: '.formatShareText'}" class="zcpxKpiFoot"/>
+                            <layoutData><f:GridContainerItemLayoutData columns="2" rows="1"/></layoutData>
+                        </VBox>
+
+                        <VBox id="tileCapitalized" class="zcpxKpi zcpxKpi--success sapMPointer">
+                            <Text text="{i18n>kpiCapitalized}" class="zcpxKpiLabel"/>
+                            <Text text="{path: 'app>/dashboard/capitalized', formatter: '.formatter.money'}" class="zcpxKpiValue"/>
+                            <Text text="{parts: ['app>/dashboard/capitalized','app>/dashboard/totalBudget'], formatter: '.formatShareText'}" class="zcpxKpiFoot"/>
+                            <layoutData><f:GridContainerItemLayoutData columns="2" rows="1"/></layoutData>
+                        </VBox>
+
+                        <VBox id="tileAvailable" class="zcpxKpi zcpxKpi--success sapMPointer">
+                            <Text text="{i18n>kpiAvailable}" class="zcpxKpiLabel"/>
+                            <Text text="{path: 'app>/dashboard/available', formatter: '.formatter.money'}" class="zcpxKpiValue"/>
+                            <Text text="{parts: ['app>/dashboard/available','app>/dashboard/totalBudget'], formatter: '.formatShareText'}" class="zcpxKpiFoot"/>
+                            <layoutData><f:GridContainerItemLayoutData columns="2" rows="1"/></layoutData>
+                        </VBox>
+
+                        <VBox id="tileCwipPending" class="zcpxKpi zcpxKpi--warning sapMPointer">
+                            <Text text="{i18n>kpiCwipPending}" class="zcpxKpiLabel"/>
+                            <Text text="{path: 'app>/dashboard/cwipPending', formatter: '.formatter.money'}" class="zcpxKpiValue"/>
+                            <Text text="{parts: ['app>/dashboard/cwipAssets','app>/dashboard/cwipAvgAge'], formatter: '.formatCwipFoot'}" class="zcpxKpiFoot"/>
+                            <layoutData><f:GridContainerItemLayoutData columns="2" rows="1"/></layoutData>
+                        </VBox>
+
+                        <VBox id="tilePendingApprovals" class="zcpxKpi zcpxKpi--warning sapMPointer">
+                            <Text text="{i18n>kpiPendingApprovals}" class="zcpxKpiLabel"/>
+                            <HBox alignItems="Baseline">
+                                <Text text="{app>/dashboard/pendingCount}" class="zcpxKpiValue"/>
+                                <Text text="CPEs" class="zcpxKpiUnit"/>
+                            </HBox>
+                            <Text text="{path: 'app>/dashboard/pendingValue', formatter: '.formatter.money'}" class="zcpxKpiFoot"/>
+                            <layoutData><f:GridContainerItemLayoutData columns="2" rows="1"/></layoutData>
+                        </VBox>
+
+                        <VBox id="tileSlaBreach" class="zcpxKpi zcpxKpi--error sapMPointer">
+                            <Text text="{i18n>kpiSlaBreach}" class="zcpxKpiLabel"/>
+                            <HBox alignItems="Baseline">
+                                <Text text="{app>/dashboard/slaBreachCount}" class="zcpxKpiValue"/>
+                                <Text text="CPEs" class="zcpxKpiUnit"/>
+                            </HBox>
+                            <Text text="Pending over 5 days" class="zcpxKpiFoot"/>
+                            <layoutData><f:GridContainerItemLayoutData columns="2" rows="1"/></layoutData>
+                        </VBox>
+
+                        <VBox class="zcpxKpi zcpxKpi--brand">
+                            <Text text="{i18n>kpiCycleTime}" class="zcpxKpiLabel"/>
+                            <HBox alignItems="Baseline">
+                                <Text text="{app>/dashboard/cycleTimeDays}" class="zcpxKpiValue"/>
+                                <Text text="days" class="zcpxKpiUnit"/>
+                            </HBox>
+                            <Text text="{parts: ['i18n>downFrom','app>/dashboard/cycleTimeBefore'], formatter: '.formatDownFrom'}" class="zcpxKpiFoot"/>
+                            <layoutData><f:GridContainerItemLayoutData columns="2" rows="1"/></layoutData>
+                        </VBox>
+
+                        <VBox class="zcpxKpi zcpxKpi--success">
+                            <Text text="{i18n>kpiSavings}" class="zcpxKpiLabel"/>
+                            <Text text="{path: 'app>/dashboard/savingsYTD', formatter: '.formatter.money'}" class="zcpxKpiValue"/>
+                            <Text text="Negotiation vs L1" class="zcpxKpiFoot"/>
+                            <layoutData><f:GridContainerItemLayoutData columns="2" rows="1"/></layoutData>
+                        </VBox>
+                    </f:GridContainer>
+                </VBox>
+
+                <!-- ==========================================================
+                     SLA ALERT
+                     ========================================================== -->
+                <MessageStrip
+                    class="zcpxSection zcpxSlaStrip"
+                    text="{parts: ['app>/dashboard/slaBreachCount'], formatter: '.formatSlaStrip'}"
+                    type="Error"
+                    showIcon="true"
+                    visible="{= ${app>/dashboard/slaBreachCount} > 0 }">
+                    <link>
+                        <Link text="{i18n>viewAll}" press=".onGoApprovals"/>
+                    </link>
+                </MessageStrip>
+
+                <!-- ==========================================================
+                     TWO-COLUMN: approval queue + category
+                     ========================================================== -->
+                <l:Grid
+                    class="zcpxSection zcpxDashTwoCol"
+                    defaultSpan="XL6 L6 M12 S12"
+                    hSpacing="1"
+                    vSpacing="1">
+
+                    <!-- Approval queue -->
+                    <VBox class="zcpxCard">
+                        <HBox class="zcpxCardHeader" justifyContent="SpaceBetween" alignItems="Center">
+                            <Text text="{i18n>approvalQueue}" class="zcpxCardTitle"/>
+                            <Button text="{i18n>viewAll}" type="Transparent" press=".onGoApprovals"/>
+                        </HBox>
+                        <Table
+                            items="{app>/dashboard/queue}"
+                            class="sapUiSizeCompact"
+                            inset="false">
+                            <columns>
+                                <Column><Text text="Level"/></Column>
+                                <Column hAlign="Center" width="9rem"><Text text="Items"/></Column>
+                                <Column hAlign="End" minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="Value"/></Column>
+                                <Column hAlign="End" width="7rem"><Text text="Ageing"/></Column>
+                            </columns>
+                            <items>
+                                <ColumnListItem type="Active" press=".onGoApprovals">
+                                    <cells>
+                                        <Text text="{app>level}"/>
+                                        <VBox alignItems="Center">
+                                            <Text text="{app>count}" class="zcpxNum"/>
+                                            <Text
+                                                text="{path: 'app>byType', formatter: '.formatQueueBreakdown'}"
+                                                visible="{path: 'app>byType', formatter: '.hasQueueBreakdown'}"
+                                                class="zcpxKpiFoot"/>
+                                        </VBox>
+                                        <Text text="{path: 'app>value', formatter: '.formatter.money'}" class="zcpxNum"/>
+                                        <ObjectStatus
+                                            text="{path: 'app>days', formatter: '.formatter.days'}"
+                                            state="{app>state}"
+                                            icon="{= ${app>state} === 'Error' ? 'sap-icon://alert' : '' }"/>
+                                    </cells>
+                                </ColumnListItem>
+                            </items>
+                        </Table>
+                    </VBox>
+
+                    <!-- Budget by category -->
+                    <VBox class="zcpxCard">
+                        <HBox class="zcpxCardHeader" alignItems="Center">
+                            <Text text="{i18n>byCategory}" class="zcpxCardTitle"/>
+                        </HBox>
+                        <VBox class="zcpxCardBody">
+                            <VBox items="{app>/dashboard/byCategory}">
+                                <VBox class="sapUiSmallMarginBottom">
+                                    <HBox justifyContent="SpaceBetween" alignItems="Baseline">
+                                        <Text text="{app>category}"/>
+                                        <Text
+                                            text="{parts: ['app>spent','app>approved'], formatter: '.formatSpentOfApproved'}"
+                                            class="zcpxNum"/>
+                                    </HBox>
+                                    <ProgressIndicator
+                                        percentValue="{parts: ['app>spent','app>approved'], formatter: '.formatter.share'}"
+                                        showValue="false"
+                                        height="0.625rem"
+                                        state="{parts: ['app>spent','app>approved'], formatter: '.formatUtilState'}"
+                                        class="sapUiTinyMarginTop"/>
+                                </VBox>
+                            </VBox>
+                        </VBox>
+                    </VBox>
+
+                </l:Grid>
+
+                <!-- ==========================================================
+                     CWIP AGEING
+                     ========================================================== -->
+                <VBox class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" justifyContent="SpaceBetween" alignItems="Center">
+                        <Text text="{i18n>cwipAgeingTitle}" class="zcpxCardTitle"/>
+                        <Button text="{i18n>viewAll}" type="Transparent" press=".onGoCapitalization"/>
+                    </HBox>
+                    <Table
+                        items="{path: 'asset>/cwipAgeing', sorter: {path: 'ageDays', descending: true}}"
+                        growing="true"
+                        growingThreshold="5"
+                        class="sapUiSizeCompact">
+                        <columns>
+                            <Column><Text text="CWIP"/></Column>
+                            <Column minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="Description"/></Column>
+                            <Column hAlign="End"><Text text="Value"/></Column>
+                            <Column hAlign="End" minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>ageDays}"/></Column>
+                            <Column hAlign="End"><Text text="{i18n>icStatus}"/></Column>
+                        </columns>
+                        <items>
+                            <ColumnListItem type="Active" press=".onGoCapitalization">
+                                <cells>
+                                    <ObjectIdentifier title="{asset>cwipId}"/>
+                                    <Text text="{asset>title}"/>
+                                    <Text text="{path: 'asset>value', formatter: '.formatter.inLakhs'}" class="zcpxNum"/>
+                                    <ObjectStatus text="{asset>ageDays}" state="{asset>risk}"/>
+                                    <ObjectStatus
+                                        text="{path: 'asset>icStatus', formatter: '.formatIcStatus'}"
+                                        state="{path: 'asset>icStatus', formatter: '.formatter.statusState'}"/>
+                                </cells>
+                            </ColumnListItem>
+                        </items>
+                    </Table>
+                </VBox>
+
+                <!-- ==========================================================
+                     QUICK ACTIONS
+                     ========================================================== -->
+                <VBox class="zcpxSection">
+                    <Text text="{i18n>quickActions}" class="zcpxSectionLabel"/>
+                    <HBox wrap="Wrap" class="sapUiTinyMarginTop">
+                        <Button
+                            text="{i18n>qaNewBudget}"
+                            icon="sap-icon://money-bills"
+                            type="Emphasized"
+                            press=".onNewBudget"
+                            class="sapUiTinyMarginEnd sapUiTinyMarginBottom"/>
+                        <Button
+                            text="{i18n>qaNewCPE}"
+                            icon="sap-icon://request"
+                            press=".onNewCPE"
+                            class="sapUiTinyMarginEnd sapUiTinyMarginBottom"/>
+                        <Button
+                            text="{i18n>qaMyApprovals}"
+                            icon="sap-icon://approvals"
+                            press=".onGoApprovals"
+                            class="sapUiTinyMarginEnd sapUiTinyMarginBottom"/>
+                        <Button
+                            text="{i18n>qaUploadIC}"
+                            icon="sap-icon://add-document"
+                            press=".onGoIC"
+                            class="sapUiTinyMarginEnd sapUiTinyMarginBottom"/>
+                    </HBox>
+                </VBox>
+
+            </VBox>
+        </content>
+    </Page>
+
+</mvc:View>

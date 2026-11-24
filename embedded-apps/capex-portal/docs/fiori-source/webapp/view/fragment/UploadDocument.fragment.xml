@@ -1,0 +1,59 @@
+<core:FragmentDefinition
+    xmlns="sap.m"
+    xmlns:core="sap.ui.core"
+    xmlns:u="sap.ui.unified"
+    xmlns:f="sap.ui.layout.form">
+
+    <Dialog title="{i18n>docUpload}" contentWidth="28rem">
+        <content>
+            <f:SimpleForm
+                layout="ResponsiveGridLayout"
+                editable="true"
+                labelSpanXL="4" labelSpanL="4" labelSpanM="4" labelSpanS="12"
+                adjustLabelSpan="false"
+                columnsXL="1" columnsL="1" columnsM="1">
+                <f:content>
+                    <Label text="{i18n>docCategory}" required="true"/>
+                    <Select id="selUploadCategory" selectedKey="{upload>/category}" width="100%">
+                        <core:Item key="RFQ1" text="RFQ 1"/>
+                        <core:Item key="RFQ2" text="RFQ 2"/>
+                        <core:Item key="RFQ3" text="RFQ 3"/>
+                        <core:Item key="QUOTE1" text="Quotation 1"/>
+                        <core:Item key="QUOTE2" text="Quotation 2"/>
+                        <core:Item key="QUOTE3" text="Quotation 3"/>
+                        <core:Item key="TCC" text="TCC"/>
+                        <core:Item key="NEGOTIATION" text="Negotiation History"/>
+                        <core:Item key="JUSTIFICATION" text="Justification Note"/>
+                        <core:Item key="GEN" text="General / Additional"/>
+                        <core:Item key="AMT_REV" text="Amount Revision"/>
+                    </Select>
+
+                    <Label text="{i18n>docTitle}"/>
+                    <Input value="{upload>/title}" width="100%"/>
+
+                    <Label text="{i18n>docNote}"/>
+                    <Input value="{upload>/note}" width="100%"/>
+
+                    <Label text="{i18n>docUpload}" required="true"/>
+                    <u:FileUploader
+                        id="fuUploadDocument"
+                        change=".onUploadDocFileChange"
+                        typeMissmatch=".onAttachmentTypeMismatch"
+                        fileSizeExceed=".onAttachmentFileSizeExceed"
+                        fileType="{path: 'config>/docExtensions', formatter: '.formatFileTypes'}"
+                        maximumFileSize="{= ${config>/docMaxMb} || 10 }"
+                        buttonText="{i18n>upload}"
+                        placeholder="No file chosen"
+                        width="100%"/>
+                </f:content>
+            </f:SimpleForm>
+        </content>
+        <beginButton>
+            <Button text="{i18n>docUpload}" type="Emphasized" press=".onConfirmUpload"/>
+        </beginButton>
+        <endButton>
+            <Button text="{i18n>cancel}" press=".onCancelUpload"/>
+        </endButton>
+    </Dialog>
+
+</core:FragmentDefinition>

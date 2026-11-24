@@ -1,0 +1,151 @@
+<mvc:View
+    controllerName="zcapexportal.controller.CPEList"
+    xmlns="sap.m"
+    xmlns:mvc="sap.ui.core.mvc"
+    xmlns:core="sap.ui.core"
+    height="100%">
+
+    <Page id="pageCPEList" showHeader="false" class="zcpxApp">
+        <content>
+            <VBox class="zcpxScreen">
+
+                <HBox class="zcpxHero zcpxSection" justifyContent="SpaceBetween" alignItems="Center" wrap="Wrap">
+                    <VBox>
+                        <Text text="{i18n>cpeListTitle}" class="zcpxHeroTitle"/>
+                        <Text text="{app>/fiscalYear}" class="zcpxHeroSub"/>
+                    </VBox>
+                    <Button
+                        text="{i18n>navCPECreate}"
+                        icon="sap-icon://add"
+                        type="Emphasized"
+                        press=".onCreate"/>
+                </HBox>
+
+                <!-- Status quick filters -->
+                <IconTabBar
+                    id="itbStatus"
+                    class="zcpxSection"
+                    headerMode="Inline"
+                    expandable="false"
+                    select=".onStatusTabSelect"
+                    selectedKey="ALL">
+                    <items>
+                        <IconTabFilter key="ALL"              text="All"             count="{app>/cpeCounts/all}"/>
+                        <IconTabFilter key="DRAFT"            text="Draft"           count="{app>/cpeCounts/draft}"/>
+                        <IconTabFilter key="UNDER_EVALUA" text="Under Evaluation" count="{app>/cpeCounts/eval}"  icon="sap-icon://inspect"     iconColor="Critical"/>
+                        <IconTabFilter key="IN_APPROVAL"      text="In Approval"     count="{app>/cpeCounts/appr}"   icon="sap-icon://pending"     iconColor="Critical"/>
+                        <IconTabFilter key="APPROVED"         text="Approved"        count="{app>/cpeCounts/done}"   icon="sap-icon://sys-enter-2" iconColor="Positive"/>
+                        <IconTabFilter key="BLOCKED"          text="Blocked"         count="{app>/cpeCounts/blocked}" icon="sap-icon://error"      iconColor="Negative"/>
+                    </items>
+                </IconTabBar>
+
+                <!-- Filters -->
+                <VBox class="zcpxCard zcpxCardPad zcpxSection">
+                    <HBox wrap="Wrap" alignItems="End">
+                        <VBox class="sapUiTinyMarginEnd sapUiTinyMarginBottom" width="14rem">
+                            <Label text="{i18n>search1}"/>
+                            <SearchField id="sfCPE" placeholder="CPE number or title" search=".onFilter" liveChange=".onFilter"/>
+                        </VBox>
+                        <VBox class="sapUiTinyMarginEnd sapUiTinyMarginBottom" width="11rem">
+                            <Label text="{i18n>plant}"/>
+                            <ComboBox id="cbPlant" items="{budget>/plants}" change=".onFilter" placeholder="All">
+                                <core:Item key="{budget>key}" text="{budget>text}"/>
+                            </ComboBox>
+                        </VBox>
+                        <VBox class="sapUiTinyMarginEnd sapUiTinyMarginBottom" width="11rem">
+                            <Label text="{i18n>budgetId}"/>
+                            <ComboBox id="cbBudget" items="{budget>/list}" change=".onFilter" placeholder="All">
+                                <core:Item key="{budget>budgetId}" text="{budget>budgetId} — {budget>title}"/>
+                            </ComboBox>
+                        </VBox>
+                        <Button text="Clear" icon="sap-icon://clear-filter" press=".onClearFilter" class="sapUiTinyMarginBottom"/>
+                    </HBox>
+                </VBox>
+
+                <!-- Table -->
+                <VBox class="zcpxCard zcpxSection">
+                    <Table
+                        id="tblCPE"
+                        items="{cpe>/list}"
+                        growing="true"
+                        growingThreshold="20"
+                        noDataText="{i18n>noData}"
+                        sticky="ColumnHeaders">
+
+                        <headerToolbar>
+                            <OverflowToolbar>
+                                <Title text="{i18n>cpeListTitle}" level="H3"/>
+                                <Label id="lblCount" text=""/>
+                                <ToolbarSpacer/>
+                                <Button icon="sap-icon://excel-attachment" tooltip="{i18n>export}" press=".onExport" type="Transparent"/>
+                                <Button icon="sap-icon://refresh" tooltip="{i18n>refresh}" press=".onRefresh" type="Transparent"/>
+                            </OverflowToolbar>
+                        </headerToolbar>
+
+                        <columns>
+                            <Column width="10rem"><Text text="{i18n>cpeId}"/></Column>
+                            <Column minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>cpeTitle}"/></Column>
+                            <Column minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>plant}"/></Column>
+                            <Column minScreenWidth="Desktop" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>budgetId}"/></Column>
+                            <Column minScreenWidth="Desktop" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>prNumber}"/></Column>
+                            <Column minScreenWidth="Desktop" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>poNumber}"/></Column>
+                            <Column hAlign="End" minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>cpeAmount}"/></Column>
+                            <Column minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>currentLevel}"/></Column>
+                            <Column hAlign="End" minScreenWidth="Desktop" demandPopin="true" popinDisplay="Inline" width="9rem"><Text text="SLA"/></Column>
+                            <Column hAlign="End" width="9.5rem"><Text text="{i18n>status}"/></Column>
+                        </columns>
+
+                        <items>
+                            <ColumnListItem type="Navigation" press=".onRowPress">
+                                <cells>
+                                    <ObjectIdentifier
+                                        title="{cpe>cpeId}"
+                                        text="{path: 'cpe>createdOn', formatter: '.formatter.date'}"/>
+                                    <VBox>
+                                        <Text text="{cpe>title}"/>
+                                        <ObjectStatus
+                                            text="Non-L1 vendor"
+                                            state="Warning"
+                                            icon="sap-icon://alert"
+                                            visible="{= !!${cpe>nonL1Justification} }"/>
+                                    </VBox>
+                                    <Text text="{cpe>plantName}"/>
+                                    <Link text="{cpe>budgetId}" press=".onBudgetPress"/>
+                                    <!-- PR number (CPESet's own Banfn, backend task EDSK9B0EM1) -
+                                         plain text, never a link (unlike PO Number below). Blank
+                                         until "Push to SAP" creates the PR - orDash's "-" matches
+                                         the fallback already used for the PO column beside it,
+                                         per the backend dev's note that's fine as long as one
+                                         convention is already in use here. -->
+                                    <Text text="{path: 'cpe>prNumber', formatter: '.formatter.orDash'}"/>
+                                    <!-- procure>/po is bound only to force re-evaluation once the
+                                         live PO list lands - it may load after the CPE list does,
+                                         and formatPoNumber/formatHasPo both take it as an explicit
+                                         argument rather than reading it fresh themselves. -->
+                                    <Link
+                                        text="{parts: [{path: 'cpe>cpeId'}, {path: 'procure>/po'}], formatter: '.formatPoNumber'}"
+                                        enabled="{parts: [{path: 'cpe>cpeId'}, {path: 'procure>/po'}], formatter: '.formatHasPo'}"
+                                        press=".onPoPress"/>
+                                    <ObjectNumber
+                                        number="{path: 'cpe>amount', formatter: '.formatter.inLakhs'}"
+                                        emphasized="true"/>
+                                    <Text text="{cpe>currentLevel}"/>
+                                    <ObjectStatus
+                                        text="{path: 'cpe>daysPending', formatter: '.formatter.slaText'}"
+                                        state="{path: 'cpe>daysPending', formatter: '.formatter.slaState'}"
+                                        visible="{= ${cpe>daysPending} > 0 }"/>
+                                    <ObjectStatus
+                                        text="{path: 'cpe>status', formatter: '.formatter.statusText'}"
+                                        state="{path: 'cpe>status', formatter: '.formatter.statusState'}"
+                                        icon="{path: 'cpe>status', formatter: '.formatter.statusIcon'}"/>
+                                </cells>
+                            </ColumnListItem>
+                        </items>
+                    </Table>
+                </VBox>
+
+            </VBox>
+        </content>
+    </Page>
+
+</mvc:View>

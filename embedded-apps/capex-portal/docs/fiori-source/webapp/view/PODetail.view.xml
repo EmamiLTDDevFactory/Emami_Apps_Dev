@@ -1,0 +1,130 @@
+<mvc:View
+    controllerName="zcapexportal.controller.PODetail"
+    xmlns="sap.m"
+    xmlns:mvc="sap.ui.core.mvc"
+    xmlns:core="sap.ui.core"
+    xmlns:l="sap.ui.layout"
+    xmlns:f="sap.ui.layout.form"
+    height="100%">
+
+    <Page
+        id="pagePODetail"
+        title="{i18n>poDetailTitle}"
+        showNavButton="true"
+        navButtonPress=".onBack"
+        class="zcpxApp">
+
+        <content>
+            <VBox class="zcpxScreen">
+
+                <VBox class="zcpxHero zcpxSection">
+                    <HBox justifyContent="SpaceBetween" alignItems="Start" wrap="Wrap">
+                        <VBox>
+                            <Text text="PO {detail>/poId}" class="zcpxHeroTitle"/>
+                            <Text text="{detail>/title}" class="zcpxHeroSub"/>
+                            <Text text="{detail>/vendor} · {detail>/plantName}" class="zcpxHeroSub sapUiTinyMarginTop"/>
+                        </VBox>
+                        <VBox alignItems="End">
+                            <Text text="PO Value" class="zcpxHeroSub"/>
+                            <Text text="{path: 'detail>/amount', formatter: '.formatter.inLakhs'}" class="zcpxHeroTitle"/>
+                        </VBox>
+                    </HBox>
+                </VBox>
+
+                <VBox class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <core:Icon src="sap-icon://shipping-status" class="sapUiTinyMarginEnd"/>
+                        <Text text="{i18n>details}" class="zcpxCardTitle"/>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+                        <f:SimpleForm
+                            layout="ResponsiveGridLayout"
+                            editable="false"
+                            labelSpanXL="4" labelSpanL="4" labelSpanM="4" labelSpanS="12"
+                            adjustLabelSpan="false"
+                            columnsXL="2" columnsL="2" columnsM="1">
+                            <f:content>
+                                <Label text="{i18n>poNumber}"/>
+                                <Text text="{detail>/poId}" class="zcpxReadonlyValue"/>
+                                <Label text="{i18n>cpeId}"/>
+                                <Link text="{detail>/cpeId}" press=".onCPEPress"/>
+                                <Label text="CWIP"/>
+                                <Text text="{path: 'detail>/cwipId', formatter: '.formatter.orDash'}" class="zcpxReadonlyValue"/>
+                                <Label text="{i18n>vendor}"/>
+                                <Text text="{detail>/vendor}" class="zcpxReadonlyValue"/>
+                                <Label text="{i18n>vendorCode}"/>
+                                <Text text="{detail>/vendorCode}" class="zcpxReadonlyValue"/>
+                                <Label text="{i18n>issuedOn}"/>
+                                <Text text="{path: 'detail>/issuedOn', formatter: '.formatter.date'}" class="zcpxReadonlyValue"/>
+                                <Label text="{i18n>expectedDelivery}"/>
+                                <Text text="{path: 'detail>/expectedDelivery', formatter: '.formatter.date'}" class="zcpxReadonlyValue"/>
+                                <Label text="{i18n>incoterm}"/>
+                                <Text text="{detail>/incoterm}" class="zcpxReadonlyValue"/>
+                            </f:content>
+                        </f:SimpleForm>
+
+                        <Text text="{i18n>paymentTerms}" class="zcpxSectionLabel sapUiSmallMarginTop"/>
+                        <Text text="{path: 'detail>/paymentTerms', formatter: '.formatter.orDash'}"/>
+                    </VBox>
+                </VBox>
+
+                <!-- GRN -->
+                <VBox class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <core:Icon src="sap-icon://inventory" class="sapUiTinyMarginEnd"/>
+                        <Text text="{i18n>grnListTitle}" class="zcpxCardTitle"/>
+                    </HBox>
+                    <Table items="{detail>/grns}" noDataText="No goods receipt posted yet.">
+                        <columns>
+                            <Column><Text text="{i18n>grnNumber}"/></Column>
+                            <Column minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>material}"/></Column>
+                            <Column hAlign="End"><Text text="{i18n>qty}"/></Column>
+                            <Column hAlign="End"><Text text="{i18n>grnValue}"/></Column>
+                            <Column hAlign="End" minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>postedOn}"/></Column>
+                        </columns>
+                        <items>
+                            <ColumnListItem>
+                                <cells>
+                                    <ObjectIdentifier title="{detail>grnId}"/>
+                                    <Text text="{detail>material}"/>
+                                    <Text text="{detail>qty} {detail>uom}" class="zcpxNum"/>
+                                    <Text text="{path: 'detail>value', formatter: '.formatter.inLakhs'}" class="zcpxNum"/>
+                                    <Text text="{path: 'detail>postedOn', formatter: '.formatter.date'}"/>
+                                </cells>
+                            </ColumnListItem>
+                        </items>
+                    </Table>
+                </VBox>
+
+                <MessageStrip
+                    class="zcpxSection"
+                    text="Once the GRN is posted in SAP, the commitment converts to actual spend and the dashboard updates within the hour."
+                    type="Information"
+                    showIcon="true"
+                    visible="{= !${detail>/grnPosted} }"/>
+
+            </VBox>
+        </content>
+
+        <footer>
+            <OverflowToolbar>
+                <ToolbarSpacer/>
+                <Button
+                    text="{i18n>confirmPO}"
+                    icon="sap-icon://accept"
+                    type="Emphasized"
+                    press=".onConfirmPO"
+                    visible="{= ${detail>/status} === 'PENDING' }"/>
+                <Button
+                    text="{i18n>icCreateTitle}"
+                    icon="sap-icon://add-document"
+                    press=".onCreateIC"
+                    visible="{detail>/grnPosted}"/>
+                <Button text="{i18n>print}" icon="sap-icon://print" press=".onPrint"/>
+                <Button text="{i18n>back}" press=".onBack"/>
+            </OverflowToolbar>
+        </footer>
+
+    </Page>
+
+</mvc:View>

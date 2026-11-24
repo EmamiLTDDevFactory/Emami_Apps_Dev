@@ -1,0 +1,17 @@
+<mvc:View
+    controllerName="zcapexportal.controller.NotFound"
+    xmlns="sap.m"
+    xmlns:mvc="sap.ui.core.mvc"
+    height="100%">
+
+    <MessagePage
+        id="pageNotFound"
+        title="{i18n>notFoundTitle}"
+        text="{i18n>notFoundTitle}"
+        description="{i18n>notFoundText}"
+        icon="sap-icon://document"
+        showNavButton="true"
+        navButtonPress=".onBack"
+        class="zcpxApp"/>
+
+</mvc:View>

@@ -1,0 +1,214 @@
+{
+    "_version": "1.65.0",
+    "sap.app": {
+        "id": "zcapexportal",
+        "type": "application",
+        "i18n": "i18n/i18n.properties",
+        "applicationVersion": {
+            "version": "1.0.0"
+        },
+        "title": "{{appTitle}}",
+        "description": "{{appDescription}}",
+        "dataSources": {
+            "mainService": {
+                "uri": "/sap/opu/odata/sap/ZCAPEX_PORTAL_SRV/",
+                "type": "OData",
+                "settings": {
+                    "odataVersion": "2.0",
+                    "localUri": "localService/metadata.xml"
+                }
+            }
+        },
+        "crossNavigation": {
+            "inbound": {
+                "zcapexportal-display": {
+                    "semanticObject": "ZCapexPortal",
+                    "action": "display",
+                    "title": "{{appTitle}}",
+                    "subTitle": "{{appDescription}}",
+                    "signature": {
+                        "parameters": {},
+                        "additionalParameters": "allowed"
+                    }
+                }
+            }
+        }
+    },
+    "sap.ui": {
+        "technology": "UI5",
+        "icons": {
+            "icon": "sap-icon://capital-projects",
+            "favIcon": "",
+            "phone": "",
+            "phone@2": "",
+            "tablet": "",
+            "tablet@2": ""
+        },
+        "deviceTypes": {
+            "desktop": true,
+            "tablet": true,
+            "phone": true
+        }
+    },
+    "sap.flp": {
+        "type": "application",
+        "config": {
+            "favIcon": "",
+            "icon": "sap-icon://capital-projects",
+            "deviceTypes": {
+                "desktop": true,
+                "tablet": true,
+                "phone": true
+            }
+        }
+    },
+    "sap.ui5": {
+        "flexEnabled": false,
+        "rootView": {
+            "viewName": "zcapexportal.view.App",
+            "type": "XML",
+            "async": true,
+            "id": "app"
+        },
+        "dependencies": {
+            "minUI5Version": "1.71.1",
+            "libs": {
+                "sap.m": {},
+                "sap.ui.core": {},
+                "sap.ui.layout": {},
+                "sap.ui.unified": {},
+                "sap.f": {},
+                "sap.tnt": {},
+                "sap.suite.ui.microchart": {},
+                "sap.ui.table": {}
+            }
+        },
+        "contentDensities": {
+            "compact": true,
+            "cozy": true
+        },
+        "models": {
+            "i18n": {
+                "type": "sap.ui.model.resource.ResourceModel",
+                "settings": {
+                    "bundleName": "zcapexportal.i18n.i18n"
+                }
+            },
+            "": {
+                "type": "sap.ui.model.json.JSONModel",
+                "settings": {},
+                "preload": true
+            },
+            "app": {
+                "type": "sap.ui.model.json.JSONModel",
+                "settings": {}
+            },
+            "budget": {
+                "type": "sap.ui.model.json.JSONModel",
+                "settings": {}
+            },
+            "cpe": {
+                "type": "sap.ui.model.json.JSONModel",
+                "settings": {}
+            },
+            "approval": {
+                "type": "sap.ui.model.json.JSONModel",
+                "settings": {}
+            },
+            "procure": {
+                "type": "sap.ui.model.json.JSONModel",
+                "settings": {}
+            },
+            "asset": {
+                "type": "sap.ui.model.json.JSONModel",
+                "settings": {}
+            },
+            "config": {
+                "type": "sap.ui.model.json.JSONModel",
+                "settings": {}
+            }
+        },
+        "_comment_odata": [
+            "The OData v2 model is NOT declared here on purpose.",
+            "A manifest-declared model is instantiated at component start and",
+            "immediately requests $metadata, which throws until ZCAPEX_PORTAL_SRV",
+            "is activated in SEGW/Gateway. Component.js creates it lazily instead",
+            "when _bUseMock is set to false. The dataSource above stays declared",
+            "so the Fiori tools and the deploy step still see the service."
+        ],
+        "resources": {
+            "css": [
+                {
+                    "uri": "css/style.css"
+                }
+            ]
+        },
+        "routing": {
+            "config": {
+                "routerClass": "sap.m.routing.Router",
+                "viewType": "XML",
+                "async": true,
+                "viewPath": "zcapexportal.view",
+                "controlAggregation": "pages",
+                "controlId": "appNavContainer",
+                "transition": "slide",
+                "bypassed": {
+                    "target": "notFound"
+                },
+                "clearControlAggregation": false
+            },
+            "routes": [
+                { "name": "dashboard",       "pattern": "",                       "target": ["dashboard"] },
+                { "name": "budgetList",      "pattern": "budget",                 "target": ["budgetList"] },
+                { "name": "budgetCreate",    "pattern": "budget/create",          "target": ["budgetCreate"] },
+                { "name": "budgetEdit",      "pattern": "budget/{budgetId}/edit", "target": ["budgetCreate"] },
+                { "name": "budgetDetail",    "pattern": "budget/{budgetId}",      "target": ["budgetDetail"] },
+                { "name": "cpeList",         "pattern": "cpe",                    "target": ["cpeList"] },
+                { "name": "cpeCreate",       "pattern": "cpe/create",             "target": ["cpeCreate"] },
+                { "name": "cpeDetail",       "pattern": "cpe/{cpeId}",            "target": ["cpeDetail"] },
+                { "name": "evaluation",      "pattern": "evaluation/{cpeId}",     "target": ["evaluation"] },
+                { "name": "approvalInbox",   "pattern": "approvals",              "target": ["approvalInbox"] },
+                { "name": "approvalDetail",  "pattern": "approvals/{cpeId}",      "target": ["approvalDetail"] },
+                { "name": "budgetApprovalDetail", "pattern": "approvals/budget/{budgetId}", "target": ["budgetApprovalDetail"] },
+                { "name": "cwipCreate",      "pattern": "cwip/{cpeId}",           "target": ["cwipCreate"] },
+                { "name": "poList",          "pattern": "po",                     "target": ["poList"] },
+                { "name": "poDetail",        "pattern": "po/{poId}",              "target": ["poDetail"] },
+                { "name": "grnList",         "pattern": "grn",                    "target": ["grnList"] },
+                { "name": "icList",          "pattern": "ic",                     "target": ["icList"] },
+                { "name": "icDetail",        "pattern": "ic/{icId}",              "target": ["icDetail"] },
+                { "name": "capitalization",  "pattern": "capitalization",         "target": ["capitalization"] },
+                { "name": "unitQuota",       "pattern": "quota",                  "target": ["unitQuota"] },
+                { "name": "quotaItemDetail", "pattern": "quota/{quotaId}",        "target": ["quotaItemDetail"] },
+                { "name": "reports",         "pattern": "reports",                "target": ["reports"] },
+                { "name": "auditTrail",      "pattern": "audit",                  "target": ["auditTrail"] },
+                { "name": "doaMatrix",       "pattern": "admin/doa",              "target": ["doaMatrix"] }
+            ],
+            "targets": {
+                "dashboard":      { "viewType": "XML", "viewName": "Dashboard",      "viewLevel": 1 },
+                "budgetList":     { "viewType": "XML", "viewName": "BudgetList",     "viewLevel": 1 },
+                "budgetCreate":   { "viewType": "XML", "viewName": "BudgetCreate",   "viewLevel": 2 },
+                "budgetDetail":   { "viewType": "XML", "viewName": "BudgetDetail",   "viewLevel": 2 },
+                "cpeList":        { "viewType": "XML", "viewName": "CPEList",        "viewLevel": 1 },
+                "cpeCreate":      { "viewType": "XML", "viewName": "CPECreate",      "viewLevel": 2 },
+                "cpeDetail":      { "viewType": "XML", "viewName": "CPEDetail",      "viewLevel": 2 },
+                "evaluation":     { "viewType": "XML", "viewName": "Evaluation",     "viewLevel": 2 },
+                "approvalInbox":  { "viewType": "XML", "viewName": "ApprovalInbox",  "viewLevel": 1 },
+                "approvalDetail": { "viewType": "XML", "viewName": "ApprovalDetail", "viewLevel": 2 },
+                "budgetApprovalDetail": { "viewType": "XML", "viewName": "BudgetApprovalDetail", "viewLevel": 2 },
+                "cwipCreate":     { "viewType": "XML", "viewName": "CWIPCreate",     "viewLevel": 2 },
+                "poList":         { "viewType": "XML", "viewName": "POList",         "viewLevel": 1 },
+                "poDetail":       { "viewType": "XML", "viewName": "PODetail",       "viewLevel": 2 },
+                "grnList":        { "viewType": "XML", "viewName": "GRNList",        "viewLevel": 1 },
+                "icList":         { "viewType": "XML", "viewName": "ICList",         "viewLevel": 1 },
+                "icDetail":       { "viewType": "XML", "viewName": "ICDetail",       "viewLevel": 2 },
+                "capitalization": { "viewType": "XML", "viewName": "Capitalization", "viewLevel": 1 },
+                "unitQuota":      { "viewType": "XML", "viewName": "UnitQuota",      "viewLevel": 1 },
+                "quotaItemDetail": { "viewType": "XML", "viewName": "QuotaItemDetail", "viewLevel": 2 },
+                "reports":        { "viewType": "XML", "viewName": "Reports",        "viewLevel": 1 },
+                "auditTrail":     { "viewType": "XML", "viewName": "AuditTrail",     "viewLevel": 1 },
+                "doaMatrix":      { "viewType": "XML", "viewName": "DOAMatrix",      "viewLevel": 1 },
+                "notFound":       { "viewType": "XML", "viewName": "NotFound",       "viewLevel": 3 }
+            }
+        }
+    }
+}

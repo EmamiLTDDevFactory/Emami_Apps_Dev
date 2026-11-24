@@ -1,0 +1,955 @@
+/* ==========================================================================
+   CAPEX APPROVAL PORTAL - DESIGN SYSTEM
+   Emami Group | SAP Fiori 3 / Horizon aligned
+   All custom classes are prefixed .zcpx* and scoped under .zcpxApp
+   so nothing leaks into standard Fiori controls elsewhere in the Launchpad.
+   ========================================================================== */
+
+:root {
+    /* --- Brand ------------------------------------------------------------ */
+    --zcpx-brand:          #0064D9;
+    --zcpx-brand-dark:     #0040B0;
+    --zcpx-brand-light:    #D1E8FF;
+    --zcpx-navy:           #12233A;
+    --zcpx-navy-2:         #1C3A5E;
+    --zcpx-teal:           #049F9A;
+    --zcpx-purple:         #7858FF;
+
+    /* --- Semantic (Horizon palette) --------------------------------------- */
+    --zcpx-success:        #36A41D;
+    --zcpx-success-dark:   #256F3A;
+    --zcpx-success-bg:     #EBF5EB;
+    --zcpx-warning:        #E76500;
+    --zcpx-warning-bg:     #FEF6EB;
+    --zcpx-error:          #EE3939;
+    --zcpx-error-dark:     #BB0000;
+    --zcpx-error-bg:       #FFEBEB;
+    --zcpx-info:           #0064D9;
+    --zcpx-info-bg:        #EBF5FF;
+    --zcpx-neutral:        #788FA6;
+    --zcpx-neutral-bg:     #EFF1F2;
+
+    /* --- Surfaces --------------------------------------------------------- */
+    --zcpx-bg:             #F5F6F7;
+    --zcpx-surface:        #FFFFFF;
+    --zcpx-surface-2:      #FAFAFA;
+    --zcpx-border:         #D9D9D9;
+    --zcpx-border-light:   #E5E5E5;
+
+    /* --- Text ------------------------------------------------------------- */
+    --zcpx-text:           #1D2D3E;
+    --zcpx-text-muted:     #556B82;
+    --zcpx-text-subtle:    #8396A8;
+    --zcpx-text-invert:    #FFFFFF;
+
+    /* --- Elevation -------------------------------------------------------- */
+    --zcpx-sh-1: 0 1px 2px rgba(19, 35, 58, 0.06), 0 1px 3px rgba(19, 35, 58, 0.04);
+    --zcpx-sh-2: 0 2px 6px rgba(19, 35, 58, 0.08), 0 1px 2px rgba(19, 35, 58, 0.05);
+    --zcpx-sh-3: 0 6px 16px rgba(19, 35, 58, 0.10), 0 2px 4px rgba(19, 35, 58, 0.06);
+
+    /* --- Geometry --------------------------------------------------------- */
+    --zcpx-radius:    0.75rem;
+    --zcpx-radius-sm: 0.5rem;
+    --zcpx-radius-xs: 0.25rem;
+    --zcpx-gap:       1rem;
+}
+
+/* ==========================================================================
+   1. SHELL
+   ========================================================================== */
+
+.sapUiBody { background: var(--zcpx-bg); }
+
+/* Shrinks the app to roughly one browser zoom-step smaller by default, so
+   users don't have to manually Ctrl-minus. Scoped to .zcpxApp so it only
+   affects this app's content, not the surrounding Fiori Launchpad shell.
+   `zoom` is Chromium-based (Chrome/Edge) only; switch to a `transform: scale`
+   approach if Firefox support is required. */
+.zcpxApp { zoom: 0.8; }
+
+.zcpxApp .sapMPage,
+.zcpxApp .sapMPageBgStandard { background: var(--zcpx-bg); }
+
+/* --- Notifications popover ------------------------------------------------
+   Renders in the UI5 static area, outside .zcpxApp, so it isn't shrunk by
+   the zoom:0.8 rule above. Each row is a custom layout (icon + title/date
+   on one line, description wrapped below) instead of StandardListItem's
+   default single-line ellipsis-truncated title/description/info, which was
+   forcing a horizontal scrollbar to read the full text. */
+.zcpxNotifPopover { max-width: 90vw; }
+
+.zcpxNotifPopover .sapMDialogTitle,
+.zcpxNotifPopover .sapMBarPH > .sapMTitle { font-size: 0.9rem; }
+
+.zcpxNotifItem .zcpxNotifRow { padding: 0.5rem 1rem; gap: 0.625rem; }
+
+.zcpxNotifItem .zcpxNotifIcon { font-size: 1.125rem; margin-top: 0.125rem; color: var(--zcpx-text-muted); flex-shrink: 0; }
+
+.zcpxNotifItem .zcpxNotifBody { min-width: 0; }
+
+.zcpxNotifItem .zcpxNotifTitle { font-size: 0.8rem; flex: 1 1 auto; min-width: 0; }
+.zcpxNotifItem .zcpxNotifTitleUnread { font-weight: 700; }
+
+.zcpxNotifItem .zcpxNotifTime {
+    font-size: 0.6rem;
+    line-height: 1.4;
+    color: var(--zcpx-text-subtle);
+    white-space: nowrap;
+    margin-left: 0.5rem;
+    flex: 0 0 auto;
+    align-self: flex-start;
+    text-align: right;
+}
+.zcpxNotifItem .zcpxNotifTimeUnread { color: var(--zcpx-brand, #0854A0); font-weight: 600; }
+
+.zcpxNotifItem .zcpxNotifDesc { font-size: 0.7rem; color: var(--zcpx-text-muted); }
+
+/* --- Branded tool header ------------------------------------------------- */
+.zcpxHeader.sapTntToolHeader {
+    background: linear-gradient(135deg, var(--zcpx-navy) 0%, var(--zcpx-navy-2) 55%, #24507F 100%);
+    border-bottom: none;
+    box-shadow: var(--zcpx-sh-2);
+    height: 3rem;
+    padding: 0 0.5rem;
+}
+
+.zcpxHeader .sapMTitle,
+.zcpxHeader .sapMText,
+.zcpxHeader .sapMLabel { color: var(--zcpx-text-invert) !important; }
+
+.zcpxHeader .sapMBtn .sapMBtnInner.sapMBtnTransparent .sapMBtnIcon,
+.zcpxHeader .sapMBtn .sapMBtnInner.sapMBtnTransparent .sapMBtnContent {
+    color: rgba(255, 255, 255, 0.92) !important;
+}
+
+.zcpxHeader .sapMBtn .sapMBtnInner.sapMBtnTransparent:hover {
+    background: rgba(255, 255, 255, 0.14) !important;
+}
+
+.zcpxBrandTitle {
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    line-height: 1.1;
+}
+
+.zcpxBrandSub {
+    font-size: 0.6875rem;
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.62) !important;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    line-height: 1.1;
+}
+
+/* Circular initials badge, replacing sap.m.Avatar (not available on UI5 1.71
+   backends) with a plain Button styled as a circle. */
+.zcpxAvatar .sapMBtnInner {
+    border-radius: 50%;
+    background: var(--zcpx-brand) !important;
+    border-color: var(--zcpx-brand) !important;
+    color: var(--zcpx-text-invert) !important;
+    font-weight: 600;
+    padding: 0;
+}
+.zcpxAvatarXS .sapMBtnInner { width: 2rem; height: 2rem; min-width: 2rem; }
+.zcpxAvatarM .sapMBtnInner { width: 3rem; height: 3rem; min-width: 3rem; font-size: 1.125rem; }
+.zcpxAvatar .sapMBtnInner:hover,
+.zcpxAvatar .sapMBtnInner:active {
+    background: var(--zcpx-brand-dark) !important;
+    border-color: var(--zcpx-brand-dark) !important;
+}
+
+/* Selector is deliberately more specific than the theme rule
+   ".sapTntToolHeader .sapMImg { height: 1.625rem }", which otherwise
+   squashes the round badge into an oval. */
+.zcpxHeader.sapTntToolHeader .sapMImg.zcpxBrandMark,
+.zcpxBrandMark {
+    /* Emami circle mark fills the round badge completely, centred,
+       with a thin white ring so it stands out on the navy header. */
+    width: 2rem;
+    height: 2rem;
+    min-width: 2rem;
+    min-height: 2rem;
+    border-radius: 50%;
+    object-fit: cover;
+    object-position: center;
+    background: #FFFFFF;
+    border: 2px solid #FFFFFF;
+    box-sizing: border-box;
+    display: block;
+    flex: 0 0 auto;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
+/* --- Side navigation ------------------------------------------------------ */
+.zcpxSideNav.sapTntSideNavigation {
+    background: var(--zcpx-surface);
+    border-right: 1px solid var(--zcpx-border-light);
+    box-shadow: var(--zcpx-sh-1);
+}
+
+.zcpxSideNav .sapTntNavLIGroup {
+    border-radius: var(--zcpx-radius-sm);
+    margin: 0.125rem 0.5rem;
+}
+
+.zcpxSideNav .sapTntNavLIGroup:hover { background: #EEF4FC; }
+
+.zcpxSideNav .sapTntNavLIItem.sapTntNavLIItemSelected,
+.zcpxSideNav .sapTntNavLIGroup.sapTntNavLIItemSelected {
+    background: var(--zcpx-brand-light);
+    color: var(--zcpx-brand-dark);
+    font-weight: 600;
+}
+
+.zcpxSideNav .sapTntNavLIItem.sapTntNavLIItemSelected::before,
+.zcpxSideNav .sapTntNavLIGroup.sapTntNavLIItemSelected::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.25rem;
+    bottom: 0.25rem;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: var(--zcpx-brand);
+}
+
+/* ==========================================================================
+   2. LAYOUT PRIMITIVES
+   ========================================================================== */
+
+.zcpxScreen { padding: 1rem; }
+
+.zcpxSection + .zcpxSection { margin-top: 1rem; }
+
+/* SLA breach strip on the Dashboard sits between the KPI grid and the
+   content below — force a small, explicit gap on both sides regardless
+   of the generic sibling rule above, since MessageStrip resets its own
+   margins to 0. */
+.zcpxSlaStrip.sapMMsgStrip {
+    margin-top: 0.75rem !important;
+    margin-bottom: 0.75rem !important;
+}
+
+/* Dashboard: "Approval Queue by Level" + "Budget by Category" row.
+   1) The generic ".zcpxSection + .zcpxSection" gap never applies here,
+      because sap.m.VBox wraps every section in its own .sapMFlexItem div
+      (so the sections are never direct siblings) - the row ended up
+      touching the KPI cards. Add the gap explicitly, but only when the
+      SLA strip above is hidden (it brings its own 0.75rem gap when shown).
+   2) sap.ui.layout.Grid hSpacing="1" pads the grid AND its spans by
+      0.5rem, indenting both cards from the KPI cards' edges. Cancel the
+      outer half so the cards line up with the KPI grid exactly; the gap
+      between the two cards themselves is unchanged. */
+.zcpxDashTwoCol.sapUiRespGrid {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    margin-left: -0.5rem;
+    margin-right: -0.5rem;
+}
+
+.sapUiHiddenPlaceholder + .sapMFlexItem > .zcpxDashTwoCol.sapUiRespGrid {
+    margin-top: 1rem;
+}
+
+
+/* Dashboard KPI grid: GridContainer's own column tracks are a fixed
+   rem size, which almost never divides the container's full width evenly
+   — the remainder is stranded on the right, so the last tile in each row
+   falls short of the container's right edge. Forcing fluid (1fr) tracks
+   instead always sums to exactly 100% width with no leftover, keeping
+   the same 5-cards-per-row shape (each card still spans 2 of the 10
+   tracks). Scoped to Tablet/Desktop widths so the phone-specific
+   fixed 2-column layout (layoutS, below 600px) is untouched. */
+/* Newer SAPUI5 (e.g. 1.15x, loaded by index.html from the un-versioned
+   ui5.sap.com CDN) renders the real CSS grid on an INNER element
+   (.sapFGridContainerListUl) instead of the control root, so the rule must
+   target both - otherwise it is silently ignored and the grid falls back to
+   fixed 8.25rem tracks (6 + 4 cards, short of the right edge). */
+@media (min-width: 600px) {
+    .zcpxKpiGridWrap.sapFGridContainer,
+    .zcpxKpiGridWrap .sapFGridContainerListUl {
+        grid-template-columns: repeat(10, 1fr) !important;
+    }
+}
+
+/* Same fluid-track fix, for phones: columnSize="9rem" x 2 cards is wider
+   than most phone screens, so the second card overflows off the edge.
+   4 fluid tracks (2 per card) always shrink to the real screen width. */
+@media (max-width: 599px) {
+    .zcpxKpiGridWrap.sapFGridContainer,
+    .zcpxKpiGridWrap .sapFGridContainerListUl {
+        grid-template-columns: repeat(4, 1fr) !important;
+    }
+}
+
+/* Unit Quota's two rule cards (Annual Cap / Single Item Cap) — force a
+   clear gap between them regardless of the Grid's own gutter, since the
+   two cards otherwise read as one fused block at a glance. Margin on the
+   card itself (not padding on the Grid column) so it can't push the
+   column's own content-box width past 50% and wrap it to a new row. */
+.zcpxQuotaCaps .zcpxKpi {
+    margin-right: 0.5rem;
+}
+.zcpxQuotaCaps > div:last-child .zcpxKpi {
+    margin-right: 0;
+    margin-left: 0.5rem;
+}
+
+.zcpxSectionLabel {
+    margin: 0 0 0.5rem 0.125rem;
+    color: var(--zcpx-text-subtle);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+/* Card ------------------------------------------------------------------- */
+.zcpxCard {
+    background: var(--zcpx-surface);
+    border: 1px solid var(--zcpx-border-light);
+    border-radius: var(--zcpx-radius);
+    box-shadow: var(--zcpx-sh-1);
+    overflow: hidden;
+}
+
+.zcpxCard.zcpxCardPad { padding: 1rem; }
+
+.zcpxCardHeader {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--zcpx-border-light);
+    background: var(--zcpx-surface-2);
+}
+
+.zcpxCardTitle {
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: var(--zcpx-text);
+}
+
+.zcpxCardBody { padding: 1rem; }
+
+/* Page hero -------------------------------------------------------------- */
+.zcpxHero {
+    background: linear-gradient(135deg, var(--zcpx-navy) 0%, var(--zcpx-navy-2) 60%, #2A5C93 100%);
+    border-radius: var(--zcpx-radius);
+    padding: 1.25rem 1.25rem 1.125rem;
+    color: var(--zcpx-text-invert);
+    box-shadow: var(--zcpx-sh-2);
+    position: relative;
+    overflow: hidden;
+}
+
+.zcpxHero::after {
+    content: "";
+    position: absolute;
+    right: -3rem;
+    top: -5rem;
+    width: 14rem;
+    height: 14rem;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0) 70%);
+    pointer-events: none;
+}
+
+.zcpxHero .sapMTitle,
+.zcpxHero .sapMText,
+.zcpxHero .sapMLabel,
+.zcpxHero .sapMObjectNumberText,
+.zcpxHero .sapMObjectNumberUnit { color: var(--zcpx-text-invert) !important; }
+
+.zcpxHeroTitle { font-size: 1.25rem; font-weight: 700; }
+.zcpxHeroSub   { font-size: 0.8125rem; color: rgba(255,255,255,0.72) !important; }
+
+/* ==========================================================================
+   3. KPI TILES
+   ========================================================================== */
+
+.zcpxKpiGrid { display: block; }
+
+.zcpxKpi {
+    background: var(--zcpx-surface);
+    border: 1px solid var(--zcpx-border-light);
+    border-left: 4px solid var(--zcpx-neutral);
+    border-radius: var(--zcpx-radius);
+    padding: 0.875rem 1rem;
+    box-shadow: var(--zcpx-sh-1);
+    transition: box-shadow 0.18s ease, transform 0.18s ease;
+    height: 100%;
+    box-sizing: border-box;
+}
+
+.zcpxKpi:hover { box-shadow: var(--zcpx-sh-3); transform: translateY(-1px); }
+
+.zcpxKpiLabel {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--zcpx-text);
+}
+
+.zcpxKpiValue {
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1.15;
+    color: var(--zcpx-text);
+    font-variant-numeric: tabular-nums;
+}
+
+.zcpxKpiUnit {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--zcpx-text);
+    margin-left: 0.25rem;
+}
+
+.zcpxKpiFoot { font-size: 0.9375rem; color: var(--zcpx-text); }
+
+.zcpxKpi--brand   { border-left-color: var(--zcpx-brand); }
+.zcpxKpi--brand   .zcpxKpiValue { color: var(--zcpx-brand-dark); }
+.zcpxKpi--success { border-left-color: var(--zcpx-success); }
+.zcpxKpi--success .zcpxKpiValue { color: var(--zcpx-success-dark); }
+.zcpxKpi--warning { border-left-color: var(--zcpx-warning); }
+.zcpxKpi--warning .zcpxKpiValue { color: var(--zcpx-warning); }
+.zcpxKpi--error   { border-left-color: var(--zcpx-error); }
+.zcpxKpi--error   .zcpxKpiValue { color: var(--zcpx-error-dark); }
+.zcpxKpi--teal    { border-left-color: var(--zcpx-teal); }
+.zcpxKpi--teal    .zcpxKpiValue { color: var(--zcpx-teal); }
+.zcpxKpi--purple  { border-left-color: var(--zcpx-purple); }
+.zcpxKpi--purple  .zcpxKpiValue { color: var(--zcpx-purple); }
+
+/* Bound variant. UI5 cannot bind the "class" attribute, so a conditional tone
+   is written to the DOM as data-tone via CustomData(writeToDom) and matched
+   here. Keep these in step with the static modifiers above. */
+.zcpxKpi[data-tone="success"] { border-left-color: var(--zcpx-success); }
+.zcpxKpi[data-tone="success"] .zcpxKpiValue { color: var(--zcpx-success-dark); }
+.zcpxKpi[data-tone="error"]   { border-left-color: var(--zcpx-error); }
+.zcpxKpi[data-tone="error"]   .zcpxKpiValue { color: var(--zcpx-error-dark); }
+.zcpxKpi[data-tone="warning"] { border-left-color: var(--zcpx-warning); }
+.zcpxKpi[data-tone="warning"] .zcpxKpiValue { color: var(--zcpx-warning); }
+.zcpxKpi[data-tone="brand"]   { border-left-color: var(--zcpx-brand); }
+.zcpxKpi[data-tone="brand"]   .zcpxKpiValue { color: var(--zcpx-brand-dark); }
+
+/* ==========================================================================
+   4. BUDGET METER  (Approved / Committed / Spent / Available)
+   ========================================================================== */
+
+.zcpxMeter {
+    height: 0.75rem;
+    border-radius: 999px;
+    background: var(--zcpx-neutral-bg);
+    display: flex;
+    overflow: hidden;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.zcpxMeterSeg { height: 100%; transition: width 0.4s ease; }
+.zcpxMeterSeg--spent     { background: var(--zcpx-brand-dark); }
+.zcpxMeterSeg--committed { background: var(--zcpx-brand); }
+.zcpxMeterSeg--reserved  { background: #7FB5F0; }
+
+.zcpxMeterLegend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.875rem;
+    margin-top: 0.5rem;
+    font-size: 0.75rem;
+    color: var(--zcpx-text-muted);
+}
+
+.zcpxMeterLegend > span { display: inline-flex; align-items: center; gap: 0.3125rem; }
+
+.zcpxDot {
+    width: 0.625rem;
+    height: 0.625rem;
+    border-radius: 50%;
+    display: inline-block;
+    flex: 0 0 auto;
+}
+
+.zcpxDot--spent     { background: var(--zcpx-brand-dark); }
+.zcpxDot--committed { background: var(--zcpx-brand); }
+.zcpxDot--reserved  { background: #7FB5F0; }
+.zcpxDot--available { background: var(--zcpx-neutral-bg); border: 1px solid var(--zcpx-border); }
+
+/* ==========================================================================
+   5. STATUS CHIPS
+   ========================================================================== */
+
+.zcpxChip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3125rem;
+    padding: 0.1875rem 0.5625rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.25;
+    white-space: nowrap;
+    border: 1px solid transparent;
+}
+
+.zcpxChip--success { background: var(--zcpx-success-bg); color: var(--zcpx-success-dark); border-color: #BFE3B8; }
+.zcpxChip--warning { background: var(--zcpx-warning-bg); color: #A34D00;                 border-color: #F7D0A8; }
+.zcpxChip--error   { background: var(--zcpx-error-bg);   color: var(--zcpx-error-dark);  border-color: #F5B7B7; }
+.zcpxChip--info    { background: var(--zcpx-info-bg);    color: var(--zcpx-brand-dark);  border-color: #B8D6F5; }
+.zcpxChip--neutral { background: var(--zcpx-neutral-bg); color: var(--zcpx-text-muted);  border-color: var(--zcpx-border); }
+
+/* SLA breach pulse -------------------------------------------------------- */
+.zcpxSlaBreach {
+    animation: zcpxPulse 2.2s ease-in-out infinite;
+}
+
+@keyframes zcpxPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(238, 57, 57, 0.35); }
+    50%      { box-shadow: 0 0 0 5px rgba(238, 57, 57, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .zcpxSlaBreach { animation: none; }
+    .zcpxKpi, .zcpxMeterSeg { transition: none; }
+}
+
+/* ==========================================================================
+   6. VENDOR COMPARISON
+   ========================================================================== */
+
+.zcpxVendorCard {
+    border: 1px solid var(--zcpx-border-light);
+    border-radius: var(--zcpx-radius);
+    padding: 0.875rem;
+    background: var(--zcpx-surface);
+    box-shadow: var(--zcpx-sh-1);
+    height: 100%;
+    box-sizing: border-box;
+    position: relative;
+}
+
+.zcpxVendorCard--selected,
+.zcpxVendorCard[data-tone="selected"] {
+    border: 2px solid var(--zcpx-success);
+    background: linear-gradient(180deg, var(--zcpx-success-bg) 0%, var(--zcpx-surface) 55%);
+    box-shadow: var(--zcpx-sh-2);
+}
+
+.zcpxVendorCard--l1,
+.zcpxVendorCard[data-tone="l1"] { border-top: 3px solid var(--zcpx-brand); }
+
+.zcpxVendorRank {
+    position: absolute;
+    top: 0.625rem;
+    right: 0.625rem;
+    font-size: 0.6875rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    color: var(--zcpx-text-subtle);
+}
+
+.zcpxVendorName { font-size: 0.9375rem; font-weight: 700; color: var(--zcpx-text); }
+
+.zcpxVendorPrice {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--zcpx-brand-dark);
+    font-variant-numeric: tabular-nums;
+}
+
+.zcpxJustifyBox {
+    background: var(--zcpx-warning-bg);
+    border: 1px solid #F7D0A8;
+    border-left: 4px solid var(--zcpx-warning);
+    border-radius: var(--zcpx-radius-sm);
+    padding: 0.75rem 0.875rem;
+}
+
+/* ==========================================================================
+   7. APPROVAL TIMELINE
+   ========================================================================== */
+
+.zcpxTimeline { position: relative; padding-left: 1.75rem; }
+
+.zcpxTimeline::before {
+    content: "";
+    position: absolute;
+    left: 0.5625rem;
+    top: 0.5rem;
+    bottom: 0.5rem;
+    width: 2px;
+    background: var(--zcpx-border);
+}
+
+.zcpxTlItem { position: relative; padding: 0 0 1rem 0; }
+
+.zcpxTlItem::before {
+    content: "";
+    position: absolute;
+    left: -1.75rem;
+    top: 0.25rem;
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: 50%;
+    background: var(--zcpx-surface);
+    border: 2px solid var(--zcpx-border);
+    box-sizing: border-box;
+    z-index: 1;
+}
+
+.zcpxTlItem--done::before,
+.zcpxTlItem[data-tone="done"]::before    { border-color: var(--zcpx-success); background: var(--zcpx-success); }
+.zcpxTlItem--current::before,
+.zcpxTlItem[data-tone="current"]::before { border-color: var(--zcpx-brand);   background: var(--zcpx-brand-light); }
+.zcpxTlItem--reject::before,
+.zcpxTlItem[data-tone="reject"]::before  { border-color: var(--zcpx-error);   background: var(--zcpx-error); }
+.zcpxTlItem--hold::before,
+.zcpxTlItem[data-tone="hold"]::before    { border-color: var(--zcpx-warning); background: var(--zcpx-warning); }
+
+.zcpxTlRole { font-size: 0.8125rem; font-weight: 700; color: var(--zcpx-text); }
+.zcpxTlMeta { font-size: 0.75rem;  color: var(--zcpx-text-muted); }
+
+.zcpxTlNote {
+    margin-top: 0.375rem;
+    padding: 0.5rem 0.625rem;
+    background: var(--zcpx-surface-2);
+    border-left: 3px solid var(--zcpx-border);
+    border-radius: var(--zcpx-radius-xs);
+    font-size: 0.75rem;
+    color: var(--zcpx-text-muted);
+    font-style: italic;
+}
+
+/* ==========================================================================
+   8. FINANCIAL METRICS (IRR / NPV / Payback)
+   ========================================================================== */
+
+.zcpxMetric {
+    text-align: center;
+    padding: 0.75rem 0.5rem;
+    border-radius: var(--zcpx-radius-sm);
+    background: var(--zcpx-surface-2);
+    border: 1px solid var(--zcpx-border-light);
+    height: 100%;
+    box-sizing: border-box;
+}
+
+.zcpxMetricLabel {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--zcpx-text-subtle);
+}
+
+.zcpxMetricValue {
+    font-size: 1.375rem;
+    font-weight: 700;
+    color: var(--zcpx-text);
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+}
+
+.zcpxMetricValue--good { color: var(--zcpx-success-dark); }
+.zcpxMetricValue--warn { color: var(--zcpx-warning); }
+.zcpxMetricValue--bad  { color: var(--zcpx-error-dark); }
+
+/* Bound variant (see note under KPI tones) */
+.zcpxMetricValue[data-tone="good"] { color: var(--zcpx-success-dark); }
+.zcpxMetricValue[data-tone="warn"] { color: var(--zcpx-warning); }
+.zcpxMetricValue[data-tone="bad"]  { color: var(--zcpx-error-dark); }
+.zcpxMetricValue[data-tone="none"] { color: var(--zcpx-text-subtle); }
+
+/* ==========================================================================
+   9. TABLES
+   ========================================================================== */
+
+.zcpxApp .sapMListTblHeader {
+    background: var(--zcpx-surface-2);
+}
+
+.zcpxApp .sapMListTblHeaderCell .sapMLabel,
+.zcpxApp .sapMListTblHeaderCell .sapMColumnHeader {
+    font-weight: 700;
+    font-size: 0.75rem;
+    letter-spacing: 0.02em;
+    color: var(--zcpx-text-muted);
+    text-transform: uppercase;
+}
+
+.zcpxApp .sapMListTblRow:hover > .sapMListTblCell { background: #F3F8FE; }
+
+.zcpxApp .sapMListTbl,
+.zcpxApp .sapMList { border-radius: var(--zcpx-radius); overflow: hidden; }
+
+/* Numeric alignment for money columns */
+.zcpxNum {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+}
+
+/* Row severity accents */
+.zcpxRowBreach > .sapMListTblCell:first-child { box-shadow: inset 3px 0 0 0 var(--zcpx-error); }
+.zcpxRowWarn   > .sapMListTblCell:first-child { box-shadow: inset 3px 0 0 0 var(--zcpx-warning); }
+
+/* ==========================================================================
+   10. FORMS
+   ========================================================================== */
+
+.zcpxApp .sapUiFormElementLbl .sapMLabel {
+    font-weight: 600;
+    color: var(--zcpx-text-muted);
+}
+
+.zcpxReadonlyValue {
+    font-weight: 600;
+    color: var(--zcpx-text);
+    padding: 0.25rem 0;
+    display: inline-block;
+}
+
+.zcpxAutoFilled .sapMInputBaseContentWrapper {
+    background: #F0F6FF !important;
+    border-style: dashed !important;
+    border-color: #A8C9EE !important;
+}
+
+.zcpxHintText {
+    font-size: 0.75rem;
+    color: var(--zcpx-text-subtle);
+    font-style: italic;
+}
+
+/* Document Attachment Matrix - one bordered row per slot, so rows don't
+   visually run into each other in a long list. */
+.zcpxAttachRow {
+    background: var(--zcpx-surface-2);
+    border: 1px solid var(--zcpx-border-light);
+    border-radius: var(--zcpx-radius-sm);
+    padding: 0.625rem 0.75rem;
+}
+
+.zcpxAttachLabel {
+    font-weight: 600;
+    color: var(--zcpx-text);
+}
+
+/* Required marker */
+.zcpxReq::after { content: " *"; color: var(--zcpx-error); font-weight: 700; }
+
+/* ==========================================================================
+   11. UPLOAD / PHOTO GRID
+   ========================================================================== */
+
+.zcpxPhotoTile {
+    border: 2px dashed var(--zcpx-border);
+    border-radius: var(--zcpx-radius-sm);
+    background: var(--zcpx-surface-2);
+    min-height: 6.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
+    color: var(--zcpx-text-subtle);
+    font-size: 0.75rem;
+    text-align: center;
+    padding: 0.5rem;
+    box-sizing: border-box;
+}
+
+.zcpxPhotoTile--filled,
+.zcpxPhotoTile[data-tone="filled"] {
+    border-style: solid;
+    border-color: var(--zcpx-success);
+    background: var(--zcpx-success-bg);
+    color: var(--zcpx-success-dark);
+}
+
+/* Keep long vendor / description text from breaking mid-word in narrow
+   pop-in table cells ("ABC Machiner / y Pvt Ltd"). */
+.zcpxApp .sapMListTblCell .sapMText,
+.zcpxApp .sapMListTblSubCntVal .sapMText {
+    word-break: normal;
+    overflow-wrap: break-word;
+    hyphens: auto;
+}
+
+/* Flex items default to min-width:auto, which stops them shrinking below
+   their content's natural (unwrapped) width — so the overflow-wrap rule
+   above never gets a chance to apply and long pop-in values (a CPE title,
+   an "SLA Breached (7 days)" status) push past the screen edge instead of
+   wrapping. min-width:0 lets the flex item actually shrink to the column,
+   at which point overflow-wrap can do its job. */
+.zcpxApp .sapMListTblSubCntVal,
+.zcpxApp .sapMListTblSubCntVal .sapMFlexItem,
+.zcpxApp .sapMListTblSubCntRow > * {
+    min-width: 0 !important;
+}
+
+/* ==========================================================================
+   12. RESPONSIVE
+   ========================================================================== */
+
+/* Tablet and below */
+@media (max-width: 1023px) {
+    .zcpxScreen { padding: 0.75rem; }
+    .zcpxHeroTitle { font-size: 1.125rem; }
+    .zcpxKpiValue { font-size: 1.375rem; }
+    .zcpxMetricValue { font-size: 1.25rem; }
+}
+
+/* --------------------------------------------------------------------------
+   Side navigation as an overlay on small screens.
+   Without this the expanded nav shares the row with the content and squeezes
+   it into an unreadable column. Below 1024px it floats above the content and
+   a scrim closes it, which is the expected phone/tablet behaviour.
+   -------------------------------------------------------------------------- */
+@media (max-width: 1023px) {
+    .zcpxApp .sapTntToolPageAside {
+        position: absolute;
+        top: 3rem;
+        bottom: 0;
+        left: 0;
+        z-index: 20;
+        max-width: 17rem;
+        box-shadow: 2px 0 12px rgba(19, 35, 58, 0.18);
+        transition: transform 0.2s ease;
+    }
+
+    /* Content keeps the full width regardless of the nav state */
+    .zcpxApp .sapTntToolPageContentWrapper,
+    .zcpxApp .sapTntToolPageMain {
+        margin-inline-start: 0 !important;
+        width: 100% !important;
+    }
+
+    /* Collapsed = fully off-canvas, not a narrow icon rail */
+    .zcpxApp .sapTntToolPageAsideCollapsed .sapTntToolPageAside,
+    .zcpxApp.sapTntToolPageAsideCollapsed .sapTntToolPageAside {
+        transform: translateX(-100%);
+        box-shadow: none;
+    }
+
+    [dir="rtl"] .zcpxApp .sapTntToolPageAsideCollapsed .sapTntToolPageAside {
+        transform: translateX(100%);
+    }
+}
+
+/* Phone */
+@media (max-width: 599px) {
+    /* Horizon insets the shell by 8px, which is fine on a desktop but wastes
+       scarce width on a phone. Go edge to edge instead. */
+    .zcpxApp.sapTntToolPage { padding: 0 !important; }
+
+    .zcpxScreen { padding: 0.625rem 0.625rem 4.5rem; }
+    .zcpxSection + .zcpxSection { margin-top: 0.75rem; }
+
+    .zcpxHero { padding: 1rem; border-radius: var(--zcpx-radius-sm); }
+    .zcpxHeroTitle { font-size: 1.0625rem; }
+    .zcpxHeroSub { font-size: 0.75rem; }
+
+    .zcpxCard { border-radius: var(--zcpx-radius-sm); }
+    .zcpxCardBody { padding: 0.75rem; }
+    .zcpxCardHeader { padding: 0.625rem 0.75rem; }
+
+    .zcpxKpi { padding: 0.75rem; border-radius: var(--zcpx-radius-sm); }
+    .zcpxKpiValue { font-size: 1.25rem; }
+    .zcpxKpiLabel { font-size: 0.6875rem; }
+
+    .zcpxBrandSub { display: none; }
+    .zcpxBrandTitle {
+        font-size: 0.875rem;
+        max-width: 11.5rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        display: block;
+    }
+
+    .zcpxTimeline { padding-left: 1.5rem; }
+    .zcpxTlItem::before { left: -1.5rem; width: 1rem; height: 1rem; }
+    .zcpxTimeline::before { left: 0.4375rem; }
+
+    /* Sticky action bar on phones so Approve/Reject is always reachable */
+    .zcpxStickyBar {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 10;
+        background: var(--zcpx-surface);
+        border-top: 1px solid var(--zcpx-border);
+        box-shadow: 0 -2px 10px rgba(19, 35, 58, 0.10);
+        padding: 0.5rem 0.625rem calc(0.5rem + env(safe-area-inset-bottom));
+    }
+
+    .zcpxStickyBar .sapMBtn { flex: 1 1 0; }
+
+    /* Let long money values wrap rather than clip inside pop-in rows */
+    .zcpxApp .sapMListTblSubCntValue { white-space: normal; }
+}
+
+/* Very small phones */
+@media (max-width: 359px) {
+    .zcpxKpiValue { font-size: 1.125rem; }
+    .zcpxScreen { padding: 0.5rem 0.5rem 4.5rem; }
+    .zcpxBrandTitle { max-width: 7.5rem; font-size: 0.8125rem; }
+
+    /* Below ~360px, sap.m.Table keeps table-layout:fixed sized off its
+       original (pre-popin) column widths, while its scroll container is
+       overflow-x:hidden — so a long pop-in value (a CPE title, an SLA
+       status chip) is silently cut off with no way to reach it, instead
+       of wrapping. table-layout:auto lets the row size itself from what
+       is actually still visible at this width. */
+    .zcpxApp .sapMListTbl {
+        table-layout: auto !important;
+    }
+}
+
+/* Desktop wide */
+@media (min-width: 1440px) {
+    .zcpxScreen { padding: 1.25rem 1.5rem; }
+}
+
+/* Print (approval sheets / audit trail) */
+@media print {
+    .zcpxSideNav, .zcpxHeader, .sapMPageFooter, .zcpxStickyBar { display: none !important; }
+    .zcpxCard { box-shadow: none; border: 1px solid #999; page-break-inside: avoid; }
+    .zcpxHero { background: #FFF !important; color: #000 !important; border: 1px solid #999; }
+    .zcpxHero .sapMTitle, .zcpxHero .sapMText { color: #000 !important; }
+}
+
+/* ==========================================================================
+   13. DARK-MODE SAFETY
+   Horizon Dark is opt-in per user; keep custom surfaces legible if selected.
+   ========================================================================== */
+
+html[data-sap-ui-theme="sap_horizon_dark"] {
+    --zcpx-bg:           #12171C;
+    --zcpx-surface:      #1C2228;
+    --zcpx-surface-2:    #232A31;
+    --zcpx-border:       #3A444E;
+    --zcpx-border-light: #2E373F;
+    --zcpx-text:         #EAECEE;
+    --zcpx-text-muted:   #A9B4BE;
+    --zcpx-text-subtle:  #8A97A3;
+    --zcpx-neutral-bg:   #2E373F;
+    --zcpx-success-bg:   #1B2A1B;
+    --zcpx-warning-bg:   #2E2415;
+    --zcpx-error-bg:     #2E1A1A;
+    --zcpx-info-bg:      #16273A;
+    --zcpx-brand-light:  #1E3A5C;
+}
+
+html[data-sap-ui-theme="sap_horizon_dark"] .zcpxApp .sapMListTblRow:hover > .sapMListTblCell {
+    background: #26303A;
+}
+
+html[data-sap-ui-theme="sap_horizon_dark"] .zcpxAutoFilled .sapMInputBaseContentWrapper {
+    background: #1B2836 !important;
+    border-color: #37516E !important;
+}

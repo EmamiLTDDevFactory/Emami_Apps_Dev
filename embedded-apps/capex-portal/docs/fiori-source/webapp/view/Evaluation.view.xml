@@ -1,0 +1,150 @@
+<mvc:View
+    controllerName="zcapexportal.controller.Evaluation"
+    xmlns="sap.m"
+    xmlns:mvc="sap.ui.core.mvc"
+    xmlns:core="sap.ui.core"
+    xmlns:l="sap.ui.layout"
+    height="100%">
+
+    <Page
+        id="pageEvaluation"
+        title="{i18n>evaluationTitle}"
+        showNavButton="true"
+        navButtonPress=".onBack"
+        class="zcpxApp">
+
+        <content>
+            <VBox class="zcpxScreen">
+
+                <!-- Context header -->
+                <VBox class="zcpxHero zcpxSection">
+                    <Text text="{detail>/cpeId} — {detail>/title}" class="zcpxHeroTitle"/>
+                    <Text text="{detail>/plantName} · {path: 'detail>/amount', formatter: '.formatter.inLakhs'}" class="zcpxHeroSub"/>
+                </VBox>
+
+                <!-- ==========================================================
+                     TECHNICAL EVALUATION
+                     ========================================================== -->
+                <VBox class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <core:Icon src="sap-icon://wrench" class="sapUiTinyMarginEnd"/>
+                        <Text text="{i18n>technicalEval}" class="zcpxCardTitle"/>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+                        <Text text="{i18n>specs}" class="zcpxSectionLabel"/>
+                        <Text text="{detail>/specs}" class="sapUiSmallMarginBottom"/>
+
+                        <CheckBox
+                            id="cbCompliant"
+                            text="{i18n>techCompliant}"
+                            selected="{detail>/technicalCompliant}"
+                            select=".onComplianceChange"/>
+
+                        <Label text="{i18n>techRemark}" required="true" class="sapUiSmallMarginTop"/>
+                        <TextArea
+                            id="taTechRemark"
+                            value="{detail>/technicalRemark}"
+                            rows="3" width="100%" growing="true" growingMaxLines="6" maxLength="1000"
+                            placeholder="State which specification points were verified and how."/>
+
+                        <MessageStrip
+                            class="sapUiSmallMarginTop"
+                            text="Marking the equipment non-compliant returns the CPE to the initiator with your remarks."
+                            type="Warning"
+                            showIcon="true"
+                            visible="{= !${detail>/technicalCompliant} }"/>
+                    </VBox>
+                </VBox>
+
+                <!-- ==========================================================
+                     COMMERCIAL EVALUATION
+                     ========================================================== -->
+                <VBox class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <core:Icon src="sap-icon://supplier" class="sapUiTinyMarginEnd"/>
+                        <Text text="{i18n>commercialEval}" class="zcpxCardTitle"/>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+
+                        <MessageStrip
+                            text="{i18n>quotesRequired}"
+                            type="Warning"
+                            showIcon="true"
+                            class="sapUiSmallMarginBottom"
+                            visible="{= ${detail>/amount} > 1000000 &amp;&amp; ${detail>/vendors}.length &lt; 3 }"/>
+
+                        <Table
+                            id="tblVendors"
+                            items="{detail>/vendors}"
+                            mode="SingleSelectLeft"
+                            selectionChange=".onVendorSelect"
+                            class="sapUiSizeCompact">
+                            <columns>
+                                <Column width="4rem"><Text text="Rank"/></Column>
+                                <Column minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>vendorName}" textAlign="Center"/></Column>
+                                <Column hAlign="End"><Text text="{i18n>quote}" textAlign="Center"/></Column>
+                                <!-- Total Cost of Ownership / Quality removed from this screen
+                                     (functional ask) - still collected/sent to the backend
+                                     unchanged. Removed outright rather than Column
+                                     visible="false" - toggling visibility left the header
+                                     reserving blank space for these two columns while the body
+                                     cells fully collapsed, drifting the remaining headers out of
+                                     alignment with their data. -->
+                                <Column hAlign="End" minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>delivery}"/></Column>
+                                <Column minScreenWidth="Desktop" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>warranty}"/></Column>
+                            </columns>
+                            <items>
+                                <ColumnListItem selected="{detail>selected}">
+                                    <cells>
+                                        <ObjectStatus text="{detail>rank}" state="{= ${detail>rank} === 'L1' ? 'Information' : 'None' }"/>
+                                        <Text text="{detail>name}"/>
+                                        <Text text="{path: 'detail>quote', formatter: '.formatter.inLakhs'}" class="zcpxNum"/>
+                                        <Text text="{detail>deliveryDays} d" class="zcpxNum"/>
+                                        <Text text="{detail>warrantyMonths} mo"/>
+                                    </cells>
+                                </ColumnListItem>
+                            </items>
+                        </Table>
+
+                        <Text
+                            visible="false"
+                            text="Total cost of ownership includes freight, installation, spares and warranty extension."
+                            class="zcpxHintText sapUiTinyMarginTop"/>
+
+                        <!-- Non-L1 justification -->
+                        <VBox class="zcpxJustifyBox sapUiSmallMarginTop" visible="{detail>/showNonL1}">
+                            <HBox alignItems="Center">
+                                <core:Icon src="sap-icon://alert" color="#E76500" class="sapUiTinyMarginEnd"/>
+                                <Text text="{i18n>nonL1Warning}" class="zcpxCardTitle"/>
+                            </HBox>
+                            <Label text="{i18n>nonL1Justification}" required="true" class="sapUiTinyMarginTop"/>
+                            <TextArea
+                                id="taNonL1"
+                                value="{detail>/nonL1Justification}"
+                                rows="3" width="100%" growing="true" growingMaxLines="6" maxLength="1000"
+                                placeholder="{i18n>nonL1Placeholder}"/>
+                            <Text id="txtSaving" text="" class="zcpxHintText sapUiTinyMarginTop"/>
+                        </VBox>
+
+                    </VBox>
+                </VBox>
+
+            </VBox>
+        </content>
+
+        <footer>
+            <OverflowToolbar>
+                <ToolbarSpacer/>
+                <Button text="{i18n>save}" icon="sap-icon://save" press=".onSave"/>
+                <Button
+                    text="{i18n>submit}"
+                    icon="sap-icon://accept"
+                    type="Emphasized"
+                    press=".onSubmitEvaluation"/>
+                <Button text="{i18n>cancel}" press=".onBack"/>
+            </OverflowToolbar>
+        </footer>
+
+    </Page>
+
+</mvc:View>

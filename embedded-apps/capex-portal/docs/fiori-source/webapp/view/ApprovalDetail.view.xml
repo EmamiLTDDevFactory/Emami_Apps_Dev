@@ -1,0 +1,312 @@
+<mvc:View
+    controllerName="zcapexportal.controller.ApprovalDetail"
+    xmlns="sap.m"
+    xmlns:mvc="sap.ui.core.mvc"
+    xmlns:core="sap.ui.core"
+    xmlns:l="sap.ui.layout"
+    xmlns:f="sap.ui.layout.form"
+    height="100%">
+
+    <Page
+        id="pageApprovalDetail"
+        title="{i18n>onePageView}"
+        showNavButton="true"
+        navButtonPress=".onBack"
+        class="zcpxApp">
+
+        <content>
+            <VBox class="zcpxScreen">
+
+                <!-- ==========================================================
+                     1. HEADER — what am I approving, and for how much
+                     ========================================================== -->
+                <VBox class="zcpxHero zcpxSection">
+                    <HBox justifyContent="SpaceBetween" alignItems="Start" wrap="Wrap">
+                        <VBox>
+                            <Text text="{detail>/cpeId}" class="zcpxHeroTitle"/>
+                            <Text text="{detail>/title}" class="zcpxHeroSub"/>
+                            <Text
+                                text="{detail>/plantName} · {detail>/category} · raised by {detail>/createdBy}"
+                                class="zcpxHeroSub sapUiTinyMarginTop"/>
+                        </VBox>
+                        <VBox alignItems="End">
+                            <Text text="{i18n>cpeAmount}" class="zcpxHeroSub"/>
+                            <Text text="{path: 'detail>/amount', formatter: '.formatter.inLakhs'}" class="zcpxHeroTitle"/>
+                            <ObjectStatus
+                                text="{path: 'detail>/daysPending', formatter: '.formatter.slaText'}"
+                                state="{path: 'detail>/daysPending', formatter: '.formatter.slaState'}"
+                                inverted="true"
+                                class="sapUiTinyMarginTop"/>
+                        </VBox>
+                    </HBox>
+                </VBox>
+
+                <!-- ==========================================================
+                     2. BUDGET POSITION — total / allocated / balance
+                     ========================================================== -->
+                <VBox class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" justifyContent="SpaceBetween" alignItems="Center">
+                        <HBox alignItems="Center">
+                            <core:Icon src="sap-icon://money-bills" class="sapUiTinyMarginEnd"/>
+                            <Text text="Budget Position" class="zcpxCardTitle"/>
+                        </HBox>
+                        <Link text="{detail>/budgetId}" press=".onBudgetPress"/>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+                        <!-- All 4 tiles jump to this CPE's own Budget Detail page (onBudgetPress,
+                             same handler the header's budget-id Link already uses) - they're
+                             summarizing a different document that has its own full page, not
+                             data already shown here, so a page jump is the right pattern (as
+                             opposed to the same-page filtering used e.g. on Approval Inbox's
+                             SLA tiles). -->
+                        <l:Grid defaultSpan="XL3 L3 M6 S6" hSpacing="1" vSpacing="1">
+                            <VBox id="tileTotalBudget" class="zcpxKpi zcpxKpi--brand sapMPointer">
+                                <Text text="Total Budget" class="zcpxKpiLabel"/>
+                                <Text text="{path: 'detail>/budget/approved', formatter: '.formatter.inLakhs'}" class="zcpxKpiValue"/>
+                            </VBox>
+                            <VBox id="tileAllocated" class="zcpxKpi zcpxKpi--teal sapMPointer">
+                                <Text text="Allocated" class="zcpxKpiLabel"/>
+                                <Text text="{path: 'detail>/budget/committed', formatter: '.formatter.inLakhs'}" class="zcpxKpiValue"/>
+                            </VBox>
+                            <VBox id="tileSpentKpi" class="zcpxKpi zcpxKpi--purple sapMPointer">
+                                <Text text="Spent" class="zcpxKpiLabel"/>
+                                <Text text="{path: 'detail>/budget/spent', formatter: '.formatter.inLakhs'}" class="zcpxKpiValue"/>
+                            </VBox>
+                            <VBox id="tileBalance" class="zcpxKpi sapMPointer">
+                                <customData>
+                                    <core:CustomData key="tone" value="{path: 'detail>/budget/available', formatter: '.formatter.balanceTone'}" writeToDom="true"/>
+                                </customData>
+                                <Text text="Balance" class="zcpxKpiLabel"/>
+                                <Text text="{path: 'detail>/budget/available', formatter: '.formatter.inLakhs'}" class="zcpxKpiValue"/>
+                            </VBox>
+                        </l:Grid>
+
+                        <core:HTML
+                            content="{parts: ['detail>/budget/spent','detail>/budget/committed','detail>/budget/approved'], formatter: '.formatMeter'}"/>
+
+                        <MessageStrip
+                            class="sapUiSmallMarginTop"
+                            text="{parts: ['detail>/amount','detail>/budget/available'], formatter: '.formatBudgetVerdict'}"
+                            type="{parts: ['detail>/amount','detail>/budget/available'], formatter: '.formatBudgetVerdictType'}"
+                            showIcon="true"/>
+                    </VBox>
+                </VBox>
+
+                <!-- ==========================================================
+                     3. VENDOR DECISION
+                     ========================================================== -->
+                <VBox class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <core:Icon src="sap-icon://supplier" class="sapUiTinyMarginEnd"/>
+                        <Text text="{i18n>vendorComparison}" class="zcpxCardTitle"/>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+                        <Table items="{detail>/vendors}" class="sapUiSizeCompact" noDataText="No quotes recorded.">
+                            <columns>
+                                <Column width="4rem"><Text text="Rank"/></Column>
+                                <Column minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>vendorName}" textAlign="Center"/></Column>
+                                <Column hAlign="End"><Text text="{i18n>quote}" textAlign="Center"/></Column>
+                                <!-- Total Cost of Ownership / Quality removed from this screen
+                                     (functional ask) - still collected/sent to the backend
+                                     unchanged. Removed outright rather than Column
+                                     visible="false" - toggling visibility left the header
+                                     reserving blank space for these two columns while the body
+                                     cells fully collapsed, drifting the remaining headers out of
+                                     alignment with their data. -->
+                                <Column hAlign="End" minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>delivery}"/></Column>
+                                <Column hAlign="End" width="7rem"><Text text=""/></Column>
+                            </columns>
+                            <items>
+                                <ColumnListItem highlight="{= ${detail>selected} ? 'Success' : 'None' }">
+                                    <cells>
+                                        <ObjectStatus text="{detail>rank}" state="{= ${detail>rank} === 'L1' ? 'Information' : 'None' }"/>
+                                        <Text text="{detail>name}"/>
+                                        <Text text="{path: 'detail>quote', formatter: '.formatter.inLakhs'}" class="zcpxNum"/>
+                                        <Text text="{detail>deliveryDays} d" class="zcpxNum"/>
+                                        <ObjectStatus text="{i18n>selected}" state="Success" icon="sap-icon://sys-enter-2" visible="{detail>selected}"/>
+                                    </cells>
+                                </ColumnListItem>
+                            </items>
+                        </Table>
+
+                        <VBox class="zcpxJustifyBox sapUiSmallMarginTop" visible="{= !!${detail>/nonL1Justification} }">
+                            <HBox alignItems="Center">
+                                <core:Icon src="sap-icon://alert" color="#E76500" class="sapUiTinyMarginEnd"/>
+                                <Text text="Non-L1 vendor selected — justification on record" class="zcpxCardTitle"/>
+                            </HBox>
+                            <Text text="{detail>/nonL1Justification}" class="sapUiTinyMarginTop"/>
+                            <Text text="{parts: ['detail>/savingVsL1'], formatter: '.formatSaving'}" class="zcpxHintText sapUiTinyMarginTop"/>
+                        </VBox>
+                    </VBox>
+                </VBox>
+
+                <!-- ==========================================================
+                     4. FINANCIAL METRICS
+                     ========================================================== -->
+                <VBox class="zcpxCard zcpxSection" visible="{detail>/metricsEnabled}">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <core:Icon src="sap-icon://line-chart" class="sapUiTinyMarginEnd"/>
+                        <Text text="{i18n>financialMetrics}" class="zcpxCardTitle"/>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+                        <l:Grid defaultSpan="XL4 L4 M4 S12" hSpacing="1" vSpacing="1">
+                            <VBox class="zcpxMetric">
+                                <Text text="{i18n>irr}" class="zcpxMetricLabel"/>
+                                <Text text="{path: 'detail>/irr', formatter: '.formatIrr'}" class="zcpxMetricValue">
+    <customData>
+        <core:CustomData key="tone" value="{path: 'detail>/irr', formatter: '.formatter.irrTone'}" writeToDom="true"/>
+    </customData>
+</Text>
+                                <Text text="{parts: ['detail>/hurdleRate'], formatter: '.formatHurdleFoot'}" class="zcpxHintText"/>
+                            </VBox>
+                            <VBox class="zcpxMetric">
+                                <Text text="{i18n>npv}" class="zcpxMetricLabel"/>
+                                <Text text="{path: 'detail>/npv', formatter: '.formatNpv'}" class="zcpxMetricValue">
+    <customData>
+        <core:CustomData key="tone" value="{path: 'detail>/npv', formatter: '.formatter.npvTone'}" writeToDom="true"/>
+    </customData>
+</Text>
+                            </VBox>
+                            <VBox class="zcpxMetric">
+                                <Text text="{i18n>payback}" class="zcpxMetricLabel"/>
+                                <Text text="{path: 'detail>/payback', formatter: '.formatPayback'}" class="zcpxMetricValue">
+    <customData>
+        <core:CustomData key="tone" value="{path: 'detail>/payback', formatter: '.formatter.paybackTone'}" writeToDom="true"/>
+    </customData>
+</Text>
+                            </VBox>
+                        </l:Grid>
+                    </VBox>
+                </VBox>
+
+                <!-- ==========================================================
+                     5. TECHNICAL + SPECS (collapsed by default)
+                     ========================================================== -->
+                <Panel
+                    class="zcpxSection"
+                    headerText="Technical Details &amp; Documents"
+                    expandable="true"
+                    expanded="false"
+                    backgroundDesign="Solid">
+                    <content>
+                        <VBox class="sapUiSmallMargin">
+                            <HBox alignItems="Center" class="sapUiTinyMarginBottom">
+                                <ObjectStatus
+                                    text="{= ${detail>/technicalCompliant} ? 'Technically compliant' : 'Technical sign-off pending' }"
+                                    state="{= ${detail>/technicalCompliant} ? 'Success' : 'Warning' }"
+                                    icon="{= ${detail>/technicalCompliant} ? 'sap-icon://sys-enter-2' : 'sap-icon://pending' }"/>
+                            </HBox>
+
+                            <Text text="{i18n>specs}" class="zcpxSectionLabel"/>
+                            <Text text="{path: 'detail>/specs', formatter: '.formatter.orDash'}" class="sapUiSmallMarginBottom"/>
+
+                            <Text text="{i18n>terms}" class="zcpxSectionLabel"/>
+                            <Text text="{path: 'detail>/terms', formatter: '.formatter.orDash'}" class="sapUiSmallMarginBottom"/>
+
+                            <Text text="{i18n>techRemark}" class="zcpxSectionLabel"/>
+                            <Text text="{path: 'detail>/technicalRemark', formatter: '.formatter.orDash'}" class="sapUiSmallMarginBottom"/>
+
+                            <Text text="{i18n>attachments}" class="zcpxSectionLabel"/>
+                            <List items="{detail>/documents}" noDataText="{i18n>docNone}" mode="None">
+                                <StandardListItem
+                                    title="{= ${detail>title} || ${detail>fileName} }"
+                                    description="{= (${detail>categoryText} || ${detail>category} || '') + ' · ' + (${detail>sizeText} || '') }"
+                                    icon="sap-icon://document"
+                                    iconInset="false"
+                                    type="Active"
+                                    press=".onDownload"/>
+                            </List>
+                        </VBox>
+                    </content>
+                </Panel>
+
+                <!-- ==========================================================
+                     6. APPROVAL TRAIL  (front-page audit, as per requirement)
+                     ========================================================== -->
+                <VBox class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <core:Icon src="sap-icon://approvals" class="sapUiTinyMarginEnd"/>
+                        <Text text="{i18n>approvalChain}" class="zcpxCardTitle"/>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+                        <VBox class="zcpxTimeline" items="{detail>/chain}">
+                            <VBox class="zcpxTlItem">
+                                <customData>
+                                    <core:CustomData key="tone" value="{path: 'detail>status', formatter: '.formatter.timelineTone'}" writeToDom="true"/>
+                                </customData>
+                                <HBox justifyContent="SpaceBetween" wrap="Wrap">
+                                    <VBox>
+                                        <Text text="{detail>role}" class="zcpxTlRole"/>
+                                        <Text text="{detail>approver}" class="zcpxTlMeta"/>
+                                    </VBox>
+                                    <VBox alignItems="End">
+                                        <ObjectStatus
+                                            text="{path: 'detail>status', formatter: '.formatter.statusText'}"
+                                            state="{path: 'detail>status', formatter: '.formatter.statusState'}"/>
+                                        <Text
+                                            text="{path: 'detail>actedOn', formatter: '.formatter.dateTime'}"
+                                            class="zcpxTlMeta"
+                                            visible="{= !!${detail>actedOn} }"/>
+                                    </VBox>
+                                </HBox>
+                                <Text text="{detail>comment}" class="zcpxTlNote" visible="{= !!${detail>comment} }"/>
+                            </VBox>
+                        </VBox>
+                    </VBox>
+                </VBox>
+
+                <!-- ==========================================================
+                     7. DECISION
+                     ========================================================== -->
+                <VBox class="zcpxCard zcpxSection" visible="{detail>/canAct}">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <core:Icon src="sap-icon://decision" class="sapUiTinyMarginEnd"/>
+                        <Text text="Your Decision" class="zcpxCardTitle"/>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+                        <Label text="{i18n>commentLabel}"/>
+                        <TextArea
+                            id="taComment"
+                            value="{detail>/comment}"
+                            rows="3" width="100%" growing="true" growingMaxLines="6" maxLength="1000"
+                            placeholder="Optional for approval. Mandatory when rejecting or holding."/>
+                    </VBox>
+                </VBox>
+
+                <MessageStrip
+                    class="zcpxSection"
+                    text="{parts: ['detail>/currentLevel'], formatter: '.formatNotYoursMsg'}"
+                    type="Information"
+                    showIcon="true"
+                    visible="{= !${detail>/canAct} }"/>
+
+            </VBox>
+        </content>
+
+        <footer>
+            <OverflowToolbar id="tbActions" visible="{detail>/canAct}">
+                <ToolbarSpacer/>
+                <Button
+                    text="{i18n>rollout}"
+                    icon="sap-icon://journey-arrive"
+                    press=".onRollout"/>
+                <Button
+                    text="{i18n>hold}"
+                    icon="sap-icon://pending"
+                    press=".onHold"/>
+                <Button
+                    text="{i18n>reject}"
+                    icon="sap-icon://decline"
+                    type="Reject"
+                    press=".onReject"/>
+                <Button
+                    text="{i18n>approve}"
+                    icon="sap-icon://accept"
+                    type="Accept"
+                    press=".onApprove"/>
+            </OverflowToolbar>
+        </footer>
+
+    </Page>
+
+</mvc:View>

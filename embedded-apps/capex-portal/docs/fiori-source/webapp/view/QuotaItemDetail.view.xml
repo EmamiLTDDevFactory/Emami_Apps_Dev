@@ -1,0 +1,85 @@
+<mvc:View
+    controllerName="zcapexportal.controller.QuotaItemDetail"
+    xmlns="sap.m"
+    xmlns:mvc="sap.ui.core.mvc"
+    xmlns:core="sap.ui.core"
+    xmlns:f="sap.ui.layout.form"
+    height="100%">
+
+    <Page
+        id="pageQuotaItemDetail"
+        title="Quota Item"
+        showNavButton="true"
+        navButtonPress=".onBack"
+        class="zcpxApp">
+
+        <content>
+            <VBox class="zcpxScreen">
+
+                <VBox class="zcpxHero zcpxSection">
+                    <HBox justifyContent="SpaceBetween" alignItems="Start" wrap="Wrap">
+                        <VBox>
+                            <HBox alignItems="Center" wrap="Wrap">
+                                <Text text="{detail>/id}" class="zcpxHeroTitle sapUiTinyMarginEnd"/>
+                                <ObjectStatus
+                                    text="{path: 'detail>/status', formatter: '.formatter.statusText'}"
+                                    state="{path: 'detail>/status', formatter: '.formatter.statusState'}"
+                                    icon="{path: 'detail>/status', formatter: '.formatter.statusIcon'}"
+                                    inverted="true"/>
+                            </HBox>
+                            <Text text="{detail>/title}" class="zcpxHeroSub"/>
+                            <Text
+                                text="{detail>/plantName} · {detail>/fiscalYear}"
+                                class="zcpxHeroSub sapUiTinyMarginTop"/>
+                        </VBox>
+                        <VBox alignItems="End">
+                            <Text text="Amount" class="zcpxHeroSub"/>
+                            <Text text="{path: 'detail>/amount', formatter: '.formatter.rupees'}" class="zcpxHeroTitle"/>
+                        </VBox>
+                    </HBox>
+                </VBox>
+
+                <VBox class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <core:Icon src="sap-icon://list" class="sapUiTinyMarginEnd"/>
+                        <Text text="{i18n>details}" class="zcpxCardTitle"/>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+                        <f:SimpleForm
+                            layout="ResponsiveGridLayout"
+                            editable="false"
+                            labelSpanXL="4" labelSpanL="4" labelSpanM="4" labelSpanS="12"
+                            adjustLabelSpan="false"
+                            columnsXL="2" columnsL="2" columnsM="1">
+                            <f:content>
+                                <Label text="{i18n>plant}"/>
+                                <Text text="{detail>/plantName}" class="zcpxReadonlyValue"/>
+                                <Label text="{i18n>fiscalYear}"/>
+                                <Text text="{detail>/fiscalYear}" class="zcpxReadonlyValue"/>
+                                <Label text="{i18n>status}"/>
+                                <Text
+                                    text="{path: 'detail>/status', formatter: '.formatter.statusText'}"
+                                    class="zcpxReadonlyValue"/>
+                                <Label text="Current Approval Level"/>
+                                <Text text="{path: 'detail>/currentLevel', formatter: '.formatter.orDash'}" class="zcpxReadonlyValue"/>
+                                <Label text="{i18n>createdBy}"/>
+                                <Text text="{detail>/createdByName}" class="zcpxReadonlyValue"/>
+                                <Label text="Created On"/>
+                                <Text text="{path: 'detail>/createdOn', formatter: '.formatter.date'}" class="zcpxReadonlyValue"/>
+                                <Label text="Approved By"/>
+                                <Text text="{path: 'detail>/approvedByName', formatter: '.formatter.orDash'}" class="zcpxReadonlyValue"/>
+                                <Label text="{i18n>approvedOn}"/>
+                                <Text text="{path: 'detail>/approvedOn', formatter: '.formatter.date'}" class="zcpxReadonlyValue"/>
+                            </f:content>
+                        </f:SimpleForm>
+
+                        <Text text="{i18n>justification}" class="zcpxSectionLabel sapUiSmallMarginTop"/>
+                        <Text text="{path: 'detail>/justification', formatter: '.formatter.orDash'}"/>
+                    </VBox>
+                </VBox>
+
+            </VBox>
+        </content>
+    </Page>
+
+</mvc:View>

@@ -1,0 +1,261 @@
+<mvc:View
+    controllerName="zcapexportal.controller.ICDetail"
+    xmlns="sap.m"
+    xmlns:mvc="sap.ui.core.mvc"
+    xmlns:core="sap.ui.core"
+    xmlns:l="sap.ui.layout"
+    xmlns:f="sap.ui.layout.form"
+    xmlns:u="sap.ui.unified"
+    height="100%">
+
+    <Page
+        id="pageICDetail"
+        title="{i18n>icDetailTitle}"
+        showNavButton="true"
+        navButtonPress=".onBack"
+        class="zcpxApp">
+
+        <content>
+            <VBox class="zcpxScreen">
+
+                <VBox class="zcpxHero zcpxSection">
+                    <HBox justifyContent="SpaceBetween" alignItems="Start" wrap="Wrap">
+                        <VBox>
+                            <HBox alignItems="Center" wrap="Wrap">
+                                <Text text="{detail>/icId}" class="zcpxHeroTitle sapUiTinyMarginEnd"/>
+                                <ObjectStatus
+                                    text="{path: 'detail>/status', formatter: '.formatter.statusText'}"
+                                    state="{path: 'detail>/status', formatter: '.formatter.statusState'}"
+                                    inverted="true"/>
+                            </HBox>
+                            <Text text="{detail>/title}" class="zcpxHeroSub"/>
+                            <Text text="{detail>/plantName} · CPE {detail>/cpeId} · PO {detail>/poId}" class="zcpxHeroSub sapUiTinyMarginTop"/>
+                        </VBox>
+                        <VBox alignItems="End">
+                            <Text text="{i18n>totalCapitalCost}" class="zcpxHeroSub"/>
+                            <Text text="{path: 'detail>/totalCapitalCost', formatter: '.formatter.inLakhs'}" class="zcpxHeroTitle"/>
+                            <Text
+                                text="Asset {detail>/assetNumber}"
+                                class="zcpxHeroSub"
+                                visible="{= !!${detail>/assetNumber} }"/>
+                        </VBox>
+                    </HBox>
+                </VBox>
+
+                <!-- ==========================================================
+                     COMMISSIONING
+                     ========================================================== -->
+                <VBox class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <core:Icon src="sap-icon://accept" class="sapUiTinyMarginEnd"/>
+                        <Text text="Commissioning" class="zcpxCardTitle"/>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+                        <f:SimpleForm
+                            layout="ResponsiveGridLayout"
+                            editable="{detail>/editable}"
+                            labelSpanXL="4" labelSpanL="4" labelSpanM="4" labelSpanS="12"
+                            adjustLabelSpan="false"
+                            columnsXL="2" columnsL="2" columnsM="1">
+                            <f:content>
+                                <Label text="{i18n>commissioningDate}" required="true"/>
+                                <DatePicker
+                                    id="dpCommissioning"
+                                    value="{path: 'detail>/commissioningDate', type: 'sap.ui.model.type.Date', formatOptions: {style: 'medium', source: {pattern: 'yyyy-MM-ddTHH:mm:ss.SSSZ'}}}"
+                                    editable="{detail>/editable}"
+                                    valueFormat="yyyy-MM-dd"
+                                    displayFormat="dd MMM yyyy"/>
+
+                                <Label text="{i18n>techSignOff}" required="true"/>
+                                <Input
+                                    id="inpSignOff"
+                                    value="{detail>/techSignOff}"
+                                    editable="{detail>/editable}"
+                                    maxLength="12"
+                                    placeholder="Name of the certifying engineer"/>
+                            </f:content>
+                        </f:SimpleForm>
+
+                        <Label text="{i18n>remarks}" class="sapUiSmallMarginTop"/>
+                        <TextArea
+                            value="{detail>/remarks}"
+                            editable="{detail>/editable}"
+                            rows="3" width="100%" growing="true" growingMaxLines="6" maxLength="800"
+                            placeholder="Trial run results, output verified, handover confirmation."/>
+                    </VBox>
+                </VBox>
+
+                <!-- ==========================================================
+                     COST BREAKDOWN
+                     ========================================================== -->
+                <VBox class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <core:Icon src="sap-icon://sum" class="sapUiTinyMarginEnd"/>
+                        <Text text="Capitalization Cost Breakdown" class="zcpxCardTitle"/>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+                        <f:SimpleForm
+                            layout="ResponsiveGridLayout"
+                            editable="{detail>/editable}"
+                            labelSpanXL="5" labelSpanL="5" labelSpanM="5" labelSpanS="12"
+                            adjustLabelSpan="false"
+                            columnsXL="2" columnsL="2" columnsM="1">
+                            <f:content>
+                                <Label text="{i18n>equipmentCost}" required="true"/>
+                                <Input
+                                    id="inpEquipment"
+                                    value="{path: 'detail>/equipmentCost', type: 'sap.ui.model.type.Float', formatOptions: {maxFractionDigits: 0, groupingEnabled: true}}"
+                                    description="₹"
+                                    editable="{detail>/editable}"
+                                    change=".onCostChange"/>
+
+                                <Label text="{i18n>freightCost}"/>
+                                <Input
+                                    value="{path: 'detail>/freightCost', type: 'sap.ui.model.type.Float', formatOptions: {maxFractionDigits: 0, groupingEnabled: true}}"
+                                    description="₹"
+                                    editable="{detail>/editable}"
+                                    change=".onCostChange"/>
+
+                                <Label text="{i18n>installationCost}"/>
+                                <Input
+                                    value="{path: 'detail>/installationCost', type: 'sap.ui.model.type.Float', formatOptions: {maxFractionDigits: 0, groupingEnabled: true}}"
+                                    description="₹"
+                                    editable="{detail>/editable}"
+                                    change=".onCostChange"/>
+                            </f:content>
+                        </f:SimpleForm>
+
+                        <HBox
+                            class="zcpxKpi zcpxKpi--success sapUiSmallMarginTop"
+                            justifyContent="SpaceBetween"
+                            alignItems="Center">
+                            <VBox>
+                                <Text text="{i18n>totalCapitalCost}" class="zcpxKpiLabel"/>
+                                <Text text="Booked to fixed asset on approval" class="zcpxKpiFoot"/>
+                            </VBox>
+                            <Text text="{path: 'detail>/totalCapitalCost', formatter: '.formatter.rupees'}" class="zcpxKpiValue"/>
+                        </HBox>
+                    </VBox>
+                </VBox>
+
+                <!-- ==========================================================
+                     PHOTOGRAPHS (3 mandatory)
+                     ========================================================== -->
+                <VBox class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" justifyContent="SpaceBetween" alignItems="Center">
+                        <HBox alignItems="Center">
+                            <core:Icon src="sap-icon://camera" class="sapUiTinyMarginEnd"/>
+                            <Text text="{i18n>photos}" class="zcpxCardTitle"/>
+                        </HBox>
+                        <ObjectStatus
+                            text="{parts: ['detail>/photoCount'], formatter: '.formatPhotoStatus'}"
+                            state="{parts: ['detail>/photoCount'], formatter: '.formatPhotoState'}"/>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+                        <Text text="{i18n>photosHint}" class="zcpxHintText sapUiSmallMarginBottom"/>
+
+                        <l:Grid defaultSpan="XL4 L4 M4 S12" hSpacing="1" vSpacing="1">
+                            <VBox items="{detail>/photoSlots}">
+                                <VBox
+                                    class="zcpxPhotoTile"
+                                    justifyContent="Center"
+                                    alignItems="Center">
+                                    <customData>
+                                        <core:CustomData key="tone" value="{= ${detail>uploaded} ? 'filled' : 'empty' }" writeToDom="true"/>
+                                    </customData>
+                                    <core:Icon
+                                        src="{= ${detail>uploaded} ? 'sap-icon://accept' : 'sap-icon://add-photo' }"
+                                        size="1.5rem"/>
+                                    <Text text="{detail>label}"/>
+                                    <Text text="{detail>name}" visible="{detail>uploaded}" class="zcpxHintText"/>
+                                    <HBox justifyContent="Center" alignItems="Center">
+                                        <Button
+                                            icon="sap-icon://show"
+                                            type="Transparent"
+                                            tooltip="{i18n>docView}"
+                                            press=".onViewPhoto"
+                                            visible="{= !!${detail>previewUrl} }"/>
+                                        <Link
+                                            text="{i18n>docDownload}"
+                                            press=".onDownloadPhoto"
+                                            visible="{= !!${detail>url} }"/>
+                                    </HBox>
+                                    <HBox justifyContent="Center" alignItems="Center">
+                                        <u:FileUploader
+                                            buttonOnly="true"
+                                            buttonText="{= ${detail>uploaded} ? 'Replace' : ${i18n>addPhoto} }"
+                                            iconOnly="false"
+                                            fileType="jpg,jpeg,png"
+                                            mimeType="image/jpeg,image/png"
+                                            maximumFileSize="10"
+                                            change=".onPhotoFileChange"
+                                            fileSizeExceed=".onPhotoSizeExceed"
+                                            visible="{detail>/editable}"/>
+                                        <Button
+                                            icon="sap-icon://delete"
+                                            type="Transparent"
+                                            tooltip="{i18n>deleteAction}"
+                                            press=".onRemovePhoto"
+                                            visible="{= ${detail>uploaded} &amp;&amp; ${detail>/editable} }"/>
+                                    </HBox>
+                                </VBox>
+                            </VBox>
+                        </l:Grid>
+                    </VBox>
+                </VBox>
+
+                <!-- ==========================================================
+                     SAP RESULT
+                     ========================================================== -->
+                <VBox class="zcpxCard zcpxSection" visible="{= ${detail>/status} === 'CAPITALIZED' }">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <core:Icon src="sap-icon://building" class="sapUiTinyMarginEnd"/>
+                        <Text text="Fixed Asset" class="zcpxCardTitle"/>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+                        <f:SimpleForm
+                            layout="ResponsiveGridLayout"
+                            editable="false"
+                            labelSpanXL="4" labelSpanL="4" labelSpanM="4" labelSpanS="12"
+                            adjustLabelSpan="false"
+                            columnsXL="2" columnsL="2" columnsM="1">
+                            <f:content>
+                                <Label text="{i18n>assetNumber}"/>
+                                <Text text="{detail>/assetNumber}" class="zcpxReadonlyValue"/>
+                                <Label text="{i18n>capitalizedOn}"/>
+                                <Text text="{path: 'detail>/capitalizedOn', formatter: '.formatter.date'}" class="zcpxReadonlyValue"/>
+                            </f:content>
+                        </f:SimpleForm>
+                        <MessageStrip
+                            class="sapUiSmallMarginTop"
+                            text="Fixed asset created in SAP. GL posting generated and depreciation started from the commissioning date."
+                            type="Success"
+                            showIcon="true"/>
+                    </VBox>
+                </VBox>
+
+            </VBox>
+        </content>
+
+        <footer>
+            <OverflowToolbar>
+                <ToolbarSpacer/>
+                <Button
+                    text="{i18n>save}"
+                    icon="sap-icon://save"
+                    press=".onSave"
+                    visible="{detail>/editable}"/>
+                <Button
+                    text="{i18n>approveIC}"
+                    icon="sap-icon://accept"
+                    type="Accept"
+                    press=".onApproveIC"
+                    visible="{detail>/canApprove}"/>
+                <Button text="{i18n>print}" icon="sap-icon://print" press=".onPrint"/>
+                <Button text="{i18n>back}" press=".onBack"/>
+            </OverflowToolbar>
+        </footer>
+
+    </Page>
+
+</mvc:View>

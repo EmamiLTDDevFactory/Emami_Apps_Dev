@@ -1,0 +1,414 @@
+<mvc:View
+    controllerName="zcapexportal.controller.BudgetCreate"
+    xmlns="sap.m"
+    xmlns:mvc="sap.ui.core.mvc"
+    xmlns:core="sap.ui.core"
+    xmlns:l="sap.ui.layout"
+    xmlns:f="sap.ui.layout.form"
+    xmlns:u="sap.ui.unified"
+    height="100%">
+
+    <Page
+        id="pageBudgetCreate"
+        title="{budget>/formTitle}"
+        showNavButton="true"
+        navButtonPress=".onBack"
+        class="zcpxApp">
+
+        <content>
+            <VBox class="zcpxScreen">
+
+                <!-- ==========================================================
+                     0. EXCEL IMPORT
+                     Fills every field on this page (header + line items) from
+                     a downloaded-and-filled-in template, instead of typing
+                     each one manually - see onDownloadTemplate/onUploadTemplate.
+                     ========================================================== -->
+                <VBox class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <core:Icon src="sap-icon://attachment-text-file" class="sapUiTinyMarginEnd"/>
+                        <Text text="{i18n>excelImport}" class="zcpxCardTitle"/>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+                        <Text text="{i18n>excelImportHint}" class="zcpxHintText"/>
+                        <HBox alignItems="Center" wrap="Wrap" class="sapUiTinyMarginTop">
+                            <Button
+                                text="{i18n>downloadTemplate}"
+                                icon="sap-icon://download"
+                                press=".onDownloadTemplate"
+                                class="sapUiTinyMarginEnd sapUiTinyMarginBottom"/>
+                            <u:FileUploader
+                                id="fuBudgetUpload"
+                                change=".onUploadTemplate"
+                                fileType="xlsx"
+                                buttonText="{i18n>uploadTemplate}"
+                                placeholder="{i18n>noFileChosen}"
+                                width="22rem"
+                                class="sapUiTinyMarginBottom"/>
+                        </HBox>
+                    </VBox>
+                </VBox>
+
+                <!-- ==========================================================
+                     1. BUDGET DETAILS
+                     ========================================================== -->
+                <VBox class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <core:Icon src="sap-icon://money-bills" class="sapUiTinyMarginEnd"/>
+                        <Text text="Budget Details" class="zcpxCardTitle"/>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+                        <f:SimpleForm
+                            layout="ResponsiveGridLayout"
+                            editable="true"
+                            labelSpanXL="4" labelSpanL="4" labelSpanM="4" labelSpanS="12"
+                            adjustLabelSpan="false"
+                            emptySpanXL="0" emptySpanL="0" emptySpanM="0" emptySpanS="0"
+                            columnsXL="2" columnsL="2" columnsM="1"
+                            singleContainerFullSize="false">
+                            <f:content>
+
+                                <Label text="{i18n>budgetTitle}" required="true"/>
+                                <Input
+                                    id="inpTitle"
+                                    value="{budget>/draft/title}"
+                                    placeholder="e.g. Manufacturing Capacity Expansion"
+                                    valueStateText="{i18n>required}"/>
+
+                                <Label text="{i18n>plant}" required="true"/>
+                                <ComboBox
+                                    id="cbPlant"
+                                    selectedKey="{budget>/draft/plant}"
+                                    items="{budget>/plants}">
+                                    <core:Item key="{budget>key}" text="{budget>text}"/>
+                                </ComboBox>
+
+                                <Label text="{i18n>capexType}" required="true"/>
+                                <ComboBox
+                                    id="cbCapexType"
+                                    selectedKey="{budget>/draft/capexType}"
+                                    items="{budget>/capexTypes}"
+                                    selectionChange=".onCapexTypeChange">
+                                    <core:Item key="{budget>key}" text="{budget>text}"/>
+                                </ComboBox>
+
+                                <Label text="{i18n>category}" required="true"/>
+                                <ComboBox
+                                    id="cbCategory"
+                                    selectedKey="{budget>/draft/category}"
+                                    items="{budget>/categories}">
+                                    <core:Item key="{budget>key}" text="{budget>text}"/>
+                                </ComboBox>
+
+                                <Label text="{i18n>budgetAmount}" required="true"/>
+                                <VBox>
+                                    <Input
+                                        id="inpAmount"
+                                        value="{path: 'budget>/draft/amount', type: 'sap.ui.model.type.Float', formatOptions: {maxFractionDigits: 0, groupingEnabled: false}}"
+                                        description="₹"
+                                        valueLiveUpdate="true"
+                                        liveChange=".onAmountChange"
+                                        editable="{= !${budget>/draft/items}.length }"
+                                        placeholder="0"/>
+                                    <Text
+                                        text="{i18n>amountComputedFromItems}"
+                                        class="zcpxHintText"
+                                        visible="{= !!${budget>/draft/items}.length }"/>
+                                </VBox>
+
+                                <Label text="{i18n>fundingSource}"/>
+                                <Text text="{i18n>fsNew}" class="zcpxReadonlyValue"/>
+
+                            </f:content>
+                        </f:SimpleForm>
+                    </VBox>
+                </VBox>
+
+                <!-- ==========================================================
+                     1b. BUDGET LINE ITEMS (sub-budgets, transport EDSK9B0EA7)
+                     Hidden entirely until the live service exposes
+                     BudgetToItems - see _onMatched/itemsFeatureAvailable.
+                     ========================================================== -->
+                <VBox class="zcpxCard zcpxSection" visible="{budget>/itemsFeatureAvailable}">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <core:Icon src="sap-icon://list" class="sapUiTinyMarginEnd"/>
+                        <Text text="{i18n>budgetItems}" class="zcpxCardTitle"/>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+                        <Text text="{i18n>budgetItemsHint}" class="zcpxHintText"/>
+
+                        <Table
+                            items="{path: 'budget>/draft/items', key: 'id'}"
+                            noDataText="{i18n>noItemsYet}"
+                            class="sapUiTinyMarginTop">
+                            <columns>
+                                <Column width="35%"><Text text="{i18n>itemTitlePlaceholder}"/></Column>
+                                <Column width="18%"><Text text="{i18n>budgetAmount}"/></Column>
+                                <Column width="30%" minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>itemRemarksPlaceholder}"/></Column>
+                                <Column width="3rem"/>
+                            </columns>
+                            <items>
+                                <ColumnListItem>
+                                    <cells>
+                                        <Input
+                                            value="{budget>title}"
+                                            placeholder="{i18n>itemTitlePlaceholder}"
+                                            change=".onItemChange"/>
+                                        <Input
+                                            value="{path: 'budget>amount', type: 'sap.ui.model.type.Float', formatOptions: {maxFractionDigits: 0, groupingEnabled: false}}"
+                                            description="₹"
+                                            placeholder="{i18n>itemAmountPlaceholder}"
+                                            textAlign="End"
+                                            valueLiveUpdate="true"
+                                            liveChange=".onItemChange"/>
+                                        <Input
+                                            value="{budget>remarks}"
+                                            placeholder="{i18n>itemRemarksPlaceholder}"
+                                            change=".onItemChange"/>
+                                        <Button
+                                            icon="sap-icon://delete"
+                                            type="Transparent"
+                                            press=".onRemoveItem"
+                                            tooltip="{i18n>deleteAction}"/>
+                                    </cells>
+                                </ColumnListItem>
+                            </items>
+                        </Table>
+
+                        <Button
+                            text="{i18n>addItem}"
+                            icon="sap-icon://add"
+                            type="Transparent"
+                            press=".onAddItem"
+                            class="sapUiTinyMarginTop"/>
+
+                        <Text
+                            text="{path: 'budget>/draft/items', formatter: '.formatItemsTotal'}"
+                            class="zcpxSectionLabel sapUiSmallMarginTop"
+                            visible="{= !!${budget>/draft/items}.length }"/>
+                    </VBox>
+                </VBox>
+
+                <!-- ==========================================================
+                     2. JUSTIFICATION
+                     ========================================================== -->
+                <VBox class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <core:Icon src="sap-icon://notes" class="sapUiTinyMarginEnd"/>
+                        <Text text="Justification &amp; Benefits" class="zcpxCardTitle"/>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+                        <Label text="{i18n>justification}" required="true"/>
+                        <TextArea
+                            id="taJustification"
+                            value="{budget>/draft/justification}"
+                            rows="4"
+                            width="100%"
+                            growing="true"
+                            growingMaxLines="8"
+                            maxLength="1000"
+                            showExceededText="true"
+                            placeholder="Why is this investment needed? Reference capacity, compliance, obsolescence or cost data."/>
+
+                        <Label text="{i18n>expectedBenefit}" class="sapUiSmallMarginTop"/>
+                        <TextArea
+                            id="taBenefit"
+                            value="{budget>/draft/expectedBenefit}"
+                            rows="3"
+                            width="100%"
+                            growing="true"
+                            growingMaxLines="6"
+                            maxLength="600"
+                            placeholder="Quantify the benefit: throughput gain, cost saving per annum, rejection reduction."/>
+                    </VBox>
+                </VBox>
+
+                <!-- ==========================================================
+                     3. FINANCIAL EVALUATION  (toggleable per requirement)
+                     ========================================================== -->
+                <VBox class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" justifyContent="SpaceBetween" alignItems="Center">
+                        <HBox alignItems="Center">
+                            <core:Icon src="sap-icon://line-chart" class="sapUiTinyMarginEnd"/>
+                            <Text text="{i18n>financialMetrics}" class="zcpxCardTitle"/>
+                        </HBox>
+                        <HBox alignItems="Center">
+                            <Label text="{i18n>enableMetrics}" class="sapUiTinyMarginEnd"/>
+                            <Switch
+                                id="swMetrics"
+                                state="{budget>/draft/metricsEnabled}"
+                                change=".onToggleMetrics"
+                                customTextOn="On"
+                                customTextOff="Off"/>
+                        </HBox>
+                    </HBox>
+
+                    <VBox class="zcpxCardBody">
+
+                        <MessageStrip
+                            text="{i18n>metricsDisabledHint}"
+                            type="Information"
+                            showIcon="true"
+                            visible="{= !${budget>/draft/metricsEnabled} }"/>
+
+                        <VBox visible="{budget>/draft/metricsEnabled}">
+
+                            <f:SimpleForm
+                                layout="ResponsiveGridLayout"
+                                editable="true"
+                                labelSpanXL="4" labelSpanL="4" labelSpanM="4" labelSpanS="12"
+                                adjustLabelSpan="false"
+                                columnsXL="2" columnsL="2" columnsM="1">
+                                <f:content>
+                                    <Label text="{i18n>investment}"/>
+                                    <Text
+                                        text="{path: 'budget>/draft/amount', formatter: '.formatter.rupees'}"
+                                        class="zcpxReadonlyValue"/>
+
+                                    <Label text="{i18n>hurdleRate}"/>
+                                    <Text
+                                        text="{= ${budget>/draft/hurdleRate} + '%'}"
+                                        class="zcpxReadonlyValue"/>
+                                </f:content>
+                            </f:SimpleForm>
+
+                            <Text text="{i18n>cashFlows}" class="zcpxSectionLabel sapUiSmallMarginTop"/>
+                            <l:Grid defaultSpan="XL2 L2 M4 S6" hSpacing="1" vSpacing="1">
+                                <VBox>
+                                    <Label text="{i18n>year1}"/>
+                                    <Input id="inpCf1" value="{budget>/draft/cf1}" type="Number" liveChange=".onCalc" placeholder="0"/>
+                                </VBox>
+                                <VBox>
+                                    <Label text="{i18n>year2}"/>
+                                    <Input id="inpCf2" value="{budget>/draft/cf2}" type="Number" liveChange=".onCalc" placeholder="0"/>
+                                </VBox>
+                                <VBox>
+                                    <Label text="{i18n>year3}"/>
+                                    <Input id="inpCf3" value="{budget>/draft/cf3}" type="Number" liveChange=".onCalc" placeholder="0"/>
+                                </VBox>
+                                <VBox>
+                                    <Label text="{i18n>year4}"/>
+                                    <Input id="inpCf4" value="{budget>/draft/cf4}" type="Number" liveChange=".onCalc" placeholder="0"/>
+                                </VBox>
+                                <VBox>
+                                    <Label text="{i18n>year5}"/>
+                                    <Input id="inpCf5" value="{budget>/draft/cf5}" type="Number" liveChange=".onCalc" placeholder="0"/>
+                                </VBox>
+                                <VBox>
+                                    <Label text="{i18n>year6}"/>
+                                    <Input id="inpCf6" value="{budget>/draft/cf6}" type="Number" liveChange=".onCalc" placeholder="0"/>
+                                </VBox>
+                                <VBox>
+                                    <Label text="{i18n>year7}"/>
+                                    <Input id="inpCf7" value="{budget>/draft/cf7}" type="Number" liveChange=".onCalc" placeholder="0"/>
+                                </VBox>
+                                <VBox>
+                                    <Label text="{i18n>year8}"/>
+                                    <Input id="inpCf8" value="{budget>/draft/cf8}" type="Number" liveChange=".onCalc" placeholder="0"/>
+                                </VBox>
+                                <VBox>
+                                    <Label text="{i18n>year9}"/>
+                                    <Input id="inpCf9" value="{budget>/draft/cf9}" type="Number" liveChange=".onCalc" placeholder="0"/>
+                                </VBox>
+                                <VBox>
+                                    <Label text="{i18n>year10}"/>
+                                    <Input id="inpCf10" value="{budget>/draft/cf10}" type="Number" liveChange=".onCalc" placeholder="0"/>
+                                </VBox>
+                                <VBox justifyContent="End">
+                                    <Label text=" "/>
+                                    <Button
+                                        text="{i18n>calculate}"
+                                        icon="sap-icon://simulate"
+                                        type="Emphasized"
+                                        press=".onCalc"
+                                        width="100%"/>
+                                </VBox>
+                            </l:Grid>
+
+                            <Text text="Amounts in ₹. Enter net cash inflow per year." class="zcpxHintText sapUiTinyMarginTop"/>
+
+                            <!-- Computed metrics -->
+                            <l:Grid defaultSpan="XL4 L4 M4 S12" hSpacing="1" vSpacing="1" class="sapUiSmallMarginTop">
+                                <VBox class="zcpxMetric">
+                                    <Text text="{i18n>irr}" class="zcpxMetricLabel"/>
+                                    <Text text="{path: 'budget>/draft/irr', formatter: '.formatIrr'}" class="zcpxMetricValue">
+    <customData>
+        <core:CustomData key="tone" value="{path: 'budget>/draft/irr', formatter: '.formatter.irrTone'}" writeToDom="true"/>
+    </customData>
+</Text>
+                                    <Text text="{parts: ['budget>/draft/hurdleRate'], formatter: '.formatHurdleFoot'}" class="zcpxHintText"/>
+                                </VBox>
+                                <VBox class="zcpxMetric">
+                                    <Text text="{i18n>npv}" class="zcpxMetricLabel"/>
+                                    <Text text="{path: 'budget>/draft/npv', formatter: '.formatNpv'}" class="zcpxMetricValue">
+    <customData>
+        <core:CustomData key="tone" value="{path: 'budget>/draft/npv', formatter: '.formatter.npvTone'}" writeToDom="true"/>
+    </customData>
+</Text>
+                                    <Text text="at hurdle rate" class="zcpxHintText"/>
+                                </VBox>
+                                <VBox class="zcpxMetric">
+                                    <Text text="{i18n>payback}" class="zcpxMetricLabel"/>
+                                    <Text text="{path: 'budget>/draft/payback', formatter: '.formatPayback'}" class="zcpxMetricValue">
+    <customData>
+        <core:CustomData key="tone" value="{path: 'budget>/draft/payback', formatter: '.formatter.paybackTone'}" writeToDom="true"/>
+    </customData>
+</Text>
+                                    <Text text="discounted" class="zcpxHintText"/>
+                                </VBox>
+                            </l:Grid>
+
+                            <MessageStrip
+                                id="msMetricWarn"
+                                class="sapUiSmallMarginTop"
+                                text=""
+                                type="Warning"
+                                showIcon="true"
+                                visible="false"/>
+
+                        </VBox>
+                    </VBox>
+                </VBox>
+
+                <!-- ==========================================================
+                     4. DOA PREVIEW
+                     ========================================================== -->
+                <VBox class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <core:Icon src="sap-icon://org-chart" class="sapUiTinyMarginEnd"/>
+                        <Text text="Approval Route (auto-resolved from DOA)" class="zcpxCardTitle"/>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+                        <Text
+                            text="Enter a capex type and amount to see who this will be routed to."
+                            class="zcpxHintText"
+                            visible="{= !${budget>/draft/amount} }"/>
+                        <VBox id="vbDoaPreview" items="{app>/doaPreview}" visible="{= !!${budget>/draft/amount} }">
+                            <HBox alignItems="Center" class="sapUiTinyMarginBottom">
+                                <ObjectStatus text="{app>level}" state="Information" class="sapUiTinyMarginEnd"/>
+                                <VBox>
+                                    <Text text="{app>role}" class="zcpxTlRole"/>
+                                    <Text text="{app>approver}" class="zcpxTlMeta"/>
+                                </VBox>
+                                <ToolbarSpacer/>
+                                <Text text="{path: 'app>slaDays', formatter: '.formatter.days'} SLA" class="zcpxTlMeta"/>
+                            </HBox>
+                        </VBox>
+                    </VBox>
+                </VBox>
+
+            </VBox>
+        </content>
+
+        <footer>
+            <OverflowToolbar>
+                <ToolbarSpacer/>
+                <Button text="{i18n>saveDraft}" icon="sap-icon://save" press=".onSaveDraft"/>
+                <Button text="{i18n>submit}" icon="sap-icon://accept" type="Emphasized" press=".onSubmit"/>
+                <Button text="{i18n>cancel}" press=".onBack"/>
+            </OverflowToolbar>
+        </footer>
+
+    </Page>
+
+</mvc:View>

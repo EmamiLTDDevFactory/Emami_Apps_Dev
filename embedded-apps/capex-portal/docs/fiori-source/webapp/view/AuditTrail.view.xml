@@ -1,0 +1,90 @@
+<mvc:View
+    controllerName="zcapexportal.controller.AuditTrail"
+    xmlns="sap.m"
+    xmlns:mvc="sap.ui.core.mvc"
+    xmlns:core="sap.ui.core"
+    height="100%">
+
+    <Page id="pageAuditTrail" showHeader="false" class="zcpxApp">
+        <content>
+            <VBox class="zcpxScreen">
+
+                <VBox class="zcpxHero zcpxSection">
+                    <Text text="{i18n>auditTitle}" class="zcpxHeroTitle"/>
+                    <Text text="{i18n>auditSubtitle}" class="zcpxHeroSub"/>
+                </VBox>
+
+                <VBox class="zcpxCard zcpxCardPad zcpxSection">
+                    <HBox wrap="Wrap" alignItems="End">
+                        <VBox class="sapUiTinyMarginEnd sapUiTinyMarginBottom" width="14rem">
+                            <Label text="{i18n>search1}"/>
+                            <SearchField id="sfAudit" placeholder="Document, action or user" search=".onFilter" liveChange=".onFilter"/>
+                        </VBox>
+                        <VBox class="sapUiTinyMarginEnd sapUiTinyMarginBottom" width="11rem">
+                            <Label text="{i18n>docType}"/>
+                            <ComboBox id="cbDocType" change=".onFilter" placeholder="All">
+                                <core:Item key="BUD"   text="Budget"/>
+                                <core:Item key="CPE"   text="CPE"/>
+                                <core:Item key="PO"    text="Purchase Order"/>
+                                <core:Item key="IC"    text="Installation Certificate"/>
+                                <core:Item key="QUOTA" text="Unit Quota"/>
+                            </ComboBox>
+                        </VBox>
+                        <VBox class="sapUiTinyMarginEnd sapUiTinyMarginBottom" width="14rem">
+                            <Label text="Date Range"/>
+                            <DateRangeSelection id="drsAudit" change=".onFilter" displayFormat="dd MMM yyyy"/>
+                        </VBox>
+                        <Button text="Clear" icon="sap-icon://clear-filter" press=".onClearFilter" class="sapUiTinyMarginEnd sapUiTinyMarginBottom"/>
+                        <Button text="{i18n>print}" icon="sap-icon://print" press=".onPrint" class="sapUiTinyMarginBottom"/>
+                    </HBox>
+                </VBox>
+
+                <VBox class="zcpxCard zcpxSection">
+                    <Table
+                        id="tblAudit"
+                        items="{path: 'config>/auditTrail', sorter: {path: 'timestamp', descending: true}}"
+                        growing="true"
+                        growingThreshold="30"
+                        noDataText="{i18n>noData}"
+                        sticky="ColumnHeaders">
+                        <headerToolbar>
+                            <OverflowToolbar>
+                                <Title text="{i18n>auditTitle}" level="H3"/>
+                                <Label id="lblCount" text=""/>
+                                <ToolbarSpacer/>
+                                <Button icon="sap-icon://excel-attachment" tooltip="{i18n>export}" press=".onExport" type="Transparent"/>
+                            </OverflowToolbar>
+                        </headerToolbar>
+                        <columns>
+                            <Column width="6rem"><Text text="{i18n>docType}"/></Column>
+                            <Column width="11rem"><Text text="{i18n>docId}"/></Column>
+                            <Column><Text text="{i18n>action}"/></Column>
+                            <Column minScreenWidth="Desktop" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>comments}"/></Column>
+                            <Column minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>performedBy}"/></Column>
+                            <Column hAlign="End" minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline" width="12rem"><Text text="{i18n>timestamp}"/></Column>
+                        </columns>
+                        <items>
+                            <ColumnListItem>
+                                <cells>
+                                    <ObjectStatus
+                                        text="{config>docType}"
+                                        state="{path: 'config>docType', formatter: '.formatDocTypeState'}"/>
+                                    <Link text="{config>docId}" press=".onDocPress"/>
+                                    <Text text="{config>action}"/>
+                                    <Text text="{path: 'config>comment', formatter: '.formatter.orDash'}"/>
+                                    <VBox>
+                                        <Text text="{config>user}"/>
+                                        <Text text="{config>role}" class="zcpxHintText"/>
+                                    </VBox>
+                                    <Text text="{path: 'config>timestamp', formatter: '.formatter.dateTime'}"/>
+                                </cells>
+                            </ColumnListItem>
+                        </items>
+                    </Table>
+                </VBox>
+
+            </VBox>
+        </content>
+    </Page>
+
+</mvc:View>
