@@ -1,0 +1,80 @@
+<mvc:View
+    controllerName="zcapexportal.controller.GRNList"
+    xmlns="sap.m"
+    xmlns:mvc="sap.ui.core.mvc"
+    xmlns:core="sap.ui.core"
+    height="100%">
+
+    <Page id="pageGRNList" showHeader="false" class="zcpxApp">
+        <content>
+            <VBox class="zcpxScreen">
+
+                <VBox class="zcpxHero zcpxSection">
+                    <Text text="{i18n>grnListTitle}" class="zcpxHeroTitle"/>
+                    <Text text="Posted in SAP MM · commitment converted to actual spend" class="zcpxHeroSub"/>
+                </VBox>
+
+                <VBox class="zcpxCard zcpxCardPad zcpxSection">
+                    <HBox wrap="Wrap" alignItems="End">
+                        <VBox class="sapUiTinyMarginEnd sapUiTinyMarginBottom" width="14rem">
+                            <Label text="{i18n>search1}"/>
+                            <SearchField id="sfGRN" placeholder="GRN or PO number" search=".onFilter" liveChange=".onFilter"/>
+                        </VBox>
+                        <VBox class="sapUiTinyMarginEnd sapUiTinyMarginBottom" width="11rem">
+                            <Label text="{i18n>plant}"/>
+                            <ComboBox id="cbPlant" items="{budget>/plants}" change=".onFilter" placeholder="All">
+                                <core:Item key="{budget>key}" text="{budget>text}"/>
+                            </ComboBox>
+                        </VBox>
+                        <Button text="Clear" icon="sap-icon://clear-filter" press=".onClearFilter" class="sapUiTinyMarginBottom"/>
+                    </HBox>
+                </VBox>
+
+                <VBox class="zcpxCard zcpxSection">
+                    <Table
+                        id="tblGRN"
+                        items="{procure>/grn}"
+                        growing="true"
+                        growingThreshold="20"
+                        noDataText="{i18n>noData}"
+                        sticky="ColumnHeaders">
+                        <headerToolbar>
+                            <OverflowToolbar>
+                                <Title text="{i18n>grnListTitle}" level="H3"/>
+                                <ToolbarSpacer/>
+                                <Button icon="sap-icon://refresh" tooltip="{i18n>refresh}" press=".onRefresh" type="Transparent"/>
+                            </OverflowToolbar>
+                        </headerToolbar>
+                        <columns>
+                            <Column width="10rem"><Text text="{i18n>grnNumber}"/></Column>
+                            <Column minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="Description"/></Column>
+                            <Column minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>poNumber}"/></Column>
+                            <Column minScreenWidth="Desktop" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>material}"/></Column>
+                            <Column hAlign="End"><Text text="{i18n>qty}"/></Column>
+                            <Column hAlign="End"><Text text="{i18n>grnValue}"/></Column>
+                            <Column hAlign="End" minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>postedOn}"/></Column>
+                        </columns>
+                        <items>
+                            <ColumnListItem>
+                                <cells>
+                                    <ObjectIdentifier title="{procure>grnId}"/>
+                                    <Text text="{procure>title}"/>
+                                    <Link text="{procure>poId}" press=".onPOPress"/>
+                                    <Text text="{procure>material}"/>
+                                    <Text text="{procure>qty} {procure>uom}" class="zcpxNum"/>
+                                    <ObjectNumber
+                                        number="{path: 'procure>value', formatter: '.formatter.inLakhs'}"
+                                        state="Success"
+                                        emphasized="true"/>
+                                    <Text text="{path: 'procure>postedOn', formatter: '.formatter.date'}"/>
+                                </cells>
+                            </ColumnListItem>
+                        </items>
+                    </Table>
+                </VBox>
+
+            </VBox>
+        </content>
+    </Page>
+
+</mvc:View>

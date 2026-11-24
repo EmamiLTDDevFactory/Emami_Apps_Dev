@@ -1,0 +1,131 @@
+<mvc:View
+    controllerName="zcapexportal.controller.Reports"
+    xmlns="sap.m"
+    xmlns:mvc="sap.ui.core.mvc"
+    xmlns:core="sap.ui.core"
+    xmlns:l="sap.ui.layout"
+    xmlns:f="sap.f"
+    height="100%">
+
+    <Page id="pageReports" showHeader="false" class="zcpxApp">
+        <content>
+            <VBox class="zcpxScreen">
+
+                <VBox class="zcpxHero zcpxSection">
+                    <Text text="{i18n>reportsTitle}" class="zcpxHeroTitle"/>
+                    <Text text="{app>/fiscalYear} · all units" class="zcpxHeroSub"/>
+                </VBox>
+
+                <!-- Report catalogue -->
+                <VBox class="zcpxSection">
+                    <Text text="Standard Reports" class="zcpxSectionLabel"/>
+                    <l:Grid defaultSpan="XL3 L4 M6 S12" hSpacing="1" vSpacing="1">
+                        <VBox items="{rep>/catalogue}">
+                            <VBox class="zcpxCard zcpxCardPad">
+                                <HBox alignItems="Center" class="sapUiTinyMarginBottom">
+                                    <core:Icon src="{rep>icon}" size="1.25rem" class="sapUiTinyMarginEnd"/>
+                                    <Text text="{rep>title}" class="zcpxCardTitle"/>
+                                </HBox>
+                                <Text text="{rep>description}" class="zcpxHintText"/>
+                                <HBox class="sapUiSmallMarginTop">
+                                    <Button text="Run" type="Emphasized" press=".onRunReport" class="sapUiTinyMarginEnd"/>
+                                    <Button icon="sap-icon://excel-attachment" press=".onExportReport" tooltip="{i18n>export}"/>
+                                </HBox>
+                            </VBox>
+                        </VBox>
+                    </l:Grid>
+                </VBox>
+
+                <!-- Budget vs actual -->
+                <VBox class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" justifyContent="SpaceBetween" alignItems="Center">
+                        <Text text="Budget vs Committed vs Spent — by Category" class="zcpxCardTitle"/>
+                        <Button icon="sap-icon://excel-attachment" type="Transparent" press=".onExportReport" tooltip="{i18n>export}"/>
+                    </HBox>
+                    <Table items="{app>/dashboard/byCategory}" class="sapUiSizeCompact">
+                        <columns>
+                            <Column><Text text="{i18n>category}"/></Column>
+                            <Column hAlign="End"><Text text="Approved"/></Column>
+                            <Column hAlign="End" minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="Spent"/></Column>
+                            <Column hAlign="End" minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="Balance"/></Column>
+                            <Column hAlign="End" width="9rem" minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="Utilisation"/></Column>
+                        </columns>
+                        <items>
+                            <ColumnListItem>
+                                <cells>
+                                    <Text text="{app>category}"/>
+                                    <Text text="{path: 'app>approved', formatter: '.formatter.money'}" class="zcpxNum"/>
+                                    <Text text="{path: 'app>spent', formatter: '.formatter.money'}" class="zcpxNum"/>
+                                    <ObjectNumber
+                                        number="{parts: ['app>approved','app>spent'], formatter: '.formatBalance'}"
+                                        state="Success"/>
+                                    <ProgressIndicator
+                                        percentValue="{parts: ['app>spent','app>approved'], formatter: '.formatter.share'}"
+                                        displayValue="{parts: ['app>spent','app>approved'], formatter: '.formatPctText'}"
+                                        showValue="true"
+                                        state="{parts: ['app>spent','app>approved'], formatter: '.formatUtilState'}"/>
+                                </cells>
+                            </ColumnListItem>
+                        </items>
+                    </Table>
+                </VBox>
+
+                <!-- Approval cycle time -->
+                <VBox class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <Text text="Approval Cycle Time by Level" class="zcpxCardTitle"/>
+                    </HBox>
+                    <Table items="{app>/dashboard/queue}" class="sapUiSizeCompact">
+                        <columns>
+                            <Column><Text text="Level"/></Column>
+                            <Column hAlign="End"><Text text="Pending"/></Column>
+                            <Column hAlign="End" minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="Value"/></Column>
+                            <Column hAlign="End"><Text text="Avg Days"/></Column>
+                            <Column hAlign="End" width="9rem"><Text text="SLA"/></Column>
+                        </columns>
+                        <items>
+                            <ColumnListItem>
+                                <cells>
+                                    <Text text="{app>level}"/>
+                                    <Text text="{app>count}" class="zcpxNum"/>
+                                    <Text text="{path: 'app>value', formatter: '.formatter.money'}" class="zcpxNum"/>
+                                    <Text text="{app>days}" class="zcpxNum"/>
+                                    <ObjectStatus
+                                        text="{path: 'app>days', formatter: '.formatter.slaText'}"
+                                        state="{path: 'app>days', formatter: '.formatter.slaState'}"/>
+                                </cells>
+                            </ColumnListItem>
+                        </items>
+                    </Table>
+                </VBox>
+
+                <!-- Monthly trend -->
+                <VBox class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <Text text="{i18n>monthlyTrend}" class="zcpxCardTitle"/>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+                        <VBox items="{app>/dashboard/monthlyTrend}">
+                            <VBox class="sapUiSmallMarginBottom">
+                                <HBox justifyContent="SpaceBetween" alignItems="Baseline">
+                                    <Text text="{app>month}" class="zcpxTlRole"/>
+                                    <Text
+                                        text="{parts: ['app>committed','app>spent'], formatter: '.formatTrendText'}"
+                                        class="zcpxNum"/>
+                                </HBox>
+                                <ProgressIndicator
+                                    percentValue="{parts: ['app>spent','app>committed'], formatter: '.formatter.share'}"
+                                    showValue="false"
+                                    height="0.5rem"
+                                    state="Information"
+                                    class="sapUiTinyMarginTop"/>
+                            </VBox>
+                        </VBox>
+                    </VBox>
+                </VBox>
+
+            </VBox>
+        </content>
+    </Page>
+
+</mvc:View>

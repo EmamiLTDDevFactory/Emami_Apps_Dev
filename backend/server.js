@@ -85,6 +85,8 @@ apiRouter.use('/me/notifications', require('./notifications').router);
 apiRouter.use('/me/cost-watch', require('./costWatch'));
 // Cascade Pricing -> SAP ZMM_CASCADE_SRV (server side; the app is static). Rides /api/me; see cascadePricing.js.
 apiRouter.use('/me/cascade-pricing', require('./cascadePricing'));
+// CAPEX Portal (Fiori ZCAPEX_PORTAL -> Emami Apps) -> SAP ZCAPEX_PORTAL_SRV; identity travels as zcpxmail/zcpxkey. Rides /api/me; see capex.js.
+apiRouter.use('/me/capex', require('./capex'));
 // Material master requests -> SAP ZMM_MDM_SRV (server side; the app is static). Rides /api/me; see mmMdm.js.
 apiRouter.use('/me/mm-mdm', require('./mmMdm'));
 // MDM admin screens (rules, workflow maintenance, worklist, dashboard) -> SAP AdminCallSet. See mmMdmAdmin.js.

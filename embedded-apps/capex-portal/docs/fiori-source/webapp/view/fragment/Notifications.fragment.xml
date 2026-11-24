@@ -1,0 +1,49 @@
+<core:FragmentDefinition
+    xmlns="sap.m"
+    xmlns:core="sap.ui.core">
+
+    <ResponsivePopover
+        title="{i18n>notifications}"
+        placement="Bottom"
+        contentWidth="18rem"
+        horizontalScrolling="false"
+        class="sapUiPopupWithPadding zcpxNotifPopover">
+
+        <customHeader>
+            <Bar>
+                <contentLeft>
+                    <Title text="{i18n>notifications}" level="H3"/>
+                </contentLeft>
+                <contentRight>
+                    <Button
+                        text="{i18n>markAllRead}"
+                        type="Transparent"
+                        press=".onMarkAllRead"/>
+                </contentRight>
+            </Bar>
+        </customHeader>
+
+        <List
+            items="{app>/notifications}"
+            noDataText="{i18n>noNotifications}"
+            mode="None">
+            <CustomListItem
+                type="Active"
+                press=".onNotificationPress"
+                class="zcpxNotifItem">
+                <HBox alignItems="Start" class="zcpxNotifRow">
+                    <core:Icon src="{app>icon}" class="zcpxNotifIcon"/>
+                    <VBox width="100%" class="zcpxNotifBody">
+                        <HBox justifyContent="SpaceBetween" alignItems="Start" width="100%">
+                            <Text text="{app>title}" wrapping="true" class="{= ${app>unread} ? 'zcpxNotifTitle zcpxNotifTitleUnread' : 'zcpxNotifTitle' }"/>
+                            <Text text="{path: 'app>time', formatter: '.formatter.dateTime'}" wrapping="false" class="{= ${app>unread} ? 'zcpxNotifTime zcpxNotifTimeUnread' : 'zcpxNotifTime' }"/>
+                        </HBox>
+                        <Text text="{app>text}" wrapping="true" class="zcpxNotifDesc"/>
+                    </VBox>
+                </HBox>
+            </CustomListItem>
+        </List>
+
+    </ResponsivePopover>
+
+</core:FragmentDefinition>

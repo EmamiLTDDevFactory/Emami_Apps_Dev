@@ -1,0 +1,671 @@
+<mvc:View
+    controllerName="zcapexportal.controller.CPECreate"
+    xmlns="sap.m"
+    xmlns:mvc="sap.ui.core.mvc"
+    xmlns:core="sap.ui.core"
+    xmlns:l="sap.ui.layout"
+    xmlns:f="sap.ui.layout.form"
+    xmlns:u="sap.ui.unified"
+    xmlns:cust="http://schemas.sap.com/sapui5/extension/sap.ui.core.CustomData/1"
+    height="100%">
+
+    <Page
+        id="pageCPECreate"
+        title="{i18n>cpeCreateTitle}"
+        showNavButton="true"
+        navButtonPress=".onBack"
+        class="zcpxApp">
+
+        <content>
+            <VBox class="zcpxScreen">
+
+                <!-- ==========================================================
+                     1. BUDGET SELECTION + REAL-TIME AVAILABILITY
+                     ========================================================== -->
+                <VBox class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <core:Icon src="sap-icon://money-bills" class="sapUiTinyMarginEnd"/>
+                        <Text text="{i18n>selectBudget}" class="zcpxCardTitle"/>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+
+                        <ComboBox
+                            id="cbBudget"
+                            width="100%"
+                            selectedKey="{cpe>/draft/budgetId}"
+                            items="{path: 'budget>/list', filters: [{path: 'status', operator: 'EQ', value1: 'APPROVED'}]}"
+                            selectionChange=".onBudgetSelect"
+                            placeholder="Select an approved budget">
+                            <core:ListItem
+                                key="{budget>budgetId}"
+                                text="{budget>budgetId} — {budget>title}"
+                                additionalText="{path: 'budget>approved', formatter: '.formatter.inLakhs'}"/>
+                        </ComboBox>
+
+                        <!-- Auto-filled context -->
+                        <l:Grid
+                            class="sapUiSmallMarginTop"
+                            defaultSpan="XL3 L3 M6 S6"
+                            hSpacing="1" vSpacing="1"
+                            visible="{= !!${cpe>/draft/budgetId} }">
+                            <VBox class="zcpxKpi zcpxKpi--brand">
+                                <Text text="{i18n>budgetApproved}" class="zcpxKpiLabel"/>
+                                <Text text="{path: 'cpe>/draft/budgetCheck/approved', formatter: '.formatter.inLakhs'}" class="zcpxKpiValue"/>
+                            </VBox>
+                            <VBox id="tileCpeCommitted" class="zcpxKpi zcpxKpi--teal sapMPointer">
+                                <Text text="{i18n>budgetCommitted}" class="zcpxKpiLabel"/>
+                                <Text text="{path: 'cpe>/draft/budgetCheck/committed', formatter: '.formatter.inLakhs'}" class="zcpxKpiValue"/>
+                                <Text text="Open POs" class="zcpxKpiFoot"/>
+                            </VBox>
+                            <VBox id="tileCpeSpent" class="zcpxKpi zcpxKpi--purple sapMPointer">
+                                <Text text="{i18n>budgetSpent}" class="zcpxKpiLabel"/>
+                                <Text text="{path: 'cpe>/draft/budgetCheck/spent', formatter: '.formatter.inLakhs'}" class="zcpxKpiValue"/>
+                                <Text text="Posted GRNs" class="zcpxKpiFoot"/>
+                            </VBox>
+                            <VBox class="zcpxKpi">
+                                <customData>
+                                    <core:CustomData key="tone" value="{path: 'cpe>/draft/budgetCheck/available', formatter: '.formatter.balanceTone'}" writeToDom="true"/>
+                                </customData>
+                                <Text text="{i18n>budgetAvailable}" class="zcpxKpiLabel"/>
+                                <Text text="{path: 'cpe>/draft/budgetCheck/available', formatter: '.formatter.inLakhs'}" class="zcpxKpiValue"/>
+                            </VBox>
+                        </l:Grid>
+
+                        <!-- Budget verdict -->
+                        <MessageStrip
+                            id="msBudget"
+                            class="sapUiSmallMarginTop"
+                            text=""
+                            type="Information"
+                            showIcon="true"
+                            visible="false"/>
+
+                        <!-- Single Vendor (functional ask, 2026-11-06; labelled "Single
+                             CPE" until the later rename) - frontend-only, shrinks
+                             RFQ/Quotation to 1 slot each instead of 3; see
+                             onSingleCpeChange. Checking it also requires a written
+                             justification, shown beside it - see onSubmit's _validate. -->
+                        <HBox
+                            alignItems="Center"
+                            visible="{= !!${cpe>/draft/budgetId} }"
+                            class="sapUiSmallMarginTop">
+                            <CheckBox
+                                text="Single Vendor"
+                                selected="{cpe>/draft/singleCpe}"
+                                select=".onSingleCpeChange"/>
+                            <Input
+                                id="inpSingleVendorJustification"
+                                value="{cpe>/draft/singleVendorJustification}"
+                                placeholder="Justification for single vendor (mandatory)"
+                                visible="{cpe>/draft/singleCpe}"
+                                width="20rem"
+                                class="sapUiTinyMarginBegin"/>
+                        </HBox>
+
+                    </VBox>
+                </VBox>
+
+                <!-- ==========================================================
+                     2. CPE DETAILS  (auto-filled from budget)
+                     ========================================================== -->
+                <VBox class="zcpxCard zcpxSection" visible="{= !!${cpe>/draft/budgetId} }">
+                    <HBox class="zcpxCardHeader" justifyContent="SpaceBetween" alignItems="Center">
+                        <HBox alignItems="Center">
+                            <core:Icon src="sap-icon://request" class="sapUiTinyMarginEnd"/>
+                            <Text text="CPE Details" class="zcpxCardTitle"/>
+                        </HBox>
+                        <ObjectStatus text="{i18n>autoFilled}" state="Information" icon="sap-icon://synchronize"/>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+                        <f:SimpleForm
+                            layout="ResponsiveGridLayout"
+                            editable="true"
+                            labelSpanXL="4" labelSpanL="4" labelSpanM="4" labelSpanS="12"
+                            adjustLabelSpan="false"
+                            columnsXL="2" columnsL="2" columnsM="1">
+                            <f:content>
+
+                                <Label text="{i18n>cpeTitle}" required="true"/>
+                                <Input id="inpTitle" value="{cpe>/draft/title}" placeholder="e.g. Automatic Packaging Machine — Line 3"/>
+
+                                <Label text="{i18n>cpeAmount}" required="true"/>
+                                <Input
+                                    id="inpAmount"
+                                    value="{path: 'cpe>/draft/amount', type: 'sap.ui.model.type.Float', formatOptions: {maxFractionDigits: 0, groupingEnabled: false}}"
+                                    description="₹"
+                                    valueLiveUpdate="true"
+                                    liveChange=".onAmountChange"
+                                    placeholder="0"/>
+
+                                <Label text="{i18n>plant}"/>
+                                <Input value="{cpe>/draft/plantName}" editable="false" class="zcpxAutoFilled"/>
+
+                                <Label text="{i18n>capexType}"/>
+                                <Input value="{cpe>/draft/capexType}" editable="false" class="zcpxAutoFilled"/>
+
+                                <Label text="{i18n>category}"/>
+                                <Input value="{cpe>/draft/category}" editable="false" class="zcpxAutoFilled"/>
+
+                                <Label text="{i18n>deliveryWeeks}"/>
+                                <Input value="{cpe>/draft/deliveryWeeks}" type="Number" width="8rem" placeholder="0"/>
+
+                            </f:content>
+                        </f:SimpleForm>
+
+                        <Label text="{i18n>specs}" required="true" class="sapUiSmallMarginTop"/>
+                        <TextArea
+                            id="taSpecs"
+                            value="{cpe>/draft/specs}"
+                            rows="3" width="100%" growing="true" growingMaxLines="8" maxLength="1500"
+                            placeholder="Capacity, make, model, certification, utilities, interfaces."/>
+
+                        <Label text="{i18n>terms}" class="sapUiSmallMarginTop"/>
+                        <TextArea
+                            id="taTerms"
+                            value="{cpe>/draft/terms}"
+                            rows="3" width="100%" growing="true" growingMaxLines="6" maxLength="1000"
+                            placeholder="Payment milestones, warranty, delivery, penalty clauses."/>
+                    </VBox>
+                </VBox>
+
+                <!-- ==========================================================
+                     3. VENDOR QUOTES  (L1 / L2 / L3)
+                     ========================================================== -->
+                <VBox class="zcpxCard zcpxSection" visible="{= !!${cpe>/draft/budgetId} }">
+                    <HBox class="zcpxCardHeader" justifyContent="SpaceBetween" alignItems="Center">
+                        <HBox alignItems="Center">
+                            <core:Icon src="sap-icon://supplier" class="sapUiTinyMarginEnd"/>
+                            <Text text="{i18n>vendorComparison}" class="zcpxCardTitle"/>
+                        </HBox>
+                        <Button
+                            text="{i18n>addVendor}"
+                            icon="sap-icon://add"
+                            type="Transparent"
+                            press=".onAddVendor"/>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+
+                        <MessageStrip
+                            text="{i18n>quotesRequired}"
+                            type="Warning"
+                            showIcon="true"
+                            class="sapUiSmallMarginBottom"
+                            visible="{= ${cpe>/draft/amount} > (${config>/threeQuoteLimit} || 1000000) &amp;&amp; ${cpe>/draft/vendors}.length &lt; 3 }"/>
+
+                        <!-- `key: 'id'` enables extended change detection: adding/
+                             removing a row now inserts/removes just that one row's
+                             controls instead of destroying and recreating every
+                             row's Inputs on every add/remove, which was wiping out
+                             any not-yet-committed typing in other rows (e.g. Total
+                             Cost mid-edit when a 2nd/3rd vendor was added). -->
+                        <Table
+                            id="tblVendors"
+                            items="{path: 'cpe>/draft/vendors', key: 'id'}"
+                            noDataText="Add at least one vendor quote."
+                            class="sapUiSizeCompact">
+                            <columns>
+                                <Column width="4rem"><Text text="Rank"/></Column>
+                                <Column minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>vendorName}" textAlign="Center"/></Column>
+                                <Column hAlign="End"><Text text="{i18n>quote}" textAlign="Center"/></Column>
+                                <!-- Total Cost of Ownership / Quality removed from this screen
+                                     (functional ask) - still collected/sent to the backend
+                                     unchanged (default quality: 3, totalCost: null). Removed
+                                     outright rather than Column visible="false" - toggling
+                                     visibility left the header reserving blank space for these
+                                     two columns while the body cells fully collapsed, so Quote's
+                                     header and input drifted out of alignment. -->
+                                <Column hAlign="End" minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline" width="8rem"><Text text="{i18n>delivery}"/></Column>
+                                <Column hAlign="Center" width="6rem"><Text text="{i18n>selectVendor}"/></Column>
+                                <Column hAlign="Center" width="4rem"><Text text=""/></Column>
+                            </columns>
+                            <items>
+                                <ColumnListItem>
+                                    <cells>
+                                        <ObjectStatus
+                                            text="{cpe>rank}"
+                                            state="{= ${cpe>rank} === 'L1' ? 'Information' : 'None' }"/>
+                                        <Input
+                                            value="{cpe>name}"
+                                            showSuggestion="true"
+                                            filterSuggests="false"
+                                            suggestionItems="{cpe>searchResults}"
+                                            suggest=".onVendorNameSuggest"
+                                            suggestionItemSelected=".onVendorNameSelected"
+                                            placeholder="Search vendor name...">
+                                            <suggestionItems>
+                                                <core:Item key="{cpe>key}" text="{cpe>text}"/>
+                                            </suggestionItems>
+                                        </Input>
+                                        <Input
+                                            value="{path: 'cpe>quote', type: 'sap.ui.model.type.Float', formatOptions: {maxFractionDigits: 0, groupingEnabled: false}}"
+                                            type="Number"
+                                            change=".onQuoteChange"
+                                            textAlign="End"/>
+                                        <Input value="{cpe>deliveryDays}" type="Number" textAlign="End"/>
+                                        <RadioButton
+                                            groupName="vendorSelect"
+                                            selected="{cpe>selected}"
+                                            select=".onVendorSelect"/>
+                                        <Button
+                                            icon="sap-icon://delete"
+                                            type="Transparent"
+                                            press=".onRemoveVendor"
+                                            tooltip="{i18n>deleteAction}"/>
+                                    </cells>
+                                </ColumnListItem>
+                            </items>
+                        </Table>
+
+                        <!-- Non-L1 justification -->
+                        <VBox
+                            id="vbNonL1"
+                            class="zcpxJustifyBox sapUiSmallMarginTop"
+                            visible="{cpe>/draft/showNonL1}">
+                            <HBox alignItems="Center">
+                                <core:Icon src="sap-icon://alert" color="#E76500" class="sapUiTinyMarginEnd"/>
+                                <Text text="{i18n>nonL1Warning}" class="zcpxCardTitle"/>
+                            </HBox>
+                            <Label text="{i18n>nonL1Justification}" required="true" class="sapUiTinyMarginTop"/>
+                            <TextArea
+                                id="taNonL1"
+                                value="{cpe>/draft/nonL1Justification}"
+                                rows="3" width="100%" growing="true" growingMaxLines="6" maxLength="1000"
+                                placeholder="{i18n>nonL1Placeholder}"/>
+                            <Text
+                                id="txtSaving"
+                                text=""
+                                class="zcpxHintText sapUiTinyMarginTop"/>
+                        </VBox>
+
+                    </VBox>
+                </VBox>
+
+                <!-- ==========================================================
+                     DOCUMENT ATTACHMENTS
+                     ========================================================== -->
+                <VBox class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <core:Icon src="sap-icon://attachment" class="sapUiTinyMarginEnd"/>
+                        <Text text="{i18n>attachmentMatrix}" class="zcpxCardTitle"/>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+
+                        <MessageStrip
+                            text="{i18n>backendNotReady}"
+                            type="Information"
+                            showIcon="true"
+                            visible="{= !${app>/docUploadEnabled} }"
+                            class="sapUiSmallMarginBottom"/>
+
+                        <!-- RFQ - always exactly 3 slots, independent of vendor count
+                             (see _buildEmptyAttachments). HBox + wrap="Wrap" with a fixed
+                             card width is the same responsive side-by-side pattern already
+                             used elsewhere in this app (e.g. the quick-action buttons
+                             below) - cards sit next to each other when there's room, and
+                             wrap onto their own line on a narrow screen instead of a fixed
+                             column grid. -->
+                        <Text text="RFQ" class="zcpxSectionLabel"/>
+                        <Text text="{= ${cpe>/draft/singleCpe} ? '1 RFQ is required for this CPE.' : '3 RFQs are required for every CPE.' }" class="zcpxHintText sapUiTinyMarginBottom"/>
+                        <HBox items="{path: 'cpe>/draft/attachments/rfq', key: 'id'}" wrap="Wrap">
+                            <VBox class="zcpxAttachRow sapUiTinyMarginEnd sapUiTinyMarginBottom" width="17rem">
+                                <Label text="{cpe>label}" required="true" class="zcpxAttachLabel"/>
+                                <VBox class="sapUiTinyMarginTop">
+                                    <u:FileUploader
+                                        change=".onAttachmentFileChange"
+                                        typeMissmatch=".onAttachmentTypeMismatch"
+                                        fileSizeExceed=".onAttachmentFileSizeExceed"
+                                        fileType="{path: 'config>/docExtensions', formatter: '.formatFileTypes'}"
+                                        maximumFileSize="{= ${config>/docMaxMb} || 10 }"
+                                        buttonText="{i18n>upload}"
+                                        placeholder="No file chosen"
+                                        width="100%"/>
+                                    <HBox alignItems="Center" class="sapUiTinyMarginTop">
+                                        <Button
+                                            icon="sap-icon://show"
+                                            type="Transparent"
+                                            tooltip="{i18n>docView}"
+                                            press=".onViewAttachment"
+                                            visible="{parts: ['cpe>previewUrl', 'cpe>fileType'], formatter: '.formatCanPreviewAttachment'}"/>
+                                        <Text text="{= ${cpe>fileName} ? 'Selected: ' + ${cpe>fileName} : '' }" class="zcpxHintText"/>
+                                    </HBox>
+                                </VBox>
+                                <Input
+                                    value="{cpe>title}"
+                                    placeholder="{i18n>docTitle}"
+                                    width="100%"
+                                    class="sapUiTinyMarginTop"/>
+                                <Input
+                                    value="{cpe>note}"
+                                    placeholder="{i18n>attachmentNotePlaceholder}"
+                                    width="100%"
+                                    class="sapUiTinyMarginTop"/>
+                            </VBox>
+                        </HBox>
+
+                        <!-- Quotation - always exactly 3 slots, independent of vendor count -->
+                        <Text text="Quotation" class="zcpxSectionLabel sapUiSmallMarginTop"/>
+                        <Text text="{= ${cpe>/draft/singleCpe} ? '1 Quotation is required for this CPE.' : '3 Quotations are required for every CPE.' }" class="zcpxHintText sapUiTinyMarginBottom"/>
+                        <HBox items="{path: 'cpe>/draft/attachments/quotation', key: 'id'}" wrap="Wrap">
+                            <VBox class="zcpxAttachRow sapUiTinyMarginEnd sapUiTinyMarginBottom" width="17rem">
+                                <Label text="{cpe>label}" required="true" class="zcpxAttachLabel"/>
+                                <VBox class="sapUiTinyMarginTop">
+                                    <u:FileUploader
+                                        change=".onAttachmentFileChange"
+                                        typeMissmatch=".onAttachmentTypeMismatch"
+                                        fileSizeExceed=".onAttachmentFileSizeExceed"
+                                        fileType="{path: 'config>/docExtensions', formatter: '.formatFileTypes'}"
+                                        maximumFileSize="{= ${config>/docMaxMb} || 10 }"
+                                        buttonText="{i18n>upload}"
+                                        placeholder="No file chosen"
+                                        width="100%"/>
+                                    <HBox alignItems="Center" class="sapUiTinyMarginTop">
+                                        <Button
+                                            icon="sap-icon://show"
+                                            type="Transparent"
+                                            tooltip="{i18n>docView}"
+                                            press=".onViewAttachment"
+                                            visible="{parts: ['cpe>previewUrl', 'cpe>fileType'], formatter: '.formatCanPreviewAttachment'}"/>
+                                        <Text text="{= ${cpe>fileName} ? 'Selected: ' + ${cpe>fileName} : '' }" class="zcpxHintText"/>
+                                    </HBox>
+                                </VBox>
+                                <Input
+                                    value="{cpe>title}"
+                                    placeholder="{i18n>docTitle}"
+                                    width="100%"
+                                    class="sapUiTinyMarginTop"/>
+                                <Input
+                                    value="{cpe>note}"
+                                    placeholder="{i18n>attachmentNotePlaceholder}"
+                                    width="100%"
+                                    class="sapUiTinyMarginTop"/>
+                            </VBox>
+                        </HBox>
+
+                        <!-- TCC / Negotiation History / Justification Note - always exactly one each -->
+                        <Text text="Other Required Documents" class="zcpxSectionLabel sapUiSmallMarginTop"/>
+                        <VBox class="zcpxAttachRow sapUiTinyMarginBottom">
+                            <Label text="{i18n>attachmentTcc}" required="true" class="zcpxAttachLabel"/>
+                            <HBox alignItems="Center" wrap="Wrap" class="sapUiTinyMarginTop">
+                                <u:FileUploader
+                                    change=".onTccFileChange"
+                                    typeMissmatch=".onAttachmentTypeMismatch"
+                                    fileSizeExceed=".onAttachmentFileSizeExceed"
+                                    fileType="{path: 'config>/docExtensions', formatter: '.formatFileTypes'}"
+                                    maximumFileSize="{= ${config>/docMaxMb} || 10 }"
+                                    buttonText="{i18n>upload}"
+                                    placeholder="No file chosen"
+                                    width="14rem"
+                                    class="sapUiTinyMarginEnd"/>
+                                <Button
+                                    icon="sap-icon://show"
+                                    type="Transparent"
+                                    tooltip="{i18n>docView}"
+                                    press=".onViewAttachment"
+                                    visible="{parts: ['cpe>/draft/attachments/tcc/previewUrl', 'cpe>/draft/attachments/tcc/fileType'], formatter: '.formatCanPreviewAttachment'}"
+                                    class="sapUiTinyMarginEnd">
+                                    <customData>
+                                        <core:CustomData key="slot" value="tcc"/>
+                                    </customData>
+                                </Button>
+                                <Text text="{= ${cpe>/draft/attachments/tcc/fileName} ? 'Selected: ' + ${cpe>/draft/attachments/tcc/fileName} : '' }" class="zcpxHintText"/>
+                            </HBox>
+                            <Input
+                                value="{cpe>/draft/attachments/tcc/title}"
+                                placeholder="{i18n>docTitle}"
+                                width="100%"
+                                class="sapUiTinyMarginTop"/>
+                            <Input
+                                value="{cpe>/draft/attachments/tcc/note}"
+                                placeholder="{i18n>attachmentNotePlaceholder}"
+                                width="100%"
+                                class="sapUiTinyMarginTop"/>
+                        </VBox>
+
+                        <VBox class="zcpxAttachRow sapUiTinyMarginBottom">
+                            <Label text="{i18n>attachmentNegotiation}" required="true" class="zcpxAttachLabel"/>
+                            <HBox alignItems="Center" wrap="Wrap" class="sapUiTinyMarginTop">
+                                <u:FileUploader
+                                    change=".onNegotiationFileChange"
+                                    typeMissmatch=".onAttachmentTypeMismatch"
+                                    fileSizeExceed=".onAttachmentFileSizeExceed"
+                                    fileType="{path: 'config>/docExtensions', formatter: '.formatFileTypes'}"
+                                    maximumFileSize="{= ${config>/docMaxMb} || 10 }"
+                                    buttonText="{i18n>upload}"
+                                    placeholder="No file chosen"
+                                    width="14rem"
+                                    class="sapUiTinyMarginEnd"/>
+                                <Button
+                                    icon="sap-icon://show"
+                                    type="Transparent"
+                                    tooltip="{i18n>docView}"
+                                    press=".onViewAttachment"
+                                    visible="{parts: ['cpe>/draft/attachments/negotiation/previewUrl', 'cpe>/draft/attachments/negotiation/fileType'], formatter: '.formatCanPreviewAttachment'}"
+                                    class="sapUiTinyMarginEnd">
+                                    <customData>
+                                        <core:CustomData key="slot" value="negotiation"/>
+                                    </customData>
+                                </Button>
+                                <Text text="{= ${cpe>/draft/attachments/negotiation/fileName} ? 'Selected: ' + ${cpe>/draft/attachments/negotiation/fileName} : '' }" class="zcpxHintText"/>
+                            </HBox>
+                            <Input
+                                value="{cpe>/draft/attachments/negotiation/title}"
+                                placeholder="{i18n>docTitle}"
+                                width="100%"
+                                class="sapUiTinyMarginTop"/>
+                            <Input
+                                value="{cpe>/draft/attachments/negotiation/note}"
+                                placeholder="{i18n>attachmentNotePlaceholder}"
+                                width="100%"
+                                class="sapUiTinyMarginTop"/>
+                        </VBox>
+
+                        <VBox class="zcpxAttachRow sapUiTinyMarginBottom">
+                            <Label text="{i18n>attachmentJustification}" required="true" class="zcpxAttachLabel"/>
+                            <HBox alignItems="Center" wrap="Wrap" class="sapUiTinyMarginTop">
+                                <u:FileUploader
+                                    change=".onJustificationFileChange"
+                                    typeMissmatch=".onAttachmentTypeMismatch"
+                                    fileSizeExceed=".onAttachmentFileSizeExceed"
+                                    fileType="{path: 'config>/docExtensions', formatter: '.formatFileTypes'}"
+                                    maximumFileSize="{= ${config>/docMaxMb} || 10 }"
+                                    buttonText="{i18n>upload}"
+                                    placeholder="No file chosen"
+                                    width="14rem"
+                                    class="sapUiTinyMarginEnd"/>
+                                <Button
+                                    icon="sap-icon://show"
+                                    type="Transparent"
+                                    tooltip="{i18n>docView}"
+                                    press=".onViewAttachment"
+                                    visible="{parts: ['cpe>/draft/attachments/justification/previewUrl', 'cpe>/draft/attachments/justification/fileType'], formatter: '.formatCanPreviewAttachment'}"
+                                    class="sapUiTinyMarginEnd">
+                                    <customData>
+                                        <core:CustomData key="slot" value="justification"/>
+                                    </customData>
+                                </Button>
+                                <Text text="{= ${cpe>/draft/attachments/justification/fileName} ? 'Selected: ' + ${cpe>/draft/attachments/justification/fileName} : '' }" class="zcpxHintText"/>
+                            </HBox>
+                            <Input
+                                value="{cpe>/draft/attachments/justification/title}"
+                                placeholder="{i18n>docTitle}"
+                                width="100%"
+                                class="sapUiTinyMarginTop"/>
+                            <Input
+                                value="{cpe>/draft/attachments/justification/note}"
+                                placeholder="{i18n>attachmentNotePlaceholder}"
+                                width="100%"
+                                class="sapUiTinyMarginTop"/>
+                        </VBox>
+
+                        <!-- General / Additional - open-ended, user-added -->
+                        <Text text="{i18n>attachmentGeneral}" class="zcpxSectionLabel sapUiSmallMarginTop"/>
+                        <VBox items="{path: 'cpe>/draft/attachments/general', key: 'id'}">
+                            <VBox class="zcpxAttachRow sapUiTinyMarginBottom">
+                                <HBox alignItems="Center" justifyContent="SpaceBetween">
+                                    <Input
+                                        value="{cpe>label}"
+                                        width="60%"
+                                        class="zcpxAttachLabel"/>
+                                    <Button
+                                        icon="sap-icon://delete"
+                                        type="Transparent"
+                                        press=".onRemoveGeneralAttachment"
+                                        tooltip="{i18n>deleteAction}"/>
+                                </HBox>
+                                <HBox alignItems="Center" wrap="Wrap" class="sapUiTinyMarginTop">
+                                    <u:FileUploader
+                                        change=".onAttachmentFileChange"
+                                        typeMissmatch=".onAttachmentTypeMismatch"
+                                        fileSizeExceed=".onAttachmentFileSizeExceed"
+                                        fileType="{path: 'config>/docExtensions', formatter: '.formatFileTypes'}"
+                                        maximumFileSize="{= ${config>/docMaxMb} || 10 }"
+                                        buttonText="{i18n>upload}"
+                                        placeholder="No file chosen"
+                                        width="14rem"
+                                        class="sapUiTinyMarginEnd"/>
+                                    <Button
+                                        icon="sap-icon://show"
+                                        type="Transparent"
+                                        tooltip="{i18n>docView}"
+                                        press=".onViewAttachment"
+                                        visible="{parts: ['cpe>previewUrl', 'cpe>fileType'], formatter: '.formatCanPreviewAttachment'}"
+                                        class="sapUiTinyMarginEnd"/>
+                                    <Text text="{= ${cpe>fileName} ? 'Selected: ' + ${cpe>fileName} : '' }" class="zcpxHintText"/>
+                                </HBox>
+                                <Input
+                                    value="{cpe>note}"
+                                    placeholder="{i18n>attachmentNotePlaceholder}"
+                                    width="100%"
+                                    class="sapUiTinyMarginTop"/>
+                            </VBox>
+                        </VBox>
+                        <Button
+                            text="{i18n>addAttachment}"
+                            icon="sap-icon://add"
+                            type="Transparent"
+                            press=".onAddGeneralAttachment"
+                            class="sapUiTinyMarginTop"/>
+
+                    </VBox>
+                </VBox>
+
+                <!-- ==========================================================
+                     4. FINANCIAL EVALUATION (toggleable)
+                     ========================================================== -->
+                <VBox class="zcpxCard zcpxSection" visible="{= !!${cpe>/draft/budgetId} }">
+                    <HBox class="zcpxCardHeader" justifyContent="SpaceBetween" alignItems="Center">
+                        <HBox alignItems="Center">
+                            <core:Icon src="sap-icon://line-chart" class="sapUiTinyMarginEnd"/>
+                            <Text text="{i18n>financialMetrics}" class="zcpxCardTitle"/>
+                        </HBox>
+                        <HBox alignItems="Center">
+                            <Label text="{i18n>enableMetrics}" class="sapUiTinyMarginEnd"/>
+                            <Switch
+                                state="{cpe>/draft/metricsEnabled}"
+                                change=".onToggleMetrics"
+                                customTextOn="On"
+                                customTextOff="Off"/>
+                        </HBox>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+
+                        <MessageStrip
+                            text="{i18n>metricsDisabledHint}"
+                            type="Information"
+                            showIcon="true"
+                            visible="{= !${cpe>/draft/metricsEnabled} }"/>
+
+                        <VBox visible="{cpe>/draft/metricsEnabled}">
+                            <HBox alignItems="End" wrap="Wrap">
+                                <VBox class="sapUiTinyMarginEnd" width="9rem">
+                                    <Label text="{i18n>hurdleRate}"/>
+                                    <Text text="{= ${cpe>/draft/hurdleRate} + '%'}" class="zcpxReadonlyValue"/>
+                                </VBox>
+                            </HBox>
+
+                            <Text text="{i18n>cashFlows}" class="zcpxSectionLabel sapUiSmallMarginTop"/>
+                            <l:Grid defaultSpan="XL2 L2 M4 S6" hSpacing="1" vSpacing="1">
+                                <VBox><Label text="{i18n>year1}"/><Input value="{cpe>/draft/cf1}" type="Number" liveChange=".onCalc" placeholder="0"/></VBox>
+                                <VBox><Label text="{i18n>year2}"/><Input value="{cpe>/draft/cf2}" type="Number" liveChange=".onCalc" placeholder="0"/></VBox>
+                                <VBox><Label text="{i18n>year3}"/><Input value="{cpe>/draft/cf3}" type="Number" liveChange=".onCalc" placeholder="0"/></VBox>
+                                <VBox><Label text="{i18n>year4}"/><Input value="{cpe>/draft/cf4}" type="Number" liveChange=".onCalc" placeholder="0"/></VBox>
+                                <VBox><Label text="{i18n>year5}"/><Input value="{cpe>/draft/cf5}" type="Number" liveChange=".onCalc" placeholder="0"/></VBox>
+                                <VBox justifyContent="End">
+                                    <Label text=" "/>
+                                    <Button text="{i18n>calculate}" icon="sap-icon://simulate" type="Emphasized" press=".onCalc" width="100%"/>
+                                </VBox>
+                            </l:Grid>
+
+                            <l:Grid defaultSpan="XL4 L4 M4 S12" hSpacing="1" vSpacing="1" class="sapUiSmallMarginTop">
+                                <VBox class="zcpxMetric">
+                                    <Text text="{i18n>irr}" class="zcpxMetricLabel"/>
+                                    <Text text="{path: 'cpe>/draft/irr', formatter: '.formatIrr'}" class="zcpxMetricValue">
+    <customData>
+        <core:CustomData key="tone" value="{path: 'cpe>/draft/irr', formatter: '.formatter.irrTone'}" writeToDom="true"/>
+    </customData>
+</Text>
+                                </VBox>
+                                <VBox class="zcpxMetric">
+                                    <Text text="{i18n>npv}" class="zcpxMetricLabel"/>
+                                    <Text text="{path: 'cpe>/draft/npv', formatter: '.formatNpv'}" class="zcpxMetricValue">
+    <customData>
+        <core:CustomData key="tone" value="{path: 'cpe>/draft/npv', formatter: '.formatter.npvTone'}" writeToDom="true"/>
+    </customData>
+</Text>
+                                </VBox>
+                                <VBox class="zcpxMetric">
+                                    <Text text="{i18n>payback}" class="zcpxMetricLabel"/>
+                                    <Text text="{path: 'cpe>/draft/payback', formatter: '.formatPayback'}" class="zcpxMetricValue">
+    <customData>
+        <core:CustomData key="tone" value="{path: 'cpe>/draft/payback', formatter: '.formatter.paybackTone'}" writeToDom="true"/>
+    </customData>
+</Text>
+                                </VBox>
+                            </l:Grid>
+                        </VBox>
+                    </VBox>
+                </VBox>
+
+                <!-- ==========================================================
+                     5. DOA ROUTE PREVIEW
+                     ========================================================== -->
+                <VBox class="zcpxCard zcpxSection" visible="{= ${cpe>/draft/amount} > 0 }">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <core:Icon src="sap-icon://org-chart" class="sapUiTinyMarginEnd"/>
+                        <Text text="Approval Route (auto-resolved from DOA)" class="zcpxCardTitle"/>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+                        <VBox items="{cpe>/draft/doaPreview}">
+                            <HBox alignItems="Center" class="sapUiTinyMarginBottom">
+                                <ObjectStatus text="{cpe>level}" state="Information" class="sapUiTinyMarginEnd"/>
+                                <VBox>
+                                    <Text text="{cpe>role}" class="zcpxTlRole"/>
+                                    <Text text="{cpe>approver}" class="zcpxTlMeta"/>
+                                </VBox>
+                                <ToolbarSpacer/>
+                                <Text text="{path: 'cpe>slaDays', formatter: '.formatter.days'} SLA" class="zcpxTlMeta"/>
+                            </HBox>
+                        </VBox>
+                    </VBox>
+                </VBox>
+
+            </VBox>
+        </content>
+
+        <footer>
+            <OverflowToolbar>
+                <ToolbarSpacer/>
+                <Button id="btnSaveDraft" text="{i18n>saveDraft}" icon="sap-icon://save" press=".onSaveDraft"/>
+                <Button
+                    id="btnSubmit"
+                    text="{i18n>submit}"
+                    icon="sap-icon://accept"
+                    type="Emphasized"
+                    press=".onSubmit"/>
+                <Button text="{i18n>cancel}" press=".onBack"/>
+            </OverflowToolbar>
+        </footer>
+
+    </Page>
+
+</mvc:View>

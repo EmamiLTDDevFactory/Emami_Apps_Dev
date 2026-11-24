@@ -50,6 +50,7 @@ export const EMBEDDED_APP_URLS: Record<string, string> = {
   'access-tracker': '/apps/access-tracker', // Access Tracker (who has access, change log, sign-in activity - admins only)
   samadhan: '/apps/samadhan', // Samadhan - Emami service desk
   'cascade-pricing': '/apps/cascade-pricing', // Cascade Pricing (ZMM_CASCADE_PRICING, export price cascade)
+  'capex-portal': '/apps/capex-portal', // CAPEX Portal (Fiori ZCAPEX_PORTAL converted; SAP ZCAPEX_PORTAL_SRV)
   'mm-mdm': '/apps/mm-mdm', // Material Master (ZMM_MDM_SRV, material master requests)
   'smartruck-tms': '/apps/smartruck-tms', // SmarTruck TMS (rebuild of Instavans SmarTruck Shipper — demo data)
   'auditee-response': '/apps/auditee-response', // Auditee Response (replaces WDs ZAUDIT_TOOL + ZMSD_MIS_OBSERVATION; open to all, see OPEN_TO_ALL_APPS in backend/server.js)
@@ -83,6 +84,7 @@ const RAW_APPS: AppItem[] = [
   { id: 'shelf-life-deviation', name: 'Shelf Life Deviation', desc: 'CPD Category Head approval of shelf-life deviation inspection lots, plus the CADE deviation report on SAP.', cat: 'CPD', icon: Hourglass, uses: 0, stage: 'Live' },
   { id: 'samadhan', name: 'Samadhan', desc: 'Emami service desk for every issue: SAP and primary sales, secondary sales apps (Arteria today, Salescode.AI next), digital apps and IT infrastructure - one mailbox, self-service portal, WhatsApp, SLAs, AI insights and dashboards.', cat: 'IT', icon: LifeBuoy, uses: 0, stage: 'IAT' },
   { id: 'cascade-pricing', name: 'Cascade Pricing', desc: 'Export price cascade from RRP to CIF by market and customer — rate upload, pricing simulation, approval, SAP condition creation and pricing KPIs.', cat: 'IBD', icon: Layers, uses: 0, stage: 'WIP' },
+  { id: 'capex-portal', name: 'CAPEX Portal', desc: 'Capital expenditure from budget to capitalization — budgets, CPEs, DOA approvals, CWIP / PO, installation certificates, unit quota, dashboards and audit trail.', cat: 'Finance', icon: Landmark, uses: 0, stage: 'WIP' },
   { id: 'mm-mdm', name: 'Material Master', desc: 'Request, review and approve material master records — key data, tabs, validation by SAP, workflow with send back and approval.', cat: 'Supply Chain', icon: PackageSearch, uses: 0, stage: 'WIP' },
   { id: 'smartruck-tms', name: 'SmarTruck TMS', desc: 'Transport management — orders, reverse-auction bidding, live fleet tracking and control tower, ePOD, carrier invoicing and reports. Demo build on sample data.', cat: 'Supply Chain', icon: Route, uses: 0, stage: 'WIP' },
   { id: 'auditee-response', name: 'Auditee Response', desc: 'Answer the internal audit and MIS observations assigned to you and submit your response to the reviewer, with attachments.', cat: 'MSD', icon: MessageSquareReply, uses: 0, stage: 'WIP' },
