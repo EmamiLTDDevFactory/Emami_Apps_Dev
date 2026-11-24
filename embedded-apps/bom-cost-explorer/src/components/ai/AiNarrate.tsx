@@ -38,7 +38,7 @@ export default function AiNarrate({ build, label = 'Explain with AI', disabled, 
         <Button size="sm" onClick={run} disabled={busy || disabled}><Sparkles size={13} /> {busy ? 'Writing…' : label}</Button>
         {busy && <Spinner className="h-4 w-4" />}
         <button type="button" aria-label="AI settings" className="rounded-lg p-1 text-muted hover:bg-sunken hover:text-ink" onClick={() => setSettings(true)}><Settings size={14} /></button>
-        {!hasAiAccess() && <span className="text-2xs text-muted">No Grok key yet: you get the plain summary. Add one in AI settings.</span>}
+        {!hasAiAccess() && <span className="text-2xs text-muted">No Groq key yet: you get the plain summary. Add one in AI settings.</span>}
       </div>
       {err && <p className="mt-2 text-xs text-bad">{err}</p>}
       {out && (

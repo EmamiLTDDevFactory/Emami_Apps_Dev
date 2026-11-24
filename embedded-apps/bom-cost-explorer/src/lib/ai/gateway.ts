@@ -1,5 +1,5 @@
 /**
- * Grok (xAI) gateway. The API is OpenAI compatible (POST {base}/chat/completions), called from the browser with the key typed in
+ * Groq gateway. The API is OpenAI compatible (POST {base}/chat/completions), called from the browser with the key typed in
  * the AI settings, or through the hub backend proxy (NEXT_PUBLIC_AI_BASE_URL) that holds the key on the server (lib/ai/config.ts).
  * Two entry points:
  *   answerFromFacts  one JSON answer written only from FACTS; validated by the numbers rule; on failure ONE regeneration with the
@@ -34,7 +34,6 @@ export interface AiClient {
 
 const body = (r: ChatRequest, stream: boolean) => JSON.stringify({
   model: r.model, messages: r.messages, max_tokens: r.max_tokens ?? 4000, temperature: r.temperature ?? 0.2, stream,
-  ...(stream ? { stream_options: { include_usage: true } } : {}),
   ...(r.tools?.length ? { tools: r.tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema } })), tool_choice: 'auto' } : {}),
 });
 
@@ -88,7 +87,7 @@ export function makeClient(apiKey: string, baseUrl: string = AI_BASE_URL, timeou
             if (!line.startsWith('data:')) continue;
             const data = line.slice(5).trim();
             if (!data || data === '[DONE]') continue;
-            let j: { choices?: { delta?: { content?: string; tool_calls?: { index: number; id?: string; function?: { name?: string; arguments?: string } }[] }; finish_reason?: string }[]; usage?: { prompt_tokens?: number; completion_tokens?: number } };
+            let j: { choices?: { delta?: { content?: string; tool_calls?: { index: number; id?: string; function?: { name?: string; arguments?: string } }[] }; finish_reason?: string }[]; usage?: { prompt_tokens?: number; completion_tokens?: number }; x_groq?: { usage?: { prompt_tokens?: number; completion_tokens?: number } } };
             try { j = JSON.parse(data); } catch { continue; }
             const ch = j.choices?.[0];
             if (ch?.delta?.content) { content += ch.delta.content; onText(ch.delta.content); }
@@ -100,7 +99,8 @@ export function makeClient(apiKey: string, baseUrl: string = AI_BASE_URL, timeou
               calls.set(t.index, c);
             }
             if (ch?.finish_reason) finish = ch.finish_reason;
-            if (j.usage) { usage.input = j.usage.prompt_tokens ?? usage.input; usage.output = j.usage.completion_tokens ?? usage.output; }
+            const u = j.usage ?? j.x_groq?.usage; // Groq sends the usage of a stream in x_groq of the last chunk
+            if (u) { usage.input = u.prompt_tokens ?? usage.input; usage.output = u.completion_tokens ?? usage.output; }
           }
         }
         return { content, finish, toolCalls: [...calls.entries()].sort((a, b) => a[0] - b[0]).map(([, c], i) => ({ ...c, id: c.id || `call_${i}` })), usage };
@@ -206,13 +206,13 @@ export async function runToolLoop(o: {
 /** Friendly text for an API failure (bad key, rate limit, network). */
 export function describeError(e: unknown): string {
   if (e instanceof AiHttpError) {
-    if (e.status === 401) return 'The Grok API key was not accepted. Check it on the AI settings screen.';
-    if (e.status === 403) return 'This Grok API key is not allowed to use the model.';
+    if (e.status === 401) return 'The Groq API key was not accepted. Check it on the AI settings screen.';
+    if (e.status === 403) return 'This Groq API key is not allowed to use the model.';
     if (e.status === 404) return 'The model name was not found. Check the models on the AI settings screen.';
-    if (e.status === 429) return 'Grok is busy (rate limit). Wait a moment and try again.';
-    return `Grok returned an error (${e.status}${e.message ? `: ${e.message.slice(0, 120)}` : ''}).`;
+    if (e.status === 429) return 'Groq is busy (rate limit). Wait a moment and try again.';
+    return `Groq returned an error (${e.status}${e.message ? `: ${e.message.slice(0, 120)}` : ''}).`;
   }
   if (e instanceof DOMException && e.name === 'AbortError') return 'The AI request was cancelled or took too long.';
-  if (e instanceof TypeError) return 'Could not reach Grok. Check the network (or the AI proxy address) and try again.';
+  if (e instanceof TypeError) return 'Could not reach Groq. Check the network (or the AI proxy address) and try again.';
   return e instanceof Error ? e.message : 'Something went wrong.';
 }

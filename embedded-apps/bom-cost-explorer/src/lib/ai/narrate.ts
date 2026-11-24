@@ -1,6 +1,6 @@
 /**
  * Facts-only narratives for the costing screens (MIS, bridge, Margin, Sales, Freight, data quality, budget rates ...).
- * A builder (lib/ai/builders) turns the figures on the screen into FACTS with deterministic code; Grok writes the words under the numbers rule
+ * A builder (lib/ai/builders) turns the figures on the screen into FACTS with deterministic code; Groq writes the words under the numbers rule
  * (lib/ai/validate.ts); with no key, an error or two failed checks the deterministic template is shown instead. Read-only: nothing is sent to SAP.
  * The latest narrative of each feature is kept in this tab (session storage) for the monthly review pack.
  */
@@ -40,7 +40,7 @@ export async function narrate(spec: NarrateSpec, ctx: { user: string; system: st
   const at = new Date().toLocaleString('en-IN');
   let result: FactsAnswer;
   if (!hasAiAccess()) {
-    result = { answer: template(), template: true, validatorOk: false, attempts: 0, usage: { input: 0, output: 0 }, error: 'No Grok API key: showing the plain summary. Add a key in AI settings for the written explanation.' };
+    result = { answer: template(), template: true, validatorOk: false, attempts: 0, usage: { input: 0, output: 0 }, error: 'No Groq API key: showing the plain summary. Add a key in AI settings for the written explanation.' };
   } else {
     result = await answerFromFacts({
       client: makeClient(getApiKey()), model: getModels().main, system: spec.system ? `${NARRATOR_SYSTEM}\n${spec.system}` : NARRATOR_SYSTEM, facts, task: spec.task, template,

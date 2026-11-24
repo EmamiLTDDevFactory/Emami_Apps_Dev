@@ -1,6 +1,6 @@
 /**
  * Name mapping helper: SAP brands that have no management name in the product hierarchy workbook get a SUGGESTED match from the workbook's brand names.
- * Deterministic pre-filter (similarity) picks the candidates; Grok chooses among them and says why; a suggestion that is not one of the candidates is
+ * Deterministic pre-filter (similarity) picks the candidates; Groq chooses among them and says why; a suggestion that is not one of the candidates is
  * dropped. The result is a list for a person to review and copy: nothing is saved, applied or sent to SAP.
  */
 import { makeClient, type AiClient } from './gateway';
@@ -39,7 +39,7 @@ Return JSON only: {"mappings":[{"code":"...","suggestion":"<one candidate or emp
 
 export async function suggestBrandNames(items: Unmapped[], names: string[], user: string, client?: AiClient): Promise<Suggestion[]> {
   const cand = new Map(items.map((u) => [u.code, candidatesFor(u.text, names)] as const));
-  if (!client && !hasAiAccess()) return cleanSuggestions(items, cand, {}).map((s) => ({ ...s, reason: 'No Grok API key: add one in AI settings.' }));
+  if (!client && !hasAiAccess()) return cleanSuggestions(items, cand, {}).map((s) => ({ ...s, reason: 'No Groq API key: add one in AI settings.' }));
   const c = client ?? makeClient(getApiKey());
   const out: Suggestion[] = [];
   for (let i = 0; i < items.length; i += 25) {

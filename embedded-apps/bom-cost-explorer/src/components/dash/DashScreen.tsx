@@ -155,7 +155,7 @@ export default function DashScreen() {
         {tab === 'ai' && (
           <Card className="p-4">
             <h3 className="mb-1 text-base font-extrabold">Notes from the numbers</h3>
-            <p className="mb-3 text-xs text-muted">Rule-based: each note only states what the MIS figures show (brand red above 3 % over budget, amber above 2 %). No language model writes these notes; the AI tools above use Grok on the screens' figures.</p>
+            <p className="mb-3 text-xs text-muted">Rule-based: each note only states what the MIS figures show (brand red above 3 % over budget, amber above 2 %). No language model writes these notes; the AI tools above use Groq on the screens' figures.</p>
             {!rows ? <p className="text-sm text-muted">Run the MIS tab first; the notes are made from its result.</p>
               : !notes.length ? <p className="text-sm text-muted">Nothing to flag: no brand is above the amber threshold and every finished good has a budget.</p>
               : <ul className="flex flex-col gap-2">{notes.map((n, i) => (

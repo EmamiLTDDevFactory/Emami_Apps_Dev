@@ -6,15 +6,15 @@ import { rateOutlook } from '@/lib/ai/forecast';
 afterEach(() => vi.unstubAllGlobals());
 const sse = (chunks: string[]) => new Response(new ReadableStream({ start(c) { const e = new TextEncoder(); for (const x of chunks) c.enqueue(e.encode(x)); c.close(); } }), { status: 200 });
 
-describe('Grok gateway (OpenAI compatible)', () => {
+describe('Groq gateway (OpenAI compatible)', () => {
   it('chat: posts to {base}/chat/completions with the bearer key and reads content, tool calls and usage', async () => {
     const calls: { url: string; init: RequestInit }[] = [];
     vi.stubGlobal('fetch', async (url: string, init: RequestInit) => { calls.push({ url, init }); return new Response(JSON.stringify({ choices: [{ message: { content: 'hi', tool_calls: [{ id: 'c1', function: { name: 'get_mis', arguments: '{"plants":["UN13"]}' } }] }, finish_reason: 'tool_calls' }], usage: { prompt_tokens: 7, completion_tokens: 3 } }), { status: 200 }); });
-    const r = await makeClient('xai-key', 'https://api.x.ai/v1/').chat({ model: 'grok-4', messages: [{ role: 'user', content: 'x' }], tools: [{ name: 'get_mis', description: 'd', input_schema: { type: 'object' } }] });
-    expect(calls[0].url).toBe('https://api.x.ai/v1/chat/completions');
-    expect((calls[0].init.headers as Record<string, string>).Authorization).toBe('Bearer xai-key');
+    const r = await makeClient('gsk-key', 'https://api.groq.com/openai/v1/').chat({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: 'x' }], tools: [{ name: 'get_mis', description: 'd', input_schema: { type: 'object' } }] });
+    expect(calls[0].url).toBe('https://api.groq.com/openai/v1/chat/completions');
+    expect((calls[0].init.headers as Record<string, string>).Authorization).toBe('Bearer gsk-key');
     const sent = JSON.parse(String(calls[0].init.body));
-    expect(sent.model).toBe('grok-4'); expect(sent.tools[0].function.name).toBe('get_mis'); expect(sent.stream).toBe(false);
+    expect(sent.model).toBe('llama-3.3-70b-versatile'); expect(sent.tools[0].function.name).toBe('get_mis'); expect(sent.stream).toBe(false);
     expect(r.content).toBe('hi'); expect(r.toolCalls).toEqual([{ id: 'c1', name: 'get_mis', arguments: '{"plants":["UN13"]}' }]); expect(r.usage).toEqual({ input: 7, output: 3 });
   });
   it('no key (server proxy): no Authorization header', async () => {
@@ -37,9 +37,9 @@ describe('Grok gateway (OpenAI compatible)', () => {
   it('errors become plain messages', async () => {
     vi.stubGlobal('fetch', async () => new Response(JSON.stringify({ error: { message: 'bad key' } }), { status: 401 }));
     await expect(makeClient('k').chat({ model: 'm', messages: [] })).rejects.toBeInstanceOf(AiHttpError);
-    expect(describeError(new AiHttpError(401, ''))).toContain('Grok API key was not accepted');
+    expect(describeError(new AiHttpError(401, ''))).toContain('Groq API key was not accepted');
     expect(describeError(new AiHttpError(429, ''))).toContain('rate limit');
-    expect(describeError(new TypeError('x'))).toContain('Could not reach Grok');
+    expect(describeError(new TypeError('x'))).toContain('Could not reach Groq');
   });
 });
 

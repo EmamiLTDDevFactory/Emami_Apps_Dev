@@ -63,7 +63,7 @@ export function explainTemplate(r: ExplainResult, f: ExplainFacts, c: ExplainCon
 export async function explainWithModel(client: AiClient | null, model: string, r: ExplainResult, c: ExplainContext, user: string): Promise<FactsAnswer & { facts: ExplainFacts }> {
   const facts = explainFacts(r, c);
   const template = () => explainTemplate(r, facts, c);
-  if (!client) return { answer: template(), template: true, validatorOk: false, attempts: 0, usage: { input: 0, output: 0 }, facts, error: 'No Grok API key: showing the template. Add a key in AI settings for a written explanation.' };
+  if (!client) return { answer: template(), template: true, validatorOk: false, attempts: 0, usage: { input: 0, output: 0 }, facts, error: 'No Groq API key: showing the template. Add a key in AI settings for a written explanation.' };
   const task = `Explain the cost change of ${c.sku} (${c.headtxt}) in plant ${c.plant}, ${c.baselineLabel} versus ${c.currentLabel}. Warnings: ${r.warnings.length ? r.warnings.join(' ') : 'none'}.`;
   const res = await answerFromFacts({ client, model, system: EXPLAINER_SYSTEM, facts: facts.book.list(), task, template, ignore: [c.plant, c.sku], feature: 'explain', user, question: task, sapSystem: c.system });
   return { ...res, facts };

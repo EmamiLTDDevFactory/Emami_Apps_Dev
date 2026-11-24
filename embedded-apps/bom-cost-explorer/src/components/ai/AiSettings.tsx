@@ -1,5 +1,5 @@
 'use client';
-/** AI settings: the Grok (xAI) API key (this tab, or this device if remembered), the models, a key test. */
+/** AI settings: the Groq API key (this tab, or this device if remembered), the models, a key test. */
 import { useState } from 'react';
 import { CheckCircle2, KeyRound, ShieldAlert } from 'lucide-react';
 import { Button, Modal, cx, inputCls } from '../ui';
@@ -32,13 +32,13 @@ export default function AiSettings({ open, onClose }: { open: boolean; onClose: 
       footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save}>Save</Button></>}>
       <div className="flex flex-col gap-3 text-sm">
         <label className="flex flex-col gap-1">
-          <span className="flex items-center gap-1.5 text-xs font-semibold text-muted"><KeyRound size={13} /> Grok API key</span>
-          <input type="password" autoComplete="off" spellCheck={false} aria-label="Grok API key" className={inputCls} placeholder="xai-…" value={key} onChange={(e) => setKey(e.target.value)} />
+          <span className="flex items-center gap-1.5 text-xs font-semibold text-muted"><KeyRound size={13} /> Groq API key</span>
+          <input type="password" autoComplete="off" spellCheck={false} aria-label="Groq API key" className={inputCls} placeholder="gsk_…" value={key} onChange={(e) => setKey(e.target.value)} />
         </label>
         <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /> Remember on this device (otherwise only for this browser tab)</label>
         <div className="flex items-start gap-2 rounded-lg border border-warn/40 bg-warn/[0.07] px-3 py-2 text-xs">
           <ShieldAlert size={14} className="mt-0.5 shrink-0 text-warn" />
-          <span>The key stays in this browser and is sent only to xAI (Grok) (or to the company AI proxy when one is set). Costing data you ask about (materials, rates, quantities) is sent to Grok to write answers; the AI never changes anything in SAP; vendor names are replaced by V1, V2 … Nothing is ever written to SAP.</span>
+          <span>The key stays in this browser and is sent only to Groq (Groq) (or to the company AI proxy when one is set). Costing data you ask about (materials, rates, quantities) is sent to Groq to write answers; the AI never changes anything in SAP; vendor names are replaced by V1, V2 … Nothing is ever written to SAP.</span>
         </div>
         <div className="grid grid-cols-2 gap-2">
           <label className="flex flex-col gap-1 text-xs font-semibold text-muted">Main model<input className={inputCls} value={models.main} onChange={(e) => setM({ ...models, main: e.target.value })} /></label>

@@ -1,6 +1,6 @@
 /**
- * Runs evals/golden.json against the REAL model (XAI_API_KEY) and the mock SAP. Reports the pass rate.
- *   npm run eval            (AI_EVAL_MODEL to override the model, default grok-4)
+ * Runs evals/golden.json against the REAL model (GROQ_API_KEY) and the mock SAP. Reports the pass rate.
+ *   npm run eval            (AI_EVAL_MODEL to override the model, default llama-3.3-70b-versatile)
  * A case passes when: the numbers rule holds (no template), every expected tool was called, refusals call no SAP tool,
  * expect_contains / expect_not_contains hold, and the confirm answer is honoured.
  */
@@ -10,8 +10,8 @@ process.env.MOCK_SAP = 'true';
 process.env.MOCK_SAP_DELAY_MS = '0';
 
 async function main() {
-  const key = process.env.XAI_API_KEY;
-  if (!key) { console.error('Set XAI_API_KEY to run the evals.'); process.exit(2); }
+  const key = process.env.GROQ_API_KEY;
+  if (!key) { console.error('Set GROQ_API_KEY to run the evals.'); process.exit(2); }
   const { makeClient } = await import('../src/lib/ai/gateway');
   const { ask, newConversation } = await import('../src/lib/ai/assistant');
   const { api } = await import('../src/lib/client/api');
@@ -19,7 +19,7 @@ async function main() {
   const { clearAiResults } = await import('../src/lib/ai/tools/registry');
   const golden = JSON.parse(fs.readFileSync(path.join(__dirname, 'golden.json'), 'utf8'));
   const client = makeClient(key);
-  const model = process.env.AI_EVAL_MODEL || 'grok-4';
+  const model = process.env.AI_EVAL_MODEL || 'llama-3.3-70b-versatile';
   const q = { ...defaultQuery('B'), materials: ['FG1001'], plants: ['1000'], inclBudget: true, budgetYr: 2026 };
   let pass = 0; let run = 0;
   for (const c of golden.cases) {

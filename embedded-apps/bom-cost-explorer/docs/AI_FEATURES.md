@@ -1,20 +1,20 @@
-# AI features of the Costing Cockpit (Grok / xAI)
+# AI features of the Costing Cockpit (Groq)
 
-The model is **Grok (xAI)**; Claude is not used anywhere. **No AI feature can write to SAP**: the model only gets read-only tools and fact lists, and
+The provider is **Groq** (api.groq.com, OpenAI compatible), the same provider and `GROQ_API_KEY` the Expense / Non-CTC app already uses for receipt extraction (note: Groq is not xAI's Grok). Claude is not used anywhere. **No AI feature can write to SAP**: the model only gets read-only tools and fact lists, and
 `tests/unit/ai-readonly.test.ts` fails the build if AI code ever imports a SAP write function, uses a write HTTP method (other than the chat request to the AI
 service), or exposes a tool with a write verb.
 
 ## Set-up
 | What | How |
 |---|---|
-| Per-user key (default) | The person opens **AI settings** (gear next to any "Explain with AI" / "Ask" button), types the Grok API key (`xai-…`), tests it. The key stays in the browser (this tab, or the device if "remember") and goes only to `https://api.x.ai/v1`. |
-| One shared key on the server (recommended) | On the hub backend set `XAI_API_KEY` (and optionally `XAI_BASE_URL`, `AI_MODELS_ALLOWED`, `AI_MAX_BODY_KB`, `AI_RATE_PER_MIN`); build the Cockpit with `NEXT_PUBLIC_AI_BASE_URL=<api>/me/cockpit-ai` and `NEXT_PUBLIC_AI_SERVER_KEY=true`. Nobody types a key; the route (`backend/cockpitAi.js`) needs a hub session and the Costing Cockpit grant, limits model, size and rate, and logs user, model, time and token counts (never the prompt). |
-| Models | `NEXT_PUBLIC_AI_MODEL_MAIN` (default `grok-4`) and `NEXT_PUBLIC_AI_MODEL_FAST` (default `grok-3-mini`); editable on the AI settings screen. |
-| Daily Cost watch digest | `XAI_API_KEY` on the backend (also `AI_MODEL_FAST`); without it the template text is sent. |
+| Per-user key (default) | The person opens **AI settings** (gear next to any "Explain with AI" / "Ask" button), types the Groq API key (`gsk_…`), tests it. The key stays in the browser (this tab, or the device if "remember") and goes only to `https://api.groq.com/openai/v1`. |
+| One shared key on the server (recommended) | On the hub backend set `GROQ_API_KEY` (and optionally `GROQ_BASE_URL`, `AI_MODELS_ALLOWED`, `AI_MAX_BODY_KB`, `AI_RATE_PER_MIN`); build the Cockpit with `NEXT_PUBLIC_AI_BASE_URL=<api>/me/cockpit-ai` and `NEXT_PUBLIC_AI_SERVER_KEY=true`. Nobody types a key; the route (`backend/cockpitAi.js`) needs a hub session and the Costing Cockpit grant, limits model, size and rate, and logs user, model, time and token counts (never the prompt). |
+| Models | `NEXT_PUBLIC_AI_MODEL_MAIN` (default `llama-3.3-70b-versatile`) and `NEXT_PUBLIC_AI_MODEL_FAST` (default `llama-3.1-8b-instant`); both support tool calls on Groq; editable on the AI settings screen. |
+| Daily Cost watch digest | `GROQ_API_KEY` on the backend (also `AI_MODEL_FAST`); without it the template text is sent. |
 | Switch off | `NEXT_PUBLIC_AI_ENABLED=false` (no AI code is loaded). |
 
 ## How every written answer is kept honest
-Deterministic code builds a list of **facts** (id, label, value, display, unit) from the figures on the screen; Grok writes only from them and must put the fact id
+Deterministic code builds a list of **facts** (id, label, value, display, unit) from the figures on the screen; Groq writes only from them and must put the fact id
 after every number. `lib/ai/validate.ts` checks every number against the facts; one regeneration with the errors, then a plain **template** from the facts
 (marked "plain summary"). Without a key you always get the plain summary. Amounts in lakh are kept as rupees in the facts, so "90.0 lakh [F1]" is checked against 9,000,000.
 
@@ -31,7 +31,7 @@ after every number. `lib/ai/validate.ts` checks every number against the facts; 
 | Rate outlook | Avg base price breakup (budget rates) | statistics on the monthly purchase history (trend, volatility, outlook with a range) and a written explanation; a suggestion only |
 | Name mapping helper | Dashboard > AI insights | SAP brands without a management name get a suggested workbook name; the suggestion must be one of the closest names; copy as CSV, nothing is saved |
 | Monthly review pack | Dashboard > AI insights | the latest review of each screen made in this tab, as one text to download |
-| Smarter Cost watch | Monitoring > Cost watch | rule **R10**: today's cost per piece is a statistical outlier (z above 3) against its own last 30 days; digest written by Grok under the numbers rule |
+| Smarter Cost watch | Monitoring > Cost watch | rule **R10**: today's cost per piece is a statistical outlier (z above 3) against its own last 30 days; digest written by Groq under the numbers rule |
 
 Audit: every call is written to a local ring (200 entries) in the browser (user, feature, question, tokens, validator result, template used); the server proxy logs the same without prompts.
-Vendor names are replaced by V1, V2 ... in what is sent (`NEXT_PUBLIC_AI_MASK_VENDORS`). Evals: `XAI_API_KEY=… npm run eval`.
+Vendor names are replaced by V1, V2 ... in what is sent (`NEXT_PUBLIC_AI_MASK_VENDORS`). Evals: `GROQ_API_KEY=… npm run eval`.
