@@ -858,11 +858,14 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const data = response.data?.d || response.data;
       if (!data) return null;
 
-      // NoCap/CapFound are 'X'/blank strings, not booleans. CapFound blank means no cap row was
-      // found for this grade at all (e.g. a grade not in the cap table) - treated the same as an
-      // explicit NoCap='X': no limit, no "above eligibility" warning.
-      const noCap = data.NoCap === 'X';
-      const capFound = data.CapFound === 'X';
+      // NoCap/CapFound were originally 'X'/blank strings; SAP's gateway now returns them as real
+      // Edm.Boolean values instead (confirmed live 2026-11-24: {"NoCap": false, "CapFound": true}),
+      // same ambiguity ExptypeSet.IsMobile above already handles - check both forms so this keeps
+      // working regardless of which one a given SEGW build sends. CapFound false/blank means no cap
+      // row was found for this grade at all (e.g. a grade not in the cap table) - treated the same
+      // as an explicit NoCap='X': no limit, no "above eligibility" warning.
+      const noCap = data.NoCap === true || data.NoCap === 'X';
+      const capFound = data.CapFound === true || data.CapFound === 'X';
       const eligibleAmount = (!capFound || noCap) ? null : (parseFloat(data.EligibleAmount) || 0);
 
       return { eligibleAmount, grade: data.Grade, category: data.Category };
