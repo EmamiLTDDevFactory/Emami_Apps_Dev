@@ -94,6 +94,10 @@ const getActionLevelLabel = (level?: string) => {
 const getEntryDisplayLabel = (entry: any) => {
   const status = (entry?.Status || '').toString().toUpperCase();
   const action = (entry?.Action || '').toString().toUpperCase();
+  // An admin reassigning a DOA approver writes this row with the claim's real status (N/A), so
+  // without this check first it falls through to the plain "Submitted"/"Approved" status label
+  // below and loses the fact that an admin change happened, not a normal workflow step.
+  if (action === 'APPROVER CHANGED') return 'Approver Changed';
   if (status === 'S') return 'Posted';
   if (status === 'P') return 'Awaiting Posting';
   if (status === 'H') return 'Pending at finance';
@@ -114,6 +118,7 @@ const STATUS_PALETTE: Record<string, { bg: string; border: string; text: string 
   'pending at finance': { bg: '#FEF3C7', border: '#D97706', text: '#B45309' },
   submitted: { bg: '#DBEAFE', border: '#1D4ED8', text: '#1E3A8A' },
   rejected: { bg: '#FEE2E2', border: '#EF4444', text: '#B91C1C' },
+  'approver changed': { bg: '#F3F4F6', border: '#6B7280', text: '#374151' },
 };
 const getStatusPalette = (status: string) => STATUS_PALETTE[(status || '').trim().toLowerCase()] || { bg: '#FFFFFF', border: '#E2E8F0', text: '#111827' };
 
@@ -204,9 +209,11 @@ function ClaimDetailInner() {
   const showFinanceActions = isFinanceRole && (normalizedHeaderStatus === 'A' || normalizedHeaderStatus === 'APPROVED' || normalizedHeaderStatus === 'H' || normalizedHeaderStatus === 'PENDING RELEASE' || isTopLevelPending);
   // Admin can reject any open claim (N/A/H) regardless of whose it is or whether they're in the
   // approval chain - excludes S/P (an FI document already exists) and R (already rejected), per
-  // the DOA handover's admin section. No role check needed on the read side; this just gates the
-  // button's visibility.
-  const showAdminReject = !!currentUser?.isAdmin && (normalizedHeaderStatus === 'N' || normalizedHeaderStatus === 'A' || normalizedHeaderStatus === 'H');
+  // the DOA handover's admin section. Also excludes the admin's own claim - the backend refuses
+  // that with "Admin cannot reject own claim" regardless, so hide the button rather than let the
+  // admin hit that error. No role check needed on the read side; this just gates the button's
+  // visibility.
+  const showAdminReject = !!currentUser?.isAdmin && !isOwnClaim && (normalizedHeaderStatus === 'N' || normalizedHeaderStatus === 'A' || normalizedHeaderStatus === 'H');
 
   const EXCEL_MIME_TYPES = ['application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
 
@@ -525,6 +532,7 @@ function ClaimDetailInner() {
           const nextApproverName = (entry.NextApproverName || '').toString().trim();
           const nextApproverValue = (entry.NextApprover || '').toString().trim();
           const shouldShowNextApprover = nextApproverName !== '' || (nextApproverValue !== '' && nextApproverValue !== '00000000');
+          const isApproverChanged = (entry.Action || '').toString().toUpperCase() === 'APPROVER CHANGED';
           // Non-CTC Mobile Exp: backend writes "Claim Amount Rs X is higher than eligibility
           // Amount Rs Y. Need Approval" into the history row's Remarks when a claim needed DOA
           // approval for exceeding the grade's eligibility cap - the approver needs to see this
@@ -543,7 +551,7 @@ function ClaimDetailInner() {
                 <span className="shrink-0 rounded-full px-2.5 py-1 text-2xs font-bold text-white" style={{ backgroundColor: palette.border }}>{entryStatus}</span>
               </div>
               {shouldShowNextApprover && (
-                <p className="mt-2 text-xs"><span className="font-bold text-inkSoft">Next Approver: </span><span className="text-ink">{nextApproverName || nextApproverValue}</span></p>
+                <p className="mt-2 text-xs"><span className="font-bold text-inkSoft">{isApproverChanged ? 'New approver: ' : 'Next Approver: '}</span><span className="text-ink">{nextApproverName || nextApproverValue}</span></p>
               )}
               {entry.Remarks && isEligibilityException ? (
                 <div className="mt-2">

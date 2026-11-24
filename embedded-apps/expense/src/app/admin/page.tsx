@@ -23,12 +23,14 @@ function IconInput({ icon: LeadIcon, ...rest }: { icon: LucideIcon } & React.Com
   );
 }
 
+// S (Posted) and P (Parked/legacy) are deliberately excluded — the backend's admin search never
+// returns claims in those statuses regardless of filter, so offering them here would only ever
+// produce an empty result.
 const STATUS_OPTIONS = [
   { value: '', label: 'Any status' },
   { value: 'N', label: 'N — Submitted' },
   { value: 'A', label: 'A — Approved' },
   { value: 'H', label: 'H — Pending at Finance' },
-  { value: 'S', label: 'S — Posted' },
   { value: 'R', label: 'R — Rejected' },
 ];
 
@@ -162,12 +164,12 @@ export default function AdminPage() {
               onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
             />
           </Field>
-          <Field label="Employee Name" hint="Exact match, not partial">
+          <Field label="Employee Name" hint="Part of name, case-insensitive">
             <IconInput
               icon={User}
               value={empName}
               onChange={(e) => setEmpName(e.target.value)}
-              placeholder="e.g. John Doe"
+              placeholder="e.g. bhatta"
               onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
             />
           </Field>
@@ -202,7 +204,7 @@ export default function AdminPage() {
       {searching && <LoadingBlock label="Searching claims…" />}
 
       {!searching && searched && results.length === 0 && !error && (
-        <EmptyState icon={Search} title="No claims found" hint="Try different search criteria." />
+        <EmptyState icon={Search} title="No claims found" hint="Try different search criteria. Posted claims are not shown." />
       )}
 
       {!searching && results.length > 0 && (
