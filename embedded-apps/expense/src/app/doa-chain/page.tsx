@@ -2,7 +2,7 @@
 
 import React, { useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Copy, Info, Plus, Power, PowerOff, RefreshCw, Save, ShieldAlert, Upload, X } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, Copy, Info, Plus, Power, PowerOff, RefreshCw, Save, ShieldAlert, Upload, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useClaim } from '../../context/ClaimContext';
 import { DoaChainRow } from '../../types';
@@ -28,6 +28,8 @@ const DOA_CTYPE_OPTIONS = [
   { value: 'MBN', label: 'MBN — Mobile (non-sales)' },
 ];
 const DOA_CTYPE_FILTER_OPTIONS = [{ value: '', label: 'All types' }, ...DOA_CTYPE_OPTIONS];
+
+const PAGE_SIZE = 20;
 
 const todayIso = () => new Date().toISOString().split('T')[0];
 const FAR_FUTURE = '9999-12-31';
@@ -129,6 +131,7 @@ export default function DoaChainPage() {
   const [loaded, setLoaded] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [page, setPage] = useState(1);
 
   if (!currentUser?.isAdmin) {
     return (
@@ -156,6 +159,7 @@ export default function DoaChainPage() {
       originalsRef.current = Object.fromEntries(gridRows.map((r) => [r._cid, { ...r }]));
       setRows(gridRows);
       setLoaded(true);
+      setPage(1);
     } catch (err: any) {
       // Shown verbatim - likely to fail until SEGW's Filterable flag and the transport land; that's
       // a backend prerequisite gap, not a frontend bug.
@@ -266,13 +270,31 @@ export default function DoaChainPage() {
       const parsed: any[] = XLSX.utils.sheet_to_json(sheet, { defval: '' });
       if (parsed.length === 0) { setImportError('No rows found in the file.'); return; }
 
+      // Seqno isn't a file column (the spec's import column list doesn't include it) - rows that
+      // share the same Type+Cost Centre+Amount From are parallel approvers in the same slab, so
+      // each needs its own Seqno or they'd collide on save as duplicate composite keys. Auto-
+      // increments per slab, seeded from whatever's already in the grid (loaded or previously
+      // imported) so a bulk import never collides with an existing row in that slab either.
+      const slabKey = (doaCtype: string, kostl: string, amtFrom: number) => `${doaCtype}|${kostl}|${amtFrom}`;
+      const nextSeqBySlab = new Map<string, number>();
+      rows.forEach((r) => {
+        const key = slabKey(r.DoaCtype, r.Kostl, r.AmtFrom);
+        const seq = parseInt(r.Seqno, 10) || 0;
+        nextSeqBySlab.set(key, Math.max(nextSeqBySlab.get(key) || 0, seq));
+      });
+
       const imported: GridRow[] = parsed.map((line) => {
         const doaCtype = String(line['Type'] || line['DoaCtype'] || 'ADM').trim();
         const kostl = String(line['Cost Centre'] || line['Kostl'] || '').trim().toUpperCase();
+        const amtFrom = parseFloat(line['Amount From'] || line['AmtFrom']) || 0;
+        const key = slabKey(doaCtype, kostl, amtFrom);
+        const nextSeq = (nextSeqBySlab.get(key) || 0) + 1;
+        nextSeqBySlab.set(key, nextSeq);
         const row = blankRow(doaCtype, kostl);
         return {
           ...row,
-          AmtFrom: parseFloat(line['Amount From'] || line['AmtFrom']) || 0,
+          AmtFrom: amtFrom,
+          Seqno: String(nextSeq).padStart(2, '0'),
           AmtTo: parseFloat(line['Amount To'] || line['AmtTo']) || 0,
           DeptTxt: String(line['Department'] || line['DeptTxt'] || ''),
           ApprEmail: String(line['Approver Email'] || line['ApprEmail'] || '').trim(),
@@ -308,6 +330,25 @@ export default function DoaChainPage() {
       a.AmtFrom - b.AmtFrom ||
       a.Seqno.localeCompare(b.Seqno));
   }, [rows, showInactive, searchText]);
+
+  // Unsaved/new rows always render in full on every page, regardless of which page you're on -
+  // only already-saved, untouched rows get paginated. Otherwise a row added (or imported) while
+  // on page 1 could land on page 3 by sort order and silently vanish from view before it's saved.
+  const unsavedRows = useMemo(() => visibleRows.filter((r) => r._isNew || r._dirty), [visibleRows]);
+  const savedRows = useMemo(() => visibleRows.filter((r) => !(r._isNew || r._dirty)), [visibleRows]);
+  const totalPages = Math.max(1, Math.ceil(savedRows.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pagedSavedRows = useMemo(
+    () => savedRows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [savedRows, currentPage]
+  );
+  const pagedRows = useMemo(() => [...unsavedRows, ...pagedSavedRows], [unsavedRows, pagedSavedRows]);
+
+  // Any change that reshuffles what's visible (new search/filter results, a fresh Load, rows
+  // saved and dropping out of the unsaved list) should land back on page 1, not strand the admin
+  // on a now-out-of-range page.
+  const resetPageOnChange = `${searchText}|${showInactive}|${rows.length}`;
+  React.useEffect(() => { setPage(1); }, [resetPageOnChange]);
 
   const cellInputClass = 'input !h-7 !w-full !min-w-0 !py-0.5 !px-1 text-2xs';
 
@@ -409,28 +450,29 @@ export default function DoaChainPage() {
             </div>
           </div>
 
-          <div className="card !p-0">
-            <table className="w-full table-fixed border-collapse text-2xs">
-              <thead>
-                <tr className="border-b border-border bg-appBg text-left">
-                  <th className="w-[7%] p-1.5">Type</th>
-                  <th className="w-[8%] p-1.5">Cost Centre</th>
-                  <th className="w-[7%] p-1.5">Amt From</th>
-                  <th className="w-[5%] p-1.5">Seq</th>
-                  <th className="w-[7%] p-1.5">Amt To</th>
-                  <th className="w-[9%] p-1.5">Department</th>
-                  <th className="w-[15%] p-1.5">Approver Email</th>
-                  <th className="w-[11%] p-1.5">Approver</th>
-                  <th className="w-[6%] p-1.5">Rule</th>
-                  <th className="w-[5%] p-1.5">HoD</th>
-                  <th className="w-[5%] p-1.5">Active</th>
-                  <th className="w-[9%] p-1.5">Validity</th>
-                  <th className="w-[5%] p-1.5">Audit</th>
-                  <th className="w-[6%] p-1.5">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleRows.map((row) => {
+          <div className="card !overflow-hidden !p-0">
+            <div className="max-h-[65vh] overflow-y-auto">
+              <table className="w-full table-fixed border-separate [border-spacing:0] text-2xs">
+                <thead>
+                  <tr className="text-left">
+                    <th className="sticky top-0 z-10 w-[7%] border-b border-border bg-appBg p-1.5">Type</th>
+                    <th className="sticky top-0 z-10 w-[8%] border-b border-border bg-appBg p-1.5">Cost Centre</th>
+                    <th className="sticky top-0 z-10 w-[7%] border-b border-border bg-appBg p-1.5">Amt From</th>
+                    <th className="sticky top-0 z-10 w-[5%] border-b border-border bg-appBg p-1.5">Seq</th>
+                    <th className="sticky top-0 z-10 w-[7%] border-b border-border bg-appBg p-1.5">Amt To</th>
+                    <th className="sticky top-0 z-10 w-[9%] border-b border-border bg-appBg p-1.5">Department</th>
+                    <th className="sticky top-0 z-10 w-[15%] border-b border-border bg-appBg p-1.5">Approver Email</th>
+                    <th className="sticky top-0 z-10 w-[11%] border-b border-border bg-appBg p-1.5">Approver</th>
+                    <th className="sticky top-0 z-10 w-[6%] border-b border-border bg-appBg p-1.5">Rule</th>
+                    <th className="sticky top-0 z-10 w-[5%] border-b border-border bg-appBg p-1.5">HoD</th>
+                    <th className="sticky top-0 z-10 w-[5%] border-b border-border bg-appBg p-1.5">Active</th>
+                    <th className="sticky top-0 z-10 w-[9%] border-b border-border bg-appBg p-1.5">Validity</th>
+                    <th className="sticky top-0 z-10 w-[5%] border-b border-border bg-appBg p-1.5">Audit</th>
+                    <th className="sticky top-0 z-10 w-[6%] border-b border-border bg-appBg p-1.5">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pagedRows.map((row) => {
                   const isKeyLocked = !row._isNew;
                   return (
                     <tr key={row._cid} className={row._isNew || row._dirty ? 'bg-amberBg/40' : 'border-b border-line'}>
@@ -501,9 +543,27 @@ export default function DoaChainPage() {
                     </tr>
                   );
                 })}
-              </tbody>
-            </table>
+                </tbody>
+              </table>
+            </div>
           </div>
+
+          {totalPages > 1 && (
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-inkSoft">
+                Page {currentPage} of {totalPages} ({savedRows.length} saved row{savedRows.length === 1 ? '' : 's'}
+                {unsavedRows.length > 0 ? `, +${unsavedRows.length} unsaved shown on every page` : ''})
+              </p>
+              <div className="flex items-center gap-2">
+                <Button variant="secondary" size="sm" icon={ChevronLeft} onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={currentPage <= 1}>
+                  Prev
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages}>
+                  Next <ChevronRight size={14} />
+                </Button>
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>

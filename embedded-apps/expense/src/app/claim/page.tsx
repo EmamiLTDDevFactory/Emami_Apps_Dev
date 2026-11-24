@@ -95,7 +95,7 @@ const getEntryDisplayLabel = (entry: any) => {
   const status = (entry?.Status || '').toString().toUpperCase();
   const action = (entry?.Action || '').toString().toUpperCase();
   if (status === 'S') return 'Posted';
-  if (status === 'P') return 'Parked';
+  if (status === 'P') return 'Awaiting Posting';
   if (status === 'H') return 'Pending at finance';
   if (action === 'APPROVE') return 'Approved';
   if (action === 'REJECT') return 'Rejected';
@@ -110,7 +110,7 @@ const getEntryDisplayLabel = (entry: any) => {
 const STATUS_PALETTE: Record<string, { bg: string; border: string; text: string }> = {
   approved: { bg: '#D1FAE5', border: '#10B981', text: '#065F46' },
   posted: { bg: '#D1FAE5', border: '#10B981', text: '#065F46' },
-  parked: { bg: '#E0F2FE', border: '#0284C7', text: '#0369A1' },
+  'awaiting posting': { bg: '#E0F2FE', border: '#0284C7', text: '#0369A1' },
   'pending at finance': { bg: '#FEF3C7', border: '#D97706', text: '#B45309' },
   submitted: { bg: '#DBEAFE', border: '#1D4ED8', text: '#1E3A8A' },
   rejected: { bg: '#FEE2E2', border: '#EF4444', text: '#B91C1C' },
@@ -359,7 +359,7 @@ function ClaimDetailInner() {
     header.Status === 'N' ? 'Submitted' :
     header.Status === 'C' ? 'Created' :
     header.Status === 'H' ? 'Pending at Finance' :
-    header.Status === 'P' ? 'Parked' :
+    header.Status === 'P' ? 'Awaiting Posting' :
     header.Status === 'S' ? 'Posted' : header.Status;
 
   const claimOwner = currentUser && currentUser.employeeId === header.EmpId;

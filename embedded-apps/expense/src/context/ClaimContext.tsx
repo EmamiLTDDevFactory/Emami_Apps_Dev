@@ -337,7 +337,11 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       if (sapTypes.length > 0) {
         const mappedTypes = sapTypes.map((item: any) => ({
-          id: item.ZslNo || item.ExpenseType || '00001',
+          // ExptypeSet is now GL-set-driven (STVARV ZEXP_EXPTYPE_SET) - ZslNo is a running number
+          // that can change whenever the set is edited, so it's never a stable key. Saknr (GL
+          // account) is the stable identifier, both for list-item identity and as the actual
+          // ExpenseType value sent on claim submission below (see selectedSapType.id usage).
+          id: item.Saknr || item.ExpenseType || '00001',
           name: item.ZglName || item.Description || item.Exptype || 'Unknown Type',
           saknr: item.Saknr || '',
           // ExptypeSet.Flag = 'X' means this expense type doesn't require a supporting-document
@@ -347,6 +351,10 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           // expense type additionally needs a separate Manager Approved Attachment - currently
           // only true for the "1st Telephone Claim" ExptypeSet record.
           requiresManagerApprovedAttachment: !item.Flag,
+          // New field: true for the ~22 mobile/telephone/internet GL accounts on dev - drives the
+          // multi-month claim flow in create/page.tsx. Defensively accepts either a real JSON
+          // boolean or SAP's XFELD-style 'X' string, same as other boolean-ish OData fields here.
+          isMobile: item.IsMobile === true || item.IsMobile === 'X',
         }));
         setExpenseTypes(mappedTypes);
       }
@@ -1117,12 +1125,11 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       TotalAmount: (claim.amount ?? 0).toFixed(3),
       Currency: 'INR',
       CostCenter: claim.costCenter || '',
-      // Sent Status is unconfirmed against the new one-step H->S finance flow - the handover doc
-      // only describes new behavior, not a new request payload, and this value is very likely
-      // overridden server-side the same way approveClaim's sent Status:'A' already is. Verify
-      // once the new posting logic is actually live; the result handling below reads the real
-      // returned Status either way, so this is safe regardless of what SAP does with it.
-      Status: 'P',
+      // Per the DOA handover: there's no park step anymore (H -> posted/S directly), so this no
+      // longer asserts 'P' - sending the claim's own current status is a neutral passthrough, not
+      // a claimed transition. SAP decides the real outcome server-side regardless (same as
+      // approveClaim's sent Status:'A'); the result handling below reads the real returned Status.
+      Status: claim.rawStatus || 'H',
       ApprovalRequired: 'A',
     };
 
@@ -1383,7 +1390,7 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         // Filter by status - 'Pending Pay' is a synthetic combined status (not a real SAP status)
         // matching the Dashboard KPI card of the same name, covering both claims sitting at
-        // Finance review and claims already Parked awaiting payment release.
+        // Finance review and claims already awaiting posting.
         if (status && status !== 'All') {
           if (status === 'Pending Pay') {
             if (c.status !== 'Pending at finance' && c.status !== 'Pending Release') return false;

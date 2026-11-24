@@ -35,13 +35,6 @@ const EXCEL_MIME_TYPES = ['application/vnd.ms-excel', 'application/vnd.openxmlfo
 // the GST flow (Region/HSN fields) for a value that isn't actually a real GSTIN.
 const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 
-// Non-CTC: Mobile Exp — the multi-month claim flow only turns on for this exact SAP expense
-// type (confirmed against SAP's live ExptypeSet, ZslNo 00073). "1st Telephone Claim" is kept as
-// an alias since it may be the same type surfaced differently for an employee's first claim
-// (SAP returns it per-LoginId, not as a static catalog row — unverified against a real
-// employee login, so both names are honored here rather than guessing which one is shown).
-const MOBILE_EXPENSE_TYPE_NAMES = new Set(['TELE & COMM-TELEPHONE CHARGES-MOBILE PHONE', '1st Telephone Claim']);
-
 // "2026-08" -> "August 2026". Used for month keys throughout the multi-month flow below.
 const formatMonthLabel = (monthKey: string) => {
   const [y, m] = monthKey.split('-').map(Number);
@@ -73,10 +66,6 @@ type MonthClaimEntry = {
   // True once the EligibilitySet call has returned (success or fail) for this month - lets the UI
   // show "No Cap" instead of the "Auto-fetched..." placeholder once a real answer has come back.
   eligibilityChecked: boolean;
-  // Eligibility's Category field - 'B' = non-sales (HoD pick-list routing above the cap), 'C1'-'C4'
-  // = sales (straight to L1 supervisor, no choice). Same value expected on every month card for one
-  // employee, since it's a property of the employee, not the month.
-  category: string | null;
   // Set once OCR reads the invoice's own printed date off this card's document and it doesn't
   // fall inside this card's month — e.g. an August invoice dropped into the July card. Informational
   // only (doesn't block anything); the card's period stays whatever slot the user put it in.
@@ -85,7 +74,7 @@ type MonthClaimEntry = {
   invoiceNumber: string | null;
 };
 
-const BLANK_MONTH_ENTRY: MonthClaimEntry = { attachment: null, claimAmount: '', eligibleAmount: null, eligibilityChecked: false, category: null, dateMismatchWarning: null, invoiceNumber: null };
+const BLANK_MONTH_ENTRY: MonthClaimEntry = { attachment: null, claimAmount: '', eligibleAmount: null, eligibilityChecked: false, dateMismatchWarning: null, invoiceNumber: null };
 
 const blobToBase64 = (blob: Blob): Promise<string> => new Promise((resolve, reject) => {
   const reader = new FileReader();
@@ -551,8 +540,11 @@ function CreateClaimInner() {
   const requiresManagerApprovedAttachment = expenseTypes.find((et: any) => et.name === expenseType)?.requiresManagerApprovedAttachment === true;
 
   // Non-CTC: Mobile Exp — turns on the multi-month flow below in place of the single
-  // date/amount/document fields. Every other expense type is completely unaffected.
-  const isMobileExpense = MOBILE_EXPENSE_TYPE_NAMES.has(expenseType);
+  // date/amount/document fields. Every other expense type is completely unaffected. Driven by
+  // ExptypeSet's own IsMobile flag now (GL-set-driven, ~22 types on dev) rather than matching
+  // specific expense-type names, which stopped being a stable signal once the dropdown moved to
+  // SAP GL sets.
+  const isMobileExpense = !!expenseTypes.find((et) => et.name === expenseType)?.isMobile;
 
   // Non-CTC: Mobile Exp — the local `claims` list only holds claims currently assigned to this
   // user (LoginId is cleared once a claim moves past them, e.g. once approved/posted), so an
@@ -575,16 +567,17 @@ function CreateClaimInner() {
   // Months already claimed for this expense type - from claims the app has already fetched (no
   // extra call) merged with the SAP-wide check above.
   const claimedMonthKeys = useMemo(() => {
+    const mobileTypeNames = new Set(expenseTypes.filter((et) => et.isMobile).map((et) => et.name));
     const set = new Set<string>();
     claims.forEach((c: any) => {
-      if (MOBILE_EXPENSE_TYPE_NAMES.has(c.expenseType) && c.expenseDate) {
+      if (mobileTypeNames.has(c.expenseType) && c.expenseDate) {
         set.add(String(c.expenseDate).slice(0, 7));
       }
     });
     sapClaimedMonthKeys.forEach((mk) => set.add(mk));
     return set;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [claims, sapClaimedMonthKeys]);
+  }, [claims, sapClaimedMonthKeys, expenseTypes]);
 
   // The months actually picked across all slots, in slot order - what every card/total below
   // renders from. Empty slots (not yet picked) are filtered out.
@@ -616,7 +609,7 @@ function CreateClaimInner() {
     const result = await fetchEligibility(currentUser.employeeId, monthKey);
     setMonthClaims((prev) => {
       const entry = prev[monthKey] || BLANK_MONTH_ENTRY;
-      return { ...prev, [monthKey]: { ...entry, eligibleAmount: result ? result.eligibleAmount : null, eligibilityChecked: true, category: result?.category || null } };
+      return { ...prev, [monthKey]: { ...entry, eligibleAmount: result ? result.eligibleAmount : null, eligibilityChecked: true } };
     });
   };
 
@@ -643,14 +636,6 @@ function CreateClaimInner() {
     [pickedMonths, monthClaims],
   );
 
-  // Non-CTC: Mobile Exp - Category is a property of the employee (sales vs non-sales), not the
-  // month, but it only arrives via the per-month Eligibility call - any month card that's already
-  // resolved it carries the same value.
-  const employeeCategory = useMemo(
-    () => pickedMonths.map((mk) => getMonthEntry(mk).category).find(Boolean) || null,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [pickedMonths, monthClaims],
-  );
   const anyMonthAboveEligibility = useMemo(
     () => pickedMonths.some((mk) => {
       const entry = getMonthEntry(mk);
@@ -659,8 +644,10 @@ function CreateClaimInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [pickedMonths, monthClaims],
   );
-  const needsHodChoice = isMobileExpense && anyMonthAboveEligibility && employeeCategory === 'B';
-  const needsL1Notice = isMobileExpense && anyMonthAboveEligibility && !!employeeCategory && employeeCategory !== 'B';
+  // Non-CTC: Mobile Exp - the sales path (Category C1-C4, straight to L1 supervisor) no longer
+  // exists; EligibilitySet's Category is always 'B' now, so HoD routing applies whenever a mobile
+  // claim goes above the eligibility cap, full stop.
+  const needsHodChoice = isMobileExpense && anyMonthAboveEligibility;
 
   // Re-fetches whenever the total claim amount changes, per the backend's "Amount = header
   // TotalAmount" / "re-fetch when the total amount changes" instructions.
@@ -1542,8 +1529,8 @@ function CreateClaimInner() {
             </Card>
           )}
 
-          {/* Non-CTC: Mobile Exp - HoD choice (non-sales, Category='B') or an L1-approver notice
-              (sales, Category C1-C4), only once the claim total is above the eligibility cap. */}
+          {/* Non-CTC: Mobile Exp - HoD choice, only once the claim total is above the eligibility
+              cap. The sales/L1-supervisor path no longer exists. */}
           {needsHodChoice && (
             <Card className="mb-3">
               <h2 className="mb-2 text-sm font-bold text-ink">Approval Routing</h2>
@@ -1562,12 +1549,6 @@ function CreateClaimInner() {
                   />
                 </Field>
               )}
-            </Card>
-          )}
-          {needsL1Notice && (
-            <Card className="mb-3">
-              <h2 className="mb-2 text-sm font-bold text-ink">Approval Routing</h2>
-              <p className="text-sm text-ink">Will go to your L1 approver.</p>
             </Card>
           )}
 
