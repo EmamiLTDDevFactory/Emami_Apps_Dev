@@ -597,6 +597,13 @@ export async function mockSapFetch(input: string | URL | Request, init?: Request
   // Costing dashboard sets (mock/dash.ts): invented figures for local design review.
   const dashRes = handleDash(set, sp, { json, odataError, parseFilter });
   if (dashRes) { await sleep(60, signal); return dashRes; }
+  // BomPlantSet: the plants that have a BOM of the materials (every mock material has one in the first two mock plants).
+  if (set === 'BomPlantSet') {
+    await sleep(60, signal);
+    const mats = (parseFilter(sp.get('$filter') ?? '').get('Matnr') ?? []).map((m) => m.toUpperCase());
+    const results = mats.flatMap((m) => PLANTS.slice(0, 2).map((pl) => ({ ...meta('BomPlant', `BomPlantSet(Matnr='${m}',Werks='${pl.Werks}',Stlal='1')`), Matnr: m, Werks: pl.Werks, Stlal: '1', Name1: pl.Name1, Stlan: '1', Stlnr: '00000001', Stlst: '01' })));
+    return json({ d: { results } });
+  }
   // Weighted average actual cost sets (mock/wac.ts).
   const wacRes = handleWac(set, sp, { json, odataError, parseFilter });
   // Budget costing sets (mock/budget.ts).

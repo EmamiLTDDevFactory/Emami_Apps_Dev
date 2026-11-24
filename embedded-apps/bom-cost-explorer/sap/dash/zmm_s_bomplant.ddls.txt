@@ -1,0 +1,11 @@
+@EndUserText.label : 'BOM costing: plants that have a BOM of a material'
+@AbapCatalog.enhancementCategory : #NOT_EXTENSIBLE
+define type zmm_s_bomplant {
+  matnr       : matnr;
+  werks       : werks_d;
+  stlal       : stlal;
+  name1       : name1;
+  stlan       : stlan;
+  stlnr       : stnum;
+  stlst       : stlst;
+}

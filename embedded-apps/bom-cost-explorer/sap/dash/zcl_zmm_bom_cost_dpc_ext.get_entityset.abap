@@ -7,7 +7,8 @@
           lt_cdr TYPE zcl_mm_dash_cdrill=>tt_cdrill,
           lt_thr TYPE STANDARD TABLE OF zmis_alert_thr,
           ls_par TYPE zif_mm_wac_types=>ty_par.
-    IF iv_entity_set_name <> 'DashMisSet' AND iv_entity_set_name <> 'DashSalesSet' AND iv_entity_set_name <> 'DashPvmSet' AND iv_entity_set_name <> 'DashThreshSet' AND iv_entity_set_name <> 'DashMarginSet' AND iv_entity_set_name <> 'DashCdrillSet' AND iv_entity_set_name <> 'DashBridgeSet'.
+    IF iv_entity_set_name <> 'DashMisSet' AND iv_entity_set_name <> 'DashSalesSet' AND iv_entity_set_name <> 'DashPvmSet' AND iv_entity_set_name <> 'DashThreshSet' AND iv_entity_set_name <> 'DashMarginSet' AND iv_entity_set_name <> 'DashCdrillSet' AND iv_entity_set_name <> 'DashBridgeSet'
+       AND iv_entity_set_name <> 'BomPlantSet'.
       super->/iwbep/if_mgw_appl_srv_runtime~get_entityset(
         EXPORTING
           iv_entity_name           = iv_entity_name
@@ -32,6 +33,41 @@
       RETURN.
     ENDIF.
     ls_par = wac_par( io_tech_request_context->get_filter( )->get_filter_select_options( ) ).
+    IF iv_entity_set_name = 'BomPlantSet'.
+      DATA lt_bp TYPE STANDARD TABLE OF zmm_s_bomplant WITH DEFAULT KEY.
+      LOOP AT ls_par-matnr ASSIGNING FIELD-SYMBOL(<bpm>).
+        <bpm>-low = |{ <bpm>-low ALPHA = IN }|.
+        IF <bpm>-high IS NOT INITIAL. <bpm>-high = |{ <bpm>-high ALPHA = IN }|. ENDIF.
+      ENDLOOP.
+      IF ls_par-matnr IS INITIAL.
+        raise_busi( 'Give at least one material' ).
+      ENDIF.
+      " the plants that have a BOM of the materials (MAST + STKO, not deleted), limited to the plants the user may see
+      SELECT m~matnr, m~werks, m~stlal, w~name1, m~stlan, m~stlnr, k~stlst
+        FROM mast AS m
+          INNER JOIN stko AS k ON k~stlty = 'M' AND k~stlnr = m~stlnr AND k~stlal = m~stlal
+          INNER JOIN t001w AS w ON w~werks = m~werks
+        WHERE m~matnr IN @ls_par-matnr AND m~werks IN @ls_par-werks AND k~lkenz = @space
+        ORDER BY m~werks, m~matnr, m~stlal
+        INTO CORRESPONDING FIELDS OF TABLE @lt_bp
+        UP TO 5000 ROWS.
+      DATA lt_ok TYPE SORTED TABLE OF werks_d WITH UNIQUE KEY table_line.
+      DATA lt_no TYPE SORTED TABLE OF werks_d WITH UNIQUE KEY table_line.
+      LOOP AT lt_bp ASSIGNING FIELD-SYMBOL(<bp>).
+        IF line_exists( lt_ok[ table_line = <bp>-werks ] ). CONTINUE. ENDIF.
+        IF line_exists( lt_no[ table_line = <bp>-werks ] ). CONTINUE. ENDIF.
+        IF zcl_mm_bom_cost_auth=>check_plant( <bp>-werks ) = abap_true.
+          INSERT <bp>-werks INTO TABLE lt_ok.
+        ELSE.
+          INSERT <bp>-werks INTO TABLE lt_no.
+        ENDIF.
+      ENDLOOP.
+      LOOP AT lt_no INTO DATA(lv_nw).
+        DELETE lt_bp WHERE werks = lv_nw.
+      ENDLOOP.
+      copy_data_to_ref( EXPORTING is_data = lt_bp CHANGING cr_data = er_entityset ).
+      RETURN.
+    ENDIF.
     IF iv_entity_set_name = 'DashBridgeSet'.
       IF ls_par-werks IS INITIAL.
         raise_busi( 'Select at least one plant' ).

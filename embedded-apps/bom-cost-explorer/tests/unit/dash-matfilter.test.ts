@@ -40,3 +40,18 @@ describe('sales: invoice number and invoice list', () => {
     expect(() => fetchSalesInvoices([], '2026-04-01', '2026-11-24', {})).toThrow();
   });
 });
+
+describe('BOM plants of the chosen materials', () => {
+  it('asks SAP per material and groups the answer by plant, most materials first', async () => {
+    const { bomPlantsRequest, groupBomPlants } = await import('@/lib/client/bomPlants');
+    expect(bomPlantsRequest(['000400010469', 'FG2']).params.$filter).toBe("(Matnr eq '400010469' or Matnr eq 'FG2')");
+    const g = groupBomPlants([
+      { Matnr: '000000000400010469', Werks: 'UN13', Stlal: '1', Name1: 'Pachoria', Stlan: '1', Stlnr: '1', Stlst: '01' },
+      { Matnr: '400010469', Werks: 'UN13', Stlal: '2', Name1: 'Pachoria', Stlan: '1', Stlnr: '1', Stlst: '01' },
+      { Matnr: 'FG2', Werks: 'UN13', Stlal: '1', Name1: 'Pachoria', Stlan: '1', Stlnr: '2', Stlst: '01' },
+      { Matnr: 'FG2', Werks: 'UN02', Stlal: '1', Name1: 'Guwahati', Stlan: '1', Stlnr: '3', Stlst: '01' },
+    ]);
+    expect(g.map((x) => x.werks)).toEqual(['UN13', 'UN02']);
+    expect(g[0].materials).toEqual(['400010469', 'FG2']); expect(g[0].alternatives).toBe(3);
+  });
+});

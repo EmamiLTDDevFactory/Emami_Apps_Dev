@@ -87,3 +87,6 @@ Machine, Labour, Power and Steam are SAP routing activities priced with the acti
 - **Excel headers:** the standard quantity is "GRN QTY" and the standard amount "Std Freight" (was "Standard delivered quantity" / "Net standard condition value").
 - **Plant wise:** a view that compares Std Freight with the actual freight per plant (all lines, and the variance on the lines that have both sides), with Excel; click a plant to open its components.
 - **Supplier / vendor name and Source / origin location:** columns in the component and material views and in their Excel (the PO view already had them). Supplier = `Name1` / `Lifnr` of the PO line; Source / origin location = the place of supply (`PlcSup`) SAP sends with the goods receipt.
+
+## Costing > BOM costing: plants with a BOM
+Under the materials of the selection, "BOM exists in these plants (click to select)" lists the plants where SAP has a BOM of the chosen materials (with several materials, "2/3" = how many of them have a BOM there). Clicking a plant adds it to the Plants field (BOM plant in plant comparison). SAP: `BomPlantSet` (structure `ZMM_S_BOMPLANT`: `MAST` joined with `STKO`, deleted BOMs left out, only plants the user may see; transport `EDSK9B0EP0`). Display help only; the costing itself is unchanged.

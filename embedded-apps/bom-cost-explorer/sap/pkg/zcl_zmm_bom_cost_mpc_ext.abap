@@ -17,6 +17,9 @@ CLASS zcl_zmm_bom_cost_mpc_ext DEFINITION
     METHODS dash_pvm_define
       RAISING
         /iwbep/cx_mgw_med_exception .
+    METHODS bomplant_define
+      RAISING
+        /iwbep/cx_mgw_med_exception .
     METHODS dash_bridge_define
       RAISING
         /iwbep/cx_mgw_med_exception .
@@ -97,6 +100,7 @@ CLASS zcl_zmm_bom_cost_mpc_ext IMPLEMENTATION.
     dash_define( ).
     dash_sales_define( ).
     dash_pvm_define( ).
+    bomplant_define( ).
     dash_bridge_define( ).
     dash_thresh_define( ).
     dash_cdrill_define( ).
@@ -247,6 +251,83 @@ CLASS zcl_zmm_bom_cost_mpc_ext IMPLEMENTATION.
     dash_str( io_et = lo_et iv_name = 'Msg' iv_field = 'MSG' iv_len = 200 ).
     lo_et->bind_structure( iv_structure_name = 'ZDASH_S_BRIDGE' iv_bind_conversions = 'X' ).
     lo_es = lo_et->create_entity_set( 'DashBridgeSet' ).
+    lo_es->set_creatable( abap_false ).
+    lo_es->set_updatable( abap_false ).
+    lo_es->set_deletable( abap_false ).
+    lo_es->set_pageable( abap_false ).
+    lo_es->set_addressable( abap_true ).
+    lo_es->set_has_ftxt_search( abap_false ).
+    lo_es->set_subscribable( abap_false ).
+    lo_es->set_filter_required( abap_false ).
+  ENDMETHOD.
+
+
+  METHOD bomplant_define.
+    DATA: lo_et TYPE REF TO /iwbep/if_mgw_odata_entity_typ,
+          lo_es TYPE REF TO /iwbep/if_mgw_odata_entity_set,
+          lo_p  TYPE REF TO /iwbep/if_mgw_odata_property.
+    lo_et = model->create_entity_type( iv_entity_type_name = 'BomPlant' iv_def_entity_set = abap_false ).
+    lo_p = lo_et->create_property( iv_property_name = 'Matnr' iv_abap_fieldname = 'MATNR' ).
+    lo_p->set_is_key( ).
+    lo_p->set_type_edm_string( ).
+    lo_p->set_maxlength( iv_max_length = 18 ).
+    lo_p->set_creatable( abap_false ).
+    lo_p->set_updatable( abap_false ).
+    lo_p->set_sortable( abap_false ).
+    lo_p->set_nullable( abap_false ).
+    lo_p->set_filterable( abap_true ).
+    lo_p = lo_et->create_property( iv_property_name = 'Werks' iv_abap_fieldname = 'WERKS' ).
+    lo_p->set_is_key( ).
+    lo_p->set_type_edm_string( ).
+    lo_p->set_maxlength( iv_max_length = 4 ).
+    lo_p->set_creatable( abap_false ).
+    lo_p->set_updatable( abap_false ).
+    lo_p->set_sortable( abap_false ).
+    lo_p->set_nullable( abap_false ).
+    lo_p->set_filterable( abap_true ).
+    lo_p = lo_et->create_property( iv_property_name = 'Stlal' iv_abap_fieldname = 'STLAL' ).
+    lo_p->set_is_key( ).
+    lo_p->set_type_edm_string( ).
+    lo_p->set_maxlength( iv_max_length = 2 ).
+    lo_p->set_creatable( abap_false ).
+    lo_p->set_updatable( abap_false ).
+    lo_p->set_sortable( abap_false ).
+    lo_p->set_nullable( abap_false ).
+    lo_p->set_filterable( abap_false ).
+    lo_p = lo_et->create_property( iv_property_name = 'Name1' iv_abap_fieldname = 'NAME1' ).
+    lo_p->set_type_edm_string( ).
+    lo_p->set_maxlength( iv_max_length = 30 ).
+    lo_p->set_creatable( abap_false ).
+    lo_p->set_updatable( abap_false ).
+    lo_p->set_sortable( abap_false ).
+    lo_p->set_nullable( abap_false ).
+    lo_p->set_filterable( abap_false ).
+    lo_p = lo_et->create_property( iv_property_name = 'Stlan' iv_abap_fieldname = 'STLAN' ).
+    lo_p->set_type_edm_string( ).
+    lo_p->set_maxlength( iv_max_length = 1 ).
+    lo_p->set_creatable( abap_false ).
+    lo_p->set_updatable( abap_false ).
+    lo_p->set_sortable( abap_false ).
+    lo_p->set_nullable( abap_false ).
+    lo_p->set_filterable( abap_false ).
+    lo_p = lo_et->create_property( iv_property_name = 'Stlnr' iv_abap_fieldname = 'STLNR' ).
+    lo_p->set_type_edm_string( ).
+    lo_p->set_maxlength( iv_max_length = 8 ).
+    lo_p->set_creatable( abap_false ).
+    lo_p->set_updatable( abap_false ).
+    lo_p->set_sortable( abap_false ).
+    lo_p->set_nullable( abap_false ).
+    lo_p->set_filterable( abap_false ).
+    lo_p = lo_et->create_property( iv_property_name = 'Stlst' iv_abap_fieldname = 'STLST' ).
+    lo_p->set_type_edm_string( ).
+    lo_p->set_maxlength( iv_max_length = 2 ).
+    lo_p->set_creatable( abap_false ).
+    lo_p->set_updatable( abap_false ).
+    lo_p->set_sortable( abap_false ).
+    lo_p->set_nullable( abap_false ).
+    lo_p->set_filterable( abap_false ).
+    lo_et->bind_structure( iv_structure_name = 'ZMM_S_BOMPLANT' iv_bind_conversions = 'X' ).
+    lo_es = lo_et->create_entity_set( 'BomPlantSet' ).
     lo_es->set_creatable( abap_false ).
     lo_es->set_updatable( abap_false ).
     lo_es->set_deletable( abap_false ).

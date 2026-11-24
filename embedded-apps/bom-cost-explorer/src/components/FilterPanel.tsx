@@ -4,6 +4,7 @@ import { CalendarClock, ChevronDown, ChevronUp, Coins, Factory, Gauge, Package, 
 import type { PlantRow } from '@/lib/sap/fields';
 import { costQuerySchema, MAX_MATERIALS, MODE_LABEL, RATE_SOURCES, usesField, type CostQuery, type QueryField } from '@/lib/query/schema';
 import { MaterialHierarchyPicker, MaterialPicker, PlantPicker } from './Pickers';
+import BomPlantsHint from './BomPlantsHint';
 import type { HierPick } from '@/lib/client/hier';
 import type { PlantWide } from '@/lib/plantwide/usePlantWide';
 import SourcePriorityEditor from './rates/SourcePriorityEditor';
@@ -145,6 +146,9 @@ export default function FilterPanel({
               {pw && <PlantWideHint pw={pw} confirming={confirming} onConfirm={() => { setConfirming(false); onRun(); }} />}
               {onePlantHint && <p className="mt-1 text-[11.5px] text-muted">Pick one plant to cost all its materials.</p>}
               <MaterialHierarchyPicker values={query.materials} onChange={(v) => set('materials', v)} max={MAX_MATERIALS} pick={onHierPick ? hierPick : undefined} onPickChange={onHierPick} />
+              {(u('plants') || u('bomPlant')) && query.materials.length > 0 && (query.mode === 'B' || query.mode === 'C') && (
+                <BomPlantsHint materials={query.materials} selected={query.mode === 'C' ? (query.bomPlant ? [query.bomPlant] : []) : query.plants} single={query.mode === 'C'} onPick={(v) => (query.mode === 'C' ? set('bomPlant', v[0] ?? '') : set('plants', v))} />
+              )}
               {u('plants') && (
                 <Field label="Plants" error={show('plants')} hint={plants.loading ? 'Loading plants from SAP…' : `${plants.plants.length} plants from SAP`}>
                   {(id) => <PlantPicker id={id} values={query.plants} onChange={(v) => set('plants', v)} state={plants} invalid={!!show('plants')} />}
