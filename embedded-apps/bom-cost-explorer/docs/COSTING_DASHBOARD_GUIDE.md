@@ -65,7 +65,7 @@ Links to the existing screens: Budget cost of finished goods, Component rates, R
 Rule-based notes made from the MIS result (no language model): overall variance, brands above the amber or red threshold, and FGs without a budget. Run MIS first.
 
 ## SAP objects and transports
-- Packing: `EDSK9B0EL5`. Dashboard sets: `EDSK9B0EM6` (released), margin: `EDSK9B0EMZ` (released), selection filters and cost-sign fix: `EDSK9B0EN5`, margin cost drill-down: `EDSK9B0EN7` (released), budget match by valuation type and budget items: `EDSK9B0ENN` (released), material / sales org / channel filters on Margin and Sales view and the MIS budget from `ZMM_FBUDCOST_SUM`: `EDSK9B0ENZ`.
+- Packing: `EDSK9B0EL5`. Dashboard sets: `EDSK9B0EM6` (released), margin: `EDSK9B0EMZ` (released), selection filters and cost-sign fix: `EDSK9B0EN5`, margin cost drill-down: `EDSK9B0EN7` (released), budget match by valuation type and budget items: `EDSK9B0ENN` (released), material / sales org / channel filters on Margin and Sales view and the MIS budget from `ZMM_FBUDCOST_SUM`: `EDSK9B0ENZ`, no 150-order limit on the Breakup drill-down: `EDSK9B0EOQ`.
 - Tables: `ZMIS_ALERT_THR` (alert bands), `ZSALES_BUD_TGT` (sales budget, empty).
 - After an import: clear the gateway caches (`/IWFND/CACHE_CLEANUP`, `/IWBEP/CACHE_CLEANUP`).
 
