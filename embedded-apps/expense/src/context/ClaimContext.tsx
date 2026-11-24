@@ -3,7 +3,7 @@
 import axios from 'axios';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { API_BASE_URL, SAP_BASE_URL } from '../config/api';
-import { AreaCode, Attachment, ClaimKPIs, ClaimStatus, DoaChainRow, ExpenseClaim, MobCapRow, MobileMonthItem, SAPError, TaxCode } from '../types';
+import { AreaCode, Attachment, ClaimKPIs, ClaimStatus, ConfigLogRow, ConfigVarName, ConfigVarRow, DoaChainRow, ExpenseClaim, MobCapRow, MobileMonthItem, SAPError, TaxCode } from '../types';
 import { getClaimCreatedTimestamp } from '../utils/claim-date';
 import { getHubToken } from '../lib/hubEmailLogin';
 import { useAuth } from './AuthContext';
@@ -66,6 +66,14 @@ interface ClaimContextType {
   fetchMobCaps: (filters?: { mcat?: string; kostl?: string; trfgr?: string; trfst?: string; active?: boolean }) => Promise<MobCapRow[]>;
   createMobCapRow: (row: MobCapRow, adminPernr: string) => Promise<MobCapRow>;
   updateMobCapRow: (row: MobCapRow, adminPernr: string) => Promise<MobCapRow>;
+  // Configuration Maintenance Actions — CRUD against the new ConfigVarSet/ConfigLogSet entities,
+  // replacing the former STVARV-maintained variables (ZEXP_ADMIN, ZEXP_DOA_ADMIN, ZEXP_FINANCE,
+  // ZFI_NONCTC_USER, ZEXP_EXPTYPE_SET, ZEXP_MOBILE_SET, ZEXP_NON_CTC_GO_LIVE, ZFI_EXPENCE_CLAIM).
+  fetchConfigVars: (adminPernr: string, name?: ConfigVarName) => Promise<ConfigVarRow[]>;
+  addConfigVar: (row: { Name: ConfigVarName; Low: string; High?: string }, adminPernr: string) => Promise<ConfigVarRow>;
+  updateConfigVar: (row: ConfigVarRow, adminPernr: string) => Promise<ConfigVarRow>;
+  removeConfigVar: (row: ConfigVarRow, adminPernr: string) => Promise<void>;
+  fetchConfigLog: (adminPernr: string, varname?: ConfigVarName) => Promise<ConfigLogRow[]>;
   // Error Management Actions
   retrySAPPosting: (errorId: string) => void;
   // Getters & Filters
@@ -389,12 +397,29 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const response = await expenseApiClient.get(`${API_BASE_URL}/api/expense/claims`, {
         headers: hubAuthHeaders(),
       });
-      if (response.status < 200 || response.status >= 300) return;
-
-      const sapClaims = extractSapResults(response.data);
-      const mappedClaims: ExpenseClaim[] = sapClaims.map((sap: any) => mapSapClaimToExpenseClaim(sap, expenseTypes));
-      // Replace the existing claims with the latest fetched set (clear when SAP returns empty)
-      setClaims(mappedClaims);
+      if (response.status >= 200 && response.status < 300) {
+        const sapClaims = extractSapResults(response.data);
+        const mappedClaims: ExpenseClaim[] = sapClaims.map((sap: any) => mapSapClaimToExpenseClaim(sap, expenseTypes));
+        // Replace the existing claims with the latest fetched set (clear when SAP returns empty)
+        setClaims(mappedClaims);
+        return;
+      }
+      // TEMPORARY fallback (2026-11-24): some real sessions are hitting the backend's hub-token
+      // check with a 401 ("jwt malformed") that hasn't been root-caused yet - this silently left
+      // the whole claims list empty with no error shown, which is strictly worse than the old
+      // behaviour. Only fall back on an auth failure (401/403), and only to the exact same direct
+      // SAP call this route replaced, so a working token still gets the hardened path - remove
+      // once the real-token issue is found and fixed.
+      if (response.status === 401 || response.status === 403) {
+        console.warn('[fetchClaims] authenticated route rejected the session, falling back to direct SAP read:', response.data);
+        const loginIdForSAP = currentUser.employeeId.replace(/\D/g, '').padStart(8, '0');
+        const filter = encodeURIComponent(`LoginId eq '${loginIdForSAP}'`);
+        const fallback = await sapClient.get(`${SAP_BASE_URL}/ClaimHeaderSet?$filter=${filter}&$expand=CLAIMNAV&$format=json`);
+        if (fallback.status < 200 || fallback.status >= 300) return;
+        const sapClaims = extractSapResults(fallback.data);
+        const mappedClaims: ExpenseClaim[] = sapClaims.map((sap: any) => mapSapClaimToExpenseClaim(sap, expenseTypes));
+        setClaims(mappedClaims);
+      }
     } catch (err) {
       console.error('Failed to fetch claims:', err);
     }
@@ -1415,6 +1440,65 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return handleSapWriteResponse(response, 'Failed to update mobile cap row');
   };
 
+  // Configuration Maintenance (ConfigVarSet/ConfigLogSet, live on dev 2026-11-24) — replaces the
+  // former STVARV variables. Aenam (the logged-in admin's PERNR) is mandatory on every call, same
+  // identity mechanism as DoaChainSet/MobCapSet above; the backend returns "Not authorised to
+  // maintain the configuration" / "... view the configuration log." for a non-admin.
+  const fetchConfigVars = async (adminPernr: string, name?: ConfigVarName): Promise<ConfigVarRow[]> => {
+    const parts = [`Aenam eq '${adminPernr}'`];
+    if (name) parts.push(`Name eq '${name}'`);
+    const filterQuery = `$filter=${encodeURIComponent(parts.join(' and '))}&`;
+    const response = await sapClient.get(`${SAP_BASE_URL}/ConfigVarSet?${filterQuery}$format=json`);
+    if (response.status < 200 || response.status >= 300) {
+      const errData = response.data;
+      const errMsg = errData?.error?.message?.value || errData?.error || errData?.d?.Message || errData?.Message || 'Failed to fetch configuration';
+      throw new Error(errMsg);
+    }
+    return extractSapResults(response.data) as ConfigVarRow[];
+  };
+
+  // Numb is backend-assigned on create — never sent.
+  const addConfigVar = async (row: { Name: ConfigVarName; Low: string; High?: string }, adminPernr: string): Promise<ConfigVarRow> => {
+    const postData = { ...row, Aenam: adminPernr };
+    const response = await sapClient.post(`${SAP_BASE_URL}/ConfigVarSet`, postData, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    return handleSapWriteResponse(response, 'Failed to add configuration line') as ConfigVarRow;
+  };
+
+  const updateConfigVar = async (row: ConfigVarRow, adminPernr: string): Promise<ConfigVarRow> => {
+    const putData = { ...row, Aenam: adminPernr };
+    const keyUrl = `ConfigVarSet(Name='${row.Name}',Numb='${row.Numb}')`;
+    const response = await sapClient.put(`${SAP_BASE_URL}/${keyUrl}`, putData, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    return handleSapWriteResponse(response, 'Failed to update configuration line');
+  };
+
+  // There is no DELETE — a line is removed by PUTting it with Remove:true, which the backend
+  // answers with 204 No Content (handleSapWriteResponse's 2xx check already tolerates that).
+  const removeConfigVar = async (row: ConfigVarRow, adminPernr: string): Promise<void> => {
+    const putData = { ...row, Remove: true, Aenam: adminPernr };
+    const keyUrl = `ConfigVarSet(Name='${row.Name}',Numb='${row.Numb}')`;
+    const response = await sapClient.put(`${SAP_BASE_URL}/${keyUrl}`, putData, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    handleSapWriteResponse(response, 'Failed to remove configuration line');
+  };
+
+  const fetchConfigLog = async (adminPernr: string, varname?: ConfigVarName): Promise<ConfigLogRow[]> => {
+    const parts = [`Aenam eq '${adminPernr}'`];
+    if (varname) parts.push(`Varname eq '${varname}'`);
+    const filterQuery = `$filter=${encodeURIComponent(parts.join(' and '))}&`;
+    const response = await sapClient.get(`${SAP_BASE_URL}/ConfigLogSet?${filterQuery}$format=json`);
+    if (response.status < 200 || response.status >= 300) {
+      const errData = response.data;
+      const errMsg = errData?.error?.message?.value || errData?.error || errData?.d?.Message || errData?.Message || 'Failed to fetch configuration log';
+      throw new Error(errMsg);
+    }
+    return extractSapResults(response.data) as ConfigLogRow[];
+  };
+
   // BR-018, BR-019: Retry SAP Posting — local-only, backs the debug-only errors screen.
   const retrySAPPosting = (errorId: string) => {
     setErrors((prev) => prev.map((err) => {
@@ -1552,6 +1636,11 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         fetchMobCaps,
         createMobCapRow,
         updateMobCapRow,
+        fetchConfigVars,
+        addConfigVar,
+        updateConfigVar,
+        removeConfigVar,
+        fetchConfigLog,
         retrySAPPosting,
         getClaimById,
         filterClaims,

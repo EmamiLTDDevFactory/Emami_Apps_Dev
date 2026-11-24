@@ -239,6 +239,14 @@ export default function DoaChainPage() {
     setRows((prev) => prev.map((r) => (errorByCid.has(r._cid) ? { ...r, _rowError: errorByCid.get(r._cid) || null } : r)));
     if (hasError) return;
 
+    // Saving an existing row whose approver e-mail changed moves that approver's pending (N/A)
+    // claims at this level to the new approver and e-mails them - not reversible from here, so
+    // confirm once before the whole batch goes out.
+    const approverChanged = toSave.some((r) => !r._isNew && (originalsRef.current[r._cid]?.ApprEmail || '').trim().toLowerCase() !== r.ApprEmail.trim().toLowerCase());
+    if (approverChanged && !window.confirm('Pending claims waiting for the old approver at this level will move to the new approver, who gets a mail. Continue?')) {
+      return;
+    }
+
     setSavingAll(true);
     for (const row of toSave) {
       setRows((prev) => prev.map((r) => (r._cid === row._cid ? { ...r, _saving: true } : r)));
