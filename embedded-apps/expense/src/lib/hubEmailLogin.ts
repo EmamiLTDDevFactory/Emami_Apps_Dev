@@ -40,6 +40,24 @@ export function getHubToken(): string | null {
   }
 }
 
+/** Same check the hub itself runs (hub-next's AuthContext.hubTokenExpired) before letting someone
+ * use a 12h-old token - mirrored here so this app can catch an expired session proactively (bounce
+ * back to the hub to sign in again) instead of finding out only when a backend proxy call (see
+ * ClaimContext.tsx's requireHubAuth-gated routes) rejects it mid-use with no explanation. A missing
+ * or unreadable token is NOT treated as expired - same conservative choice as the hub's own check,
+ * so this never signs someone out over a token it simply can't parse. */
+export function isHubTokenExpired(): boolean {
+  const token = getHubToken();
+  if (!token) return false;
+  try {
+    const part = token.split('.')[1] || '';
+    const payload = JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(part.length / 4) * 4, '=')));
+    return typeof payload.exp === 'number' && Date.now() >= payload.exp * 1000;
+  } catch {
+    return false;
+  }
+}
+
 export function nameFromEmail(email: string): string {
   const local = email.split('@')[0] || '';
   const name = local

@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import { FilePlus2, LayoutDashboard, ListChecks, Wallet, FileCheck2, ShieldAlert, type LucideIcon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useClaim } from '../context/ClaimContext';
-import { hasHubSession } from '../lib/hubEmailLogin';
+import { hasHubSession, isHubTokenExpired } from '../lib/hubEmailLogin';
 import { ScreenHistoryTracker, useScreenBack } from '../lib/screenHistory';
 import { Spinner, cx } from './ui';
 
@@ -134,9 +134,13 @@ function ShellInner({ children }: { children: React.ReactNode }) {
 
   // Mirrors the Expo version's _layout.tsx auth gate: a visitor with no hub session is bounced
   // back to the hub root (full page nav, not an in-app route change) rather than shown a login
-  // screen of this app's own.
+  // screen of this app's own. A PRESENT but expired token (the normal 12h hub timeout, checked the
+  // same way the hub itself checks it - see isHubTokenExpired) gets the same bounce, instead of
+  // being let through to silently fail the first backend call that needs it (see ClaimContext.tsx
+  // fetchClaims's 2026-11-24 incident: a session that expired mid-use looked like lost data because
+  // nothing caught this case before now).
   useEffect(() => {
-    if (hasHubSession()) {
+    if (hasHubSession() && !isHubTokenExpired()) {
       setAuthorized(true);
     } else if (!isInitializing) {
       // AuthContext's own restoreSession effect already does this bounce when there's no hub
