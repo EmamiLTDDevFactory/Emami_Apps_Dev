@@ -92,6 +92,11 @@ export interface AccessChangeEntry {
   oldValue: string | null;
   newValue: string | null;
   occurredAt: string;
+  /** Set when the change was granted through an Access Request incident (INC-2026-00001): its id, number and the
+   * requester's reason / approver note. */
+  incidentId?: number | null;
+  incidentRef?: string | null;
+  incidentNote?: string | null;
 }
 
 /** What GET /access/me returns for the currently signed-in user — their own hub-wide role plus

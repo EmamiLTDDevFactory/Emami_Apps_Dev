@@ -7,7 +7,7 @@ import { Spinner, errorTextStyle, inputStyle, inputWrapStyle, labelStyle, primar
 import { lookupRequestStatus, type AccessRequestSummary } from '../../lib/accessRequestsApi';
 import { ItemOutcomeList, StatusPill, formatDateTime } from './requestShared';
 
-/** Login-page "track my request": the reference number plus the email used is the only key — no sign-in needed. */
+/** Login-page "track my request": the incident number plus the email used is the only key — no sign-in needed. */
 export default function TrackRequest({ initialRef = '', initialEmail = '' }: { initialRef?: string; initialEmail?: string }) {
   const [ref, setRef] = useState(initialRef);
   const [email, setEmail] = useState(initialEmail);
@@ -28,8 +28,8 @@ export default function TrackRequest({ initialRef = '', initialEmail = '' }: { i
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div>
-        <div style={{ ...labelStyle, marginBottom: 6 }}>Reference number</div>
-        <div className="ac-input" style={inputWrapStyle}><input style={inputStyle} value={ref} onChange={(e) => setRef(e.target.value)} placeholder="AR-2026-00012" /></div>
+        <div style={{ ...labelStyle, marginBottom: 6 }}>Incident number</div>
+        <div className="ac-input" style={inputWrapStyle}><input style={inputStyle} value={ref} onChange={(e) => setRef(e.target.value)} placeholder="INC-2026-00012" /></div>
       </div>
       <div>
         <div style={{ ...labelStyle, marginBottom: 6 }}>Email used in the request</div>

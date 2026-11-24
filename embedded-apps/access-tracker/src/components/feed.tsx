@@ -31,6 +31,7 @@ export function ChangeRow({ c, onPerson, showTarget = true, timeOnly }: { c: Acc
         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-2xs text-muted">
           <span className="rounded bg-sunken px-1 font-semibold">{CHANGE_LABEL[c.changeType]}</span>
           <span>by {c.changedBy ? nameFromEmail(c.changedBy) : 'System'}</span>
+          {c.incidentRef && <span className="rounded bg-accent/10 px-1 font-semibold text-accent" title={c.incidentNote || undefined}>{c.incidentRef}</span>}
         </div>
       </div>
       <time className="num shrink-0 text-right text-2xs text-muted" dateTime={c.occurredAt} title={fmtDateTime(c.occurredAt)}>

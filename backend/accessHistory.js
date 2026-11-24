@@ -18,17 +18,25 @@ const CHANGE_TYPES = ['USER_ADDED', 'USER_REMOVED', 'ACTIVE_STATUS', 'ACCESS_LEV
  * acting-admin email the frontend sent; null when a route is called without one (defensive only —
  * every current caller does send it).
  */
-async function recordAccessChange({ targetEmail, changedBy, changeType, appId = null, oldValue = null, newValue = null }) {
+async function recordAccessChange({ targetEmail, changedBy, changeType, appId = null, oldValue = null, newValue = null, incidentId = null, incidentRef = null, incidentNote = null }) {
     if (!CHANGE_TYPES.includes(changeType)) {
         console.error('[accessHistory] Unknown change type, not recording:', changeType);
         return;
     }
     try {
+        // incident_* only exist (and are only written) for grants made through an Access Request incident.
+        const hasIncident = incidentId != null && incidentRef;
         await pool.query(
-            `INSERT INTO emami_apps.access_change_history
-                (target_email, changed_by, change_type, app_id, old_value, new_value)
-             VALUES ($1, $2, $3, $4, $5, $6)`,
-            [targetEmail, changedBy || null, changeType, appId, oldValue, newValue]
+            hasIncident
+                ? `INSERT INTO emami_apps.access_change_history
+                    (target_email, changed_by, change_type, app_id, old_value, new_value, incident_id, incident_ref, incident_note)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
+                : `INSERT INTO emami_apps.access_change_history
+                    (target_email, changed_by, change_type, app_id, old_value, new_value)
+                   VALUES ($1, $2, $3, $4, $5, $6)`,
+            hasIncident
+                ? [targetEmail, changedBy || null, changeType, appId, oldValue, newValue, incidentId, incidentRef, incidentNote || null]
+                : [targetEmail, changedBy || null, changeType, appId, oldValue, newValue]
         );
     } catch (err) {
         console.error('[accessHistory] Failed to record change for', targetEmail, ':', err.message);
@@ -48,7 +56,7 @@ async function listAccessChanges({ targetEmail, limit = 200 } = {}) {
     }
     params.push(Math.min(Math.max(Number(limit) || 200, 1), 500));
     const { rows } = await pool.query(
-        `SELECT id, target_email, changed_by, change_type, app_id, old_value, new_value, occurred_at
+        `SELECT id, target_email, changed_by, change_type, app_id, old_value, new_value, occurred_at, incident_id, incident_ref, incident_note
          FROM emami_apps.access_change_history
          ${where}
          ORDER BY occurred_at DESC
@@ -64,6 +72,9 @@ async function listAccessChanges({ targetEmail, limit = 200 } = {}) {
         oldValue: r.old_value,
         newValue: r.new_value,
         occurredAt: r.occurred_at,
+        incidentId: r.incident_id != null ? Number(r.incident_id) : null,
+        incidentRef: r.incident_ref || null,
+        incidentNote: r.incident_note || null,
     }));
 }
 

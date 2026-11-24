@@ -16,7 +16,11 @@
  * Audit trail: emami_apps.access_request_events is append-only (a trigger refuses UPDATE/DELETE) and records who
  * did what, from which IP, and when — submission, every file added/downloaded, every view by an approver, each
  * line decision, each grant applied, and the final outcome. The supporting document(s) (an approval e-mail as
- * .msg/.eml/PDF, a screenshot, ...) are required at submission and stored in Postgres (bytea) with a SHA-256.
+ * .msg/.eml/PDF, a screenshot, ...) are required at submission. They are NOT stored in Postgres: each file is written to ACCESS_REQUEST_FILES_DIR on the
+ * server's disk (random name, mode 0600) and the database keeps only the filename, size, SHA-256 and stored name.
+ *
+ * Incident number: INC-YYYY-00001. It is written to access_change_history (incident_id/incident_ref/incident_note) on every
+ * grant this makes, so Admin Center's Activity / History and Access Tracker show which incident a role came from.
  *
  * Routes (all under /access/requests so the existing nginx /api/access/ rule already forwards them):
  *   POST /                    raise a request            (public; a valid session token upgrades it to verified)
@@ -32,6 +36,8 @@
  */
 const express = require('express');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const jwt = require('jsonwebtoken');
 const { pool } = require('./db');
 const { JWT_SECRET } = require('./sessionAuth');
@@ -47,6 +53,9 @@ const MAX_ITEMS = 60;
 const MAX_FILES = 5;
 /** Request bodies are capped at 6 MB by server.js's JSON parser and base64 adds a third, so ~4 MB of files. */
 const MAX_FILE_BYTES_TOTAL = 4 * 1024 * 1024;
+/** Where supporting documents live (outside Postgres). Set ACCESS_REQUEST_FILES_DIR to a folder outside the app directory
+ * on the server so a redeploy or a rollback of the code never touches them; back it up with the server. */
+const FILES_DIR = process.env.ACCESS_REQUEST_FILES_DIR || path.join(__dirname, 'data', 'access-request-files');
 const NEEDS_DEPOT = (appId, role) => appId === 'audit-capa' && (role === 'Depot' || role === 'View');
 
 // extension -> magic-byte check (null = text; only a NUL-byte sniff). Content-Type from the browser is never trusted.
@@ -64,6 +73,15 @@ const FILE_TYPES = {
 };
 
 const STATUSES = ['Pending', 'Approved', 'Partially Approved', 'Rejected'];
+
+/** Writes one document under FILES_DIR and returns its stored name (never derived from the user's filename). */
+async function writeStoredFile(sha256, buf) {
+    await fs.promises.mkdir(FILES_DIR, { recursive: true, mode: 0o700 });
+    const stored = `${sha256.slice(0, 16)}-${crypto.randomUUID()}`;
+    await fs.promises.writeFile(path.join(FILES_DIR, stored), buf, { mode: 0o600, flag: 'wx' });
+    return stored;
+}
+const removeStoredFiles = (names) => Promise.all(names.map((n) => fs.promises.unlink(path.join(FILES_DIR, path.basename(n))).catch(() => {})));
 
 async function ensureSchema() {
     await pool.query(`
@@ -106,10 +124,22 @@ async function ensureSchema() {
             content_type text NOT NULL,
             size_bytes integer NOT NULL,
             sha256 text NOT NULL,
-            data bytea NOT NULL,
+            data bytea,
+            storage_path text,
             uploaded_at timestamptz NOT NULL DEFAULT now()
         )`);
     await pool.query('CREATE INDEX IF NOT EXISTS access_request_files_req_idx ON emami_apps.access_request_files (request_id)');
+    // First version kept the bytes in the table; move any of those onto disk and empty the column.
+    await pool.query('ALTER TABLE emami_apps.access_request_files ADD COLUMN IF NOT EXISTS storage_path text');
+    await pool.query('ALTER TABLE emami_apps.access_request_files ALTER COLUMN data DROP NOT NULL');
+    const legacy = await pool.query('SELECT id, sha256, data FROM emami_apps.access_request_files WHERE data IS NOT NULL AND storage_path IS NULL');
+    for (const r of legacy.rows) {
+        const stored = await writeStoredFile(r.sha256, r.data);
+        await pool.query('UPDATE emami_apps.access_request_files SET storage_path = $2, data = NULL WHERE id = $1', [r.id, stored]);
+    }
+    // Which incident a grant came from, next to the grant itself in the Manage Access change history.
+    await pool.query(`ALTER TABLE emami_apps.access_change_history
+        ADD COLUMN IF NOT EXISTS incident_id bigint, ADD COLUMN IF NOT EXISTS incident_ref text, ADD COLUMN IF NOT EXISTS incident_note text`);
     await pool.query(`
         CREATE TABLE IF NOT EXISTS emami_apps.access_request_events (
             id bigserial PRIMARY KEY,
@@ -140,9 +170,9 @@ async function ensureSchema() {
     console.log('[postgres] Access request schema up to date (emami_apps.access_requests*).');
 }
 
-const refOf = (r) => `AR-${new Date(r.created_at).getFullYear()}-${String(r.id).padStart(5, '0')}`;
+const refOf = (r) => `INC-${new Date(r.created_at).getFullYear()}-${String(r.id).padStart(5, '0')}`;
 const idFromRef = (ref) => {
-    const m = /^AR-\d{4}-(\d{1,12})$/i.exec(String(ref || '').trim());
+    const m = /^(?:INC|AR)-\d{4}-(\d{1,12})$/i.exec(String(ref || '').trim());
     return m ? Number(m[1]) : null;
 };
 const clean = (v) => String(v ?? '').replace(/\s+/g, ' ').trim();
@@ -303,6 +333,14 @@ function accessRequestsRouter({ requireAccessManager, validRolesForApp, defaultG
             const parsed = parseFiles(req.body?.files);
             if (parsed.error) return res.status(400).json({ success: false, error: parsed.error });
 
+            const stored = [];
+            try {
+                for (const f of parsed.files) { f.stored = await writeStoredFile(f.sha256, f.buf); stored.push(f.stored); }
+            } catch (err) {
+                await removeStoredFiles(stored);
+                console.error('[access-requests] Could not store the documents:', err.message);
+                return res.status(500).json({ success: false, error: 'Could not store your documents. Please try again.' });
+            }
             const client = await pool.connect();
             let request;
             try {
@@ -310,6 +348,7 @@ function accessRequestsRouter({ requireAccessManager, validRolesForApp, defaultG
                 const open = await client.query(`SELECT id, created_at FROM emami_apps.access_requests WHERE email = $1 AND status = 'Pending' LIMIT 1`, [email]);
                 if (open.rows[0]) {
                     await client.query('ROLLBACK');
+                    await removeStoredFiles(stored);
                     return res.status(409).json({ success: false, error: `You already have an open request (${refOf(open.rows[0])}). Wait for it to be reviewed before raising another.` });
                 }
                 const ins = await client.query(
@@ -327,13 +366,14 @@ function accessRequestsRouter({ requireAccessManager, validRolesForApp, defaultG
                 });
                 for (const f of parsed.files) {
                     await client.query(
-                        'INSERT INTO emami_apps.access_request_files (request_id, filename, content_type, size_bytes, sha256, data) VALUES ($1,$2,$3,$4,$5,$6)',
-                        [request.id, f.name, f.mime, f.buf.length, f.sha256, f.buf]);
+                        'INSERT INTO emami_apps.access_request_files (request_id, filename, content_type, size_bytes, sha256, storage_path) VALUES ($1,$2,$3,$4,$5,$6)',
+                        [request.id, f.name, f.mime, f.buf.length, f.sha256, f.stored]);
                     await addEvent(client, request.id, { actor: email, actorRole, ip, type: 'FILE_ADDED', detail: `${f.name} (${f.buf.length} bytes, sha256 ${f.sha256})` });
                 }
                 await client.query('COMMIT');
             } catch (err) {
                 await client.query('ROLLBACK').catch(() => {});
+                await removeStoredFiles(stored);
                 throw err;
             } finally {
                 client.release();
@@ -470,7 +510,7 @@ function accessRequestsRouter({ requireAccessManager, validRolesForApp, defaultG
             const email = sessionEmail(req);
             if (!email) return res.status(401).json({ success: false, error: 'Please sign in again.' });
             const { rows } = await pool.query(
-                `SELECT f.filename, f.content_type, f.data, r.email AS owner
+                `SELECT f.filename, f.content_type, f.data, f.storage_path, r.email AS owner
                  FROM emami_apps.access_request_files f JOIN emami_apps.access_requests r ON r.id = f.request_id
                  WHERE f.id = $1 AND f.request_id = $2`, [Number(req.params.fileId), Number(req.params.id)]);
             if (!rows[0]) return res.status(404).json({ success: false, error: 'File not found.' });
@@ -484,7 +524,12 @@ function accessRequestsRouter({ requireAccessManager, validRolesForApp, defaultG
                 'X-Content-Type-Options': 'nosniff',
                 'Cache-Control': 'no-store',
             });
-            res.send(rows[0].data);
+            let body = rows[0].data;
+            if (rows[0].storage_path) {
+                body = await fs.promises.readFile(path.join(FILES_DIR, path.basename(rows[0].storage_path))).catch(() => null);
+            }
+            if (!body) return res.status(404).json({ success: false, error: 'This document is no longer available on the server.' });
+            res.send(body);
         } catch (err) {
             console.error('[access-requests] File download failed:', err.message);
             res.status(500).json({ success: false, error: 'Could not open the file.' });
@@ -561,7 +606,7 @@ function accessRequestsRouter({ requireAccessManager, validRolesForApp, defaultG
                         `INSERT INTO emami_apps.authorized_user_apps (email, app_id, role, depot) VALUES ($1,$2,$3,$4)
                          ON CONFLICT (email, app_id) DO UPDATE SET role = EXCLUDED.role, depot = EXCLUDED.depot`,
                         [request.email, it.app_id, it.role, it.depot]);
-                    applied.push({ appId: it.app_id, role: it.role, depot: it.depot, before: before?.role || null });
+                    applied.push({ appId: it.app_id, role: it.role, depot: it.depot, before: before?.role || null, note: wanted.get(Number(it.id)).note || '' });
                     await client.query('UPDATE emami_apps.access_request_items SET applied_at = now() WHERE id = $1', [it.id]);
                     await addEvent(client, id, { actor: admin, actorRole: 'Super Admin', type: 'GRANT_APPLIED', detail: `${it.app_id}: ${before?.role || 'no access'} -> ${it.role}${it.depot ? ` (${it.depot})` : ''}`, ip });
                 }
@@ -599,8 +644,9 @@ function accessRequestsRouter({ requireAccessManager, validRolesForApp, defaultG
 
         // After COMMIT — same side effects Manage Access has, none of which may fail the (already saved) decision.
         const label = `${request.first_name} ${request.last_name}`;
+        const incident = { incidentId: id, incidentRef: refOf(request), incidentNote: `Requested: ${request.justification}`.slice(0, 600) };
         if (createdUser) {
-            recordAccessChange({ targetEmail: request.email, changedBy: admin, changeType: 'USER_ADDED', newValue: `${label} (via access request ${refOf(request)})` });
+            recordAccessChange({ targetEmail: request.email, changedBy: admin, changeType: 'USER_ADDED', newValue: label, ...incident });
             invalidatePeopleDirectory();
         }
         for (const g of applied) {
@@ -608,7 +654,7 @@ function accessRequestsRouter({ requireAccessManager, validRolesForApp, defaultG
                 syncAuditCapaAccess(pool, request.email, g.role, g.depot).catch((e) => console.error('[access-requests] Audit & CAPA sync failed for', request.email, ':', e.message));
             }
             if (g.before !== g.role) {
-                recordAccessChange({ targetEmail: request.email, changedBy: admin, changeType: 'APP_ROLE', appId: g.appId, oldValue: g.before, newValue: g.role });
+                recordAccessChange({ targetEmail: request.email, changedBy: admin, changeType: 'APP_ROLE', appId: g.appId, oldValue: g.before, newValue: g.role, ...incident, incidentNote: [incident.incidentNote, g.note ? `Approver: ${g.note}` : ''].filter(Boolean).join(' | ').slice(0, 900) });
             }
         }
         const lines = decidedItems.map((i) => `• ${i.app_id} / ${i.role}: ${i.decision}${i.decision_note ? ` — ${i.decision_note}` : ''}`).join('\n');
