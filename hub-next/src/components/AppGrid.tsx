@@ -25,15 +25,17 @@ interface AppGridProps {
 
 export default function AppGrid({ apps, favorites, query, onOpenApp, onToggleFavorite, ListHeaderComponent, unlockedAppIds, appRoles }: AppGridProps) {
   const numColumns = useColumnCount();
+  // Apps the user has no grant for aren't shown at all (no locked tiles).
+  const visibleApps = unlockedAppIds ? apps.filter((a) => unlockedAppIds.has(a.id)) : apps;
 
   return (
     <div style={{ paddingBottom: 8 }}>
       {ListHeaderComponent}
-      {apps.length === 0 ? (
+      {visibleApps.length === 0 ? (
         <EmptyState query={query} />
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: `repeat(${numColumns}, minmax(0, 1fr))`, gap: 12 }}>
-          {apps.map((item) => (
+          {visibleApps.map((item) => (
             <AppCard
               key={item.id}
               app={item}
