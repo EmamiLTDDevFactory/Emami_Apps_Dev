@@ -89,6 +89,7 @@ export function pvmSteps(rows: PvmRow[]): PvmStep[] {
 
 export interface SalesView {
   grain: string; brand: string; matnr: string; maktx: string; vtweg: string; channel: string;
+  prodha: string; vkorg: string; vbeln: string; fkdat: string;
   soldQty: Decimal; gsv: Decimal; deductions: Decimal; nsv: Decimal;
   /** margin basis: only the lines that have an actual cost per piece */
   nsvCmp: Decimal; cogm: Decimal; gm: Decimal; gmPct: Decimal | null; band: Band;
@@ -103,6 +104,7 @@ export function salesViews(rows: SalesRow[], bands?: GmBands): SalesView[] {
     const nr = !q.isZero() ? nsv.div(q) : null, cpc = d(r.CogmPc).gt(0) ? d(r.CogmPc) : null;
     return {
       grain: r.Grain, brand: r.Zbrand, matnr: r.Matnr, maktx: r.Maktx, vtweg: r.Vtweg, channel: r.VtwegTxt || r.Vtweg,
+      prodha: r.Prodha ?? '', vkorg: r.Vkorg ?? '', vbeln: r.Vbeln ?? '', fkdat: r.Fkdat ?? '',
       soldQty: q, gsv: d(r.Gsv), deductions: d(r.Deductions), nsv, nsvCmp: cmp, cogm, gm, gmPct, band: bands ? gmBand(gmPct, bandsOf(bands, r.Matkl).red, bandsOf(bands, r.Matkl).amber) : gmBand(gmPct),
       netRealPc: nr, cogmPc: cpc, gmPc: nr && cpc ? nr.minus(cpc) : null, skuCnt: r.SkuCnt, noCogm: r.SkuNocogm, msg: r.Msg,
     };
@@ -110,6 +112,8 @@ export function salesViews(rows: SalesRow[], bands?: GmBands): SalesView[] {
 }
 export const brandSales = (v: SalesView[]) => v.filter((x) => x.grain === 'B');
 export const skuSales = (v: SalesView[]) => v.filter((x) => x.grain === 'S');
+export const productSales = (v: SalesView[]) => v.filter((x) => x.grain === 'P');
+export const invoiceSales = (v: SalesView[]) => v.filter((x) => x.grain === 'I');
 
 export function salesTotals(b: SalesView[]) {
   const add = (f: (x: SalesView) => Decimal) => b.reduce((s, x) => s.plus(f(x)), new Decimal(0));
@@ -121,7 +125,7 @@ export function salesTotals(b: SalesView[]) {
 import type { WacRow } from '../wac/types';
 
 export interface BreakupView {
-  key: string; brand: string; matnr: string; maktx: string; werks: string; qty: Decimal;
+  key: string; brand: string; matnr: string; maktx: string; werks: string; qty: Decimal; prodha?: string;
   rm: Decimal; pm: Decimal; perf: Decimal; conv: Decimal; cogm: Decimal;
   /** share of each group in the COGM per piece, % (null when the COGM is 0) */
   shareRm: Decimal | null; sharePm: Decimal | null; sharePerf: Decimal | null; shareConv: Decimal | null;
@@ -133,7 +137,7 @@ function mk(key: string, brand: string, matnr: string, maktx: string, werks: str
 }
 /** Actual cost per piece by group (SAP's ActRm / ActPm / ActPerf / ActConv per piece, the period's figures). Only produced finished goods (quantity above 0). */
 export function breakupByFg(rows: WacRow[]): BreakupView[] {
-  return rows.filter((r) => d(r.Qty).gt(0)).map((r) => mk(`${r.Werks}|${r.Matnr}`, r.Zbrand, r.Matnr, r.Maktx, r.Werks, d(r.Qty), d(r.ActRm), d(r.ActPm), d(r.ActPerf), d(r.ActConv)));
+  return rows.filter((r) => d(r.Qty).gt(0)).map((r) => ({ ...mk(`${r.Werks}|${r.Matnr}`, r.Zbrand, r.Matnr, r.Maktx, r.Werks, d(r.Qty), d(r.ActRm), d(r.ActPm), d(r.ActPerf), d(r.ActConv)), prodha: r.Prodha }));
 }
 /** Brand rows: quantity-weighted cost per piece (total group cost / total quantity). */
 export function breakupByBrand(fgs: BreakupView[]): BreakupView[] {
@@ -143,5 +147,16 @@ export function breakupByBrand(fgs: BreakupView[]): BreakupView[] {
     const q = list.reduce((s, x) => s.plus(x.qty), new Decimal(0));
     const w = (f: (x: BreakupView) => Decimal) => (q.gt(0) ? list.reduce((s, x) => s.plus(f(x).times(x.qty)), new Decimal(0)).div(q) : new Decimal(0));
     return mk(brand || '-', brand, '', `${list.length} finished goods`, '', q, w((x) => x.rm), w((x) => x.pm), w((x) => x.perf), w((x) => x.conv));
+  });
+}
+
+/** Product rows (brand + product hierarchy code): quantity-weighted cost per piece, like the brand rows. */
+export function breakupByProduct(fgs: BreakupView[]): BreakupView[] {
+  const by = new Map<string, BreakupView[]>();
+  for (const f of fgs) { const k = `${f.brand}|${f.prodha ?? ''}`; by.set(k, [...(by.get(k) ?? []), f]); }
+  return Array.from(by.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([k, list]) => {
+    const q = list.reduce((s, x) => s.plus(x.qty), new Decimal(0));
+    const w = (f: (x: BreakupView) => Decimal) => (q.gt(0) ? list.reduce((s, x) => s.plus(f(x).times(x.qty)), new Decimal(0)).div(q) : new Decimal(0));
+    return { ...mk(k, list[0].brand, '', `${list.length} finished goods`, '', q, w((x) => x.rm), w((x) => x.pm), w((x) => x.perf), w((x) => x.conv)), prodha: list[0].prodha ?? '' };
   });
 }

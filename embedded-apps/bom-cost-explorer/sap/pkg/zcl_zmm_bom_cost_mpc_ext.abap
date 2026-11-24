@@ -194,6 +194,7 @@ CLASS zcl_zmm_bom_cost_mpc_ext IMPLEMENTATION.
     dash_dec( io_et = lo_et iv_name = 'BudPc'   iv_field = 'BUD_PC'  iv_len = 23 iv_scale = 6 ).
     dash_dec( io_et = lo_et iv_name = 'ActPc'   iv_field = 'ACT_PC'  iv_len = 23 iv_scale = 6 ).
     dash_str( io_et = lo_et iv_name = 'BudSrc'  iv_field = 'BUD_SRC' iv_len = 160 ).
+    dash_str( io_et = lo_et iv_name = 'Prodha' iv_field = 'PRODHA' iv_len = 10 ).
     lo_et->bind_structure( iv_structure_name = 'ZDASH_S_MIS' iv_bind_conversions = 'X' ).
     lo_es = lo_et->create_entity_set( 'DashMisSet' ).
     lo_es->set_creatable( abap_false ).
@@ -336,6 +337,25 @@ CLASS zcl_zmm_bom_cost_mpc_ext IMPLEMENTATION.
     lo_p->set_nullable( abap_false ).
     lo_p->set_filterable( abap_false ).
     dash_str( io_et = lo_et iv_name = 'Msg' iv_field = 'MSG' iv_len = 120 ).
+    lo_p = lo_et->get_property( 'Grain' ).
+    lo_p->set_filterable( abap_true ).
+    dash_str( io_et = lo_et iv_name = 'Prodha' iv_field = 'PRODHA' iv_len = 10 ).
+    lo_p = lo_et->create_property( iv_property_name = 'Vbeln' iv_abap_fieldname = 'VBELN' ).
+    lo_p->set_type_edm_string( ).
+    lo_p->set_maxlength( iv_max_length = 10 ).
+    lo_p->set_creatable( abap_false ).
+    lo_p->set_updatable( abap_false ).
+    lo_p->set_sortable( abap_false ).
+    lo_p->set_nullable( abap_true ).
+    lo_p->set_filterable( abap_true ).
+    lo_p = lo_et->create_property( iv_property_name = 'Fkdat' iv_abap_fieldname = 'FKDAT' ).
+    lo_p->set_type_edm_datetime( ).
+    lo_p->set_precison( iv_precision = 7 ).
+    lo_p->set_creatable( abap_false ).
+    lo_p->set_updatable( abap_false ).
+    lo_p->set_sortable( abap_false ).
+    lo_p->set_nullable( abap_true ).
+    lo_p->set_filterable( abap_false ).
     lo_et->bind_structure( iv_structure_name = 'ZDASH_S_SALES' iv_bind_conversions = 'X' ).
     lo_es = lo_et->create_entity_set( 'DashSalesSet' ).
     lo_es->set_creatable( abap_false ).
@@ -503,6 +523,7 @@ CLASS zcl_zmm_bom_cost_mpc_ext IMPLEMENTATION.
     dash_dec( io_et = lo_et iv_name = 'BudPm' iv_field = 'BUD_PM' iv_len = 23 iv_scale = 6 ).
     dash_dec( io_et = lo_et iv_name = 'BudPf' iv_field = 'BUD_PF' iv_len = 23 iv_scale = 6 ).
     dash_dec( io_et = lo_et iv_name = 'BudOh' iv_field = 'BUD_OH' iv_len = 23 iv_scale = 6 ).
+    dash_str( io_et = lo_et iv_name = 'Prodha' iv_field = 'PRODHA' iv_len = 10 ).
     lo_et->bind_structure( iv_structure_name = 'ZDASH_S_MARGIN' iv_bind_conversions = 'X' ).
     lo_es = lo_et->create_entity_set( 'DashMarginSet' ).
     lo_es->set_creatable( abap_false ).

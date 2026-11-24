@@ -8,15 +8,22 @@ CLASS zcl_mm_dash_sales DEFINITION PUBLIC FINAL CREATE PUBLIC.
     "  Sold qty   = billed quantity in the base unit; invoice (M) and debit memo (P) +, cancellation (N), credit memo (O) -, cancellation of credit memo (S) +
     "  COGM       = SAP actual cost per piece of the same period (ZCL_MM_WAC_ACTUAL: RM + PM + perfume + conversion / produced qty, all selected plants) x SOLD qty
     TYPES: ty_r_vkorg TYPE RANGE OF vkorg,
-           ty_r_vtweg TYPE RANGE OF vtweg.
+           ty_r_vtweg TYPE RANGE OF vtweg,
+           ty_r_vbeln TYPE RANGE OF vbeln_vf.
     "Selection: plants (is_par-werks, they carry the cost), materials (is_par-matnr), sales organisation and distribution channel; an empty range means all.
     METHODS constructor IMPORTING is_par TYPE zif_mm_wac_types=>ty_par
                                   it_vkorg TYPE ty_r_vkorg OPTIONAL
-                                  it_vtweg TYPE ty_r_vtweg OPTIONAL.
+                                  it_vtweg TYPE ty_r_vtweg OPTIONAL
+                                  it_vbeln TYPE ty_r_vbeln OPTIONAL
+                                  iv_invoices TYPE abap_bool DEFAULT abap_false.
+    "Grain: B brand, P product (MARA-PRODH), S SKU x channel x sales organisation; with iv_invoices (filter Grain = I) one row per invoice x material x channel (invoice, date, sales org).
     METHODS run RETURNING VALUE(rt_sales) TYPE tt_sales.
   PRIVATE SECTION.
     TYPES: BEGIN OF ty_b,
              matnr TYPE matnr,
+             vkorg TYPE vkorg,
+             vbeln TYPE vbeln_vf,
+             fkdat TYPE fkdat,
              vtweg TYPE vtweg,
              vbtyp TYPE vbtyp,
              umvkz TYPE umvkz,
@@ -32,7 +39,9 @@ CLASS zcl_mm_dash_sales DEFINITION PUBLIC FINAL CREATE PUBLIC.
            END OF ty_c.
     DATA ms_par TYPE zif_mm_wac_types=>ty_par.
     DATA: mr_vkorg TYPE ty_r_vkorg,
-          mr_vtweg TYPE ty_r_vtweg.
+          mr_vtweg TYPE ty_r_vtweg,
+          mr_vbeln TYPE ty_r_vbeln,
+          mv_inv   TYPE abap_bool.
 ENDCLASS.
 
 
@@ -40,7 +49,7 @@ CLASS zcl_mm_dash_sales IMPLEMENTATION.
 
   METHOD constructor.
     ms_par = is_par.
-    mr_vkorg = it_vkorg. mr_vtweg = it_vtweg.
+    mr_vkorg = it_vkorg. mr_vtweg = it_vtweg. mr_vbeln = it_vbeln. mv_inv = iv_invoices.
     IF ms_par-date_to IS INITIAL. ms_par-date_to = sy-datum. ENDIF.
     IF ms_par-date_from IS INITIAL.
       ms_par-date_from = ms_par-date_to.
@@ -62,25 +71,50 @@ CLASS zcl_mm_dash_sales IMPLEMENTATION.
     FIELD-SYMBOLS: <b> TYPE ty_b, <r> TYPE zdash_s_sales.
 
     " ---- invoiced sales: one aggregated read, GSV from the ZSAL condition of the same item
-    SELECT p~matnr AS matnr, h~vtweg AS vtweg, h~vbtyp AS vbtyp, p~umvkz AS umvkz, p~umvkn AS umvkn,
-           SUM( p~fkimg )                    AS qty,
-           SUM( CASE WHEN k~kschl IS NULL THEN p~netwr ELSE k~kwert END ) AS gsv,   "no ZSAL condition on the item: gross = net, no deduction
-           SUM( p~netwr )                    AS nsv
-      FROM vbrk AS h
-        INNER JOIN vbrp AS p ON p~vbeln = h~vbeln
-        INNER JOIN mara AS m ON m~matnr = p~matnr
-        LEFT OUTER JOIN konv AS k ON k~knumv = h~knumv AND k~kposn = p~posnr AND k~kschl = 'ZSAL' AND k~kinak = @space
-      WHERE h~fkdat BETWEEN @ms_par-date_from AND @ms_par-date_to
-        AND h~vbtyp IN ( 'M', 'N', 'O', 'P', 'S' )
-        AND h~waerk = 'INR'
-        AND p~werks IN @ms_par-werks
-        AND p~matnr IN @ms_par-matnr
-        AND h~vkorg IN @mr_vkorg
-        AND h~vtweg IN @mr_vtweg
-        AND p~umvkn > 0
-        AND m~mtart = 'FERT'
-      GROUP BY p~matnr, h~vtweg, h~vbtyp, p~umvkz, p~umvkn
-      INTO TABLE @lt_b.
+    IF mv_inv = abap_true.
+      SELECT p~matnr AS matnr, h~vkorg AS vkorg, h~vbeln AS vbeln, h~fkdat AS fkdat, h~vtweg AS vtweg, h~vbtyp AS vbtyp, p~umvkz AS umvkz, p~umvkn AS umvkn,
+             SUM( p~fkimg )                    AS qty,
+             SUM( CASE WHEN k~kschl IS NULL THEN p~netwr ELSE k~kwert END ) AS gsv,
+             SUM( p~netwr )                    AS nsv
+        FROM vbrk AS h
+          INNER JOIN vbrp AS p ON p~vbeln = h~vbeln
+          INNER JOIN mara AS m ON m~matnr = p~matnr
+          LEFT OUTER JOIN konv AS k ON k~knumv = h~knumv AND k~kposn = p~posnr AND k~kschl = 'ZSAL' AND k~kinak = @space
+        WHERE h~fkdat BETWEEN @ms_par-date_from AND @ms_par-date_to
+          AND h~vbtyp IN ( 'M', 'N', 'O', 'P', 'S' )
+          AND h~waerk = 'INR'
+          AND p~werks IN @ms_par-werks
+          AND p~matnr IN @ms_par-matnr
+          AND h~vkorg IN @mr_vkorg
+          AND h~vtweg IN @mr_vtweg
+          AND h~vbeln IN @mr_vbeln
+          AND p~umvkn > 0
+          AND m~mtart = 'FERT'
+        GROUP BY p~matnr, h~vkorg, h~vbeln, h~fkdat, h~vtweg, h~vbtyp, p~umvkz, p~umvkn
+        INTO CORRESPONDING FIELDS OF TABLE @lt_b
+        UP TO 20000 ROWS.
+    ELSE.
+      SELECT p~matnr AS matnr, h~vkorg AS vkorg, h~vtweg AS vtweg, h~vbtyp AS vbtyp, p~umvkz AS umvkz, p~umvkn AS umvkn,
+             SUM( p~fkimg )                    AS qty,
+             SUM( CASE WHEN k~kschl IS NULL THEN p~netwr ELSE k~kwert END ) AS gsv,   "no ZSAL condition on the item: gross = net, no deduction
+             SUM( p~netwr )                    AS nsv
+        FROM vbrk AS h
+          INNER JOIN vbrp AS p ON p~vbeln = h~vbeln
+          INNER JOIN mara AS m ON m~matnr = p~matnr
+          LEFT OUTER JOIN konv AS k ON k~knumv = h~knumv AND k~kposn = p~posnr AND k~kschl = 'ZSAL' AND k~kinak = @space
+        WHERE h~fkdat BETWEEN @ms_par-date_from AND @ms_par-date_to
+          AND h~vbtyp IN ( 'M', 'N', 'O', 'P', 'S' )
+          AND h~waerk = 'INR'
+          AND p~werks IN @ms_par-werks
+          AND p~matnr IN @ms_par-matnr
+          AND h~vkorg IN @mr_vkorg
+          AND h~vtweg IN @mr_vtweg
+          AND h~vbeln IN @mr_vbeln
+          AND p~umvkn > 0
+          AND m~mtart = 'FERT'
+        GROUP BY p~matnr, h~vkorg, h~vtweg, h~vbtyp, p~umvkz, p~umvkn
+        INTO CORRESPONDING FIELDS OF TABLE @lt_b.
+    ENDIF.
     IF lt_b IS INITIAL. RETURN. ENDIF.
 
     " ---- actual cost per piece of the period, per material (all selected plants)
@@ -104,7 +138,7 @@ CLASS zcl_mm_dash_sales IMPLEMENTATION.
 
     " ---- descriptions / brand
     SELECT matnr, maktx FROM makt FOR ALL ENTRIES IN @lt_b WHERE matnr = @lt_b-matnr AND spras = @sy-langu INTO TABLE @DATA(lt_t).
-    SELECT matnr, zbrand, matkl FROM mara FOR ALL ENTRIES IN @lt_b WHERE matnr = @lt_b-matnr INTO TABLE @DATA(lt_br).
+    SELECT matnr, zbrand, matkl, prodha FROM mara FOR ALL ENTRIES IN @lt_b WHERE matnr = @lt_b-matnr INTO TABLE @DATA(lt_br).
     SELECT vtweg, vtext FROM tvtwt WHERE spras = @sy-langu INTO TABLE @DATA(lt_ch).
     SORT: lt_t BY matnr, lt_br BY matnr, lt_ch BY vtweg.
 
@@ -112,19 +146,19 @@ CLASS zcl_mm_dash_sales IMPLEMENTATION.
     DATA lt_s TYPE tt_sales.
     LOOP AT lt_b ASSIGNING <b>.
       lv_sgn = COND #( WHEN <b>-vbtyp = 'N' OR <b>-vbtyp = 'O' THEN -1 ELSE 1 ).
-      READ TABLE lt_s ASSIGNING <r> WITH KEY matnr = <b>-matnr vtweg = <b>-vtweg.
+      READ TABLE lt_s ASSIGNING <r> WITH KEY matnr = <b>-matnr vtweg = <b>-vtweg vkorg = <b>-vkorg vbeln = <b>-vbeln.
       IF sy-subrc <> 0.
         CLEAR ls_row.
-        ls_row-grain = 'S'. ls_row-matnr = <b>-matnr. ls_row-vtweg = <b>-vtweg.
+        ls_row-grain = COND #( WHEN mv_inv = abap_true THEN 'I' ELSE 'S' ). ls_row-matnr = <b>-matnr. ls_row-vtweg = <b>-vtweg. ls_row-vkorg = <b>-vkorg. ls_row-vbeln = <b>-vbeln. ls_row-fkdat = <b>-fkdat.
         READ TABLE lt_t  INTO DATA(ls_t)  WITH KEY matnr = <b>-matnr BINARY SEARCH.
         IF sy-subrc = 0. ls_row-maktx = ls_t-maktx. ENDIF.
         READ TABLE lt_br INTO DATA(ls_br) WITH KEY matnr = <b>-matnr BINARY SEARCH.
-        IF sy-subrc = 0. ls_row-zbrand = ls_br-zbrand. ls_row-matkl = ls_br-matkl. ENDIF.
+        IF sy-subrc = 0. ls_row-zbrand = ls_br-zbrand. ls_row-matkl = ls_br-matkl. ls_row-prodha = ls_br-prodha. ENDIF.
         READ TABLE lt_ch INTO DATA(ls_ch) WITH KEY vtweg = <b>-vtweg BINARY SEARCH.
         IF sy-subrc = 0. ls_row-vtweg_txt = ls_ch-vtext. ENDIF.
         ls_row-date_from = ms_par-date_from. ls_row-date_to = ms_par-date_to.
         APPEND ls_row TO lt_s.
-        READ TABLE lt_s ASSIGNING <r> WITH KEY matnr = <b>-matnr vtweg = <b>-vtweg.
+        READ TABLE lt_s ASSIGNING <r> WITH KEY matnr = <b>-matnr vtweg = <b>-vtweg vkorg = <b>-vkorg vbeln = <b>-vbeln.
       ENDIF.
       <r>-sold_qty = <r>-sold_qty + lv_sgn * <b>-qty * <b>-umvkz / <b>-umvkn.   "base unit
       <r>-gsv      = <r>-gsv      + lv_sgn * <b>-gsv.
@@ -147,6 +181,10 @@ CLASS zcl_mm_dash_sales IMPLEMENTATION.
       <r>-msg = COND #( WHEN <r>-sku_nocogm = 1 THEN 'No actual cost in the period: left out of the margin' && COND string( WHEN lt_m IS NOT INITIAL THEN | ({ lt_m[ 1 ] })| ) ).
     ENDLOOP.
     rt_sales = lt_s.
+    IF mv_inv = abap_true.
+      SORT rt_sales BY fkdat DESCENDING vbeln matnr.
+      RETURN.
+    ENDIF.
 
     " ---- brand rows (sum of the SKU x channel rows)
     LOOP AT lt_s ASSIGNING <r>.
@@ -167,10 +205,29 @@ CLASS zcl_mm_dash_sales IMPLEMENTATION.
       <br>-sku_cnt    = <br>-sku_cnt    + 1.
       <br>-sku_nocogm = <br>-sku_nocogm + <r>-sku_nocogm.
     ENDLOOP.
+    " ---- product rows (MARA-PRODH) per brand
+    LOOP AT lt_s ASSIGNING <r>.
+      READ TABLE rt_sales ASSIGNING <br> WITH KEY grain = 'P' zbrand = <r>-zbrand prodha = <r>-prodha.
+      IF sy-subrc <> 0.
+        CLEAR ls_row.
+        ls_row-grain = 'P'. ls_row-zbrand = <r>-zbrand. ls_row-prodha = <r>-prodha. ls_row-date_from = ms_par-date_from. ls_row-date_to = ms_par-date_to.
+        APPEND ls_row TO rt_sales.
+        READ TABLE rt_sales ASSIGNING <br> WITH KEY grain = 'P' zbrand = <r>-zbrand prodha = <r>-prodha.
+      ENDIF.
+      <br>-sold_qty   = <br>-sold_qty   + <r>-sold_qty.
+      <br>-gsv        = <br>-gsv        + <r>-gsv.
+      <br>-deductions = <br>-deductions + <r>-deductions.
+      <br>-nsv        = <br>-nsv        + <r>-nsv.
+      <br>-cogm_qty   = <br>-cogm_qty   + <r>-cogm_qty.
+      <br>-nsv_cmp    = <br>-nsv_cmp    + <r>-nsv_cmp.
+      <br>-cogm       = <br>-cogm       + <r>-cogm.
+      <br>-sku_cnt    = <br>-sku_cnt    + 1.
+      <br>-sku_nocogm = <br>-sku_nocogm + <r>-sku_nocogm.
+    ENDLOOP.
     LOOP AT rt_sales ASSIGNING <br> WHERE grain = 'B' AND sku_nocogm > 0.
       <br>-msg = |{ <br>-sku_nocogm } of { <br>-sku_cnt } SKU x channel lines have no actual cost in the period and are left out of the margin|.
     ENDLOOP.
-    SORT rt_sales BY grain zbrand matnr vtweg.
+    SORT rt_sales BY grain zbrand prodha matnr vtweg vkorg.
   ENDMETHOD.
 
 ENDCLASS.

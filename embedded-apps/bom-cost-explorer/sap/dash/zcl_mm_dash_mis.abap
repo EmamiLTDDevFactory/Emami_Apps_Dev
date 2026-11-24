@@ -155,7 +155,7 @@ CLASS zcl_mm_dash_mis IMPLEMENTATION.
         IF mv_detail = abap_true.
           READ TABLE lt_fg ASSIGNING <f> WITH KEY matnr = <a>-matnr werks = <a>-werks.
           IF sy-subrc <> 0.
-            APPEND VALUE #( grain = 'F' zbrand = <a>-zbrand matnr = <a>-matnr maktx = <a>-maktx werks = <a>-werks gjahr = lv_gjahr date_to = lv_to fg_cnt = 1 ) TO lt_fg ASSIGNING <f>.
+            APPEND VALUE #( grain = 'F' zbrand = <a>-zbrand matnr = <a>-matnr maktx = <a>-maktx prodha = <a>-prodha werks = <a>-werks gjahr = lv_gjahr date_to = lv_to fg_cnt = 1 ) TO lt_fg ASSIGNING <f>.
             IF lv_mmok = abap_false.
               <f>-bud_src = 'No material master record found'.
             ELSEIF lv_has = abap_true.

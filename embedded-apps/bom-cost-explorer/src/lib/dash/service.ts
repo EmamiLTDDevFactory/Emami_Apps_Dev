@@ -23,12 +23,18 @@ export const fetchMis = (plants: string[], dateTo: string, signal?: AbortSignal)
 export const fetchMisDetail = (plants: string[], dateTo: string, signal?: AbortSignal): Promise<Read<MisFgRow>> =>
   readSet<MisFgRow>(DASH_SET, DASH_MIS_FG_FIELDS, NONE, `${buildMisFilter(plants, dateTo)} and Grain eq 'F'`, signal);
 
+/** Invoice lines (SAP: Grain eq I): one row per invoice x material x channel x sales organisation. Needs a narrowing (material, sales org or invoice) because a year of invoices is large. */
+export const fetchSalesInvoices = (plants: string[], dateFrom: string, dateTo: string, extra: SalesExtra, signal?: AbortSignal): Promise<Read<SalesRow>> => {
+  if (!(extra.matnr?.length || extra.vkorg?.length || extra.vbeln?.length)) throw new Error('Choose a material, a sales organisation or an invoice number to list invoices.');
+  return readSet<SalesRow>(DASH_SALES_SET, DASH_SALES_FIELDS, NONE, `${buildSalesFilter(plants, dateFrom, dateTo, extra)} and Grain eq 'I'`, signal);
+};
+
 /** COGM variance bridge per brand (heavy: SAP reads the component consumption of the largest variances): plants and the as-of date, like the MIS read. */
 export const fetchBridge = (plants: string[], dateTo: string, signal?: AbortSignal): Promise<Read<BridgeRow>> =>
   readSet<BridgeRow>(DASH_BRIDGE_SET, DASH_BRIDGE_FIELDS, NONE, buildMisFilter(plants, dateTo), signal);
 
 /** $filter of the Sales view read: plants, from and to date. */
-export interface SalesExtra { matnr?: string[]; vkorg?: string[]; vtweg?: string[]; requirePlant?: boolean }
+export interface SalesExtra { matnr?: string[]; vkorg?: string[]; vtweg?: string[]; vbeln?: string[]; requirePlant?: boolean }
 export function buildSalesFilter(plants: string[], dateFrom: string, dateTo: string, extra: SalesExtra = {}): string {
   if (!DAY.test(dateFrom) || !DAY.test(dateTo)) throw new Error('Enter both dates.');
   if (dateFrom > dateTo) throw new Error('The "from" date is after the "to" date.');
@@ -39,7 +45,9 @@ export function buildSalesFilter(plants: string[], dateFrom: string, dateTo: str
   if (matnr.some((x) => !/^[A-Z0-9]{1,18}$/.test(x))) throw new Error('A material number is up to 18 characters.');
   if (vkorg.some((x) => !/^[A-Z0-9]{4}$/.test(x))) throw new Error('A sales organisation is 4 characters.');
   if (vtweg.some((x) => !/^[A-Z0-9]{2}$/.test(x))) throw new Error('A distribution channel is 2 characters.');
-  return [base, `DateFrom eq ${odataDate(dateFrom)}`, anyOf(MF.Matnr, matnr), anyOf(MF.Vkorg, vkorg), anyOf(MF.Vtweg, vtweg)].filter(Boolean).join(' and ');
+  const vbeln = uniq(extra.vbeln ?? []);
+  if (vbeln.some((x) => !/^\d{1,10}$/.test(x))) throw new Error('An invoice number is up to 10 digits.');
+  return [base, `DateFrom eq ${odataDate(dateFrom)}`, anyOf(MF.Matnr, matnr), anyOf(MF.Vkorg, vkorg), anyOf(MF.Vtweg, vtweg), anyOf(MF.Vbeln, vbeln)].filter(Boolean).join(' and ');
 }
 
 export const fetchSales = (plants: string[], dateFrom: string, dateTo: string, signal?: AbortSignal, extra: SalesExtra = {}): Promise<Read<SalesRow>> =>

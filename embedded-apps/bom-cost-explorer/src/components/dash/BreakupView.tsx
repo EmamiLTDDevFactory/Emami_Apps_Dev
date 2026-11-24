@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Card, Empty, Spinner, cx, inputBase, inputCls } from '../ui';
 import { ErrorBox, errorText } from '../budget-mgmt/shared';
 import { fetchWac } from '@/lib/wac/service';
-import { breakupByBrand, breakupByFg, type BreakupView } from '@/lib/dash/logic';
+import { breakupByBrand, breakupByFg, breakupByProduct, type BreakupView } from '@/lib/dash/logic';
 import type { WacRow } from '@/lib/wac/types';
 import { ls } from '@/lib/client/storage';
 import { useHierNames } from '@/lib/client/useHierNames';
@@ -43,6 +43,7 @@ export default function BreakupView() {
 
   const fgs = useMemo(() => (rows ? breakupByFg(rows) : []), [rows]);
   const brands = useMemo(() => breakupByBrand(fgs), [fgs]);
+  const prods = useMemo(() => breakupByProduct(fgs), [fgs]);
   const shown = useMemo(() => fgs.filter((f) => !brand || f.brand === brand).sort((a, b) => b.qty.cmp(a.qty)), [fgs, brand]);
 
   return (
@@ -61,6 +62,7 @@ export default function BreakupView() {
         <>
           <p className="text-xs text-muted">{ran} · actual cost per piece in INR (SAP): RM, PM, Perfume and Conversion; COGM = their sum. Brand rows are weighted by produced quantity.</p>
           <Table title="By brand" rows={brands} first="Brand" bn={hn.brand} />
+          <Table title="By product" rows={prods.filter((p) => !brand || p.brand === brand)} first="Brand · product" bn={hn.brand} label={(r) => `${hn.brand(r.brand) || '(none)'} · ${hn.product(r.prodha ?? '') || r.prodha || '(no product)'}`} />
           <Card className="p-3">
             <div className="mb-2 flex items-center gap-2">
               <h3 className="text-sm font-extrabold">By finished good</h3>
@@ -79,7 +81,7 @@ export default function BreakupView() {
   );
 }
 
-function Table({ rows, first, title, scroll, bn, onOpen }: { rows: BreakupView[]; first: string; title?: string; scroll?: boolean; bn: (c: string) => string; onOpen?: (r: BreakupView) => void }) {
+function Table({ rows, first, title, scroll, bn, label, onOpen }: { rows: BreakupView[]; first: string; title?: string; scroll?: boolean; bn: (c: string) => string; label?: (r: BreakupView) => string; onOpen?: (r: BreakupView) => void }) {
   const cell = (v: BreakupView['rm'], p: BreakupView['shareRm']) => (<><td className={tdCls}>{money(v, 4)}</td><td className={cx(tdCls, 'text-muted')}>{pct(p)}</td></>);
   return (
     <div className={cx('overflow-auto rounded-2xl border border-line bg-panel', scroll ? 'max-h-[60vh]' : 'shadow-card')}>
@@ -92,7 +94,7 @@ function Table({ rows, first, title, scroll, bn, onOpen }: { rows: BreakupView[]
         <tbody>
           {rows.map((r) => (
             <tr key={r.key} className={cx('border-t border-line/60', onOpen && r.matnr && 'cursor-pointer hover:bg-sunken')} onClick={onOpen && r.matnr ? () => onOpen(r) : undefined} title={onOpen && r.matnr ? 'Open the process orders and items' : undefined}>
-              <td className="px-2.5 py-1.5 text-left text-xs"><span className="font-bold">{(r.matnr ? r.matnr.replace(/^0+/, '') : bn(r.brand)) || '(none)'}</span> <span className="text-muted" title={r.maktx}>{r.maktx}{r.werks ? ` · ${r.werks}` : ''}</span></td>
+              <td className="px-2.5 py-1.5 text-left text-xs"><span className="font-bold">{(r.matnr ? r.matnr.replace(/^0+/, '') : label ? label(r) : bn(r.brand)) || '(none)'}</span> <span className="text-muted" title={r.maktx}>{r.maktx}{r.werks ? ` · ${r.werks}` : ''}</span></td>
               <td className={tdCls}>{r.qty.toNumber().toLocaleString('en-IN')}</td>
               {cell(r.rm, r.shareRm)}{cell(r.pm, r.sharePm)}{cell(r.perf, r.sharePerf)}{cell(r.conv, r.shareConv)}
               <td className={cx(tdCls, 'font-bold')}>{money(r.cogm, 4)}</td>

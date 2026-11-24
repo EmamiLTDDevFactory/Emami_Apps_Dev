@@ -5,12 +5,13 @@ export interface MisRow {
   Msg: string;
 }
 
-export interface MisFgRow extends MisRow { Grain: string; Matnr: string; Maktx: string; BudPc: string; ActPc: string; BudSrc: string }
+export interface MisFgRow extends MisRow { Grain: string; Matnr: string; Maktx: string; BudPc: string; ActPc: string; BudSrc: string; Prodha?: string }
 
 export interface SalesRow {
   Grain: 'B' | 'S' | string; Zbrand: string; Matnr: string; Maktx: string; Matkl: string; Vtweg: string; VtwegTxt: string;
   SoldQty: string; Gsv: string; Deductions: string; Nsv: string; CogmQty: string; NsvCmp: string; Cogm: string; CogmPc: string;
   SkuCnt: number; SkuNocogm: number; Msg: string;
+  Prodha?: string; Vkorg?: string; Vbeln?: string; Fkdat?: string;
 }
 
 export interface PvmRow { Effect: string; SortNo: number; Value: string; Msg: string }
@@ -19,6 +20,7 @@ export interface ThreshRow { Metric: string; Category: string; RedPct: string; A
 /** DashMarginSet row (grain S = SKU, C = customer, B = brand). Decimals are strings. */
 export interface MarginRow {
   Grain: string;
+  Prodha?: string;
   Zbrand: string;
   Matnr: string;
   Kunag: string;

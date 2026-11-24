@@ -108,7 +108,7 @@ export default function DashScreen() {
                   Plants {ran?.plants} · as of {ran?.asOf} · month to date and financial year to date{fy ? ` (FY ${fy}` : ''}{fy && version ? `, latest approved budget version ${version}` : ''}{fy ? ')' : ''}. Actual = RM + PM + perfume + conversion of the period (SAP, INR).
                   Budget = approved budget cost per piece x actual quantity (ZMM_FBUDCOST_SUM, matched on plant, CRSSKU, business, scheme and material type, as in Margin). Amounts in ₹ lakh.
                 </p>
-                <MisTable brands={brands} tot={tot} bn={hn.brand} detail={detail} busy={detailBusy} err={detailErr} onNeed={loadDetail} />
+                <MisTable brands={brands} tot={tot} bn={hn.brand} detail={detail} busy={detailBusy} err={detailErr} onNeed={loadDetail} pn={hn.product} />
               </>
             )}
             {rows && ran && <BridgeBlock plants={ran.plants} asOf={ran.asOf} bn={hn.brand} />}
@@ -163,7 +163,7 @@ export default function DashScreen() {
 
 const th = thCls;
 const td = tdCls;
-function MisTable({ brands, tot, bn, detail, busy, err, onNeed }: { brands: BrandView[]; tot: { ftm: Window; ytm: Window }; bn: (c: string) => string; detail: MisFgRow[] | null; busy: boolean; err: string; onNeed: () => void }) {
+function MisTable({ brands, tot, bn, pn, detail, busy, err, onNeed }: { brands: BrandView[]; tot: { ftm: Window; ytm: Window }; bn: (c: string) => string; pn: (c: string) => string; detail: MisFgRow[] | null; busy: boolean; err: string; onNeed: () => void }) {
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [warn, setWarn] = useState(false);
   const toggle = (b: string) => { onNeed(); setOpen((s) => { const n = new Set(s); if (n.has(b)) n.delete(b); else n.add(b); return n; }); };
@@ -206,7 +206,7 @@ function MisTable({ brands, tot, bn, detail, busy, err, onNeed }: { brands: Bran
               </tr>
               {open.has(b.brand) && (
                 <tr><td colSpan={9} className="bg-sunken/40 p-2.5">
-                  {detail ? <MisFgTable rows={detail.filter((x) => x.Zbrand === b.brand)} /> : <p className="text-xs text-muted">{busy ? 'Loading finished goods…' : err || 'Not loaded.'}</p>}
+                  {detail ? <MisFgTable rows={detail.filter((x) => x.Zbrand === b.brand)} byProduct pn={pn} /> : <p className="text-xs text-muted">{busy ? 'Loading finished goods…' : err || 'Not loaded.'}</p>}
                 </td></tr>
               )}
             </Fragment>

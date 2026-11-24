@@ -40,6 +40,8 @@ All figures are INR. SAP does the heavy work (OData service `ZMM_BOM_COST_SRV`);
 - **Bridge at the bottom (price, volume, mix, cost):** needs an approved sales budget in `ZSALES_BUD_TGT`. It is empty, so the bridge says "No approved sales budget".
 - **SAP:** `DashSalesSet` (`ZCL_MM_DASH_SALES`), `DashPvmSet` (`ZCL_SALES_PVM_BRIDGE`), `DashThreshSet` (table `ZMIS_ALERT_THR`).
 
+**Product drill-down and invoice details (Sales view, MIS, Cost breakup, Margin):** a brand row opens its products (Sales view: click the brand; MIS: click the brand, finished goods are grouped by product; Cost breakup: "By product" table; Margin: Group by "Brand · product"). Product = the product-hierarchy code of the material (`MARA-PRODH`), shown with its management name. Sales view selection also has **Invoice no.**; the SKU table has **Product** and **Sales org** columns, and a click on a SKU line (or the **Invoices** button, which needs a material, sales organisation or invoice number) lists the invoices behind it: invoice, date, sales org, channel, material, quantity, GSV, NSV, COGM, GM %. SAP: `DashSalesSet` grains `P` (product) and `I` (invoice, filter `Grain eq 'I'`, at most 20,000 lines), `DashMisSet` / `DashMarginSet` field `Prodha` (transport `EDSK9B0EP0`).
+
 ## 3. Cost breakup
 **Question:** of the cost per piece, how much is RM, PM, perfume and conversion?
 - **Inputs:** production plants and period. Source: SAP actual cost per piece of the period, by group, for FGs produced in those plants.

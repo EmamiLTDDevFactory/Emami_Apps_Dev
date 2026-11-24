@@ -17,7 +17,7 @@ import { useHierNames } from '@/lib/client/useHierNames';
 import { MaterialHierarchyPicker, MaterialPicker } from '../Pickers';
 import { fyStart, lakh, money, pct, tdCls, thCls, today } from './parts';
 
-type By = 'brand' | 'cat' | 'sku' | 'cust';
+type By = 'brand' | 'prod' | 'cat' | 'sku' | 'cust';
 const MAX_MATS = 50;
 const SLIDERS: { k: keyof Drivers; label: string; min: number; max: number }[] = [
   { k: 'price', label: 'Selling price', min: -20, max: 20 }, { k: 'promo', label: 'Promo discount', min: 0, max: 30 }, { k: 'volume', label: 'Volume', min: -50, max: 100 },
@@ -81,8 +81,9 @@ export default function MarginView() {
   const scen = useMemo(() => totalOf(skus, dr, basis, cur), [skus, dr, basis, cur]);
   const groups = useMemo<Group[]>(() => {
     if (by === 'cust') return groupBy(parsed.customers, (l) => l.kunag, (l) => l.label, dr, basis);
-    const key = by === 'brand' ? (l: MLine) => l.brand : by === 'cat' ? (l: MLine) => l.matkl : (l: MLine) => l.matnr;
-    const lab = by === 'sku' ? (l: MLine) => `${l.matnr.replace(/^0+/, '')} ${l.label}` : by === 'brand' ? (l: MLine) => hn.brand(l.brand) : key;
+    const key = by === 'brand' ? (l: MLine) => l.brand : by === 'prod' ? (l: MLine) => `${l.brand}|${l.prodha}` : by === 'cat' ? (l: MLine) => l.matkl : (l: MLine) => l.matnr;
+    const lab = by === 'sku' ? (l: MLine) => `${l.matnr.replace(/^0+/, '')} ${l.label}` : by === 'brand' ? (l: MLine) => hn.brand(l.brand)
+      : by === 'prod' ? (l: MLine) => `${hn.brand(l.brand) || '(none)'} · ${hn.product(l.prodha) || l.prodha || '(no product)'}` : key;
     return groupBy(skus, key, lab, dr, basis, cur);
   }, [by, skus, parsed.customers, dr, basis, cur, hn]);
   const sens = useMemo(() => sensitivity(skus, dr, basis, cur), [skus, dr, basis, cur]);
@@ -174,7 +175,7 @@ export default function MarginView() {
           </div>
           <Card className="p-3">
             <div className="mb-2 flex flex-wrap items-center gap-2">
-              <Segmented label="Group by" size="sm" value={by} onChange={setBy} options={[{ value: 'brand', label: 'Brand' }, { value: 'cat', label: 'Product category' }, { value: 'sku', label: 'Material' }, { value: 'cust', label: 'Customer' }]} />
+              <Segmented label="Group by" size="sm" value={by} onChange={setBy} options={[{ value: 'brand', label: 'Brand' }, { value: 'prod', label: 'Brand · product' }, { value: 'cat', label: 'Product category' }, { value: 'sku', label: 'Material' }, { value: 'cust', label: 'Customer' }]} />
               {by !== 'cust' && <select aria-label="Filter by brand" className={cx(inputBase, 'h-9 ml-auto w-56')} value={brand} onChange={(e) => setBrand(e.target.value)}><option value="">All brands</option>{brands.map((b) => <option key={b} value={b}>{hn.brand(b) || '(none)'}</option>)}</select>}
             </div>
             <GroupTable groups={groups} material={by === 'sku'} onBreakup={ran ? (g) => {

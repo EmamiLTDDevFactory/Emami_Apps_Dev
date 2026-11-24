@@ -31,3 +31,12 @@ describe('MIS finished-good detail', () => {
     expect(Object.keys(DASH_MIS_FG_FIELDS)).toEqual(expect.arrayContaining(['Zbrand', 'Matnr', 'BudPc', 'ActPc', 'BudSrc', 'Grain']));
   });
 });
+
+describe('sales: invoice number and invoice list', () => {
+  it('adds the invoice filter and refuses an unnarrowed invoice list', async () => {
+    const { buildSalesFilter, fetchSalesInvoices } = await import('@/lib/dash/service');
+    expect(buildSalesFilter([], '2026-04-01', '2026-11-24', { vbeln: ['90046171'] })).toContain("Vbeln eq '90046171'");
+    expect(() => buildSalesFilter([], '2026-04-01', '2026-11-24', { vbeln: ['12AB'] })).toThrow();
+    expect(() => fetchSalesInvoices([], '2026-04-01', '2026-11-24', {})).toThrow();
+  });
+});

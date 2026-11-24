@@ -23,4 +23,7 @@ define type zdash_s_sales {
   sku_cnt     : abap.int4;
   sku_nocogm  : abap.int4;
   msg         : abap.char(120);
+  prodha      : zpproduct;
+  vbeln       : vbeln_vf;
+  fkdat       : dats;
 }

@@ -23,4 +23,5 @@ define type zdash_s_mis {
   bud_pc      : abap.dec(23,6);
   act_pc      : abap.dec(23,6);
   bud_src     : abap.char(160);
+  prodha      : zpproduct;
 }

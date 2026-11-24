@@ -14,7 +14,7 @@ const Z = new Decimal(0);
 
 export interface Comp { rm: Decimal; pm: Decimal; pf: Decimal; oh: Decimal }
 export interface MLine {
-  grain: string; key: string; label: string; brand: string; matkl: string; matnr: string; kunag: string; scheme: string; crssku: string; business: string;
+  grain: string; key: string; label: string; brand: string; matkl: string; prodha: string; matnr: string; kunag: string; scheme: string; crssku: string; business: string;
   qty: Decimal; mrp: Decimal; sp: Decimal; chRet: Decimal; chDis: Decimal; chSs: Decimal; gst: Decimal;
   base: Comp;                 // invoice RM / PM / perfume / overhead (positive conditions)
   scheme_: Comp;              // consumer + trade scheme cost per component
@@ -26,7 +26,7 @@ const comp = (rm: Decimal, pm: Decimal, pf: Decimal, oh: Decimal): Comp => ({ rm
 
 export function parseMargin(rows: MarginRow[]): { sku: MLine[]; customers: MLine[] } {
   const line = (r: MarginRow): MLine => ({
-    grain: r.Grain, key: `${r.Grain}|${r.Zbrand}|${r.Matnr}|${r.Bwtar ?? ''}|${r.Kunag}`, label: r.Grain === 'C' ? (r.KunagTxt || r.Kunag) : r.Maktx, brand: r.Zbrand, matkl: r.Matkl,
+    grain: r.Grain, key: `${r.Grain}|${r.Zbrand}|${r.Matnr}|${r.Bwtar ?? ''}|${r.Kunag}`, label: r.Grain === 'C' ? (r.KunagTxt || r.Kunag) : r.Maktx, brand: r.Zbrand, matkl: r.Matkl, prodha: r.Prodha ?? '',
     matnr: r.Matnr, kunag: r.Kunag, scheme: r.Zscheme, crssku: r.Crssku, business: r.Zbusiness,
     qty: d(r.Qty), mrp: d(r.Mrp), sp: d(r.Sp), chRet: d(r.ChRet), chDis: d(r.ChDis), chSs: d(r.ChSs), gst: d(r.Gst),
     base: comp(d(r.Rm), d(r.Pm), d(r.Pf), d(r.Oh)),

@@ -15,7 +15,7 @@ export const DASH_MIS_FIELDS = {
 /** DashMisSet with Grain eq 'F': one row per finished good (material and plant) of the same figures, with the budget key SAP matched (or could not match). */
 export const DASH_MIS_FG_FIELDS = {
   ...DASH_MIS_FIELDS,
-  Grain: ['Grain', 's'], Matnr: ['Matnr', 's'], Maktx: ['Maktx', 's'], BudPc: ['BudPc', 'd'], ActPc: ['ActPc', 'd'], BudSrc: ['BudSrc', 's'],
+  Grain: ['Grain', 's'], Matnr: ['Matnr', 's'], Maktx: ['Maktx', 's'], BudPc: ['BudPc', 'd'], ActPc: ['ActPc', 'd'], BudSrc: ['BudSrc', 's'], Prodha: ['Prodha', 's'],
 } as const satisfies FieldMap;
 
 /** DashBridgeSet (ZCL_MM_COGM_BRIDGE): year-to-date COGM variance bridge per brand, one row per effect; Value in INR. Werks / DateTo are $filter properties only. */
@@ -29,6 +29,7 @@ export const DASH_SALES_FIELDS = {
   Grain: ['Grain', 's'], Zbrand: ['Zbrand', 's'], Matnr: ['Matnr', 's'], Maktx: ['Maktx', 's'], Matkl: ['Matkl', 's'], Vtweg: ['Vtweg', 's'], VtwegTxt: ['VtwegTxt', 's'],
   SoldQty: ['SoldQty', 'd'], Gsv: ['Gsv', 'd'], Deductions: ['Deductions', 'd'], Nsv: ['Nsv', 'd'], CogmQty: ['CogmQty', 'd'], NsvCmp: ['NsvCmp', 'd'], Cogm: ['Cogm', 'd'], CogmPc: ['CogmPc', 'd'],
   SkuCnt: ['SkuCnt', 'i'], SkuNocogm: ['SkuNocogm', 'i'], Msg: ['Msg', 's'],
+  Prodha: ['Prodha', 's'], Vkorg: ['Vkorg', 's'], Vbeln: ['Vbeln', 's'], Fkdat: ['Fkdat', 't'],
 } as const satisfies FieldMap;
 
 /** DashPvmSet: budget gross margin -> Price -> Volume -> Mix -> Cost -> actual gross margin (+ 'Unexplained' when the effects do not add up). Same filter as DashSalesSet. */
@@ -49,6 +50,7 @@ export const DASH_MARGIN_FIELDS = {
   Kunag: ['Kunag', 's'],
   Maktx: ['Maktx', 's'],
   Matkl: ['Matkl', 's'],
+  Prodha: ['Prodha', 's'],
   KunagTxt: ['KunagTxt', 's'],
   Zscheme: ['Zscheme', 's'],
   Crssku: ['Crssku', 's'],

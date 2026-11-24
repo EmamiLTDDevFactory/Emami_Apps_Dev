@@ -119,7 +119,9 @@
     ENDIF.
     IF iv_entity_set_name = 'DashSalesSet'.
       DATA: lr_skorg TYPE zcl_mm_dash_sales=>ty_r_vkorg,
-            lr_stweg TYPE zcl_mm_dash_sales=>ty_r_vtweg.
+            lr_stweg TYPE zcl_mm_dash_sales=>ty_r_vtweg,
+            lr_svbeln TYPE zcl_mm_dash_sales=>ty_r_vbeln,
+            lv_sgrain TYPE string.
       LOOP AT io_tech_request_context->get_filter( )->get_filter_select_options( ) INTO DATA(ls_sf).
         CHECK lines( ls_sf-select_options ) > 0.
         DATA(lv_sp) = to_upper( CONV string( ls_sf-property ) ).
@@ -127,10 +129,16 @@
         CASE lv_sp.
           WHEN 'VKORG'. lr_skorg = CORRESPONDING #( ls_sf-select_options ).
           WHEN 'VTWEG'. lr_stweg = CORRESPONDING #( ls_sf-select_options ).
+          WHEN 'VBELN'. lr_svbeln = CORRESPONDING #( ls_sf-select_options ).
+          WHEN 'GRAIN'. lv_sgrain = to_upper( CONV string( ls_sf-select_options[ 1 ]-low ) ).
         ENDCASE.
       ENDLOOP.
+      LOOP AT lr_svbeln ASSIGNING FIELD-SYMBOL(<sv>).
+        <sv>-low = |{ <sv>-low ALPHA = IN }|.
+        IF <sv>-high IS NOT INITIAL. <sv>-high = |{ <sv>-high ALPHA = IN }|. ENDIF.
+      ENDLOOP.
       TRY.
-          lt_sal = NEW zcl_mm_dash_sales( is_par = ls_par it_vkorg = lr_skorg it_vtweg = lr_stweg )->run( ).
+          lt_sal = NEW zcl_mm_dash_sales( is_par = ls_par it_vkorg = lr_skorg it_vtweg = lr_stweg it_vbeln = lr_svbeln iv_invoices = xsdbool( lv_sgrain = 'I' ) )->run( ).
         CATCH cx_root INTO DATA(lx2).
           raise_busi( |Sales view failed: { lx2->get_text( ) }| ).
       ENDTRY.
