@@ -177,6 +177,19 @@ CLASS zcl_zmm_bom_cost_mpc_ext IMPLEMENTATION.
     dash_dec( io_et = lo_et iv_name = 'YtmActual'    iv_field = 'YTM_ACTUAL'     iv_len = 23 iv_scale = 6 ).
     dash_dec( io_et = lo_et iv_name = 'YtmActualCmp' iv_field = 'YTM_ACTUAL_CMP' iv_len = 23 iv_scale = 6 ).
     dash_str( io_et = lo_et iv_name = 'Msg'      iv_field = 'MSG'      iv_len = 120 ).
+    lo_p = lo_et->create_property( iv_property_name = 'Grain' iv_abap_fieldname = 'GRAIN' ).
+    lo_p->set_type_edm_string( ).
+    lo_p->set_maxlength( iv_max_length = 1 ).
+    lo_p->set_creatable( abap_false ).
+    lo_p->set_updatable( abap_false ).
+    lo_p->set_sortable( abap_false ).
+    lo_p->set_nullable( abap_true ).
+    lo_p->set_filterable( abap_true ).
+    dash_str( io_et = lo_et iv_name = 'Matnr'   iv_field = 'MATNR'   iv_len = 18 ).
+    dash_str( io_et = lo_et iv_name = 'Maktx'   iv_field = 'MAKTX'   iv_len = 40 ).
+    dash_dec( io_et = lo_et iv_name = 'BudPc'   iv_field = 'BUD_PC'  iv_len = 23 iv_scale = 6 ).
+    dash_dec( io_et = lo_et iv_name = 'ActPc'   iv_field = 'ACT_PC'  iv_len = 23 iv_scale = 6 ).
+    dash_str( io_et = lo_et iv_name = 'BudSrc'  iv_field = 'BUD_SRC' iv_len = 160 ).
     lo_et->bind_structure( iv_structure_name = 'ZDASH_S_MIS' iv_bind_conversions = 'X' ).
     lo_es = lo_et->create_entity_set( 'DashMisSet' ).
     lo_es->set_creatable( abap_false ).

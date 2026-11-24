@@ -3,19 +3,20 @@
  * Costing dashboard. MIS is live (DashMisSet: SAP's actual cost of the period against the approved budget cost per piece x actual quantity, by brand,
  * month to date and year to date) with rule-based notes from those numbers. The tabs whose SAP objects do not exist yet say exactly which one they wait for.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import Decimal from 'decimal.js';
 import { Button, Card, Empty, Spinner, Stat, Tabs, cx, inputCls } from '../ui';
 import PlanFrame from '../plan/PlanFrame';
 import { ErrorBox } from '../budget-mgmt/shared';
 import { errorText } from '../budget-mgmt/shared';
-import { fetchMis } from '@/lib/dash/service';
+import { fetchMis, fetchMisDetail } from '@/lib/dash/service';
+import { MisFgTable } from './MisDetail';
 import { brandViews, insights, totals, type BrandView, type Window } from '@/lib/dash/logic';
 import { BAND, Link, NeedsSap, lakh, pct, tdCls, thCls, today } from './parts';
 import SalesView from './SalesView';
 import MarginView from './MarginView';
 import BreakupView from './BreakupView';
-import type { MisRow } from '@/lib/dash/types';
+import type { MisFgRow, MisRow } from '@/lib/dash/types';
 import { ls } from '@/lib/client/storage';
 import { useHierNames } from '@/lib/client/useHierNames';
 
@@ -32,6 +33,9 @@ export default function DashScreen() {
   const [asOf, setAsOf] = useState(today());
   const [rows, setRows] = useState<MisRow[] | null>(null);
   const [ran, setRan] = useState<{ plants: string; asOf: string } | null>(null);
+  const [detail, setDetail] = useState<MisFgRow[] | null>(null);
+  const [detailBusy, setDetailBusy] = useState(false);
+  const [detailErr, setDetailErr] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const ctl = useRef<AbortController | null>(null);
@@ -44,12 +48,20 @@ export default function DashScreen() {
     try {
       const list = plants.split(/[\s,;]+/).filter(Boolean);
       const r = await fetchMis(list, asOf, c.signal);
-      setRows(r.rows); setRan({ plants: list.join(', ').toUpperCase(), asOf });
+      setRows(r.rows); setRan({ plants: list.join(', ').toUpperCase(), asOf }); setDetail(null); setDetailErr('');
       ls.set('bce:dash-plants', plants);
     } catch (e) { if (!c.signal.aborted) { setRows(null); setError(errorText(e)); } }
     if (!c.signal.aborted) setBusy(false);
   }
 
+  // finished-good rows load on first use (one more SAP read of the same figures)
+  async function loadDetail() {
+    if (detail || detailBusy || !ran) return;
+    setDetailBusy(true); setDetailErr('');
+    try { const r = await fetchMisDetail(ran.plants.split(/[\s,;]+/).filter(Boolean), ran.asOf); setDetail(r.rows.filter((x) => x.Matnr)); }
+    catch (e) { setDetailErr(errorText(e)); }
+    setDetailBusy(false);
+  }
   const brands = useMemo(() => (rows ? brandViews(rows) : []), [rows]);
   const tot = useMemo(() => totals(brands), [brands]);
   const notes = useMemo(() => insights(brands), [brands]);
@@ -95,7 +107,7 @@ export default function DashScreen() {
                   Plants {ran?.plants} · as of {ran?.asOf} · month to date and financial year to date{fy ? ` (FY ${fy}` : ''}{fy && version ? `, latest approved budget version ${version}` : ''}{fy ? ')' : ''}. Actual = RM + PM + perfume + conversion of the period (SAP, INR).
                   Budget = approved budget cost per piece x actual quantity (ZMM_FBUDCOST_SUM, matched on plant, CRSSKU, business, scheme and material type, as in Margin). Amounts in ₹ lakh.
                 </p>
-                <MisTable brands={brands} tot={tot} bn={hn.brand} />
+                <MisTable brands={brands} tot={tot} bn={hn.brand} detail={detail} busy={detailBusy} err={detailErr} onNeed={loadDetail} />
               </>
             )}
             <NeedsSap title="Variance bridge (rate, usage, mix, overheads, currency)" object="ZCL_MM_COGM_BRIDGE" why="Nothing in SAP splits the COGM variance into these five effects yet. The bridge appears here when that class exists." />
@@ -150,9 +162,27 @@ export default function DashScreen() {
 
 const th = thCls;
 const td = tdCls;
-function MisTable({ brands, tot, bn }: { brands: BrandView[]; tot: { ftm: Window; ytm: Window }; bn: (c: string) => string }) {
+function MisTable({ brands, tot, bn, detail, busy, err, onNeed }: { brands: BrandView[]; tot: { ftm: Window; ytm: Window }; bn: (c: string) => string; detail: MisFgRow[] | null; busy: boolean; err: string; onNeed: () => void }) {
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  const [warn, setWarn] = useState(false);
+  const toggle = (b: string) => { onNeed(); setOpen((s) => { const n = new Set(s); if (n.has(b)) n.delete(b); else n.add(b); return n; }); };
+  const noBud = detail?.filter((x) => x.FgNobud > 0) ?? [];
+  const noBudCount = brands.reduce((s, b) => s + b.fgNoBudget, 0);
   const cell = (w: Window) => (<><td className={td}>{lakh(w.budget)}</td><td className={td}>{lakh(w.actualCmp)}</td></>);
   return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-muted">Click a brand to see its finished goods with the actual, the budget and the budget key SAP used.</span>
+        {noBudCount > 0 && <button type="button" className="rounded-full border border-warn/40 bg-warn/10 px-3 py-1 font-semibold text-warn hover:bg-warn/20" onClick={() => { onNeed(); setWarn(!warn); }}>{warn ? 'Hide' : 'Show'} the {noBudCount} finished good{noBudCount === 1 ? '' : 's'} without approved budget</button>}
+        {busy && <span className="text-muted">Loading finished goods…</span>}
+        {err && <span className="text-bad">{err}</span>}
+      </div>
+      {warn && (
+        <div className="rounded-2xl border border-warn/40 bg-warn/[0.05] p-3">
+          <p className="mb-2 text-xs font-bold text-warn">Finished goods with actual cost but no approved budget (left out of the budget comparison). The last column says which budget key was looked for in ZMM_FBUDCOST_SUM.</p>
+          {detail ? <MisFgTable rows={noBud} showBrand bn={bn} /> : <p className="text-xs text-muted">{busy ? 'Loading…' : 'Not loaded.'}</p>}
+        </div>
+      )}
     <div className="overflow-x-auto rounded-2xl border border-line bg-panel shadow-card">
       <table className="w-full min-w-[980px] border-collapse">
         <thead>
@@ -164,14 +194,21 @@ function MisTable({ brands, tot, bn }: { brands: BrandView[]; tot: { ftm: Window
         </thead>
         <tbody>
           {brands.map((b) => (
-            <tr key={b.brand || '-'} className="border-t border-line/60">
-              <td className="px-2.5 py-1.5 text-left text-xs font-bold">{bn(b.brand) || '(none)'}</td>
-              <td className={td}>{b.fgCnt}</td>
-              {cell(b.ftm)}{cell(b.ytm)}
-              <td className={td}>{lakh(b.ytm.variance)}</td>
-              <td className={cx(td, 'font-bold', BAND[b.band])}>{pct(b.ytm.variancePct)}</td>
-              <td className="px-2.5 py-1.5 text-left text-2xs text-muted">{b.msg}</td>
-            </tr>
+            <Fragment key={b.brand || '-'}>
+              <tr className="cursor-pointer border-t border-line/60 hover:bg-sunken" onClick={() => toggle(b.brand)} aria-expanded={open.has(b.brand)}>
+                <td className="px-2.5 py-1.5 text-left text-xs font-bold"><span className="mr-1 inline-block w-3 text-faint">{open.has(b.brand) ? '▾' : '▸'}</span>{bn(b.brand) || '(none)'}</td>
+                <td className={td}>{b.fgCnt}</td>
+                {cell(b.ftm)}{cell(b.ytm)}
+                <td className={td}>{lakh(b.ytm.variance)}</td>
+                <td className={cx(td, 'font-bold', BAND[b.band])}>{pct(b.ytm.variancePct)}</td>
+                <td className="px-2.5 py-1.5 text-left text-2xs text-muted">{b.msg}</td>
+              </tr>
+              {open.has(b.brand) && (
+                <tr><td colSpan={9} className="bg-sunken/40 p-2.5">
+                  {detail ? <MisFgTable rows={detail.filter((x) => x.Zbrand === b.brand)} /> : <p className="text-xs text-muted">{busy ? 'Loading finished goods…' : err || 'Not loaded.'}</p>}
+                </td></tr>
+              )}
+            </Fragment>
           ))}
         </tbody>
         <tfoot>
@@ -182,6 +219,7 @@ function MisTable({ brands, tot, bn }: { brands: BrandView[]; tot: { ftm: Window
           </tr>
         </tfoot>
       </table>
+    </div>
     </div>
   );
 }

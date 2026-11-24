@@ -5,6 +5,8 @@ export interface MisRow {
   Msg: string;
 }
 
+export interface MisFgRow extends MisRow { Grain: string; Matnr: string; Maktx: string; BudPc: string; ActPc: string; BudSrc: string }
+
 export interface SalesRow {
   Grain: 'B' | 'S' | string; Zbrand: string; Matnr: string; Maktx: string; Matkl: string; Vtweg: string; VtwegTxt: string;
   SoldQty: string; Gsv: string; Deductions: string; Nsv: string; CogmQty: string; NsvCmp: string; Cogm: string; CogmPc: string;

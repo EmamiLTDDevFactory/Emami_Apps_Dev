@@ -17,4 +17,10 @@ define type zdash_s_mis {
   ytm_actual  : abap.dec(23,6);
   ytm_actual_cmp : abap.dec(23,6);
   msg         : abap.char(120);
+  grain       : abap.char(1);
+  matnr       : abap.char(18);
+  maktx       : abap.char(40);
+  bud_pc      : abap.dec(23,6);
+  act_pc      : abap.dec(23,6);
+  bud_src     : abap.char(160);
 }

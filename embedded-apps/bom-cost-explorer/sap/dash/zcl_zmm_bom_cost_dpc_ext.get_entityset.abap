@@ -125,8 +125,12 @@
       copy_data_to_ref( EXPORTING is_data = lt_sal CHANGING cr_data = er_entityset ).
       RETURN.
     ENDIF.
+    DATA(lv_grain) = ``.
+    LOOP AT io_tech_request_context->get_filter( )->get_filter_select_options( ) INTO DATA(ls_gf).
+      IF to_upper( CONV string( ls_gf-property ) ) = 'GRAIN' AND lines( ls_gf-select_options ) > 0. lv_grain = to_upper( CONV string( ls_gf-select_options[ 1 ]-low ) ). ENDIF.
+    ENDLOOP.
     TRY.
-        lt_mis = NEW zcl_mm_dash_mis( ls_par )->run( ).
+        lt_mis = NEW zcl_mm_dash_mis( is_par = ls_par iv_detail = xsdbool( lv_grain = 'F' ) )->run( ).
       CATCH cx_root INTO DATA(lx).
         raise_busi( |MIS dashboard failed: { lx->get_text( ) }| ).
     ENDTRY.

@@ -24,3 +24,10 @@ describe('sales: all plants', () => {
     expect(() => buildSalesFilter([], '2026-04-01', '2026-11-24', { requirePlant: true })).toThrow();
   });
 });
+
+describe('MIS finished-good detail', () => {
+  it('reads the same set with Grain eq F', async () => {
+    const { DASH_MIS_FG_FIELDS } = await import('@/lib/dash/fields');
+    expect(Object.keys(DASH_MIS_FG_FIELDS)).toEqual(expect.arrayContaining(['Zbrand', 'Matnr', 'BudPc', 'ActPc', 'BudSrc', 'Grain']));
+  });
+});

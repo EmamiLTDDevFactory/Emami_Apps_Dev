@@ -12,6 +12,12 @@ export const DASH_MIS_FIELDS = {
   Msg: ['Msg', 's'],
 } as const satisfies FieldMap;
 
+/** DashMisSet with Grain eq 'F': one row per finished good (material and plant) of the same figures, with the budget key SAP matched (or could not match). */
+export const DASH_MIS_FG_FIELDS = {
+  ...DASH_MIS_FIELDS,
+  Grain: ['Grain', 's'], Matnr: ['Matnr', 's'], Maktx: ['Maktx', 's'], BudPc: ['BudPc', 'd'], ActPc: ['ActPc', 'd'], BudSrc: ['BudSrc', 's'],
+} as const satisfies FieldMap;
+
 /** DashSalesSet: invoiced sales of finished goods. Grain 'B' = one row per brand, 'S' = one row per SKU x distribution channel. GSV = condition ZSAL (the item's net value when it has none),
  *  NSV = VBRP-NETWR, Deductions = GSV - NSV; COGM = SAP's actual cost per piece of the period x sold quantity. Werks / DateFrom / DateTo are $filter properties only. */
 export const DASH_SALES_SET = 'DashSalesSet';

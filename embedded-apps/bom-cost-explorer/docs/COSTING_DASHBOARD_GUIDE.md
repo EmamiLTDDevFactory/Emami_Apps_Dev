@@ -25,6 +25,7 @@ All figures are INR. SAP does the heavy work (OData service `ZMM_BOM_COST_SRV`);
 - **Colour:** red above 3 %, amber above 2 %, otherwise green.
 - **Coverage:** FGs with no approved budget are counted ("FG no budget") and left out of the comparison.
 - **SAP:** `DashMisSet` (class `ZCL_MM_DASH_MIS`). The budget is read from `ZMM_FBUDCOST_SUM`, like the Margin tab: status A, financial year of the as-of date, latest version, key WERKS (production plant) + CRSSKU + business vertical + scheme + material type (MARA); cost per piece = RM + PM + perfume + machine + labour + power + steam + labour 3P.
+- **Drill-down:** click a brand to see its finished goods (YTM quantity, actual and budget per piece, variance %) and the budget key SAP matched in `ZMM_FBUDCOST_SUM` (or could not match). "Show the N finished goods without approved budget" lists the ones behind the warning with the key that was looked for. SAP: the same `DashMisSet` with `Grain eq 'F'` (transport `EDSK9B0EP0`).
 - **Not built:** the five-way variance bridge (rate, usage, mix, overheads, currency).
 
 ## 2. Sales view
