@@ -582,7 +582,10 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         claimNavItems.push({
           ClaimId: existingClaimId ? existingClaimId : '',
           ItemNo: (idx + 1).toString().padStart(6, '0'),
-          ExpenseType: selectedSapType ? selectedSapType.id : claimData.expenseType,
+          // Sent blank per backend instruction - ExpenseType's field facet rejects the GL account
+          // number now in selectedSapType.id (e.g. '509412'), and ZslNo is no longer a stable value
+          // to send either. Saknr (sent separately below) is the field SAP actually keys off now.
+          ExpenseType: '',
           ZglName: selectedSapType ? selectedSapType.name : claimData.expenseType,
           Saknr: selectedSapType ? selectedSapType.saknr : '',
           ExpenseDate: toODataDate(item.expenseDate),
@@ -597,7 +600,10 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         claimNavItems.push({
           ClaimId: existingClaimId ? existingClaimId : '',
           ItemNo: (mobileMonthItems!.length + idx + 1).toString().padStart(6, '0'),
-          ExpenseType: selectedSapType ? selectedSapType.id : claimData.expenseType,
+          // Sent blank per backend instruction - ExpenseType's field facet rejects the GL account
+          // number now in selectedSapType.id (e.g. '509412'), and ZslNo is no longer a stable value
+          // to send either. Saknr (sent separately below) is the field SAP actually keys off now.
+          ExpenseType: '',
           ZglName: selectedSapType ? selectedSapType.name : claimData.expenseType,
           Saknr: selectedSapType ? selectedSapType.saknr : '',
           ExpenseDate: toODataDate(mobileMonthItems![0].expenseDate),
@@ -615,7 +621,10 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         claimNavItems.push({
           ClaimId: existingClaimId ? existingClaimId : '',
           ItemNo: i === 0 ? (claimData.itemNo || '000001') : (i + 1).toString().padStart(6, '0'),
-          ExpenseType: selectedSapType ? selectedSapType.id : claimData.expenseType,
+          // Sent blank per backend instruction - ExpenseType's field facet rejects the GL account
+          // number now in selectedSapType.id (e.g. '509412'), and ZslNo is no longer a stable value
+          // to send either. Saknr (sent separately below) is the field SAP actually keys off now.
+          ExpenseType: '',
           ZglName: selectedSapType ? selectedSapType.name : claimData.expenseType,
           Saknr: selectedSapType ? selectedSapType.saknr : '',
           ExpenseDate: toODataDate(claimData.expenseDate),

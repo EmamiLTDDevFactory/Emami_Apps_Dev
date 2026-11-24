@@ -318,7 +318,10 @@ export default function DoaChainPage() {
 
   const visibleRows = useMemo(() => {
     let list = rows;
-    if (!showInactive) list = list.filter((r) => r.Active || r._isNew);
+    // A row you just unticked Active on (but haven't saved yet) must stay visible - otherwise
+    // unticking it instantly hides it before Save even runs, which looks like the click did
+    // nothing. It only actually drops out of the default view once a reload confirms it's saved.
+    if (!showInactive) list = list.filter((r) => r.Active || r._isNew || r._dirty);
     if (searchText.trim()) {
       const q = searchText.trim().toLowerCase();
       list = list.filter((r) =>
