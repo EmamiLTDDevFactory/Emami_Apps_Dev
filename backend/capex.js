@@ -75,7 +75,8 @@ router.get('/health', async (req, res) => {
     }
 });
 
-router.get('/odata/*', async (req, res) => {
+// Regex routes: valid on Express 4 and 5 (a bare '*' is rejected by Express 5's path-to-regexp).
+router.get(/^\/odata\/(.+)$/, async (req, res) => {
     const path = checkedPath(decodeURIComponent(req.params[0] || ''));
     if (!path) return res.status(404).json({ error: 'Unknown entity set.' });
     const t0 = Date.now();
@@ -98,7 +99,7 @@ router.post('/fn/:name', async (req, res) => {
 });
 
 for (const method of ['post', 'put']) {
-    router[method]('/entity/*', async (req, res) => {
+    router[method](/^\/entity\/(.+)$/, async (req, res) => {
         const path = checkedPath(decodeURIComponent(req.params[0] || ''));
         if (!path || path.includes('/')) return res.status(404).json({ error: 'Unknown entity set.' });
         if (method === 'post' && path.includes('(')) return res.status(400).json({ error: 'Create goes to the entity set, not an entity.' });
