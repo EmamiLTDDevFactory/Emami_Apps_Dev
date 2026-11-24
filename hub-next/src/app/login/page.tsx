@@ -181,7 +181,7 @@ export default function LoginPage() {
           }}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/emami-hub-logo.png" alt="Emami Hub" className={verifyingAuth ? 'pulse' : undefined} style={{ width: 150, height: 'auto', marginBottom: 22 }} />
+          <img src="/emami-apps-logo.png" alt="Emami Apps" className={verifyingAuth ? 'pulse' : undefined} style={{ width: 200, height: 'auto', marginBottom: 20 }} />
           {linkSentTo ? (
             <>
               <div style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: `${colors.rust}14`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
