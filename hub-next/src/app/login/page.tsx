@@ -313,7 +313,7 @@ export default function LoginPage() {
         </div>
 
         <div style={{ marginTop: 36, textAlign: 'center', fontFamily: fonts.sansRegular, color: colors.inkSoft }}>
-          <p style={{ margin: 0, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, fontSize: 14, letterSpacing: 0.3 }}>Emami Analytics Hub</p>
+          <p style={{ margin: 0, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, fontSize: 14, letterSpacing: 0.3 }}>Emami Apps</p>
           <p style={{ margin: '6px 0 0', fontSize: 13 }}>Powered by AI · © 2026 Emami Group</p>
         </div>
       </div>
