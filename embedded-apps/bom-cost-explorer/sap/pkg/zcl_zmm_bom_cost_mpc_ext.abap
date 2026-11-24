@@ -195,6 +195,11 @@ CLASS zcl_zmm_bom_cost_mpc_ext IMPLEMENTATION.
     dash_dec( io_et = lo_et iv_name = 'ActPc'   iv_field = 'ACT_PC'  iv_len = 23 iv_scale = 6 ).
     dash_str( io_et = lo_et iv_name = 'BudSrc'  iv_field = 'BUD_SRC' iv_len = 160 ).
     dash_str( io_et = lo_et iv_name = 'Prodha' iv_field = 'PRODHA' iv_len = 10 ).
+    dash_str( io_et = lo_et iv_name = 'Zscheme' iv_field = 'ZSCHEME' iv_len = 4 ).
+    dash_dec( io_et = lo_et iv_name = 'BudRm' iv_field = 'BUD_RM' iv_len = 23 iv_scale = 6 ).
+    dash_dec( io_et = lo_et iv_name = 'BudPm' iv_field = 'BUD_PM' iv_len = 23 iv_scale = 6 ).
+    dash_dec( io_et = lo_et iv_name = 'BudPf' iv_field = 'BUD_PF' iv_len = 23 iv_scale = 6 ).
+    dash_dec( io_et = lo_et iv_name = 'BudOh' iv_field = 'BUD_OH' iv_len = 23 iv_scale = 6 ).
     lo_et->bind_structure( iv_structure_name = 'ZDASH_S_MIS' iv_bind_conversions = 'X' ).
     lo_es = lo_et->create_entity_set( 'DashMisSet' ).
     lo_es->set_creatable( abap_false ).

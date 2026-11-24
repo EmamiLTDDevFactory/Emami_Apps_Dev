@@ -46,7 +46,8 @@ All figures are INR. SAP does the heavy work (OData service `ZMM_BOM_COST_SRV`);
 **Question:** of the cost per piece, how much is RM, PM, perfume and conversion?
 - **Inputs:** production plants and period. Source: SAP actual cost per piece of the period, by group, for FGs produced in those plants.
 - Brand rows are quantity-weighted (total group cost / total quantity). Share % = group / total COGM per piece.
-- No budget split and no scheme dimension (not built).
+- **Budget split by group and by scheme:** below the actual tables, "Budget vs actual by group" per brand and per scheme (the scheme of each finished good, `MARA-ZSCHEME`): RM, PM, perfume, conversion and total, budget (`ZMM_FBUDCOST_SUM`, latest approved version of the financial year of the "to" date) against the actual cost per piece, quantity-weighted over the finished goods that have a budget; the others are counted as "no budget". SAP: the MIS finished-good rows (`DashMisSet`, `Grain eq 'F'`) carry `BudRm`, `BudPm`, `BudPf`, `BudOh`, `Zscheme` (transport `EDSK9B0EP0`).
+- Click a finished good (MIS tab) for its production: process orders, documents and components. In the Margin tab a material line has an **Invoices** button next to Breakup (invoice, sales org, channel, quantity, value).
 
 ## 4. Margin (invoice-condition margin analysis)
 **Question:** what is the margin on invoiced sales, what drives it, and what if prices, promos or costs change?

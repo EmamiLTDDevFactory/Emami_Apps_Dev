@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Card, Empty, Segmented, Spinner, Stat, cx, inputBase, inputCls } from '../ui';
 import { ErrorBox, errorText } from '../budget-mgmt/shared';
 import { fetchMargin, type MarginSel } from '@/lib/dash/service';
+import SalesInvoices, { type InvoiceTarget } from './SalesInvoices';
 import CdrillDrawer, { type DrillTarget } from './CdrillDrawer';
 import { NO_DRIVERS, cogmDrivers, groupBy, marginNotes, parseCurrentCogm, parseMargin, promoBreakeven, sensitivity, totalOf, type Basis, type Cur, type Drivers, type Group, type MLine, type Result } from '@/lib/dash/margin';
 import type { MarginRow } from '@/lib/dash/types';
@@ -47,6 +48,7 @@ export default function MarginView() {
   const [brand, setBrand] = useState('');
   const [ran, setRan] = useState<{ sel: MarginSel; from: string; to: string } | null>(null);
   const [drill, setDrill] = useState<DrillTarget | null>(null);
+  const [inv, setInv] = useState<InvoiceTarget | null>(null);
   const ctl = useRef<AbortController | null>(null);
   useEffect(() => { setCurText(ls.get<string>('bce:dash-curcogm', '')); return () => ctl.current?.abort(); }, []);
 
@@ -181,7 +183,7 @@ export default function MarginView() {
             <GroupTable groups={groups} material={by === 'sku'} onBreakup={ran ? (g) => {
               const q = g.base.qty;
               setDrill({ matnr: g.lines[0].matnr, label: g.label, sel: ran.sel, from: ran.from, to: ran.to, invoice: q.isZero() ? null : { rm: g.base.rm.div(q), pm: g.base.pm.div(q), pf: g.base.pf.div(q), oh: g.base.oh.div(q) } });
-            } : undefined} />
+            } : undefined} onInvoices={ran ? (g) => setInv({ title: g.label, plants: ran.sel.plants, from: ran.from, to: ran.to, extra: { matnr: [g.lines[0].matnr.replace(/^0+/, '')], vkorg: ran.sel.vkorg, vtweg: ran.sel.vtweg, vbeln: ran.sel.vbeln } }) : undefined} />
             {by === 'cust' && <p className="mt-2 text-2xs text-muted">Customer lines use the invoice cost (the current COGM data set is by SKU).</p>}
           </Card>
           <Card className="p-4">
@@ -192,6 +194,7 @@ export default function MarginView() {
         </>
       )}
       <CdrillDrawer target={drill} onClose={() => setDrill(null)} />
+      <SalesInvoices target={inv} onClose={() => setInv(null)} />
     </>
   );
 }
@@ -217,7 +220,7 @@ function Waterfall({ base, scen, changed, budGap }: { base: Result; scen: Result
   );
 }
 
-function GroupTable({ groups, material, onBreakup }: { groups: Group[]; material: boolean; onBreakup?: (g: Group) => void }) {
+function GroupTable({ groups, material, onBreakup, onInvoices }: { groups: Group[]; material: boolean; onBreakup?: (g: Group) => void; onInvoices?: (g: Group) => void }) {
   const qty = (v: Decimal) => (material ? money(v, 0) : lakh(v, 3));
   const val = (v: Decimal) => (material ? money(v, 0) : lakh(v, 3));
   if (!groups.length) return <p className="text-sm text-muted">No lines for this choice.</p>;
@@ -237,7 +240,7 @@ function GroupTable({ groups, material, onBreakup }: { groups: Group[]; material
                 <td className={cx(tdCls, 'font-bold', gmTone(g.scen.gmPct))}>{pct(g.scen.gmPct)}</td>
                 <td className={tdCls}>{g.scen.qty.isZero() ? '-' : money(g.scen.gm.div(g.scen.qty))}</td>
                 <td className={cx(tdCls, g.scen.gm.gte(g.base.gm) ? 'text-good' : 'text-bad')}>{lakh(g.scen.gm.minus(g.base.gm), 3)}</td>
-                {material && onBreakup && <td className={tdCls}><button type="button" className="rounded-lg border border-line px-2 py-0.5 text-2xs font-bold text-accent hover:bg-sunken" onClick={() => onBreakup(g)}>Breakup</button></td>}
+                {material && onBreakup && <td className={tdCls}><button type="button" className="rounded-lg border border-line px-2 py-0.5 text-2xs font-bold text-accent hover:bg-sunken" onClick={() => onBreakup(g)}>Breakup</button>{onInvoices && <button type="button" className="ml-1 rounded-lg border border-line px-2 py-0.5 text-2xs font-bold text-accent hover:bg-sunken" onClick={() => onInvoices(g)}>Invoices</button>}</td>}
                 <td className={tdCls}>{g.lines[0]?.grain === 'C' ? '-' : nbc ? <span className="rounded-full bg-warn/15 px-2 py-0.5 text-2xs font-bold text-warn" title="No Budgeted Cost / trading goods">NBC {nbc}</span> : 'OK'}</td>
               </tr>
             );

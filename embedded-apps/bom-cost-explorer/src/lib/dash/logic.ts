@@ -160,3 +160,37 @@ export function breakupByProduct(fgs: BreakupView[]): BreakupView[] {
     return { ...mk(k, list[0].brand, '', `${list.length} finished goods`, '', q, w((x) => x.rm), w((x) => x.pm), w((x) => x.perf), w((x) => x.conv)), prodha: list[0].prodha ?? '' };
   });
 }
+
+// ---- Budget split by group and by scheme (Cost breakup) ----------------------------------------------------------------
+import type { MisFgRow } from './types';
+
+export interface SplitRow {
+  key: string; label: string; fgCnt: number; fgNoBudget: number; qty: Decimal;
+  /** per piece, qty-weighted over the finished goods that have an approved budget: actual and budget by group (conversion = machine, labour, power, steam, labour 3P) */
+  act: { rm: Decimal; pm: Decimal; pf: Decimal; conv: Decimal }; bud: { rm: Decimal; pm: Decimal; pf: Decimal; conv: Decimal };
+}
+const tot4 = (c: SplitRow['act']) => c.rm.plus(c.pm).plus(c.pf).plus(c.conv);
+export const splitTotal = tot4;
+
+/** Joins the actual cost per piece by group (SAP WAC) with the approved budget per piece by group (SAP MIS finished-good rows) and groups them (brand, scheme ...). */
+export function budgetSplit(fgs: BreakupView[], bud: MisFgRow[], groupOf: (f: BreakupView, b: MisFgRow | undefined) => { key: string; label: string }): SplitRow[] {
+  const byFg = new Map<string, MisFgRow>();
+  for (const b of bud) byFg.set(`${b.Werks ?? ''}|${(b.Matnr ?? '').replace(/^0+/, '')}`, b);
+  const out = new Map<string, { key: string; label: string; list: Array<{ f: BreakupView; b: MisFgRow }>; no: number }>();
+  for (const f of fgs) {
+    const b = byFg.get(`${f.werks}|${f.matnr.replace(/^0+/, '')}`);
+    const g = groupOf(f, b);
+    const x = out.get(g.key) ?? { key: g.key, label: g.label, list: [], no: 0 };
+    if (b && b.FgNobud === 0 && d(b.BudRm).plus(d(b.BudPm)).plus(d(b.BudPf)).plus(d(b.BudOh)).gt(0)) x.list.push({ f, b }); else x.no += 1;
+    out.set(g.key, x);
+  }
+  return Array.from(out.values()).sort((a, b) => a.label.localeCompare(b.label)).map((x) => {
+    const q = x.list.reduce((s, y) => s.plus(y.f.qty), new Decimal(0));
+    const w = (fn: (y: { f: BreakupView; b: MisFgRow }) => Decimal) => (q.gt(0) ? x.list.reduce((s, y) => s.plus(fn(y).times(y.f.qty)), new Decimal(0)).div(q) : new Decimal(0));
+    return {
+      key: x.key, label: x.label, fgCnt: x.list.length + x.no, fgNoBudget: x.no, qty: q,
+      act: { rm: w((y) => y.f.rm), pm: w((y) => y.f.pm), pf: w((y) => y.f.perf), conv: w((y) => y.f.conv) },
+      bud: { rm: w((y) => d(y.b.BudRm)), pm: w((y) => d(y.b.BudPm)), pf: w((y) => d(y.b.BudPf)), conv: w((y) => d(y.b.BudOh)) },
+    };
+  });
+}

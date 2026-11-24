@@ -15,7 +15,8 @@ export const DASH_MIS_FIELDS = {
 /** DashMisSet with Grain eq 'F': one row per finished good (material and plant) of the same figures, with the budget key SAP matched (or could not match). */
 export const DASH_MIS_FG_FIELDS = {
   ...DASH_MIS_FIELDS,
-  Grain: ['Grain', 's'], Matnr: ['Matnr', 's'], Maktx: ['Maktx', 's'], BudPc: ['BudPc', 'd'], ActPc: ['ActPc', 'd'], BudSrc: ['BudSrc', 's'], Prodha: ['Prodha', 's'],
+  Grain: ['Grain', 's'], Matnr: ['Matnr', 's'], Maktx: ['Maktx', 's'], BudPc: ['BudPc', 'd'], ActPc: ['ActPc', 'd'], BudSrc: ['BudSrc', 's'], Prodha: ['Prodha', 's'], Werks: ['Werks', 's'],
+  Zscheme: ['Zscheme', 's'], BudRm: ['BudRm', 'd'], BudPm: ['BudPm', 'd'], BudPf: ['BudPf', 'd'], BudOh: ['BudOh', 'd'],
 } as const satisfies FieldMap;
 
 /** DashBridgeSet (ZCL_MM_COGM_BRIDGE): year-to-date COGM variance bridge per brand, one row per effect; Value in INR. Werks / DateTo are $filter properties only. */

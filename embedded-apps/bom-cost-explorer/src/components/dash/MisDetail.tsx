@@ -10,7 +10,7 @@ import { bandOf } from '@/lib/dash/logic';
 const D = (v: string) => { try { return new Decimal(v || 0); } catch { return new Decimal(0); } };
 const n4 = (d: Decimal) => d.toNumber().toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export function MisFgTable({ rows, showBrand = false, bn, pn, byProduct = false }: { rows: MisFgRow[]; showBrand?: boolean; bn?: (c: string) => string; pn?: (c: string) => string; byProduct?: boolean }) {
+export function MisFgTable({ rows, showBrand = false, bn, pn, byProduct = false, onOpen }: { rows: MisFgRow[]; showBrand?: boolean; bn?: (c: string) => string; pn?: (c: string) => string; byProduct?: boolean; onOpen?: (r: MisFgRow) => void }) {
   const groups = (() => {
     if (!byProduct) return [{ key: 'all', prodha: '', rows, qty: D('0'), bud: D('0'), act: D('0'), nobud: 0 }];
     const m = new Map<string, { key: string; prodha: string; rows: MisFgRow[]; qty: Decimal; bud: Decimal; act: Decimal; nobud: number }>();
@@ -51,7 +51,7 @@ export function MisFgTable({ rows, showBrand = false, bn, pn, byProduct = false 
                 const has = r.FgNobud === 0;
                 const bud = D(r.YtmBudget), cmp = D(r.YtmActualCmp), v = cmp.minus(bud), p = has && bud.gt(0) ? v.div(bud).times(100) : null;
                 return (
-                  <tr key={`${r.Matnr}-${r.Zbrand}`} className={cx('border-t border-line/60', !has && 'bg-warn/[0.06]')}>
+                  <tr key={`${r.Matnr}-${r.Zbrand}`} className={cx('border-t border-line/60', !has && 'bg-warn/[0.06]', onOpen && 'cursor-pointer hover:bg-sunken')} onClick={onOpen ? () => onOpen(r) : undefined} title={onOpen ? 'Open the production (process orders, documents, components) of this finished good' : undefined}>
                     {showBrand && <td className="px-2.5 py-1.5 text-left text-xs font-bold">{bn ? bn(r.Zbrand) || r.Zbrand : r.Zbrand}</td>}
                     <td className={cx('px-2.5 py-1.5 text-left text-xs', byProduct && 'pl-6')}><span className="font-bold">{r.Matnr.replace(/^0+/, '')}</span> <span className="text-muted">{r.Maktx}</span></td>
                     <td className={tdCls}>{D(r.YtmQty).toNumber().toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>

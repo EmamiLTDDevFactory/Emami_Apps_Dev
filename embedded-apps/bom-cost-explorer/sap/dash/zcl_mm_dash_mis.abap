@@ -19,6 +19,10 @@ CLASS zcl_mm_dash_mis DEFINITION PUBLIC FINAL CREATE PUBLIC.
              n       TYPE i,
              tot     TYPE decfloat34,   "sum over the rows of the latest version
              cost_pc TYPE decfloat34,   "average = tot / n
+             rm      TYPE decfloat34,   "sums of the latest version rows by group (budget per piece = sum / n)
+             pm      TYPE decfloat34,
+             pf      TYPE decfloat34,
+             oh      TYPE decfloat34,
            END OF ty_bud,
            tt_bud TYPE HASHED TABLE OF ty_bud WITH UNIQUE KEY werks crssku bus scheme mtart.
     DATA: mv_detail TYPE abap_bool,
@@ -111,6 +115,8 @@ CLASS zcl_mm_dash_mis IMPLEMENTATION.
       IF <b>-version = <bs>-version.   "the first (highest) version only
         <b>-n = <b>-n + 1.
         <b>-tot = <b>-tot + <bs>-rm_cost + <bs>-pm_cost + <bs>-perfume_cost + <bs>-machine + <bs>-labour + <bs>-power + <bs>-steam + <bs>-labour3p.
+        <b>-rm = <b>-rm + <bs>-rm_cost. <b>-pm = <b>-pm + <bs>-pm_cost. <b>-pf = <b>-pf + <bs>-perfume_cost.
+        <b>-oh = <b>-oh + <bs>-machine + <bs>-labour + <bs>-power + <bs>-steam + <bs>-labour3p.
       ENDIF.
     ENDLOOP.
     LOOP AT lt_bud ASSIGNING <b> WHERE n > 0.
@@ -156,10 +162,12 @@ CLASS zcl_mm_dash_mis IMPLEMENTATION.
           READ TABLE lt_fg ASSIGNING <f> WITH KEY matnr = <a>-matnr werks = <a>-werks.
           IF sy-subrc <> 0.
             APPEND VALUE #( grain = 'F' zbrand = <a>-zbrand matnr = <a>-matnr maktx = <a>-maktx prodha = <a>-prodha werks = <a>-werks gjahr = lv_gjahr date_to = lv_to fg_cnt = 1 ) TO lt_fg ASSIGNING <f>.
+            IF lv_mmok = abap_true. <f>-zscheme = ls_mm-zscheme. ENDIF.
             IF lv_mmok = abap_false.
               <f>-bud_src = 'No material master record found'.
             ELSEIF lv_has = abap_true.
               <f>-bud_pc  = ls_bud-cost_pc.
+              <f>-bud_rm  = ls_bud-rm / ls_bud-n. <f>-bud_pm = ls_bud-pm / ls_bud-n. <f>-bud_pf = ls_bud-pf / ls_bud-n. <f>-bud_oh = ls_bud-oh / ls_bud-n.
               <f>-version = ls_bud-version.
               <f>-bud_src = |ZMM_FBUDCOST_SUM FY { lv_gjahr } version { ls_bud-version }, key { <a>-werks } / { ls_mm-zskugrcodecrs } / { ls_mm-zbusiness } / { ls_mm-zscheme } / { ls_mm-mtart } ({ ls_bud-n } row(s) averaged)|.
             ELSE.
