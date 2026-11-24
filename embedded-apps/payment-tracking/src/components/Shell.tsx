@@ -13,6 +13,8 @@ import { PaymentTrackingAuthProvider, usePaymentTrackingAuth } from '../context/
 import { MonthYearProvider, useMonthYear, MONTH_OPTIONS, YEAR_OPTIONS, fiscalYearLabel } from '../context/MonthYearContext';
 import { Select, Spinner, cx } from './ui';
 import { SAP_SYSTEM } from '../lib/paymentTrackingApi';
+import { tileAllowed } from '../lib/tiles';
+import type { PaymentTrackingRole } from '../lib/hubAccessApi';
 
 const WIDE_BREAKPOINT = 768; // matches the hub's own useIsWideScreen + every sibling embedded app
 // next/link prepends next.config.js's basePath; plain <img> doesn't.
@@ -50,6 +52,12 @@ const SUPER_ADMIN_NAV: NavItem[] = [
   ...USER_NAV.filter((u) => !FINANCE_NAV.some((f) => f.href === u.href)),
 ];
 
+/** The tabs a role gets, narrowed to the screens Manage Access limits the person to (null = no limit). */
+export function navItemsFor(role: PaymentTrackingRole, tiles: string[] | null): NavItem[] {
+  const items = role === 'Super Admin' ? SUPER_ADMIN_NAV : role === 'Admin' ? ADMIN_NAV : role === 'Finance' ? FINANCE_NAV : USER_NAV;
+  return items.filter((i) => tileAllowed(tiles, i.href));
+}
+
 function useIsWideScreen() {
   const [wide, setWide] = useState(true);
   useEffect(() => {
@@ -65,9 +73,9 @@ const norm = (p: string | null) => (p || '/').replace(/\/?$/, '/');
 
 function NavPane({ isOpen, onClose, isWide }: { isOpen: boolean; onClose: () => void; isWide: boolean }) {
   const pathname = norm(usePathname());
-  const { role, roleLoading } = usePaymentTrackingAuth();
+  const { role, tiles, roleLoading } = usePaymentTrackingAuth();
   // While the role lookup is still resolving, show no items rather than flashing the wrong set.
-  const items = roleLoading ? [] : role === 'Super Admin' ? SUPER_ADMIN_NAV : role === 'Admin' ? ADMIN_NAV : role === 'Finance' ? FINANCE_NAV : USER_NAV;
+  const items = roleLoading ? [] : navItemsFor(role, tiles);
 
   const pane = (
     <aside className={cx(
@@ -154,6 +162,11 @@ function ShellInner({ children }: { children: React.ReactNode }) {
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [hubEmail, setHubEmail] = useState<string | null>(null);
+  const pathname = norm(usePathname());
+  const { role, tiles, roleLoading } = usePaymentTrackingAuth();
+  // A screen outside the person's Manage Access limit stays closed even when its address is typed in.
+  // The app root only redirects, so it is never blocked.
+  const blocked = !roleLoading && pathname !== '/' && !tileAllowed(tiles, pathname);
   const [today] = useState(() => new Date().toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }));
 
   // No login screen of its own: reaching this app is only valid with a real hub session (token +
@@ -204,7 +217,14 @@ function ShellInner({ children }: { children: React.ReactNode }) {
         </header>
         <PeriodBar />
         <main className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-[1500px] p-3 sm:p-4">{children}</div>
+          <div className="mx-auto max-w-[1500px] p-3 sm:p-4">
+            {roleLoading && pathname !== '/' ? <div className="flex justify-center py-10"><Spinner size={24} /></div> : blocked ? (
+              <div className="mx-auto max-w-md py-12 text-center">
+                <h2 className="text-lg font-extrabold text-ink">This screen is not part of your access</h2>
+                <p className="mt-2 text-sm text-inkSoft">Your {role} access to Service PO Automation is limited to some screens. Use the menu to open one of them, or ask for access from the Emami Apps hub.</p>
+              </div>
+            ) : children}
+          </div>
         </main>
       </div>
     </div>

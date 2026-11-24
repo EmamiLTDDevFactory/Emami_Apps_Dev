@@ -29,6 +29,7 @@ const jwt = require('jsonwebtoken');
 const { pool } = require('./db');
 const { JWT_SECRET } = require('./sessionAuth');
 const C = require('./costWatchCore');
+const { tileAllowed } = require('./appTiles');
 
 const APP_ID = 'bom-cost-explorer';
 const ENABLED = String(process.env.WATCH_ENABLED || 'false').toLowerCase() === 'true';
@@ -107,10 +108,12 @@ async function requireUser(req, res, next) {
     try {
         await ready;
         const [grant, user] = await Promise.all([
-            pool.query('SELECT role FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = $2', [email, APP_ID]),
+            pool.query('SELECT role, tiles FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = $2', [email, APP_ID]),
             pool.query('SELECT is_active FROM emami_apps.authorized_users WHERE email = $1', [email]),
         ]);
         if (!grant.rows.length || user.rows[0]?.is_active === false) return res.status(403).json({ success: false, error: 'You do not have access to the Costing Cockpit.' });
+        // A screen-limited grant (Manage Access) that leaves out the Cost watch screen is refused here too, not just hidden.
+        if (!tileAllowed(grant.rows[0].tiles, 'watch')) return res.status(403).json({ success: false, error: 'Your Costing Cockpit access does not include the Cost watch.' });
         const role = grant.rows[0].role;
         req.email = email;
         // Only the Costing Cockpit role counts. Admin has all access: the admin view and everything a Planner does.
@@ -280,7 +283,8 @@ async function digest(watchId) {
     let sent = 0;
     for (const to of recipients) {
         // every recipient must hold the Costing Cockpit grant (the app has no per-plant access yet: all of the item's plants)
-        const ok = (await pool.query('SELECT 1 FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = $2', [to, APP_ID])).rows.length > 0;
+        const g = (await pool.query('SELECT tiles FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = $2', [to, APP_ID])).rows[0];
+        const ok = !!g && tileAllowed(g.tiles, 'watch');
         if (!ok) { await logDigest(watchId, to, alerts.length, summary, 'skipped', 'no Costing Cockpit access'); continue; }
         const links = Object.fromEntries(alerts.map((a) => [a.id, {
             ack: `${API_PUBLIC}/me/cost-watch/act?t=${C.signLink(SIGNING, { a: 'ack', id: a.id, by: to })}`,

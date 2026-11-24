@@ -49,6 +49,8 @@ export interface UserAppGrant {
   /** Only meaningful for Audit & CAPA's 'Depot' role — which depot that person belongs to (see
    * embedded-apps/audit-capa/src/data/depots.js). Unused by every other app/role. */
   depot?: string | null;
+  /** Optional limit to some screens of the app (null/absent = every screen the role gets). See backend/appTiles.js. */
+  tiles?: string[] | null;
 }
 
 /** Hub-wide role (emami_apps.authorized_users.access_level) — distinct from AppRole above, which

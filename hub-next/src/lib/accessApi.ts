@@ -124,7 +124,9 @@ export async function setAppAccess(
   appId: string,
   role: AppRole | null,
   depot?: string | null,
-  actingEmail?: string
+  actingEmail?: string,
+  /** undefined = leave the saved screen limit as it is; null = no limit; a list = only those screens. */
+  tiles?: string[] | null
 ): Promise<ApiResult> {
   try {
     const url = `${ACCESS_API_URL}/access/users/${encodeURIComponent(email)}/apps/${encodeURIComponent(appId)}`;
@@ -132,7 +134,7 @@ export async function setAppAccess(
       ? await authFetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ role, depot: depot ?? null, actingEmail }),
+          body: JSON.stringify({ role, depot: depot ?? null, actingEmail, ...(tiles === undefined ? {} : { tiles }) }),
         })
       : await authFetch(url + (actingEmail ? `?actingEmail=${encodeURIComponent(actingEmail)}` : ''), { method: 'DELETE' });
     return await parseResult(res);
@@ -210,5 +212,18 @@ export async function setCcbRoles(email: string, roles: string[]): Promise<ApiRe
     return await parseResult(res);
   } catch {
     return { ok: false, error: 'Could not reach the server. Please try again.' };
+  }
+}
+
+export interface AppTile { id: string; label: string; group: string }
+
+/** Screens each app's grant can be limited to (backend/appTiles.js). Empty on any failure: the picker just stays hidden. */
+export async function getAppTiles(): Promise<Record<string, AppTile[]>> {
+  try {
+    const res = await authFetch(`${ACCESS_API_URL}/access/app-tiles`);
+    const data = await res.json().catch(() => ({}));
+    return res.ok && data?.success ? data.apps || {} : {};
+  } catch {
+    return {};
   }
 }

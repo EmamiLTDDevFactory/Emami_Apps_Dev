@@ -604,7 +604,8 @@ function accessRequestsRouter({ requireAccessManager, validRolesForApp, defaultG
                     const before = (await client.query('SELECT role FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = $2', [request.email, it.app_id])).rows[0];
                     await client.query(
                         `INSERT INTO emami_apps.authorized_user_apps (email, app_id, role, depot) VALUES ($1,$2,$3,$4)
-                         ON CONFLICT (email, app_id) DO UPDATE SET role = EXCLUDED.role, depot = EXCLUDED.depot`,
+                         ON CONFLICT (email, app_id) DO UPDATE SET role = EXCLUDED.role, depot = EXCLUDED.depot,
+                           tiles = CASE WHEN emami_apps.authorized_user_apps.role = EXCLUDED.role THEN emami_apps.authorized_user_apps.tiles ELSE NULL END`,
                         [request.email, it.app_id, it.role, it.depot]);
                     applied.push({ appId: it.app_id, role: it.role, depot: it.depot, before: before?.role || null, note: wanted.get(Number(it.id)).note || '' });
                     await client.query('UPDATE emami_apps.access_request_items SET applied_at = now() WHERE id = $1', [it.id]);

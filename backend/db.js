@@ -62,7 +62,12 @@ async function runMigrations() {
             ALTER TABLE emami_apps.authorized_user_apps
                 ADD COLUMN IF NOT EXISTS depot text
         `);
-        console.log('[postgres] Manage Access schema up to date (is_active, role, depot).');
+        // Optional screen-level scope of a grant (see appTiles.js): NULL = all the role's screens, else the allowed tile ids.
+        await pool.query(`
+            ALTER TABLE emami_apps.authorized_user_apps
+                ADD COLUMN IF NOT EXISTS tiles text[]
+        `);
+        console.log('[postgres] Manage Access schema up to date (is_active, role, depot, tiles).');
     } catch (err) {
         console.error('[postgres] Migration failed:', err.message);
     }

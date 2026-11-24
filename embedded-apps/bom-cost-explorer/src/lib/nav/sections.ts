@@ -30,7 +30,12 @@ export interface NavItem {
   plan?: PlanNav;
 }
 export interface NavSection { id: SectionId; label: string; hint: string; icon: LucideIcon; items: NavItem[] }
-export interface NavFlags { wac: boolean; ck: boolean; so: boolean; psum: boolean; marginRole: string; budgetRole: string }
+export interface NavFlags { wac: boolean; ck: boolean; so: boolean; psum: boolean; marginRole: string; budgetRole: string; /** screens this person is limited to in Manage Access (null / absent = every screen their role gets) */ tiles?: string[] | null }
+
+/** The Manage Access screen id of a nav item or `plan` value. Must match backend/appTiles.js (margin screens and plan screens share one id each). */
+export const tileOf = (id: string): string => (id.startsWith('margin') ? 'margin' : id === 'plans' || id === 'upload' ? 'plan' : id);
+/** Whether a screen limit (null = none) lets this person open the screen. */
+export const tileAllowed = (tiles: string[] | null | undefined, id: string): boolean => !tiles || tiles.includes(tileOf(id));
 
 const MODE_ICON: Record<Mode, LucideIcon> = { B: Layers, C: Scale, R: Tags, F: Truck, M: Boxes };
 const MODE_HINT: Record<Mode, string> = {
@@ -81,7 +86,8 @@ export function navSections(f: NavFlags): NavSection[] {
     { id: 'plan', label: 'Production Plan', hint: 'Plans, breakup and cost', icon: ClipboardList, items: plan },
     { id: 'monitoring', label: 'Monitoring', hint: 'Daily cost alerts', icon: BellRing, items: monitoring },
   ];
-  return all.filter((s) => s.items.length > 0);
+  // A screen limit from Manage Access only narrows: the lists above already applied flags and roles.
+  return all.map((s) => ({ ...s, items: s.items.filter((i) => tileAllowed(f.tiles, i.id)) })).filter((s) => s.items.length > 0);
 }
 
 /** Where a section opens: a section with one screen goes straight to it, the others to their page of tiles. */
