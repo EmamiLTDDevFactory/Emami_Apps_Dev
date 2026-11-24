@@ -120,7 +120,6 @@ export default function DoaChainPage() {
 
   const [doaCtypeFilter, setDoaCtypeFilter] = useState('');
   const [kostlFilter, setKostlFilter] = useState('');
-  const [searchText, setSearchText] = useState('');
   const [showInactive, setShowInactive] = useState(false);
 
   const [rows, setRows] = useState<GridRow[]>([]);
@@ -320,16 +319,12 @@ export default function DoaChainPage() {
   const visibleRows = useMemo(() => {
     let list = rows;
     if (!showInactive) list = list.filter((r) => r.Active || r._isNew);
-    if (searchText.trim()) {
-      const q = searchText.trim().toLowerCase();
-      list = list.filter((r) => r.Kostl.toLowerCase().includes(q) || (r.ApprName || '').toLowerCase().includes(q) || r.ApprEmail.toLowerCase().includes(q));
-    }
     return [...list].sort((a, b) =>
       a.DoaCtype.localeCompare(b.DoaCtype) ||
       a.Kostl.localeCompare(b.Kostl) ||
       a.AmtFrom - b.AmtFrom ||
       a.Seqno.localeCompare(b.Seqno));
-  }, [rows, showInactive, searchText]);
+  }, [rows, showInactive]);
 
   // Unsaved/new rows always render in full on every page, regardless of which page you're on -
   // only already-saved, untouched rows get paginated. Otherwise a row added (or imported) while
@@ -347,7 +342,7 @@ export default function DoaChainPage() {
   // Any change that reshuffles what's visible (new search/filter results, a fresh Load, rows
   // saved and dropping out of the unsaved list) should land back on page 1, not strand the admin
   // on a now-out-of-range page.
-  const resetPageOnChange = `${searchText}|${showInactive}|${rows.length}`;
+  const resetPageOnChange = `${showInactive}|${rows.length}`;
   React.useEffect(() => { setPage(1); }, [resetPageOnChange]);
 
   const cellInputClass = 'input !h-7 !w-full !min-w-0 !py-0.5 !px-1 text-2xs';
@@ -365,7 +360,6 @@ export default function DoaChainPage() {
       <PageHeader
         eyebrow="Admin"
         title="DOA Chain Maintenance"
-        subtitle="SM30-style maintenance of ZEXP_DOA_CHAIN — edit the table in place and save all changes together."
         icon={ShieldAlert}
       />
 
@@ -375,10 +369,10 @@ export default function DoaChainPage() {
 
       <Card className="my-3">
         {/* Every field below shares the same label+input top line regardless of whether it also
-            has a hint line under it (Cost Centre/Search do, Type/Load don't) - items-start keeps
-            all four aligned on that shared top line instead of Load drifting to the bottom of the
+            has a hint line under it (Cost Centre does, Type/Load don't) - items-start keeps all
+            three aligned on that shared top line instead of Load drifting to the bottom of the
             tallest cell. */}
-        <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-4">
+        <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-3">
           <Field label="Type">
             <Select value={doaCtypeFilter} onChange={setDoaCtypeFilter} options={DOA_CTYPE_FILTER_OPTIONS} />
           </Field>
@@ -389,9 +383,6 @@ export default function DoaChainPage() {
               placeholder="e.g. CORP16"
               onKeyDown={(e) => { if (e.key === 'Enter') handleLoad(); }}
             />
-          </Field>
-          <Field label="Search" hint="Cost centre, approver name or email">
-            <Input value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Filter loaded rows…" />
           </Field>
           <Field label=" ">
             <Button variant="primary" icon={RefreshCw} loading={loading} onClick={handleLoad} className="w-full">
