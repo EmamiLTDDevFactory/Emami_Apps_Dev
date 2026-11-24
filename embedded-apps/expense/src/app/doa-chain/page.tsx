@@ -2,11 +2,11 @@
 
 import React, { useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, ChevronLeft, ChevronRight, Copy, Info, Plus, Power, PowerOff, RefreshCw, Save, ShieldAlert, Upload, X } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, Copy, Info, Plus, Power, PowerOff, RefreshCw, Save, Search, ShieldAlert, Upload, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useClaim } from '../../context/ClaimContext';
 import { DoaChainRow } from '../../types';
-import { Banner, Button, Card, Checkbox, DateField, EmptyState, Field, Input, LoadingBlock, PageHeader, Select } from '../../components/ui';
+import { Banner, Button, Card, Checkbox, cx, DateField, EmptyState, Field, Input, LoadingBlock, PageHeader, Select } from '../../components/ui';
 
 // SM30-style flat maintenance grid for ZEXP_DOA_CHAIN (DoaChainSet) - replaces the earlier
 // slab-by-slab card editor per the rebuild spec. One row = one approver in one amount slab of one
@@ -120,6 +120,7 @@ export default function DoaChainPage() {
 
   const [doaCtypeFilter, setDoaCtypeFilter] = useState('');
   const [kostlFilter, setKostlFilter] = useState('');
+  const [searchText, setSearchText] = useState('');
   const [showInactive, setShowInactive] = useState(false);
 
   const [rows, setRows] = useState<GridRow[]>([]);
@@ -318,12 +319,20 @@ export default function DoaChainPage() {
   const visibleRows = useMemo(() => {
     let list = rows;
     if (!showInactive) list = list.filter((r) => r.Active || r._isNew);
+    if (searchText.trim()) {
+      const q = searchText.trim().toLowerCase();
+      list = list.filter((r) =>
+        r.Kostl.toLowerCase().includes(q) ||
+        r.DeptTxt.toLowerCase().includes(q) ||
+        (r.ApprName || '').toLowerCase().includes(q) ||
+        r.ApprEmail.toLowerCase().includes(q));
+    }
     return [...list].sort((a, b) =>
       a.DoaCtype.localeCompare(b.DoaCtype) ||
       a.Kostl.localeCompare(b.Kostl) ||
       a.AmtFrom - b.AmtFrom ||
       a.Seqno.localeCompare(b.Seqno));
-  }, [rows, showInactive]);
+  }, [rows, showInactive, searchText]);
 
   // Unsaved/new rows always render in full on every page, regardless of which page you're on -
   // only already-saved, untouched rows get paginated. Otherwise a row added (or imported) while
@@ -341,7 +350,7 @@ export default function DoaChainPage() {
   // Any change that reshuffles what's visible (new search/filter results, a fresh Load, rows
   // saved and dropping out of the unsaved list) should land back on page 1, not strand the admin
   // on a now-out-of-range page.
-  const resetPageOnChange = `${showInactive}|${rows.length}`;
+  const resetPageOnChange = `${showInactive}|${searchText}|${rows.length}`;
   React.useEffect(() => { setPage(1); }, [resetPageOnChange]);
 
   const cellInputClass = 'input !h-7 !w-full !min-w-0 !py-0.5 !px-1 text-2xs';
@@ -389,6 +398,16 @@ export default function DoaChainPage() {
             </Button>
           </Field>
         </div>
+
+        <div className="mt-3">
+          <Field label="Search" hint="Filters whatever's already loaded - cost centre, department, approver name or email">
+            <div className="relative">
+              <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-inkFaint" />
+              <Input value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Search loaded rows…" className="pl-8" />
+            </div>
+          </Field>
+        </div>
+
         <div className="mt-3 flex flex-wrap items-center gap-4">
           <Checkbox checked={showInactive} onChange={setShowInactive} label="Show inactive rows" />
           <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImportFile(f); }} />
@@ -440,7 +459,14 @@ export default function DoaChainPage() {
             </div>
           </div>
 
-          <div className="card !overflow-hidden !p-0">
+          {visibleRows.length === 0 ? (
+            <EmptyState title="No rows match" hint="Try clearing Search or ticking Show inactive rows." />
+          ) : (
+          <>
+          {/* Desktop/tablet: the full inline-edit grid. Below md, a dense multi-column table can't
+              reflow without either shrinking columns unreadably thin or forcing horizontal scroll -
+              the card list below is the mobile-friendly equivalent instead. */}
+          <div className="hidden card !overflow-hidden !p-0 md:block">
             <div className="max-h-[65vh] overflow-y-auto">
               <table className="w-full table-fixed border-separate [border-spacing:0] text-2xs">
                 <thead>
@@ -537,6 +563,90 @@ export default function DoaChainPage() {
               </table>
             </div>
           </div>
+
+          {/* Mobile: same rows, same handlers (updateField/handleCopyRow/handleToggleActive), just
+              stacked as cards instead of table columns - nothing here changes save/validation
+              behavior, only how a row is laid out on a narrow screen. */}
+          <div className="flex flex-col gap-2 md:hidden">
+            {pagedRows.map((row) => {
+              const isKeyLocked = !row._isNew;
+              return (
+                <div key={row._cid} className={cx('card p-3', (row._isNew || row._dirty) && 'border-l-4 border-l-amber bg-amberBg/20')}>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Field label="Type">
+                      {row._isNew ? (
+                        <Select value={row.DoaCtype} onChange={(v) => updateField(row._cid, { DoaCtype: v, Hod: v === 'MBN' ? row.Hod : false })} options={DOA_CTYPE_OPTIONS.map((o) => ({ value: o.value, label: o.value }))} />
+                      ) : <p className="text-sm font-semibold text-ink">{row.DoaCtype}</p>}
+                    </Field>
+                    <Field label="Cost Centre">
+                      {row._isNew ? (
+                        <Input value={row.Kostl} onChange={(e) => updateField(row._cid, { Kostl: e.target.value.toUpperCase() })} />
+                      ) : <p className="text-sm font-semibold text-ink">{row.Kostl}</p>}
+                    </Field>
+                  </div>
+                  <div className="mt-2 grid grid-cols-3 gap-2">
+                    <Field label="Amt From">
+                      {row._isNew ? (
+                        <Input type="number" value={row.AmtFrom || ''} onChange={(e) => updateField(row._cid, { AmtFrom: parseFloat(e.target.value) || 0 })} />
+                      ) : <p className="text-sm text-ink">{row.AmtFrom}</p>}
+                    </Field>
+                    <Field label="Seq">
+                      {row._isNew ? (
+                        <Input value={row.Seqno} onChange={(e) => updateField(row._cid, { Seqno: e.target.value.slice(0, 2) })} />
+                      ) : <p className="text-sm text-ink">{row.Seqno}</p>}
+                    </Field>
+                    <Field label="Amt To">
+                      <Input type="number" value={row.AmtTo || ''} onChange={(e) => updateField(row._cid, { AmtTo: parseFloat(e.target.value) || 0 })} placeholder="No cap" />
+                    </Field>
+                  </div>
+                  <Field label="Department" className="mt-2">
+                    <Input value={row.DeptTxt} onChange={(e) => updateField(row._cid, { DeptTxt: e.target.value })} />
+                  </Field>
+                  <Field label="Approver Email" className="mt-2">
+                    <Input value={row.ApprEmail} onChange={(e) => updateField(row._cid, { ApprEmail: e.target.value })} placeholder="approver@…" />
+                  </Field>
+                  {(row.ApprName || row.ApprPernr) && (
+                    <Field label="Approver" className="mt-2">
+                      <p className="text-sm text-ink">{row.ApprName || '—'} {row.ApprPernr ? `(${row.ApprPernr})` : ''}</p>
+                    </Field>
+                  )}
+                  <div className="mt-2 grid grid-cols-3 gap-2">
+                    <Field label="Rule">
+                      <Select value={row.ApprRule} onChange={(v) => updateField(row._cid, { ApprRule: v as 'O' | 'A' })} options={[{ value: 'O', label: 'O — any one' }, { value: 'A', label: 'A — all' }]} />
+                    </Field>
+                    <Field label="HoD">
+                      {row.DoaCtype === 'MBN' ? (
+                        <div className="pt-2"><Checkbox checked={!!row.Hod} onChange={(v) => updateField(row._cid, { Hod: v })} /></div>
+                      ) : <p className="pt-2 text-sm text-inkFaint">—</p>}
+                    </Field>
+                    <Field label="Active">
+                      <div className="pt-2"><Checkbox checked={row.Active} onChange={() => handleToggleActive(row._cid)} /></div>
+                    </Field>
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <DateField label="Valid From" value={row.ValidFrom} onChange={(v) => updateField(row._cid, { ValidFrom: v })} />
+                    <DateField label="Valid To" value={row.ValidTo} onChange={(v) => updateField(row._cid, { ValidTo: v })} />
+                  </div>
+                  {row.Aenam && (
+                    <p className="mt-2 flex items-center gap-1 text-2xs text-inkFaint"><Info size={12} /> Last updated by {row.Aenam}{row.Aedat ? ` · ${row.Aedat}` : ''}</p>
+                  )}
+                  <div className="mt-3 flex items-center justify-between border-t border-line pt-2">
+                    <div className="flex items-center gap-2">
+                      <Button size="sm" variant="secondary" icon={Copy} onClick={() => handleCopyRow(row)}>Copy</Button>
+                      <Button size="sm" variant="secondary" icon={row.Active ? PowerOff : Power} onClick={() => handleToggleActive(row._cid)}>
+                        {row.Active ? 'Deactivate' : 'Reactivate'}
+                      </Button>
+                    </div>
+                    {isKeyLocked && <span className="text-2xs text-inkFaint">Locked</span>}
+                  </div>
+                  {row._saving && <p className="mt-1 text-2xs text-inkFaint">Saving…</p>}
+                  {row._rowError && <p className="mt-1 text-2xs font-semibold text-red">{row._rowError}</p>}
+                </div>
+              );
+            })}
+          </div>
+          </>
+          )}
 
           {totalPages > 1 && (
             <div className="mt-2 flex flex-wrap items-center justify-between gap-2">

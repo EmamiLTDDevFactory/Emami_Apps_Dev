@@ -1293,8 +1293,19 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return extractSapResults(response.data) as DoaChainRow[];
   };
 
+  // AmtFrom/AmtTo (Edm.Decimal) must go as fixed-decimal STRINGS, not raw JSON numbers - sending a
+  // bare number fails SAP's gateway parser the same way an unformatted MaxAmt does on MobCapSet
+  // (CX_SXML_PARSE_ERROR). The composite-key URL already uses .toFixed(2) on the raw row value -
+  // this keeps the body payload's own precision consistent with that.
+  const buildDoaChainPayload = (row: DoaChainRow, adminPernr: string) => ({
+    ...row,
+    AmtFrom: row.AmtFrom.toFixed(2),
+    AmtTo: row.AmtTo.toFixed(2),
+    Aenam: adminPernr,
+  });
+
   const createDoaChainRow = async (row: DoaChainRow, adminPernr: string): Promise<DoaChainRow> => {
-    const postData = { ...row, Aenam: adminPernr };
+    const postData = buildDoaChainPayload(row, adminPernr);
     const response = await sapClient.post(`${SAP_BASE_URL}/DoaChainSet`, postData, {
       headers: { 'Content-Type': 'application/json' },
     });
@@ -1305,7 +1316,7 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // rejects PUT-with-key-predicates the same way it does for ClaimHeaderSet (see
   // postClaimHeaderUpdate's comment), fall back to POST.
   const updateDoaChainRow = async (row: DoaChainRow, adminPernr: string): Promise<DoaChainRow> => {
-    const putData = { ...row, Aenam: adminPernr };
+    const putData = buildDoaChainPayload(row, adminPernr);
     const keyUrl = `DoaChainSet(DoaCtype='${row.DoaCtype}',Kostl='${row.Kostl}',Expgrp='${row.Expgrp}',AmtFrom=${row.AmtFrom.toFixed(2)}M,Seqno='${row.Seqno}')`;
     let response = await sapClient.put(`${SAP_BASE_URL}/${keyUrl}`, putData, {
       headers: { 'Content-Type': 'application/json' },
@@ -1339,8 +1350,12 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // ValidFrom/ValidTo must go as SAP's /Date(ms)/ literal on write - a plain 'YYYY-MM-DD' string
   // silently lands as null, same gotcha toODataDate above already works around for claim fields.
+  // MaxAmt (Edm.Decimal) must go as a fixed-decimal STRING, not a raw JSON number - sending a bare
+  // number fails SAP's gateway parser (CX_SXML_PARSE_ERROR "Failed to read property 'MaxAmt'"),
+  // same reason TotalAmount above is always sent via .toFixed(3), never a raw number.
   const buildMobCapPayload = (row: MobCapRow, adminPernr: string) => ({
     ...row,
+    MaxAmt: row.MaxAmt.toFixed(3),
     ValidFrom: toODataDate(row.ValidFrom),
     ValidTo: toODataDate(row.ValidTo),
     Aenam: adminPernr,

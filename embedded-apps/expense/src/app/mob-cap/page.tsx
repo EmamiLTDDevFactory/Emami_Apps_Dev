@@ -2,11 +2,11 @@
 
 import React, { useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, ChevronLeft, ChevronRight, Info, Plus, Power, PowerOff, RefreshCw, Save, ShieldAlert, X } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, Info, Plus, Power, PowerOff, RefreshCw, Save, Search, ShieldAlert, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useClaim } from '../../context/ClaimContext';
 import { MobCapRow } from '../../types';
-import { Banner, Button, Card, Checkbox, DateField, EmptyState, Field, Input, LoadingBlock, PageHeader, Select } from '../../components/ui';
+import { Banner, Button, Card, Checkbox, cx, DateField, EmptyState, Field, Input, LoadingBlock, PageHeader, Select } from '../../components/ui';
 
 // SM30-style flat maintenance grid for ZEXP_MOB_CAP (MobCapSet) - same pattern as the DOA Chain
 // screen. One row = one monthly mobile-expense cap for a category + grade + level (and cost
@@ -92,6 +92,7 @@ export default function MobCapPage() {
 
   const [mcatFilter, setMcatFilter] = useState('');
   const [kostlFilter, setKostlFilter] = useState('');
+  const [searchText, setSearchText] = useState('');
   const [showInactive, setShowInactive] = useState(false);
 
   const [rows, setRows] = useState<GridRow[]>([]);
@@ -232,12 +233,20 @@ export default function MobCapPage() {
   const visibleRows = useMemo(() => {
     let list = rows;
     if (!showInactive) list = list.filter((r) => r.Active || r._isNew);
+    if (searchText.trim()) {
+      const q = searchText.trim().toLowerCase();
+      list = list.filter((r) =>
+        r.Kostl.toLowerCase().includes(q) ||
+        r.Trfgr.toLowerCase().includes(q) ||
+        r.Mcat.toLowerCase().includes(q) ||
+        r.Remark.toLowerCase().includes(q));
+    }
     return [...list].sort((a, b) =>
       a.Mcat.localeCompare(b.Mcat) ||
       a.Kostl.localeCompare(b.Kostl) ||
       a.Trfgr.localeCompare(b.Trfgr) ||
       a.Trfst.localeCompare(b.Trfst));
-  }, [rows, showInactive]);
+  }, [rows, showInactive, searchText]);
 
   // Unsaved/new rows always render in full on every page, regardless of which page you're on -
   // only already-saved, untouched rows get paginated.
@@ -251,7 +260,7 @@ export default function MobCapPage() {
   );
   const pagedRows = useMemo(() => [...unsavedRows, ...pagedSavedRows], [unsavedRows, pagedSavedRows]);
 
-  const resetPageOnChange = `${showInactive}|${rows.length}`;
+  const resetPageOnChange = `${showInactive}|${searchText}|${rows.length}`;
   React.useEffect(() => { setPage(1); }, [resetPageOnChange]);
 
   const cellInputClass = 'input !h-7 !w-full !min-w-0 !py-0.5 !px-1 text-2xs';
@@ -289,12 +298,22 @@ export default function MobCapPage() {
               onKeyDown={(e) => { if (e.key === 'Enter') handleLoad(); }}
             />
           </Field>
-          <Field label=" ">
+          <Field label=" ">
             <Button variant="primary" icon={RefreshCw} loading={loading} onClick={handleLoad} className="w-full">
               Load
             </Button>
           </Field>
         </div>
+
+        <div className="mt-3">
+          <Field label="Search" hint="Filters whatever's already loaded - category, cost centre, grade or remark">
+            <div className="relative">
+              <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-inkFaint" />
+              <Input value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Search loaded rows…" className="pl-8" />
+            </div>
+          </Field>
+        </div>
+
         <div className="mt-3 flex flex-wrap items-center gap-4">
           <Checkbox checked={showInactive} onChange={setShowInactive} label="Show inactive rows" />
         </div>
@@ -321,7 +340,14 @@ export default function MobCapPage() {
             </div>
           </div>
 
-          <div className="card !overflow-hidden !p-0">
+          {visibleRows.length === 0 ? (
+            <EmptyState title="No rows match" hint="Try clearing Search or ticking Show inactive rows." />
+          ) : (
+          <>
+          {/* Desktop/tablet: the full inline-edit grid. Below md, a dense multi-column table can't
+              reflow without either shrinking columns unreadably thin or forcing horizontal scroll -
+              the card list below is the mobile-friendly equivalent instead. */}
+          <div className="hidden card !overflow-hidden !p-0 md:block">
             <div className="max-h-[65vh] overflow-y-auto">
               <table className="w-full table-fixed border-separate [border-spacing:0] text-2xs">
                 <thead>
@@ -416,6 +442,86 @@ export default function MobCapPage() {
               </table>
             </div>
           </div>
+
+          {/* Mobile: same rows, same handlers, just stacked as cards instead of table columns. */}
+          <div className="flex flex-col gap-2 md:hidden">
+            {pagedRows.map((row) => {
+              const isKeyLocked = !row._isNew;
+              return (
+                <div key={row._cid} className={cx('card p-3', (row._isNew || row._dirty) && 'border-l-4 border-l-amber bg-amberBg/20')}>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Field label="Category">
+                      {row._isNew ? (
+                        <Select
+                          value={row.Mcat}
+                          onChange={(v) => updateField(row._cid, { Mcat: v, Kostl: v === 'NS' ? '' : row.Kostl })}
+                          options={MCAT_OPTIONS.map((o) => ({ value: o.value, label: o.value }))}
+                        />
+                      ) : <p className="text-sm font-semibold text-ink">{row.Mcat}</p>}
+                    </Field>
+                    <Field label="Cost Centre">
+                      {row._isNew ? (
+                        row.Mcat === 'NS' ? (
+                          <p className="pt-2 text-sm text-inkFaint">—</p>
+                        ) : (
+                          <Input value={row.Kostl} onChange={(e) => updateField(row._cid, { Kostl: e.target.value.toUpperCase() })} />
+                        )
+                      ) : <p className="text-sm font-semibold text-ink">{row.Kostl || '—'}</p>}
+                    </Field>
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <Field label="Grade">
+                      {row._isNew ? (
+                        <Select value={row.Trfgr} onChange={(v) => updateField(row._cid, { Trfgr: v })} options={TRFGR_OPTIONS} />
+                      ) : <p className="text-sm text-ink">{row.Trfgr}</p>}
+                    </Field>
+                    <Field label="Level">
+                      {row._isNew ? (
+                        <Select value={row.Trfst} onChange={(v) => updateField(row._cid, { Trfst: v })} options={TRFST_OPTIONS} />
+                      ) : <p className="text-sm text-ink">{row.Trfst || 'Any'}</p>}
+                    </Field>
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <Field label="Max Amount">
+                      <Input
+                        type="number"
+                        value={row.MaxAmt || ''}
+                        disabled={row.NoCap}
+                        onChange={(e) => updateField(row._cid, { MaxAmt: parseFloat(e.target.value) || 0 })}
+                        placeholder={row.NoCap ? 'On actuals' : ''}
+                      />
+                    </Field>
+                    <Field label="On Actuals">
+                      <div className="pt-2"><Checkbox checked={row.NoCap} onChange={(v) => updateField(row._cid, { NoCap: v, MaxAmt: v ? 0 : row.MaxAmt })} /></div>
+                    </Field>
+                  </div>
+                  <Field label="Remark" className="mt-2">
+                    <Input value={row.Remark} onChange={(e) => updateField(row._cid, { Remark: e.target.value })} />
+                  </Field>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <DateField label="Valid From" value={row.ValidFrom} onChange={(v) => updateField(row._cid, { ValidFrom: v })} />
+                    <DateField label="Valid To" value={row.ValidTo} onChange={(v) => updateField(row._cid, { ValidTo: v })} />
+                  </div>
+                  <Field label="Active" className="mt-2">
+                    <div className="pt-1"><Checkbox checked={row.Active} onChange={() => handleToggleActive(row._cid)} /></div>
+                  </Field>
+                  {row.Aenam && (
+                    <p className="mt-2 flex items-center gap-1 text-2xs text-inkFaint"><Info size={12} /> Last updated by {row.Aenam}{row.Aedat ? ` · ${row.Aedat}` : ''}</p>
+                  )}
+                  <div className="mt-3 flex items-center justify-between border-t border-line pt-2">
+                    <Button size="sm" variant="secondary" icon={row.Active ? PowerOff : Power} onClick={() => handleToggleActive(row._cid)}>
+                      {row.Active ? 'Deactivate' : 'Reactivate'}
+                    </Button>
+                    {isKeyLocked && <span className="text-2xs text-inkFaint">Locked</span>}
+                  </div>
+                  {row._saving && <p className="mt-1 text-2xs text-inkFaint">Saving…</p>}
+                  {row._rowError && <p className="mt-1 text-2xs font-semibold text-red">{row._rowError}</p>}
+                </div>
+              );
+            })}
+          </div>
+          </>
+          )}
 
           {totalPages > 1 && (
             <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
