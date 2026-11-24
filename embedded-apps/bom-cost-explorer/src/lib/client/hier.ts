@@ -21,13 +21,14 @@ import { normalizeEntity } from '../sap/normalize';
 import { ENTITY_SET } from '../sap/entities';
 import { MATERIAL, type MaterialRow } from '../sap/fields';
 import { sapConfig } from '../sap/config';
+import { loadMgmt, mgmtBrand, mgmtProduct, mgmtSku } from './mgmtNames';
 
 export const HIER_SET = 'HierVHSet';
 export const HIER_MATERIALS_MAX = 500;
 export type HierLevel = 'B' | 'P' | 'C';
 
 /** HierVHSet row: Level, Code, Descr, Cnt. */
-export interface HierOption { level: HierLevel; code: string; descr: string; cnt: number }
+export interface HierOption { level: HierLevel; code: string; descr: string; cnt: number; /** the SAP text when `descr` was replaced by the management name (display only; search still finds it) */ sapDescr?: string }
 
 export interface HierCriteria { brand?: string[]; product?: string[]; sku?: string[]; werks?: string[] }
 
@@ -127,6 +128,15 @@ function toOption(raw: Record<string, unknown>): HierOption {
   const r = normalizeEntity<{ Level: string; Code: string; Descr: string; Cnt: number }>(raw, { Level: ['Level', 's'], Code: ['Code', 's'], Descr: ['Descr', 's'], Cnt: ['Cnt', 'i'] });
   return { level: r.Level as HierLevel, code: r.Code, descr: r.Descr, cnt: r.Cnt };
 }
+/** Display only: the management name replaces the description where the workbook has one for that code (or, for brand / product, for that SAP text). */
+async function withMgmt(o: HierOption[]): Promise<HierOption[]> {
+  const d = await loadMgmt();
+  if (!d) return o;
+  return o.map((x) => {
+    const m = x.level === 'B' ? mgmtBrand(d, x.code, x.descr) : x.level === 'P' ? mgmtProduct(d, x.code, x.descr) : mgmtSku(d, x.code);
+    return m && m !== x.descr ? { ...x, descr: m, sapDescr: x.descr } : x;
+  });
+}
 const sortOpts = (o: HierOption[]) => o.sort((a, b) => (a.descr || a.code).localeCompare(b.descr || b.code) || a.code.localeCompare(b.code));
 
 /** Brands (the detection call). Returns the brands or the problem; remembered per system for 10 minutes. */
@@ -138,7 +148,7 @@ export async function loadBrands(c: HierCriteria = {}, opts: SapGetOptions & { f
   try {
     const req = hierRequest('B', c);
     const r = await sapGetCollection(req.entitySet, req.params, opts);
-    const brands = sortOpts(r.rows.map(toOption));
+    const brands = sortOpts(await withMgmt(r.rows.map(toOption)));
     const problem: HierProblem | null = brands.length ? null : { kind: 'empty', system };
     cap.set(key, { at: Date.now(), brands, problem });
     return { brands, problem, system };
@@ -153,7 +163,7 @@ export async function loadBrands(c: HierCriteria = {}, opts: SapGetOptions & { f
 export async function loadLevel(level: 'P' | 'C', c: HierCriteria, opts: SapGetOptions = {}): Promise<HierOption[]> {
   const req = hierRequest(level, c);
   const r = await sapGetCollection(req.entitySet, req.params, opts);
-  return sortOpts(r.rows.map(toOption));
+  return sortOpts(await withMgmt(r.rows.map(toOption)));
 }
 
 export interface HierMaterials { rows: MaterialRow[]; capped: boolean }

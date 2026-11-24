@@ -20,37 +20,45 @@ export const fetchMis = (plants: string[], dateTo: string, signal?: AbortSignal)
   readSet<MisRow>(DASH_SET, DASH_MIS_FIELDS, NONE, buildMisFilter(plants, dateTo), signal);
 
 /** $filter of the Sales view read: plants, from and to date. */
-export function buildSalesFilter(plants: string[], dateFrom: string, dateTo: string): string {
+export interface SalesExtra { matnr?: string[]; vkorg?: string[]; vtweg?: string[]; requirePlant?: boolean }
+export function buildSalesFilter(plants: string[], dateFrom: string, dateTo: string, extra: SalesExtra = {}): string {
   if (!DAY.test(dateFrom) || !DAY.test(dateTo)) throw new Error('Enter both dates.');
   if (dateFrom > dateTo) throw new Error('The "from" date is after the "to" date.');
-  const base = buildMisFilter(plants, dateTo);
-  return `${base} and DateFrom eq ${odataDate(dateFrom)}`;
+  // blank plants = every plant (the billing plant is then not filtered); the PVM bridge still needs a plant
+  const pl = Array.from(new Set(plants.map((x) => x.trim().toUpperCase()).filter(Boolean)));
+  const base = pl.length || extra.requirePlant ? buildMisFilter(plants, dateTo) : `${F.DateTo} eq ${odataDate(dateTo)}`;
+  const matnr = uniq((extra.matnr ?? []).map((m) => m.trim().replace(/^0+/, ''))), vkorg = uniq(extra.vkorg ?? []), vtweg = uniq(extra.vtweg ?? []);
+  if (matnr.some((x) => !/^[A-Z0-9]{1,18}$/.test(x))) throw new Error('A material number is up to 18 characters.');
+  if (vkorg.some((x) => !/^[A-Z0-9]{4}$/.test(x))) throw new Error('A sales organisation is 4 characters.');
+  if (vtweg.some((x) => !/^[A-Z0-9]{2}$/.test(x))) throw new Error('A distribution channel is 2 characters.');
+  return [base, `DateFrom eq ${odataDate(dateFrom)}`, anyOf(MF.Matnr, matnr), anyOf(MF.Vkorg, vkorg), anyOf(MF.Vtweg, vtweg)].filter(Boolean).join(' and ');
 }
 
-export const fetchSales = (plants: string[], dateFrom: string, dateTo: string, signal?: AbortSignal): Promise<Read<SalesRow>> =>
-  readSet<SalesRow>(DASH_SALES_SET, DASH_SALES_FIELDS, NONE, buildSalesFilter(plants, dateFrom, dateTo), signal);
+export const fetchSales = (plants: string[], dateFrom: string, dateTo: string, signal?: AbortSignal, extra: SalesExtra = {}): Promise<Read<SalesRow>> =>
+  readSet<SalesRow>(DASH_SALES_SET, DASH_SALES_FIELDS, NONE, buildSalesFilter(plants, dateFrom, dateTo, extra), signal);
 
 export const fetchPvm = (plants: string[], dateFrom: string, dateTo: string, signal?: AbortSignal): Promise<Read<PvmRow>> =>
-  readSet<PvmRow>(DASH_PVM_SET, DASH_PVM_FIELDS, NONE, buildSalesFilter(plants, dateFrom, dateTo), signal);
+  readSet<PvmRow>(DASH_PVM_SET, DASH_PVM_FIELDS, NONE, buildSalesFilter(plants, dateFrom, dateTo, { requirePlant: true }), signal);
 
 export const fetchThresholds = (signal?: AbortSignal): Promise<Read<ThreshRow>> => readSet<ThreshRow>(DASH_THRESH_SET, DASH_THRESH_FIELDS, NONE, '', signal);
 
-export interface MarginSel { plants: string[]; vkorg: string[]; vtweg: string[]; crssku: string[]; vbeln: string[] }
-export const EMPTY_SEL: MarginSel = { plants: [], vkorg: [], vtweg: [], crssku: [], vbeln: [] };
+export interface MarginSel { plants: string[]; vkorg: string[]; vtweg: string[]; crssku: string[]; vbeln: string[]; /** finished goods chosen by Brand > Product > SKU > Material (like BOM costing); SAP reads only these */ matnr?: string[] }
+export const EMPTY_SEL: MarginSel = { plants: [], vkorg: [], vtweg: [], crssku: [], vbeln: [], matnr: [] };
 const uniq = (a: string[], up = true) => Array.from(new Set(a.map((x) => (up ? x.trim().toUpperCase() : x.trim())).filter(Boolean)));
 const anyOf = (field: string, v: string[]) => (v.length ? (v.length === 1 ? `${field} eq ${odataString(v[0])}` : `(${v.map((x) => `${field} eq ${odataString(x)}`).join(' or ')})`) : '');
 
 /** $filter of the Margin read: plants, sales organisation, channel, CRSSKU and invoice numbers (each list or-ed, lists and-ed) plus the period. At least one of plant, sales organisation, CRSSKU or invoice is needed. */
 export function buildMarginFilter(sel: MarginSel, dateFrom: string, dateTo: string): string {
-  const plants = uniq(sel.plants), vkorg = uniq(sel.vkorg), vtweg = uniq(sel.vtweg), crssku = uniq(sel.crssku), vbeln = uniq(sel.vbeln);
-  if (!plants.length && !vkorg.length && !crssku.length && !vbeln.length) throw new Error('Enter a plant, a sales organisation, a CRSSKU or an invoice number.');
+  const plants = uniq(sel.plants), vkorg = uniq(sel.vkorg), vtweg = uniq(sel.vtweg), crssku = uniq(sel.crssku), vbeln = uniq(sel.vbeln), matnr = uniq((sel.matnr ?? []).map((m) => m.trim().replace(/^0+/, '')));
+  if (!plants.length && !matnr.length && !vkorg.length && !crssku.length && !vbeln.length) throw new Error('Choose materials (Brand, Product, SKU), or enter a sales organisation, a CRSSKU or an invoice number.');
+  if (matnr.some((x) => !/^[A-Z0-9]{1,18}$/.test(x))) throw new Error('A material number is up to 18 characters.');
   if (plants.some((x) => !/^[A-Z0-9]{4}$/.test(x))) throw new Error('A plant is 4 characters.');
   if (vkorg.some((x) => !/^[A-Z0-9]{4}$/.test(x))) throw new Error('A sales organisation is 4 characters.');
   if (vtweg.some((x) => !/^[A-Z0-9]{2}$/.test(x))) throw new Error('A distribution channel is 2 characters.');
   if (vbeln.some((x) => !/^\d{1,10}$/.test(x))) throw new Error('An invoice number is up to 10 digits.');
   if (!DAY.test(dateFrom) || !DAY.test(dateTo)) throw new Error('Enter both dates.');
   if (dateFrom > dateTo) throw new Error('The "from" date is after the "to" date.');
-  const parts = [anyOf(F.Werks, plants), anyOf(MF.Vkorg, vkorg), anyOf(MF.Vtweg, vtweg), anyOf(MF.Crssku, crssku), anyOf(MF.Vbeln, vbeln), `DateFrom eq ${odataDate(dateFrom)}`, `${F.DateTo} eq ${odataDate(dateTo)}`];
+  const parts = [anyOf(MF.Matnr, matnr), anyOf(F.Werks, plants), anyOf(MF.Vkorg, vkorg), anyOf(MF.Vtweg, vtweg), anyOf(MF.Crssku, crssku), anyOf(MF.Vbeln, vbeln), `DateFrom eq ${odataDate(dateFrom)}`, `${F.DateTo} eq ${odataDate(dateTo)}`];
   return parts.filter(Boolean).join(' and ');
 }
 

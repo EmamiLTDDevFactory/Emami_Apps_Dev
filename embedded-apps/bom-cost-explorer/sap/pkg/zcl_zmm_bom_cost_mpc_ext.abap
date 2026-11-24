@@ -206,11 +206,27 @@ CLASS zcl_zmm_bom_cost_mpc_ext IMPLEMENTATION.
     lo_p->set_updatable( abap_false ).
     lo_p->set_sortable( abap_false ).
     lo_p->set_nullable( abap_false ).
-    lo_p->set_filterable( abap_false ).
+    lo_p->set_filterable( abap_true ).
     dash_str( io_et = lo_et iv_name = 'Maktx'     iv_field = 'MAKTX'     iv_len = 40 ).
     dash_str( io_et = lo_et iv_name = 'Matkl'     iv_field = 'MATKL'     iv_len = 9 ).
-    dash_str( io_et = lo_et iv_name = 'Vtweg'     iv_field = 'VTWEG'     iv_len = 2 iv_key = abap_true ).
+    lo_p = lo_et->create_property( iv_property_name = 'Vtweg' iv_abap_fieldname = 'VTWEG' ).
+    lo_p->set_is_key( ).
+    lo_p->set_type_edm_string( ).
+    lo_p->set_maxlength( iv_max_length = 2 ).
+    lo_p->set_creatable( abap_false ).
+    lo_p->set_updatable( abap_false ).
+    lo_p->set_sortable( abap_false ).
+    lo_p->set_nullable( abap_false ).
+    lo_p->set_filterable( abap_true ).
     dash_str( io_et = lo_et iv_name = 'VtwegTxt'  iv_field = 'VTWEG_TXT' iv_len = 20 ).
+    lo_p = lo_et->create_property( iv_property_name = 'Vkorg' iv_abap_fieldname = 'VKORG' ).
+    lo_p->set_type_edm_string( ).
+    lo_p->set_maxlength( iv_max_length = 4 ).
+    lo_p->set_creatable( abap_false ).
+    lo_p->set_updatable( abap_false ).
+    lo_p->set_sortable( abap_false ).
+    lo_p->set_nullable( abap_false ).
+    lo_p->set_filterable( abap_true ).
     lo_p = lo_et->create_property( iv_property_name = 'Werks' iv_abap_fieldname = 'WERKS' ).
     lo_p->set_type_edm_string( ).
     lo_p->set_maxlength( iv_max_length = 4 ).
@@ -339,7 +355,7 @@ CLASS zcl_zmm_bom_cost_mpc_ext IMPLEMENTATION.
     lo_p->set_updatable( abap_false ).
     lo_p->set_sortable( abap_false ).
     lo_p->set_nullable( abap_false ).
-    lo_p->set_filterable( abap_false ).
+    lo_p->set_filterable( abap_true ).
     dash_str( io_et = lo_et iv_name = 'Bwtar' iv_field = 'BWTAR' iv_len = 10 iv_key = abap_true ).
     dash_str( io_et = lo_et iv_name = 'Kunag' iv_field = 'KUNAG' iv_len = 10 iv_key = abap_true ).
     dash_str( io_et = lo_et iv_name = 'Maktx' iv_field = 'MAKTX' iv_len = 40 ).

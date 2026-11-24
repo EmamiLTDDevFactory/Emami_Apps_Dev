@@ -15,36 +15,44 @@ const catOf = (c: string): Cat => (c === 'RM' ? 'R' : c === 'PM' ? 'P' : c === '
 export const stripZeros = (m: string) => m.replace(/^0+/, '');
 
 /** One costed component at the chosen rate type: BOM quantity per piece, the rate and their product. */
-export interface RateComp { key: string; maktx: string; cat: Cat; qtyPc: Decimal; rate: Decimal | null; costPc: Decimal }
+export interface RateComp { key: string; maktx: string; cat: Cat; qtyPc: Decimal; rate: Decimal | null; costPc: Decimal; src: string }
 export interface RateCosting { werks: string; type: RateType; comps: Map<string, RateComp>; priced: number; leaves: number; notes: string[] }
+/** All rate types of one costing run, so the rate type can be switched without costing again. */
+export interface RateRun { werks: string; leaves: Array<{ key: string; maktx: string; cat: Cat; qtyPc: Decimal; rates: Partial<Record<RateType, Decimal | null>>; sel: string }>; notes: string[] }
 
-/** Runs BOM costing for the finished good in one plant and takes every component's rate of `type`. Heavy (live costing): only on request. */
-export async function costComponents(werks: string, matnr: string, type: RateType, signal?: AbortSignal): Promise<RateCosting> {
-  const q = { ...defaultQuery('B'), materials: [stripZeros(matnr)], plants: [werks] };
+/** Runs BOM costing for the finished good in one plant, same settings as Costing > BOM costing (all levels, 1095 days look-back, default source priority). Heavy: live costing. */
+export async function costRun(werks: string, matnr: string, signal?: AbortSignal): Promise<RateRun> {
+  const q = { ...defaultQuery('B'), materials: [stripZeros(matnr)], plants: [werks], explQty: '100', lookback: 1095 };
   const cost = await api.cost(q, signal);
   let lines = cost.rows; const notes: string[] = [];
   const rates = await fetchRateOptions(q, { signal });
   if ('unavailable' in rates) notes.push(`${rates.reason} Only the rate SAP selected is available.`); else lines = attachRateOptions(lines, rates.rows);
   const sum = rateSummary(lines, q.explQty);
   const expl = new Decimal(String(q.explQty || 1)).gt(0) ? new Decimal(String(q.explQty || 1)) : new Decimal(1);
+  const leaves: RateRun['leaves'] = [];
+  for (const c of [...sum.rm, ...sum.pm, ...sum.other]) leaves.push({ key: stripZeros(c.idnrk), maktx: c.maktx, cat: catOf(c.cat), qtyPc: c.qty.div(expl), rates: c.rates, sel: c.selectedSource || '' });
+  return { werks, leaves, notes };
+}
+
+const SRC_OF: Partial<Record<RateType, string>> = { CONTRACT: 'CONTRACT', INFOREC: 'INFOREC', MARKT: 'MARKT', CONSUMP: 'CONSUMP', MBEW: 'MBEW' };
+/** The costing run seen at one rate type. */
+export function atRateType(run: RateRun, type: RateType): RateCosting {
   const comps = new Map<string, RateComp>();
-  let priced = 0, leaves = 0;
-  for (const c of [...sum.rm, ...sum.pm, ...sum.other]) {
-    const qtyPc = c.qty.div(expl); const rate = c.rates[type];
-    const key = stripZeros(c.idnrk);
-    const prev = comps.get(key);
-    const costPc = rate ? qtyPc.times(rate) : ZERO;
-    leaves++; if (rate) priced++;
-    comps.set(key, { key, maktx: c.maktx, cat: catOf(c.cat), qtyPc: (prev?.qtyPc ?? ZERO).plus(qtyPc), rate, costPc: (prev?.costPc ?? ZERO).plus(costPc) });
+  let priced = 0;
+  for (const c of run.leaves) {
+    const rate = c.rates[type] ?? null;
+    const prev = comps.get(c.key);
+    if (rate) priced++;
+    comps.set(c.key, { key: c.key, maktx: c.maktx, cat: c.cat, qtyPc: (prev?.qtyPc ?? ZERO).plus(c.qtyPc), rate, costPc: (prev?.costPc ?? ZERO).plus(rate ? c.qtyPc.times(rate) : ZERO), src: !rate ? '' : type === 'SELECTED' ? c.sel : SRC_OF[type] ?? '' });
   }
-  return { werks, type, comps, priced, leaves, notes };
+  return { werks: run.werks, type, comps, priced, leaves: run.leaves.length, notes: run.notes };
 }
 
 export interface CmpRow {
   key: string; maktx: string; cat: Cat; meins: string;
   actQty: Decimal | null; actCost: Decimal | null;
   budQty: Decimal | null; budCost: Decimal | null;
-  rateQty: Decimal | null; rateCost: Decimal | null; rate: Decimal | null;
+  rateQty: Decimal | null; rateCost: Decimal | null; rate: Decimal | null; rateSrc: string;
   actVar: Decimal | null; actVarPct: Decimal | null;     // actual - budget
   rateVar: Decimal | null; rateVarPct: Decimal | null;   // rate type cost - budget
 }
@@ -58,7 +66,7 @@ export function buildCompare(actual: Cdrill | null, bud: BudGroup | null, rate: 
   const m = new Map<string, CmpRow>();
   const row = (key: string, maktx: string, cat: Cat, meins: string): CmpRow => {
     let r = m.get(key);
-    if (!r) { r = { key, maktx, cat, meins, actQty: null, actCost: null, budQty: null, budCost: null, rateQty: null, rateCost: null, rate: null, actVar: null, actVarPct: null, rateVar: null, rateVarPct: null }; m.set(key, r); }
+    if (!r) { r = { key, maktx, cat, meins, actQty: null, actCost: null, budQty: null, budCost: null, rateQty: null, rateCost: null, rate: null, rateSrc: '', actVar: null, actVarPct: null, rateVar: null, rateVarPct: null }; m.set(key, r); }
     return r;
   };
   if (actual) for (const k of ['R', 'P', 'F', 'O'] as Cat[]) for (const c of actual.comps[k]) {
@@ -73,7 +81,7 @@ export function buildCompare(actual: Cdrill | null, bud: BudGroup | null, rate: 
   if (rate) for (const c of rate.comps.values()) {
     const r = row(c.key, c.maktx, c.cat, '');
     if (!r.maktx) r.maktx = c.maktx;
-    r.rateQty = c.qtyPc; r.rateCost = c.rate ? c.costPc : null; r.rate = c.rate;
+    r.rateQty = c.qtyPc; r.rateCost = c.rate ? c.costPc : null; r.rate = c.rate; r.rateSrc = c.src;
   }
   const byCat: Record<Cat, CmpTotals> = { R: emptyTot(), P: emptyTot(), F: emptyTot(), O: emptyTot() };
   const total = emptyTot();

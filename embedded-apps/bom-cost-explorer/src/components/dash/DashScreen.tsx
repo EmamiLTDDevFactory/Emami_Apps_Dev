@@ -79,6 +79,12 @@ export default function DashScreen() {
             {rows && !brands.length && <Card><Empty title="No production found">SAP returned no finished-good production for these plants up to {ran?.asOf}.</Empty></Card>}
             {rows && brands.length > 0 && (
               <>
+                {brands.every((b) => b.fgNoBudget >= b.fgCnt) && (
+                  <p className="rounded-xl border border-warn/40 bg-warn/10 p-3 text-xs">
+                    <b>No budget comparison:</b> none of the {brands.reduce((n, b) => n + b.fgCnt, 0)} finished goods produced in these plants has an approved budget (status A) for financial year {fy || '(this year)'} in ZMM_FBUDCOST_SUM (same plant, CRSSKU, business, scheme and material type), so budget and variance show 0.
+                    The actual COGM below is real (₹{lakh(tot.ytm.actual, 0)} L year to date). Approve the budget for this year, or tell us which table now holds it.
+                  </p>
+                )}
                 <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                   <Stat label="YTM budget COGM" value={`₹${lakh(tot.ytm.budget, 0)} L`} sub="Approved budget cost per piece x actual quantity" title="Sum over the finished goods that have an approved budget in the financial year" />
                   <Stat label="YTM actual COGM" value={`₹${lakh(tot.ytm.actualCmp, 0)} L`} sub="Same finished goods as the budget" title={`All finished goods: ₹${lakh(tot.ytm.actual, 0)} L`} />
@@ -87,7 +93,7 @@ export default function DashScreen() {
                 </div>
                 <p className="text-xs text-muted">
                   Plants {ran?.plants} · as of {ran?.asOf} · month to date and financial year to date{fy ? ` (FY ${fy}` : ''}{fy && version ? `, latest approved budget version ${version}` : ''}{fy ? ')' : ''}. Actual = RM + PM + perfume + conversion of the period (SAP, INR).
-                  Budget = approved budget cost per piece (COST_PC) x actual quantity. Amounts in ₹ lakh.
+                  Budget = approved budget cost per piece x actual quantity (ZMM_FBUDCOST_SUM, matched on plant, CRSSKU, business, scheme and material type, as in Margin). Amounts in ₹ lakh.
                 </p>
                 <MisTable brands={brands} tot={tot} bn={hn.brand} />
               </>

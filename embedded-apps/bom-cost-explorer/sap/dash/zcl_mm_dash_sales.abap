@@ -7,7 +7,12 @@ CLASS zcl_mm_dash_sales DEFINITION PUBLIC FINAL CREATE PUBLIC.
     "  Deductions = GSV - NSV
     "  Sold qty   = billed quantity in the base unit; invoice (M) and debit memo (P) +, cancellation (N), credit memo (O) -, cancellation of credit memo (S) +
     "  COGM       = SAP actual cost per piece of the same period (ZCL_MM_WAC_ACTUAL: RM + PM + perfume + conversion / produced qty, all selected plants) x SOLD qty
-    METHODS constructor IMPORTING is_par TYPE zif_mm_wac_types=>ty_par.
+    TYPES: ty_r_vkorg TYPE RANGE OF vkorg,
+           ty_r_vtweg TYPE RANGE OF vtweg.
+    "Selection: plants (is_par-werks, they carry the cost), materials (is_par-matnr), sales organisation and distribution channel; an empty range means all.
+    METHODS constructor IMPORTING is_par TYPE zif_mm_wac_types=>ty_par
+                                  it_vkorg TYPE ty_r_vkorg OPTIONAL
+                                  it_vtweg TYPE ty_r_vtweg OPTIONAL.
     METHODS run RETURNING VALUE(rt_sales) TYPE tt_sales.
   PRIVATE SECTION.
     TYPES: BEGIN OF ty_b,
@@ -26,6 +31,8 @@ CLASS zcl_mm_dash_sales DEFINITION PUBLIC FINAL CREATE PUBLIC.
              cost  TYPE decfloat34,
            END OF ty_c.
     DATA ms_par TYPE zif_mm_wac_types=>ty_par.
+    DATA: mr_vkorg TYPE ty_r_vkorg,
+          mr_vtweg TYPE ty_r_vtweg.
 ENDCLASS.
 
 
@@ -33,6 +40,7 @@ CLASS zcl_mm_dash_sales IMPLEMENTATION.
 
   METHOD constructor.
     ms_par = is_par.
+    mr_vkorg = it_vkorg. mr_vtweg = it_vtweg.
     IF ms_par-date_to IS INITIAL. ms_par-date_to = sy-datum. ENDIF.
     IF ms_par-date_from IS INITIAL.
       ms_par-date_from = ms_par-date_to.
@@ -66,6 +74,9 @@ CLASS zcl_mm_dash_sales IMPLEMENTATION.
         AND h~vbtyp IN ( 'M', 'N', 'O', 'P', 'S' )
         AND h~waerk = 'INR'
         AND p~werks IN @ms_par-werks
+        AND p~matnr IN @ms_par-matnr
+        AND h~vkorg IN @mr_vkorg
+        AND h~vtweg IN @mr_vtweg
         AND p~umvkn > 0
         AND m~mtart = 'FERT'
       GROUP BY p~matnr, h~vtweg, h~vbtyp, p~umvkz, p~umvkn
@@ -74,7 +85,19 @@ CLASS zcl_mm_dash_sales IMPLEMENTATION.
 
     " ---- actual cost per piece of the period, per material (all selected plants)
     DATA(lo_util) = NEW zcl_mm_bom_cost_util( ).
-    NEW zcl_mm_wac_actual( lo_util )->read( EXPORTING is_par = ms_par IMPORTING et_act = lt_act et_msg = lt_m ).
+    " no plant chosen = all plants: the cost is then read for every plant but only for the materials that were sold
+    DATA(ls_cpar) = ms_par.
+    IF ls_cpar-werks IS INITIAL.
+      SELECT werks FROM t001w INTO TABLE @DATA(lt_allw).
+      ls_cpar-werks = VALUE #( FOR w IN lt_allw ( sign = 'I' option = 'EQ' low = w-werks ) ).
+      CLEAR ls_cpar-matnr.
+      LOOP AT lt_b ASSIGNING <b>.
+        APPEND VALUE #( sign = 'I' option = 'EQ' low = <b>-matnr ) TO ls_cpar-matnr.
+      ENDLOOP.
+      SORT ls_cpar-matnr BY low.
+      DELETE ADJACENT DUPLICATES FROM ls_cpar-matnr COMPARING low.
+    ENDIF.
+    NEW zcl_mm_wac_actual( lo_util )->read( EXPORTING is_par = ls_cpar IMPORTING et_act = lt_act et_msg = lt_m ).
     LOOP AT lt_act ASSIGNING FIELD-SYMBOL(<a>) WHERE qty > 0.
       CLEAR ls_c.
       ls_c-matnr = <a>-matnr. ls_c-qty = <a>-qty. ls_c-cost = <a>-rm + <a>-pm + <a>-perf + <a>-conv.

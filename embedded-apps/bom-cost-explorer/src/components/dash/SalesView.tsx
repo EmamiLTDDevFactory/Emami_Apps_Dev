@@ -13,6 +13,7 @@ import { brandSales, gmBands, pvmSteps, salesTotals, salesViews, skuSales, type 
 import type { PvmRow, SalesRow, ThreshRow } from '@/lib/dash/types';
 import { ls } from '@/lib/client/storage';
 import { useHierNames } from '@/lib/client/useHierNames';
+import { MaterialHierarchyPicker, MaterialPicker } from '../Pickers';
 import { BAND, NeedsSap, fyStart, lakh, money, pct, tdCls, thCls, today } from './parts';
 
 const ALERT: Record<string, string> = { good: 'Green', amber: 'Amber', red: 'Red', none: '-' };
@@ -21,6 +22,9 @@ const PILL: Record<string, string> = { good: 'bg-good/15 text-good', amber: 'bg-
 export default function SalesView() {
   const hn = useHierNames();
   const [plants, setPlants] = useState('');
+  const [mats, setMats] = useState<string[]>([]);
+  const [vkorg, setVkorg] = useState('');
+  const [vtweg, setVtweg] = useState('');
   const [from, setFrom] = useState(fyStart(today()));
   const [to, setTo] = useState(today());
   const [rows, setRows] = useState<SalesRow[] | null>(null);
@@ -42,8 +46,8 @@ export default function SalesView() {
     try {
       const list = plants.split(/[\s,;]+/).filter(Boolean);
       const [r, pv, th] = await Promise.all([
-        fetchSales(list, from, to, c.signal),
-        fetchPvm(list, from, to, c.signal).then((x) => ({ rows: x.rows, err: '' })).catch((e) => ({ rows: null as PvmRow[] | null, err: c.signal.aborted ? '' : errorText(e) })),
+        fetchSales(list, from, to, c.signal, { matnr: mats, vkorg: vkorg.split(/[\s,;]+/).filter(Boolean), vtweg: vtweg.split(/[\s,;]+/).filter(Boolean) }),
+        (list.length ? fetchPvm(list, from, to, c.signal) : Promise.reject(new Error('The price-volume-mix bridge needs plants: enter plants to see it.'))).then((x) => ({ rows: x.rows, err: '' })).catch((e) => ({ rows: null as PvmRow[] | null, err: c.signal.aborted ? '' : errorText(e) })),
         fetchThresholds(c.signal).then((x) => x.rows).catch(() => [] as ThreshRow[]),   // no bands: the defaults apply
       ]);
       setPvm(pv.rows); setPvmErr(pv.err); setThr(th);
@@ -65,16 +69,30 @@ export default function SalesView() {
   return (
     <>
       <div className="flex flex-wrap items-end gap-2">
-        <label className="flex flex-col gap-1 text-xs font-semibold">Plants
-          <input className={cx(inputCls, 'w-56 uppercase')} placeholder="EM02, UN13" value={plants} onChange={(e) => setPlants(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void run()} />
+        <div className="w-full">
+          <span className="text-xs font-semibold">Materials (Brand, Product, SKU) - optional</span>
+          <div className="max-w-3xl">
+            <MaterialPicker id="sales-mats" values={mats} onChange={setMats} max={50} />
+            <MaterialHierarchyPicker values={mats} onChange={setMats} max={50} />
+          </div>
+          <p className="mt-1 text-2xs text-muted">Type a material, or pick by Brand → Product → SKU → Material (up to 50). Empty = every finished good.</p>
+        </div>
+        <label className="flex flex-col gap-1 text-xs font-semibold">Plants (blank = all)
+          <input className={cx(inputCls, 'w-64 uppercase')} placeholder="All plants (blank) or EM02, UN13" value={plants} onChange={(e) => setPlants(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void run()} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold">Sales org
+          <input className={cx(inputCls, 'w-28 uppercase')} placeholder="EM01" value={vkorg} onChange={(e) => setVkorg(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void run()} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold">Channel
+          <input className={cx(inputCls, 'w-24 uppercase')} placeholder="10, 20" value={vtweg} onChange={(e) => setVtweg(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void run()} />
         </label>
         <label className="flex flex-col gap-1 text-xs font-semibold">From<input type="date" className={cx(inputCls, 'w-40')} value={from} onChange={(e) => setFrom(e.target.value)} /></label>
         <label className="flex flex-col gap-1 text-xs font-semibold">To<input type="date" className={cx(inputCls, 'w-40')} value={to} onChange={(e) => setTo(e.target.value)} /></label>
-        <Button variant="primary" disabled={busy || !plants.trim() || !from || !to} onClick={() => void run()}>{busy ? <><Spinner className="h-4 w-4" /> Running</> : 'Run'}</Button>
+        <Button variant="primary" disabled={busy || !from || !to} onClick={() => void run()}>{busy ? <><Spinner className="h-4 w-4" /> Running</> : 'Run'}</Button>
         {busy && <Button onClick={() => { ctl.current?.abort(); setBusy(false); }}>Stop</Button>}
       </div>
       {error && <ErrorBox>{error}</ErrorBox>}
-      {!rows && !busy && !error && <Card><Empty title="Choose the plants and the period, then press Run">Invoiced sales of finished goods against SAP's actual cost of the same period.</Empty></Card>}
+      {!rows && !busy && !error && <Card><Empty title="Choose the period (plants optional), then press Run">Invoiced sales of finished goods against SAP's actual cost of the same period.</Empty></Card>}
       {rows && !all.length && <Card><Empty title="No invoiced sales found">SAP returned no finished-good billing for these plants and dates.</Empty></Card>}
       {rows && all.length > 0 && (
         <>
@@ -85,7 +103,7 @@ export default function SalesView() {
             <Stat label="Gross margin" value={`₹${lakh(tot.gm, 0)} L (${pct(tot.gmPct)})`} tone={tot.gmPct === null ? undefined : tot.gmPct.lt(18) ? 'bad' : tot.gmPct.lt(22) ? 'warn' : 'good'} sub="NSV - COGM, SKUs with a cost" title="Margin basis: NSV of the SKUs that have an actual cost" />
           </div>
           <p className="text-xs text-muted">
-            Plants {ran?.plants} · {ran?.from} to {ran?.to} · finished goods (FERT), INR invoices; invoices and debit memos add, cancellations and credit memos subtract.
+            Plants {ran?.plants || 'all'} · {ran?.from} to {ran?.to} · finished goods (FERT), INR invoices; invoices and debit memos add, cancellations and credit memos subtract.
             COGM = SAP's actual cost per piece of the same period x sold quantity. GM % bands per SKU category come from SAP ({thr.length ? `${thr.length} band rows` : 'none set: red below 18 %, amber below 22 %'}).
           </p>
           <BrandTable rows={brands} tot={tot} bn={hn.brand} />

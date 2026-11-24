@@ -9,6 +9,7 @@ import { X } from 'lucide-react';
 import BomCostingPanel from '../costline/BomCostingPanel';
 import { Button, Spinner, Stat, Tabs } from '../ui';
 import { fmtNum } from '@/lib/format';
+import { useHierNames } from '@/lib/client/useHierNames';
 import type { PlantRow } from '@/lib/sap/fields';
 import { dec } from '@/lib/wac/view';
 import { fmtVarPct } from '@/lib/wac/view';
@@ -30,6 +31,7 @@ const amt = (v: string, dp = 4) => (dec(v) === null ? NA : fmtNum(v, dp, 'INR'))
 export default function FgDetail({ v, period, totals, plants, loadedComps, onClose }: {
   v: FgValue; period: { dateFrom: string; dateTo: string }; totals: PlantTotals; plants: PlantRow[]; loadedComps: WacCompRow[]; onClose: () => void;
 }) {
+  const hn = useHierNames();
   const [tab, setTab] = useState<Tab>('summary');
   const r = v.row;
   const ref = useRef<HTMLDivElement>(null);
@@ -52,7 +54,7 @@ export default function FgDetail({ v, period, totals, plants, loadedComps, onClo
         <div className="flex items-start gap-3 border-b border-line px-5 py-3">
           <div className="min-w-0">
             <div className="text-lg font-extrabold"><span className="font-mono">{r.Matnr}</span> <span className="font-semibold">{r.Maktx}</span></div>
-            <div className="text-xs text-muted">Plant {r.Werks}{plantName ? ` · ${plantName}` : ''} · {period.dateFrom} to {period.dateTo}{r.Zbrand ? ` · brand ${r.Zbrand}` : ''}{r.Prodha ? ` · product ${r.Prodha}` : ''}</div>
+            <div className="text-xs text-muted">Plant {r.Werks}{plantName ? ` · ${plantName}` : ''} · {period.dateFrom} to {period.dateTo}{r.Zbrand ? ` · brand ${hn.brand(r.Zbrand)}` : ''}{r.Prodha ? ` · product ${hn.product(r.Prodha)}` : ''}</div>
           </div>
           <Button size="sm" variant="ghost" onClick={onClose} className="ml-auto shrink-0" aria-label="Close"><X size={15} /> Close</Button>
         </div>

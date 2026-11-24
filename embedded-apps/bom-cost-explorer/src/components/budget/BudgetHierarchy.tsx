@@ -17,6 +17,7 @@ import { fetchWac } from '@/lib/wac/service';
 import type { XCol } from '@/lib/client/export';
 import type { BudgetSummaryRow } from '@/lib/budget/types';
 import { type Decimal } from '@/lib/cost/decimal';
+import { useMgmt } from '@/lib/client/useHierNames';
 
 const safe = <T,>(f: () => T): T | null => { try { return f(); } catch { return null; } };
 const th = 'sticky top-0 whitespace-nowrap border-b border-line bg-sunken px-2.5 py-2 text-right text-2xs font-extrabold uppercase text-muted';
@@ -58,7 +59,8 @@ export default function BudgetHierarchy({ runQ, email }: { runQ: BudgetQuery | n
     } catch (e) { setLy({ status: 'error', error: e instanceof Error ? e.message : 'Could not read last year from SAP.' }); }
   };
 
-  const groups = useMemo(() => (names && links ? rollup(rows, links, names, level, ly.data) : []), [rows, names, links, level, ly.data]);
+  const mgmt = useMgmt();
+  const groups = useMemo(() => (names && links ? rollup(rows, links, names, level, ly.data, mgmt) : []), [rows, names, links, level, ly.data, mgmt]);
   const shown = useMemo(() => { const t = q.trim().toLowerCase(); return t ? groups.filter((g) => `${g.name} ${g.code} ${g.brand} ${g.product}`.toLowerCase().includes(t)) : groups; }, [groups, q]);
   const withLy = ly.status === 'ready';
 

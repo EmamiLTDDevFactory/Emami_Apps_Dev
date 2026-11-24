@@ -20,7 +20,7 @@ describe('component comparison', () => {
     expect(String(c.total.actual)).toBe('3.2'); expect(String(c.total.budget)).toBe('2.5'); expect(String(c.total.actVar)).toBe('0.7');
   });
   it('adds the rate type cost per piece and its variance', () => {
-    const rate: RateCosting = { werks: 'UN13', type: 'SELECTED', priced: 1, leaves: 1, notes: [], comps: new Map([['100', { key: '100', maktx: 'x', cat: 'R', qtyPc: D('0.01'), rate: D(190), costPc: D('1.9') }]]) };
+    const rate: RateCosting = { werks: 'UN13', type: 'SELECTED', priced: 1, leaves: 1, notes: [], comps: new Map([['100', { key: '100', maktx: 'x', cat: 'R', qtyPc: D('0.01'), rate: D(190), costPc: D('1.9'), src: 'CONTRACT' }]]) };
     const r = buildCompare(actual, bud, rate).rows.find((x) => x.key === '100')!;
     expect(String(r.rateCost)).toBe('1.9'); expect(String(r.rateVar)).toBe('-0.1');
   });

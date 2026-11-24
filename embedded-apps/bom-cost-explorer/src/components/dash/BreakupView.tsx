@@ -11,6 +11,7 @@ import { breakupByBrand, breakupByFg, type BreakupView } from '@/lib/dash/logic'
 import type { WacRow } from '@/lib/wac/types';
 import { ls } from '@/lib/client/storage';
 import { useHierNames } from '@/lib/client/useHierNames';
+import FgOrdersDrawer, { type FgTarget } from './FgOrdersDrawer';
 import { NeedsSap, fyStart, money, pct, tdCls, thCls, today } from './parts';
 
 export default function BreakupView() {
@@ -23,6 +24,7 @@ export default function BreakupView() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [brand, setBrand] = useState('');
+  const [fg, setFg] = useState<FgTarget | null>(null);
   const ctl = useRef<AbortController | null>(null);
   useEffect(() => { setPlants(ls.get<string>('bce:dash-plants', '')); return () => ctl.current?.abort(); }, []);
 
@@ -66,17 +68,18 @@ export default function BreakupView() {
                 <option value="">All brands</option>{brands.map((b) => <option key={b.brand} value={b.brand}>{hn.brand(b.brand) || '(none)'}</option>)}
               </select>
             </div>
-            <Table rows={shown} first="SKU" scroll bn={hn.brand} />
+            <Table rows={shown} first="SKU" scroll bn={hn.brand} onOpen={(r) => setFg({ matnr: r.matnr, maktx: r.maktx, werks: r.werks, brand: r.brand, from, to })} />
           </Card>
         </>
       )}
+      <FgOrdersDrawer target={fg} onClose={() => setFg(null)} />
       <NeedsSap title="Budget split by group and by scheme" object="ZI_ACT_PROC_COST_ITEM extended with a SCHEME dimension; budget cost per group"
         why="The budget table holds no cost split per group that can be checked (every cost value on EDS is zero), and SAP has no scheme dimension on the actual cost yet. Until then this tab shows the actual split only." />
     </>
   );
 }
 
-function Table({ rows, first, title, scroll, bn }: { rows: BreakupView[]; first: string; title?: string; scroll?: boolean; bn: (c: string) => string }) {
+function Table({ rows, first, title, scroll, bn, onOpen }: { rows: BreakupView[]; first: string; title?: string; scroll?: boolean; bn: (c: string) => string; onOpen?: (r: BreakupView) => void }) {
   const cell = (v: BreakupView['rm'], p: BreakupView['shareRm']) => (<><td className={tdCls}>{money(v, 4)}</td><td className={cx(tdCls, 'text-muted')}>{pct(p)}</td></>);
   return (
     <div className={cx('overflow-auto rounded-2xl border border-line bg-panel', scroll ? 'max-h-[60vh]' : 'shadow-card')}>
@@ -88,7 +91,7 @@ function Table({ rows, first, title, scroll, bn }: { rows: BreakupView[]; first:
         </tr></thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={r.key} className="border-t border-line/60">
+            <tr key={r.key} className={cx('border-t border-line/60', onOpen && r.matnr && 'cursor-pointer hover:bg-sunken')} onClick={onOpen && r.matnr ? () => onOpen(r) : undefined} title={onOpen && r.matnr ? 'Open the process orders and items' : undefined}>
               <td className="px-2.5 py-1.5 text-left text-xs"><span className="font-bold">{(r.matnr ? r.matnr.replace(/^0+/, '') : bn(r.brand)) || '(none)'}</span> <span className="text-muted" title={r.maktx}>{r.maktx}{r.werks ? ` · ${r.werks}` : ''}</span></td>
               <td className={tdCls}>{r.qty.toNumber().toLocaleString('en-IN')}</td>
               {cell(r.rm, r.shareRm)}{cell(r.pm, r.sharePm)}{cell(r.perf, r.sharePerf)}{cell(r.conv, r.shareConv)}

@@ -24,12 +24,12 @@ All figures are INR. SAP does the heavy work (OData service `ZMM_BOM_COST_SRV`);
 - **Variance** = actual - budget; **variance %** = variance / budget x 100, measured only on FGs that have a budget.
 - **Colour:** red above 3 %, amber above 2 %, otherwise green.
 - **Coverage:** FGs with no approved budget are counted ("FG no budget") and left out of the comparison.
-- **SAP:** `DashMisSet` (class `ZCL_MM_DASH_MIS`). The budget there is read from `ZMM_BUDCOST_SUM` (COST_PC).
+- **SAP:** `DashMisSet` (class `ZCL_MM_DASH_MIS`). The budget is read from `ZMM_FBUDCOST_SUM`, like the Margin tab: status A, financial year of the as-of date, latest version, key WERKS (production plant) + CRSSKU + business vertical + scheme + material type (MARA); cost per piece = RM + PM + perfume + machine + labour + power + steam + labour 3P.
 - **Not built:** the five-way variance bridge (rate, usage, mix, overheads, currency).
 
 ## 2. Sales view
 **Question:** how much did we invoice, and what is the margin against actual cost?
-- **Inputs:** plants, from and to date.
+- **Inputs:** plants (blank = all plants; they carry the actual cost), materials (optional: type or pick Brand, Product, SKU, Material, up to 50), sales organisation and channel (optional), from and to date.
 - **Invoices taken:** billing date in the period, FERT, INR; invoice and debit memo add, cancellation and credit memo subtract.
 - **GSV:** condition `ZSAL` of the item (an item without `ZSAL` counts its net value, so no deduction). **NSV:** billing net value. **Deductions** = GSV - NSV.
 - **COGM (sold volume):** SAP actual cost **per piece** of the period for that material in the **cost plants** x the **sold** quantity.
@@ -47,7 +47,7 @@ All figures are INR. SAP does the heavy work (OData service `ZMM_BOM_COST_SRV`);
 
 ## 4. Margin (invoice-condition margin analysis)
 **Question:** what is the margin on invoiced sales, what drives it, and what if prices, promos or costs change?
-- **Selection:** plant, sales organisation, channel, CRSSKU, invoice number (any combination; at least one of plant, sales org, CRSSKU or invoice) and the dates. The dates always apply.
+- **Selection:** materials (type, or pick Brand, Product, SKU, Material like BOM costing, up to 50), sales organisation, channel, CRSSKU, invoice number (any combination; at least one of materials, sales org, CRSSKU or invoice) and the dates. The dates always apply. The plant box is gone.
 - **Per invoice item the SAP class reads these conditions:** MRP `ZMRP` (or `ZNMR`); selling price `ZP12`; GST `JOIG`+`JOCG`+`JOSG`; channel margins retailer `ZREM`+`ZTDP`, distributor `ZDIM`+`ZTDM`, super stockist `ZSSM`+`ZTSM`; cost `ZRMP` (RM), `ZPMP` (PM), `ZPFP` (perfume), `ZOHP` (overhead); consumer scheme `ZRSP`/`ZPSP`/`ZFCP`/`ZOSP`; trade scheme `ZRTS`/`ZPTP`/`ZFTS`/`ZOTP`. Cost conditions are taken as positive amounts.
 - **Formulas (yours):** Gross sales = selling price + GST. COGS = RM + PM + perfume + overhead + scheme costs. **Gross margin = revenue - COGS; GM % = gross margin / revenue x 100.** Revenue = gross sales by default (switch to selling price).
 - **Budget match:** `ZMM_FBUDCOST_SUM`, financial year of the "to" date, status A, highest version, on the table key: **WERKS = valuation type of the invoiced batch (`VBRP-BWTAR`, blank is a valid value)** + CRSSKU (`MARA-ZSKUGRCODECRS`) + business vertical (`MARA-ZBUSINESS`) + scheme (`MARA-ZSCHEME`) + material type (`MARA-MTART`). A SKU row is therefore one per material **and valuation type**. Budget overhead = MACHINE + LABOUR + POWER + STEAM + LABOUR3P. No match = **NBC**.
@@ -65,12 +65,15 @@ Links to the existing screens: Budget cost of finished goods, Component rates, R
 Rule-based notes made from the MIS result (no language model): overall variance, brands above the amber or red threshold, and FGs without a budget. Run MIS first.
 
 ## SAP objects and transports
-- Packing: `EDSK9B0EL5`. Dashboard sets: `EDSK9B0EM6` (released), margin: `EDSK9B0EMZ` (released), selection filters and cost-sign fix: `EDSK9B0EN5`, margin cost drill-down: `EDSK9B0EN7` (released), budget match by valuation type and budget items: `EDSK9B0ENN`.
+- Packing: `EDSK9B0EL5`. Dashboard sets: `EDSK9B0EM6` (released), margin: `EDSK9B0EMZ` (released), selection filters and cost-sign fix: `EDSK9B0EN5`, margin cost drill-down: `EDSK9B0EN7` (released), budget match by valuation type and budget items: `EDSK9B0ENN` (released), material / sales org / channel filters on Margin and Sales view and the MIS budget from `ZMM_FBUDCOST_SUM`: `EDSK9B0ENZ`.
 - Tables: `ZMIS_ALERT_THR` (alert bands), `ZSALES_BUD_TGT` (sales budget, empty).
 - After an import: clear the gateway caches (`/IWFND/CACHE_CLEANUP`, `/IWBEP/CACHE_CLEANUP`).
 
+## Cost breakup: activity price period
+Machine, Labour, Power and Steam are SAP routing activities priced with the activity prices of one fiscal period. The default is **automatic**: the app sends `Poper = 999` and `ZCL_MM_BOM_COST_ACT` prices each material in the period of its latest cost estimate (`KEKO`, version 01), so the value ties to CK13N. A material without an estimate uses the current period. The selector can force a fixed period. A system without the class change returns no priced rows for `999`; the app then falls back to the current period. Transport `EDSK9B0ENZ` (class `ZCL_MM_BOM_COST_ACT`).
+
 ## Known gaps
-1. MIS reads the budget from `ZMM_BUDCOST_SUM`; the Margin tab reads `ZMM_FBUDCOST_SUM`. They should use one table.
+1. (Closed) MIS and Margin both read `ZMM_FBUDCOST_SUM`.
 2. Sales view and MIS use "actual cost of the period" (SAP WAC); the Margin tab uses the invoice cost conditions or your current-COGM file.
 3. Sales budget (`ZSALES_BUD_TGT`) is empty, so the price-volume-mix bridge shows nothing.
 4. Five-way variance bridge, projection and scheme breakup are not built.

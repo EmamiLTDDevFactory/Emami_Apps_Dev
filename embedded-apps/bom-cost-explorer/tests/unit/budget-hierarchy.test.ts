@@ -55,4 +55,10 @@ describe('budget by brand / product / SKU', () => {
     expect(previousFiscalYear('2026')).toEqual({ from: '2025-04-01', to: '2026-03-31' });
     expect(previousFiscalYear('')).toBeNull();
   });
+  it('shows management names when given (display only; the group code stays the SAP code)', () => {
+    const mg = { brand: { '010001': 'BoroPlus' }, brandText: {}, product: { '0100010601': 'Lotion' }, productText: {}, sku: { '0100010601055': 'BoroPlus | Lotion | 100ml' } };
+    const m = new Map([['400000001', { brand: '010001', product: '0100010601', sku: '0100010601055' }]]);
+    const g = rollup([row({ Matnr: '400000001' })], m, names, 'sku', null, mg);
+    expect(g[0].name).toBe('BoroPlus | Lotion | 100ml'); expect(g[0].code).toBe('0100010601055'); expect(g[0].brand).toBe('BoroPlus'); expect(g[0].product).toBe('Lotion');
+  });
 });
