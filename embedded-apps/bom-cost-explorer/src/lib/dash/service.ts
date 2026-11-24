@@ -20,11 +20,13 @@ export const fetchMis = (plants: string[], dateTo: string, signal?: AbortSignal)
   readSet<MisRow>(DASH_SET, DASH_MIS_FIELDS, NONE, buildMisFilter(plants, dateTo), signal);
 
 /** $filter of the Sales view read: plants, from and to date. */
-export interface SalesExtra { matnr?: string[]; vkorg?: string[]; vtweg?: string[] }
+export interface SalesExtra { matnr?: string[]; vkorg?: string[]; vtweg?: string[]; requirePlant?: boolean }
 export function buildSalesFilter(plants: string[], dateFrom: string, dateTo: string, extra: SalesExtra = {}): string {
   if (!DAY.test(dateFrom) || !DAY.test(dateTo)) throw new Error('Enter both dates.');
   if (dateFrom > dateTo) throw new Error('The "from" date is after the "to" date.');
-  const base = buildMisFilter(plants, dateTo);
+  // blank plants = every plant (the billing plant is then not filtered); the PVM bridge still needs a plant
+  const pl = Array.from(new Set(plants.map((x) => x.trim().toUpperCase()).filter(Boolean)));
+  const base = pl.length || extra.requirePlant ? buildMisFilter(plants, dateTo) : `${F.DateTo} eq ${odataDate(dateTo)}`;
   const matnr = uniq((extra.matnr ?? []).map((m) => m.trim().replace(/^0+/, ''))), vkorg = uniq(extra.vkorg ?? []), vtweg = uniq(extra.vtweg ?? []);
   if (matnr.some((x) => !/^[A-Z0-9]{1,18}$/.test(x))) throw new Error('A material number is up to 18 characters.');
   if (vkorg.some((x) => !/^[A-Z0-9]{4}$/.test(x))) throw new Error('A sales organisation is 4 characters.');
@@ -36,7 +38,7 @@ export const fetchSales = (plants: string[], dateFrom: string, dateTo: string, s
   readSet<SalesRow>(DASH_SALES_SET, DASH_SALES_FIELDS, NONE, buildSalesFilter(plants, dateFrom, dateTo, extra), signal);
 
 export const fetchPvm = (plants: string[], dateFrom: string, dateTo: string, signal?: AbortSignal): Promise<Read<PvmRow>> =>
-  readSet<PvmRow>(DASH_PVM_SET, DASH_PVM_FIELDS, NONE, buildSalesFilter(plants, dateFrom, dateTo), signal);
+  readSet<PvmRow>(DASH_PVM_SET, DASH_PVM_FIELDS, NONE, buildSalesFilter(plants, dateFrom, dateTo, { requirePlant: true }), signal);
 
 export const fetchThresholds = (signal?: AbortSignal): Promise<Read<ThreshRow>> => readSet<ThreshRow>(DASH_THRESH_SET, DASH_THRESH_FIELDS, NONE, '', signal);
 

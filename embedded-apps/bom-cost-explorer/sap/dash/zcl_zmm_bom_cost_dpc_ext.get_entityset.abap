@@ -92,7 +92,8 @@
       copy_data_to_ref( EXPORTING is_data = lt_mgn CHANGING cr_data = er_entityset ).
       RETURN.
     ENDIF.
-    IF ls_par-werks IS INITIAL.
+    " the Sales view may run for all plants (blank); the PVM bridge and the rest need a plant
+    IF ls_par-werks IS INITIAL AND iv_entity_set_name <> 'DashSalesSet'.
       raise_busi( 'Select at least one plant' ).
     ENDIF.
     IF iv_entity_set_name = 'DashPvmSet'.

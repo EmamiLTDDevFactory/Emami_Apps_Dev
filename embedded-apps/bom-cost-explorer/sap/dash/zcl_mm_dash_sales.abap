@@ -85,7 +85,19 @@ CLASS zcl_mm_dash_sales IMPLEMENTATION.
 
     " ---- actual cost per piece of the period, per material (all selected plants)
     DATA(lo_util) = NEW zcl_mm_bom_cost_util( ).
-    NEW zcl_mm_wac_actual( lo_util )->read( EXPORTING is_par = ms_par IMPORTING et_act = lt_act et_msg = lt_m ).
+    " no plant chosen = all plants: the cost is then read for every plant but only for the materials that were sold
+    DATA(ls_cpar) = ms_par.
+    IF ls_cpar-werks IS INITIAL.
+      SELECT werks FROM t001w INTO TABLE @DATA(lt_allw).
+      ls_cpar-werks = VALUE #( FOR w IN lt_allw ( sign = 'I' option = 'EQ' low = w-werks ) ).
+      CLEAR ls_cpar-matnr.
+      LOOP AT lt_b ASSIGNING <b>.
+        APPEND VALUE #( sign = 'I' option = 'EQ' low = <b>-matnr ) TO ls_cpar-matnr.
+      ENDLOOP.
+      SORT ls_cpar-matnr BY low.
+      DELETE ADJACENT DUPLICATES FROM ls_cpar-matnr COMPARING low.
+    ENDIF.
+    NEW zcl_mm_wac_actual( lo_util )->read( EXPORTING is_par = ls_cpar IMPORTING et_act = lt_act et_msg = lt_m ).
     LOOP AT lt_act ASSIGNING FIELD-SYMBOL(<a>) WHERE qty > 0.
       CLEAR ls_c.
       ls_c-matnr = <a>-matnr. ls_c-qty = <a>-qty. ls_c-cost = <a>-rm + <a>-pm + <a>-perf + <a>-conv.

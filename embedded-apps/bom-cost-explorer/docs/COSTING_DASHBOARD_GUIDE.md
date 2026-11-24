@@ -29,7 +29,7 @@ All figures are INR. SAP does the heavy work (OData service `ZMM_BOM_COST_SRV`);
 
 ## 2. Sales view
 **Question:** how much did we invoice, and what is the margin against actual cost?
-- **Inputs:** plants (they carry the actual cost), materials (optional: type or pick Brand, Product, SKU, Material, up to 50), sales organisation and channel (optional), from and to date.
+- **Inputs:** plants (blank = all plants; they carry the actual cost), materials (optional: type or pick Brand, Product, SKU, Material, up to 50), sales organisation and channel (optional), from and to date.
 - **Invoices taken:** billing date in the period, FERT, INR; invoice and debit memo add, cancellation and credit memo subtract.
 - **GSV:** condition `ZSAL` of the item (an item without `ZSAL` counts its net value, so no deduction). **NSV:** billing net value. **Deductions** = GSV - NSV.
 - **COGM (sold volume):** SAP actual cost **per piece** of the period for that material in the **cost plants** x the **sold** quantity.

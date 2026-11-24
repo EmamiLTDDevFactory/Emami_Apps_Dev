@@ -14,3 +14,13 @@ describe('material filters of the dashboard', () => {
     expect(buildSalesFilter(['UN13'], '2026-04-01', '2026-11-23')).not.toContain('Matnr');
   });
 });
+
+describe('sales: all plants', () => {
+  it('blank plants send no plant filter; the PVM bridge still needs one', async () => {
+    const { buildSalesFilter } = await import('@/lib/dash/service');
+    const f = buildSalesFilter([], '2026-04-01', '2026-11-24', { vkorg: ['EM01'] });
+    expect(f).not.toContain('Werks');
+    expect(f).toContain("Vkorg eq 'EM01'");
+    expect(() => buildSalesFilter([], '2026-04-01', '2026-11-24', { requirePlant: true })).toThrow();
+  });
+});
