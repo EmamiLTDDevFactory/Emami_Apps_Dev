@@ -13,6 +13,7 @@ import { fmtNum, fmtPct, fmtQty, fmtRate, fmtSigned } from '@/lib/format';
 import { PriorityList } from './Pickers';
 import { Button, Card, cx, inputBase, inputCls, SimTag, Stat } from './ui';
 import { Tornado } from './charts';
+import CogmSim from './CogmSim';
 import { sourceLabel } from '@/lib/rates/sourceLabel';
 
 function Pct({ label, value, onChange, id }: { label: string; value: number; onChange: (v: number) => void; id: string }) {
@@ -89,6 +90,8 @@ export default function Simulator({
           <p className="text-xs text-muted">Instant what-ifs on SAP's returned figures — no SAP call. Every simulated number is marked <SimTag />.</p>
           <Button size="sm" disabled={!active} onClick={() => onChange({ ...EMPTY_SIM, prio: settings.prio })}><RotateCcw size={13} /> Reset all</Button>
         </div>
+
+        <CogmSim rows={rows} sim={sim} explQty={explQty} qtyMult={settings.qtyMult || 1} />
 
         <ComponentRates rows={rows} settings={settings} onChange={onChange} plantNames={plantNames} />
 
