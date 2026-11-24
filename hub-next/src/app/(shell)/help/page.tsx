@@ -23,7 +23,7 @@ const CONTACT_CARDS = [
     icon: ShieldCheck,
     title: 'Request App Access',
     subtitle: 'Need a locked application unlocked, or a role changed',
-    href: `mailto:${SUPPORT_EMAIL}?cc=${SUPPORT_CC}&subject=${encodeURIComponent('Emami Apps — Access request')}`,
+    href: '/access-requests/?tab=new',
   },
 ];
 
@@ -48,7 +48,7 @@ const FAQ_GROUPS: FaqGroup[] = [
       },
       {
         q: 'I typed my email and got "This email-id is not registered" — what do I do?',
-        a: "Your email hasn't been added to Manage Access yet. Ask your Admin or Super Admin to add you — see the Request App Access card above.",
+        a: "Your email hasn't been added to Emami Apps yet. On the sign-in page choose “Request access”, pick the applications and roles you need, and attach the supporting mail. Once a Super Admin approves, you can sign in.",
       },
       {
         q: 'Do I need a password for this hub?',
@@ -65,7 +65,7 @@ const FAQ_GROUPS: FaqGroup[] = [
       },
       {
         q: 'How do I get access to an application?',
-        a: 'Ask your Admin or Super Admin to grant it to you from Manage Access — see the Request App Access card above.',
+        a: "Raise an access request from Access Requests in the menu (or the Request App Access card above). Attach your manager's approval mail; a Super Admin approves each application and role and it is granted automatically.",
       },
       {
         q: "What's the difference between Super Admin, Admin, and Viewer?",

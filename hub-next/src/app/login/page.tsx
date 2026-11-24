@@ -271,6 +271,15 @@ export default function LoginPage() {
                       This email-id is not registered. Contact your admin for access.
                     </p>
                   )}
+                  {fieldInvalid && (
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/request-access/?email=${encodeURIComponent(trimmedEmail)}`)}
+                      style={{ width: '100%', marginTop: 10, padding: '13px 0', borderRadius: 16, border: `1.5px solid ${colors.rust}55`, backgroundColor: `${colors.rust}0d`, cursor: 'pointer', fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, fontSize: 14.5, color: colors.rust }}
+                    >
+                      Request access for this email →
+                    </button>
+                  )}
 
                   <button
                     type="button"
@@ -308,8 +317,14 @@ export default function LoginPage() {
                 </>
               )}
 
-              <p style={{ marginTop: 24, fontFamily: fonts.sansRegular, fontSize: 13.5, color: colors.inkSoft, textAlign: 'center' }}>
-                Use your Emami Microsoft account. No access? Contact IT.
+              <p style={{ marginTop: 24, marginBottom: 0, fontFamily: fonts.sansRegular, fontSize: 13.5, color: colors.inkSoft, textAlign: 'center' }}>
+                Use your Emami Microsoft account.
+              </p>
+              <p style={{ marginTop: 6, marginBottom: 0, fontFamily: fonts.sansRegular, fontSize: 13.5, color: colors.inkSoft, textAlign: 'center' }}>
+                No access?{' '}
+                <button type="button" onClick={() => router.push('/request-access/')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, fontSize: 13.5, color: colors.rust }}>Request access</button>
+                {' · '}
+                <button type="button" onClick={() => router.push('/request-access/?track=1')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, fontSize: 13.5, color: colors.rust }}>Track a request</button>
               </p>
             </>
           )}

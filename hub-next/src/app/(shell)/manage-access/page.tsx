@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft, ArrowUpRight, ShieldAlert, Search, X, Users, UserCheck, UserX, LogIn, MousePointerClick, TrendingUp, Download,
   UserPlus, LayoutGrid, History, Settings2, ChevronRight, ChevronDown, ChevronUp, KeyRound, FileSpreadsheet,
-  CheckCircle2, AlertCircle, Crown, ShieldCheck, Eye, Sparkles, AppWindow, Square, CheckSquare, MinusSquare, Clock, Rocket,
+  CheckCircle2, AlertCircle, Crown, ShieldCheck, Eye, Sparkles, AppWindow, Square, CheckSquare, MinusSquare, Clock, Rocket, Inbox,
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useIsWideScreen } from '../../../hooks/useIsWideScreen';
@@ -20,6 +20,8 @@ import AppDrawer from '../../../components/admin/AppDrawer';
 import AddUsersDialog from '../../../components/admin/AddUsersDialog';
 import ChangeTimeline from '../../../components/admin/ChangeTimeline';
 import AppStatusPanel from '../../../components/admin/AppStatusPanel';
+import AccessRequestsPanel from '../../../components/admin/AccessRequestsPanel';
+import { getPendingRequestCount } from '../../../lib/accessRequestsApi';
 import {
   AdminStyles, AppIcon, EmptyState, Initials, LevelBadge, Skeleton, Spinner, StatusDot,
   AUDIT_CAPA_APP_ID, auditCapaRoleNeedsDepot, GRANTABLE_LEVELS, SORTED_APPS,
@@ -33,7 +35,7 @@ import {
  * drawer), Apps (per-app access + usage), App status (release stage per app tile), Activity (the org-wide audit trail) and Settings (SSO).
  * The old /administration routes redirect here. */
 
-type Tab = 'overview' | 'people' | 'apps' | 'status' | 'activity' | 'settings';
+type Tab = 'overview' | 'people' | 'requests' | 'apps' | 'status' | 'activity' | 'settings';
 type StatusFilter = 'all' | 'active' | 'inactive' | 'never' | 'recent7';
 type SortKey = 'name' | 'lastSeen' | 'apps' | 'level' | 'signins';
 type ChangeFilter = 'all' | 'grants' | 'revokes' | 'people' | 'status' | 'level';
@@ -43,6 +45,7 @@ const LEVEL_RANK: Record<AccessLevel, number> = { 'Super Admin': 0, Admin: 1, Vi
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: 'overview', label: 'Overview', icon: Sparkles },
   { id: 'people', label: 'People', icon: Users },
+  { id: 'requests', label: 'Requests', icon: Inbox },
   { id: 'apps', label: 'Apps', icon: LayoutGrid },
   { id: 'status', label: 'App status', icon: Rocket },
   { id: 'activity', label: 'Activity', icon: History },
@@ -58,7 +61,11 @@ function AdminCenter() {
   const actingLevel = access?.accessLevel;
   const canManage = actingLevel === 'Super Admin' || actingLevel === 'Admin';
 
-  const tab = (TABS.some((t) => t.id === searchParams.get('tab')) ? searchParams.get('tab') : 'overview') as Tab;
+  // Requests (access tickets) are a Super Admin job — approving authorization is not delegated to plain Admins.
+  const isSuperAdmin = actingLevel === 'Super Admin';
+  const visibleTabs = TABS.filter((t) => t.id !== 'requests' || isSuperAdmin);
+  const tab = (visibleTabs.some((t) => t.id === searchParams.get('tab')) ? searchParams.get('tab') : 'overview') as Tab;
+  const openRequestId = Number(searchParams.get('request')) || null;
   const openEmail = searchParams.get('user');
   const openAppId = searchParams.get('app');
   const setParams = useCallback(
@@ -72,7 +79,7 @@ function AdminCenter() {
     },
     [router, pathname, searchParams]
   );
-  const goTab = (t: Tab) => setParams({ tab: t, user: null, app: null });
+  const goTab = (t: Tab) => setParams({ tab: t, user: null, app: null, request: null });
   const openUser = (email: string) => setParams({ user: email, app: null });
   const openApp = (appId: string) => setParams({ app: appId, user: null });
 
@@ -93,6 +100,12 @@ function AdminCenter() {
       if (r.ok && r.changes) setHistory(r.changes);
     });
   }, []);
+
+  const [pendingRequests, setPendingRequests] = useState(0);
+  const refreshPending = useCallback(() => {
+    getPendingRequestCount().then((r) => { if (r.ok) setPendingRequests(r.pending); });
+  }, []);
+  useEffect(() => { if (isSuperAdmin) refreshPending(); }, [isSuperAdmin, refreshPending]);
 
   useEffect(() => {
     if (!canManage) return;
@@ -346,7 +359,7 @@ function AdminCenter() {
       </div>
 
       <nav className="ac-scroll" style={{ display: 'flex', gap: 4, marginTop: 18, overflowX: 'auto', borderBottom: `1px solid ${colors.border}` }} aria-label="Admin Center sections">
-        {TABS.map((t) => {
+        {visibleTabs.map((t) => {
           const active = t.id === tab;
           const Icon = t.icon;
           return (
@@ -364,6 +377,9 @@ function AdminCenter() {
             >
               <Icon size={15} />
               {t.label}
+              {t.id === 'requests' && pendingRequests > 0 && (
+                <span style={{ fontSize: 10.5, padding: '1px 7px', borderRadius: 999, backgroundColor: '#DC2626', color: colors.white }}>{pendingRequests}</span>
+              )}
               {t.id === 'people' && !usersLoading && (
                 <span style={{ fontSize: 10.5, padding: '1px 7px', borderRadius: 999, backgroundColor: active ? `${colors.rust}17` : colors.appBg, color: active ? colors.rust : colors.inkSoft }}>{users.length}</span>
               )}
@@ -555,6 +571,22 @@ function AdminCenter() {
         {/* ── Apps ── */}
         {tab === 'status' && <AppStatusPanel notify={notify} isWide={isWide} />}
         {tab === 'apps' && <AppsPanel accessCount={accessCountByApp} statByApp={statByApp} appStats={appStats} loading={statsLoading} onOpen={openApp} notify={notify} />}
+
+        {/* ── Requests ── */}
+        {tab === 'requests' && isSuperAdmin && (
+          <AccessRequestsPanel
+            actingEmail={userEmail}
+            openId={openRequestId}
+            onOpen={(id) => setParams({ request: id ? String(id) : null })}
+            notify={notify}
+            onChanged={() => {
+              refreshPending();
+              // A granted role changes the roster, usage and history behind the other tabs.
+              listAuthorizedUsers().then((r) => { if (r.ok && r.users) setUsers(r.users); });
+              refreshHistory();
+            }}
+          />
+        )}
 
         {/* ── Activity ── */}
         {tab === 'activity' && <ActivityPanel history={history} loading={historyLoading} onOpenUser={openUser} />}

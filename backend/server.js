@@ -947,6 +947,9 @@ apiRouter.get('/access/history', requireAccessManager, async (req, res) => {
 apiRouter.use(require('./appStages').appStagesRouter(requireAccessManager));
 // CCB roles (Change Control) are assigned from the Admin Center: GET/PUT /access/users/:email/ccb-roles.
 apiRouter.use(require('./changeControl').ccbRolesAdminRouter(requireAccessManager));
+// Access Requests: self-service tickets for app/role authorization (signed-in users, and people who cannot sign in at all, from the
+// login page). A Super Admin approves or rejects each app-role line and an approval grants it automatically. See accessRequests.js.
+apiRouter.use(require('./accessRequests').accessRequestsRouter({ requireAccessManager, validRolesForApp, defaultGrantedApps: DEFAULT_GRANTED_APPS }));
 
 apiRouter.get('/health', (req, res) => res.json({ success: true }));
 
