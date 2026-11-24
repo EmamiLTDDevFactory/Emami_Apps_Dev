@@ -8,6 +8,7 @@ import type Decimal from 'decimal.js';
 import { Card, Drawer, Segmented, Spinner, cx } from '../ui';
 import { ErrorBox, errorText } from '../budget-mgmt/shared';
 import { fetchCdrill, type MarginSel } from '@/lib/dash/service';
+import { readGradually, type Progress } from '@/lib/dash/cdrillProgressive';
 import { CAT_LABEL, parseCdrill, type BudGroup, type Cat, type Cdrill } from '@/lib/dash/cdrill';
 import { money, tdCls, thCls } from './parts';
 import CompareBlock from './CompareBlock';
@@ -21,12 +22,15 @@ export default function CdrillDrawer({ target, onClose }: { target: DrillTarget 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [cat, setCat] = useState<Cat>('R');
+  const [prog, setProg] = useState<Progress | null>(null);
   useEffect(() => {
     if (!target) return;
     const c = new AbortController();
-    setBusy(true); setError(''); setData(null);
-    fetchCdrill(target.matnr, target.sel, target.from, target.to, c.signal)
-      .then((r) => { setData(parseCdrill(r.rows)); })
+    setBusy(true); setError(''); setData(null); setProg(null);
+    // gradually: one SAP read per 31 days (newest first), merged after each; a window that times out is split and retried
+    readGradually(target.from, target.to, (w) => fetchCdrill(target.matnr, target.sel, w.from, w.to, c.signal).then((r) => r.rows),
+      (p) => { if (c.signal.aborted) return; setProg(p); if (p.rows.length) setData(parseCdrill(p.rows)); }, { signal: c.signal })
+      .then((p) => { if (!c.signal.aborted && p.error) setError(p.error); })
       .catch((e) => { if (!c.signal.aborted) setError(errorText(e)); })
       .finally(() => { if (!c.signal.aborted) setBusy(false); });
     return () => c.abort();
@@ -39,7 +43,20 @@ export default function CdrillDrawer({ target, onClose }: { target: DrillTarget 
   ] : []), [s, inv]);
   return (
     <Drawer open={!!target} onClose={onClose} title={target ? `Cost breakup: ${target.label}` : ''} width={1180}>
-      {busy && <p className="flex items-center gap-2 text-sm text-muted"><Spinner className="h-4 w-4" /> Reading process orders and component consumption (can take a minute for many batches)</p>}
+      {busy && (
+        <div className="flex flex-col gap-1.5">
+          <p className="flex items-center gap-2 text-sm text-muted"><Spinner className="h-4 w-4" /> Reading process orders and component consumption gradually, newest first: the figures below grow as each period arrives.</p>
+          {prog && (
+            <div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-sunken" role="progressbar" aria-valuemin={0} aria-valuemax={prog.totalDays} aria-valuenow={prog.coveredDays}>
+                <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${prog.totalDays ? Math.round((prog.coveredDays / prog.totalDays) * 100) : 0}%` }} />
+              </div>
+              <p className="mt-1 text-2xs text-muted">{prog.coveredDays} of {prog.totalDays} days read{prog.current ? ` · now ${prog.current.from} to ${prog.current.to}` : ''}{prog.splits ? ` · ${prog.splits} period(s) split because SAP was slow` : ''}</p>
+            </div>
+          )}
+        </div>
+      )}
+      {!busy && prog && prog.coveredDays < prog.totalDays && data && <p className="rounded-xl border border-warn/40 bg-warn/10 p-2.5 text-xs">Partial: {prog.coveredDays} of {prog.totalDays} days of the period could be read; the figures cover only those days.</p>}
       {error && <ErrorBox>{error}</ErrorBox>}
       {data && !s && <p className="text-sm text-muted">No sold batches found for this material and selection.</p>}
       {data && s && (
