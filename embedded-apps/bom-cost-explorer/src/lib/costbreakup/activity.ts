@@ -45,6 +45,13 @@ export function fiscalPeriod(today = new Date()): { gjahr: string; poper: string
   return { gjahr: String(y), poper: String(((m - 4 + 12) % 12) + 1).padStart(3, '0') };
 }
 
+/** The last n fiscal periods, newest first (period of today first). */
+export function recentPeriods(n = 24, today = new Date()): Array<{ gjahr: string; poper: string }> {
+  const out: Array<{ gjahr: string; poper: string }> = [];
+  for (let i = 0; i < n; i++) out.push(fiscalPeriod(new Date(today.getFullYear(), today.getMonth() - i, 1)));
+  return out;
+}
+
 const anyOf = (prop: string, values: string[]) => {
   const v = [...new Set(values.map((x) => x.trim().toUpperCase()).filter(Boolean))];
   if (!v.length) return null;

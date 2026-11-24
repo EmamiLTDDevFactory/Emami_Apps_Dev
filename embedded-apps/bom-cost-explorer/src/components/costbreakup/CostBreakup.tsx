@@ -13,6 +13,7 @@ import { D, ZERO, type Decimal } from '@/lib/cost/decimal';
 import { buildBreakup, qtyText, sumBreakups, type BreakupLine, type ElementCell, type FgBreakup } from '@/lib/costbreakup/breakup';
 import { CONVERSION_ELEMENTS, ELEMENT_LABEL, MATERIAL_ELEMENTS, type Element, type ProcOrderRow } from '@/lib/costbreakup/procOrder';
 import { useProcOrders } from '@/lib/costbreakup/useProcOrders';
+import { recentPeriods } from '@/lib/costbreakup/activity';
 import { useActivities } from '@/lib/costbreakup/useActivities';
 import { isLeafRow } from '@/lib/cost/tree';
 import { exportTable, type XCol } from '@/lib/client/export';
@@ -79,7 +80,8 @@ export default function CostBreakup<T extends BreakupLine>({ lines, qtyOf, fgQty
   const semis = useMemo(() => lines.filter((l) => !isLeafRow(l) && l.Idnrk && l.Idnrk !== l.Headmat), [lines]);
   const actPlants = useMemo(() => [...new Set([...plants, ...semis.map((l) => l.Werks || l.Hwerks)])], [plants, semis]);
   const actMats = useMemo(() => [...new Set([...fgCodes, ...semis.map((l) => l.Idnrk)])], [fgCodes, semis]);
-  const act = useActivities(actPlants, actMats, active);
+  const [actPer, setActPer] = useState('');
+  const act = useActivities(actPlants, actMats, active, actPer ? { gjahr: actPer.slice(0, 4), poper: actPer.slice(4) } : undefined);
   const fgs = useMemo(() => buildBreakup(lines, qtyOf, fgQtyOf, po.actuals, act.perUnit), [lines, qtyOf, fgQtyOf, po.actuals, act.perUnit]);
   const showActual = po.status === 'ready';
   const all = useMemo(() => sumBreakups(fgs), [fgs]);
@@ -98,7 +100,12 @@ export default function CostBreakup<T extends BreakupLine>({ lines, qtyOf, fgQty
     <div className="flex flex-col gap-3 p-3">
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className="text-muted">{fgs.length} finished good{fgs.length === 1 ? '' : 's'} · FG quantity = {qtyLabel}</span>
-        <span className="text-muted">· Conversion: SAP activity cost, period {act.period.poper}/{act.period.gjahr}</span>
+        <label className="flex items-center gap-1 text-muted">· Conversion: SAP activity price period
+          <select className="rounded-lg border border-line bg-panel px-1.5 py-1 text-xs font-semibold text-ink" value={actPer} onChange={(e) => setActPer(e.target.value)} title="Choose the period of the costing estimate you compare with (CK13N): activity prices differ by period">
+            <option value="">{actPer ? 'Current period' : `${act.period.poper}/${act.period.gjahr} (current)`}</option>
+            {recentPeriods().slice(1).map((p) => <option key={p.gjahr + p.poper} value={p.gjahr + p.poper}>{p.poper}/{p.gjahr}</option>)}
+          </select>
+        </label>
         <ActivityNote status={act.status} note={act.note} rows={act.rows.length} priced={act.rows.some((r) => D(r.ActPrice).gt(0) || D(r.ActValue).gt(0))} period={`${act.period.poper}/${act.period.gjahr}`} />
         {showActual && (
           <>

@@ -12,9 +12,10 @@ export interface ActivitiesState {
 
 const EMPTY = new Map<string, MatActivity>();
 
-/** Routing activities (ActivityCostSet) of the FGs and their semi-finished components for the current fiscal period; loaded when the tab is shown. */
-export function useActivities(plants: string[], mats: string[], active: boolean): ActivitiesState {
-  const period = useMemo(() => fiscalPeriod(), []);
+/** Routing activities (ActivityCostSet) of the FGs and their semi-finished components for the chosen fiscal period (default the current one: activity prices are SAP's plan prices of THAT period); loaded when the tab is shown. */
+export function useActivities(plants: string[], mats: string[], active: boolean, chosen?: { gjahr: string; poper: string }): ActivitiesState {
+  const cur = useMemo(() => fiscalPeriod(), []);
+  const period = chosen ?? cur;
   const key = `${[...new Set(plants)].sort().join(',')}|${[...new Set(mats)].sort().join(',')}|${period.gjahr}${period.poper}`;
   const [st, setSt] = useState<{ key: string; status: ActivitiesState['status']; note: string; rows: ActivityRow[] }>({ key: '', status: 'idle', note: '', rows: [] });
   useEffect(() => {
