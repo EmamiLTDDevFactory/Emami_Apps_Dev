@@ -125,8 +125,13 @@ export default function MobCapPage() {
       });
       // NoCap/Active must always be explicit booleans on save, never missing. ValidFrom/ValidTo
       // arrive as SAP's /Date(ms)/ literal - normalize to plain 'YYYY-MM-DD' for the date inputs.
+      // MaxAmt (Edm.Decimal) arrives as a JSON string (e.g. "400.000"), not a real number - without
+      // this coercion it stays a string for any row the admin doesn't manually retype, and
+      // row.MaxAmt.toFixed(3) throws on save (silently caught, nothing actually saves, reload shows
+      // the unchanged original - looks like the edit "reverted").
       const gridRows: GridRow[] = loadedRows.map((r) => ({
         ...r,
+        MaxAmt: parseFloat(r.MaxAmt as any) || 0,
         NoCap: !!r.NoCap,
         Active: !!r.Active,
         ValidFrom: parseODataDateToIso(r.ValidFrom) || todayIso(),

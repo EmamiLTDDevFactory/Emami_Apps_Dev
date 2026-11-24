@@ -155,7 +155,11 @@ export default function DoaChainPage() {
       });
       // Hod/Active must always be explicit booleans on save, never missing - coerce right on load
       // in case an older row predates the Hod field or SAP returns it blank for a non-MBN row.
-      const gridRows: GridRow[] = loadedRows.map((r) => ({ ...r, Hod: !!r.Hod, Active: !!r.Active, _cid: newCid(), _isNew: false, _dirty: false, _rowError: null, _saving: false }));
+      // SAP's OData gateway serializes Edm.Decimal fields as JSON strings (e.g. "50001.00"), not
+      // real numbers - without this coercion, AmtFrom/AmtTo stay strings for any row the admin
+      // doesn't manually retype, and row.AmtFrom.toFixed(2) throws on save (silently caught,
+      // nothing actually saves, reload shows the unchanged original - looks like the edit "reverted").
+      const gridRows: GridRow[] = loadedRows.map((r) => ({ ...r, AmtFrom: parseFloat(r.AmtFrom as any) || 0, AmtTo: parseFloat(r.AmtTo as any) || 0, Hod: !!r.Hod, Active: !!r.Active, _cid: newCid(), _isNew: false, _dirty: false, _rowError: null, _saving: false }));
       originalsRef.current = Object.fromEntries(gridRows.map((r) => [r._cid, { ...r }]));
       setRows(gridRows);
       setLoaded(true);
