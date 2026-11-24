@@ -2,10 +2,21 @@
 
 import axios from 'axios';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { SAP_BASE_URL } from '../config/api';
+import { API_BASE_URL, SAP_BASE_URL } from '../config/api';
 import { AreaCode, Attachment, ClaimKPIs, ClaimStatus, DoaChainRow, ExpenseClaim, MobCapRow, MobileMonthItem, SAPError, TaxCode } from '../types';
 import { getClaimCreatedTimestamp } from '../utils/claim-date';
+import { getHubToken } from '../lib/hubEmailLogin';
 import { useAuth } from './AuthContext';
+
+// Authenticated calls to THIS app's own backend (embedded-apps/expense/server) instead of SAP
+// directly - used only for the claims/admin routes that backend now gates behind a verified hub
+// session (see server/src/middleware/hubAuth.js). Everything else in this file still calls SAP
+// directly, same as before; this is a deliberate, incremental move, not a full rewrite.
+const expenseApiClient = axios.create({ validateStatus: () => true });
+const hubAuthHeaders = () => {
+  const token = getHubToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
 
 interface ClaimContextType {
   claims: ExpenseClaim[];
@@ -372,11 +383,12 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // Don't fetch until the user is actually loaded from AuthContext
       if (!currentUser?.employeeId) return;
 
-      // Extract numeric PERNR from currentUser
-      // ClaimHeaderSet is open for direct anonymous GET (confirmed with Basis).
-      const loginIdForSAP = currentUser.employeeId.replace(/\D/g, '').padStart(8, '0');
-      const filter = encodeURIComponent(`LoginId eq '${loginIdForSAP}'`);
-      const response = await sapClient.get(`${SAP_BASE_URL}/ClaimHeaderSet?$filter=${filter}&$expand=CLAIMNAV&$format=json`);
+      // Goes through this app's own backend now, not SAP directly - the server resolves the real
+      // LoginId server-side from the verified hub session, so this can't be asked to return a
+      // different employee's claims just by changing what's in currentUser client-side.
+      const response = await expenseApiClient.get(`${API_BASE_URL}/api/expense/claims`, {
+        headers: hubAuthHeaders(),
+      });
       if (response.status < 200 || response.status >= 300) return;
 
       const sapClaims = extractSapResults(response.data);
@@ -384,7 +396,7 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // Replace the existing claims with the latest fetched set (clear when SAP returns empty)
       setClaims(mappedClaims);
     } catch (err) {
-      console.error('Failed to fetch SAP claims:', err);
+      console.error('Failed to fetch claims:', err);
     }
   };
 
@@ -1250,47 +1262,46 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  // Admin search — Zview='ADMIN' + LoginId (the admin's own PERNR) authorizes the call as a listed
-  // admin; ClaimId/EmpId/EmpName/Status/CostCenter are the actual search criteria, ANDed in only
-  // when filled. EmpId is sent exactly as typed — the backend itself pads it with ALPHA, so this
-  // must not pre-pad/reformat it. EmpId and Status are confirmed working on dev; CostCenter and
-  // EmpName returned no rows in the backend's own test - worth re-checking against cost centres/
-  // names known to actually have claims before assuming those two don't work. EmpName is an exact
-  // match server-side (OData eq, not a contains/wildcard search).
+  // Admin search/reject now go through this app's own backend (embedded-apps/expense/server),
+  // not SAP directly - the server independently verifies the caller is a real, currently-admin
+  // hub user (resolved server-side from SAP's own LoginSet, not trusted from the client) before it
+  // will relay anything to SAP's Zview='ADMIN' path. adminLoginId is kept as a parameter only so
+  // existing callers don't need to change - the server ignores it and uses its own verified
+  // identity instead. EmpId is sent exactly as typed — the backend pads it with ALPHA itself.
+  // EmpName is an exact match server-side (OData eq, not a contains/wildcard search).
   const adminSearchClaims = async (
     adminLoginId: string,
     criteria: { claimId?: string; empId?: string; empName?: string; status?: string; costCenter?: string }
   ): Promise<ExpenseClaim[]> => {
-    const parts = [`Zview eq 'ADMIN'`, `LoginId eq '${adminLoginId}'`];
-    if (criteria.claimId) parts.push(`ClaimId eq '${criteria.claimId}'`);
-    if (criteria.empId) parts.push(`EmpId eq '${criteria.empId}'`);
-    if (criteria.status) parts.push(`Status eq '${criteria.status}'`);
-    if (criteria.costCenter) parts.push(`CostCenter eq '${criteria.costCenter}'`);
-    if (criteria.empName) parts.push(`EmpName eq '${criteria.empName}'`);
-    const filter = encodeURIComponent(parts.join(' and '));
-    const response = await sapClient.get(`${SAP_BASE_URL}/ClaimHeaderSet?$filter=${filter}&$expand=CLAIMNAV&$format=json`);
+    const params = new URLSearchParams();
+    if (criteria.claimId) params.set('claimId', criteria.claimId);
+    if (criteria.empId) params.set('empId', criteria.empId);
+    if (criteria.status) params.set('status', criteria.status);
+    if (criteria.costCenter) params.set('costCenter', criteria.costCenter);
+    if (criteria.empName) params.set('empName', criteria.empName);
+    const response = await expenseApiClient.get(`${API_BASE_URL}/api/expense/admin/claims?${params.toString()}`, {
+      headers: hubAuthHeaders(),
+    });
     if (response.status < 200 || response.status >= 300) {
-      const errData = response.data;
-      const errMsg = errData?.error?.message?.value || errData?.error || errData?.d?.Message || errData?.Message || 'Admin claim search failed';
+      const errMsg = response.data?.error?.message?.value || response.data?.error || 'Admin claim search failed';
       throw new Error(errMsg);
     }
     const sapClaims = extractSapResults(response.data);
     return sapClaims.map((sap: any) => mapSapClaimToExpenseClaim(sap, expenseTypes));
   };
 
-  // Admin reject — same ApprovalRequired='R' shape as rejectClaim/rejectClaimFinance, plus the
-  // Zview flag that tells SAP this is the admin path (works on any open claim, any employee,
-  // including those who've left). Routes through the same ClaimHeaderSet POST helper since it's
-  // the same entity every other write here uses.
+  // Admin reject — see adminSearchClaims above for why this now goes through our own backend.
   const adminRejectClaim = async (claimId: string, adminLoginId: string, reason: string) => {
-    const putData = {
-      ClaimId: claimId,
-      LoginId: adminLoginId,
-      Zview: 'ADMIN',
-      ApprovalRequired: 'R',
-      RejReason: reason,
-    };
-    return postClaimHeaderUpdate(putData, 'Admin reject failed');
+    const response = await expenseApiClient.post(
+      `${API_BASE_URL}/api/expense/admin/claims/${encodeURIComponent(claimId)}/reject`,
+      { reason },
+      { headers: hubAuthHeaders() }
+    );
+    if (response.status < 200 || response.status >= 300) {
+      const errMsg = response.data?.error?.message?.value || response.data?.error || 'Admin reject failed';
+      throw new Error(errMsg);
+    }
+    return response.data;
   };
 
   // DOA Chain Maintenance (SM30-style grid) — new DoaChainSet entity. All filters are optional;

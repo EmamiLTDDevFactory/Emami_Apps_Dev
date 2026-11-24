@@ -27,6 +27,19 @@ export function hasHubSession(): boolean {
   }
 }
 
+/** The hub's own signed session JWT (same one Timesheet's and audit-capa's backends already
+ * verify independently via the shared HUB_AUTH_JWT_SECRET) — sent as Bearer auth to this app's own
+ * backend proxy routes (see ClaimContext.tsx's sensitiveApiClient), so the backend can verify who's
+ * really calling instead of trusting whatever identity a request claims. */
+export function getHubToken(): string | null {
+  if (typeof window === 'undefined' || !window.localStorage) return null;
+  try {
+    return window.localStorage.getItem(HUB_TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
 export function nameFromEmail(email: string): string {
   const local = email.split('@')[0] || '';
   const name = local
