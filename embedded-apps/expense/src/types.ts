@@ -134,3 +134,25 @@ export interface DoaChainRow {
   Aedat?: string;
   Aezet?: string;
 }
+
+// Mobile Expense cap maintenance (MobCapSet, live on dev 2026-11-24) - replaces the earlier
+// MobBusSet idea; the sales channel now comes from the employee's cost centre, not an HR mapping.
+export interface MobCapRow {
+  Mcat: string; // category: 'NS' (non-sales) | 'SC' | 'SH' | 'SM' | 'SE' | 'SG' (sales channels)
+  Kostl: string; // cost centre - must be blank for NS, mandatory for every sales category
+  Trfgr: string; // grade: E1, E2 (executive), M1..M5 (managerial)
+  Trfst: string; // level: 'A', 'B', or blank = any level
+  MaxAmt: number; // cap amount; ignored/cleared when NoCap is set
+  NoCap: boolean; // "on actuals" - no cap enforced, claim always goes on the actual amount
+  Active: boolean;
+  ValidFrom: string;
+  ValidTo: string;
+  Remark: string;
+  Aenam?: string; // logged-in admin's PERNR - UI must send this on every POST/PUT
+  // Audit fields - all backend-filled, read-only. Do not send Ernam/Erdat/Erzet/Aedat/Aezet.
+  Ernam?: string;
+  Erdat?: string;
+  Erzet?: string;
+  Aedat?: string;
+  Aezet?: string;
+}

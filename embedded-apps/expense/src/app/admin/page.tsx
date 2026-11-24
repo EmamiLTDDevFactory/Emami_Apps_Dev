@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Building2, ChevronRight, FileText, Lock, RefreshCw, Search, Settings2, ShieldAlert, Tag, User } from 'lucide-react';
+import { Building2, ChevronRight, FileText, IndianRupee, Lock, RefreshCw, Search, Settings2, ShieldAlert, Tag, User } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useClaim } from '../../context/ClaimContext';
 import { ExpenseClaim } from '../../types';
@@ -99,6 +99,24 @@ export default function AdminPage() {
           </div>
           <Button variant="primary" onClick={() => router.push('/doa-chain/')} className="shrink-0">
             Open DOA Chain Maintenance
+            <ChevronRight size={14} />
+          </Button>
+        </div>
+      </Card>
+
+      <Card className="mb-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand/10 text-brand">
+              <IndianRupee size={18} />
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-bold text-ink">Mobile Expense Cap Maintenance</p>
+              <p className="text-xs text-inkSoft">Maintain monthly mobile-expense caps by category, grade and level.</p>
+            </div>
+          </div>
+          <Button variant="primary" onClick={() => router.push('/mob-cap/')} className="shrink-0">
+            Open Mobile Cap Maintenance
             <ChevronRight size={14} />
           </Button>
         </div>

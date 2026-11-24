@@ -226,13 +226,12 @@ export default function DoaChainPage() {
     if (toSave.length === 0) return;
 
     // Validate every row being saved first - no network call at all if anything fails locally.
-    let hasError = false;
-    setRows((prev) => prev.map((r) => {
-      if (!(r._isNew || r._dirty)) return r;
-      const err = validateRow(r);
-      if (err) hasError = true;
-      return { ...r, _rowError: err };
-    }));
+    // Computed on the plain `toSave` array, not inside the setRows updater: React doesn't run a
+    // state updater synchronously at the call site, so mutating `hasError` in there and checking
+    // it right after was a no-op - every row (valid or not) was reaching the SAP POST/PUT call.
+    const errorByCid = new Map(toSave.map((r) => [r._cid, validateRow(r)]));
+    const hasError = Array.from(errorByCid.values()).some(Boolean);
+    setRows((prev) => prev.map((r) => (errorByCid.has(r._cid) ? { ...r, _rowError: errorByCid.get(r._cid) || null } : r)));
     if (hasError) return;
 
     setSavingAll(true);

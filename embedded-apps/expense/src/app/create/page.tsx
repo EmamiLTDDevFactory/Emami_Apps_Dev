@@ -66,6 +66,11 @@ type MonthClaimEntry = {
   // True once the EligibilitySet call has returned (success or fail) for this month - lets the UI
   // show "No Cap" instead of the "Auto-fetched..." placeholder once a real answer has come back.
   eligibilityChecked: boolean;
+  // Eligibility's Category field - 'NS' = non-sales (HoD pick-list routing above the cap),
+  // 'SC'/'SH'/'SM'/'SE'/'SG' = sales channels (straight to L1 supervisor, no choice). Same value
+  // expected on every month card for one employee, since it's a property of the employee's cost
+  // centre, not the month.
+  category: string | null;
   // Set once OCR reads the invoice's own printed date off this card's document and it doesn't
   // fall inside this card's month — e.g. an August invoice dropped into the July card. Informational
   // only (doesn't block anything); the card's period stays whatever slot the user put it in.
@@ -74,7 +79,7 @@ type MonthClaimEntry = {
   invoiceNumber: string | null;
 };
 
-const BLANK_MONTH_ENTRY: MonthClaimEntry = { attachment: null, claimAmount: '', eligibleAmount: null, eligibilityChecked: false, dateMismatchWarning: null, invoiceNumber: null };
+const BLANK_MONTH_ENTRY: MonthClaimEntry = { attachment: null, claimAmount: '', eligibleAmount: null, eligibilityChecked: false, category: null, dateMismatchWarning: null, invoiceNumber: null };
 
 const blobToBase64 = (blob: Blob): Promise<string> => new Promise((resolve, reject) => {
   const reader = new FileReader();
@@ -609,7 +614,7 @@ function CreateClaimInner() {
     const result = await fetchEligibility(currentUser.employeeId, monthKey);
     setMonthClaims((prev) => {
       const entry = prev[monthKey] || BLANK_MONTH_ENTRY;
-      return { ...prev, [monthKey]: { ...entry, eligibleAmount: result ? result.eligibleAmount : null, eligibilityChecked: true } };
+      return { ...prev, [monthKey]: { ...entry, eligibleAmount: result ? result.eligibleAmount : null, eligibilityChecked: true, category: result?.category || null } };
     });
   };
 
@@ -644,10 +649,18 @@ function CreateClaimInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [pickedMonths, monthClaims],
   );
-  // Non-CTC: Mobile Exp - the sales path (Category C1-C4, straight to L1 supervisor) no longer
-  // exists; EligibilitySet's Category is always 'B' now, so HoD routing applies whenever a mobile
-  // claim goes above the eligibility cap, full stop.
-  const needsHodChoice = isMobileExpense && anyMonthAboveEligibility;
+  // Non-CTC: Mobile Exp - Category is a property of the employee's cost centre (non-sales vs which
+  // sales channel), not the month, but it only arrives via the per-month Eligibility call - any
+  // month card that's already resolved it carries the same value.
+  const employeeCategory = useMemo(
+    () => pickedMonths.map((mk) => getMonthEntry(mk).category).find(Boolean) || null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pickedMonths, monthClaims],
+  );
+  // NS (non-sales) above the cap goes through the HoD pick list; any sales category (SC/SH/SM/
+  // SE/SG) above the cap goes straight to the employee's L1 supervisor instead, no choice offered.
+  const needsHodChoice = isMobileExpense && anyMonthAboveEligibility && employeeCategory === 'NS';
+  const needsL1Notice = isMobileExpense && anyMonthAboveEligibility && !!employeeCategory && employeeCategory !== 'NS';
 
   // Re-fetches whenever the total claim amount changes, per the backend's "Amount = header
   // TotalAmount" / "re-fetch when the total amount changes" instructions.
@@ -1529,8 +1542,9 @@ function CreateClaimInner() {
             </Card>
           )}
 
-          {/* Non-CTC: Mobile Exp - HoD choice, only once the claim total is above the eligibility
-              cap. The sales/L1-supervisor path no longer exists. */}
+          {/* Non-CTC: Mobile Exp - HoD choice (non-sales, Category='NS') or an L1-approver notice
+              (sales, Category SC/SH/SM/SE/SG), only once the claim total is above the eligibility
+              cap. */}
           {needsHodChoice && (
             <Card className="mb-3">
               <h2 className="mb-2 text-sm font-bold text-ink">Approval Routing</h2>
@@ -1549,6 +1563,12 @@ function CreateClaimInner() {
                   />
                 </Field>
               )}
+            </Card>
+          )}
+          {needsL1Notice && (
+            <Card className="mb-3">
+              <h2 className="mb-2 text-sm font-bold text-ink">Approval Routing</h2>
+              <p className="text-sm text-ink">Will go to your L1 approver.</p>
             </Card>
           )}
 

@@ -3,7 +3,7 @@
 import axios from 'axios';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { SAP_BASE_URL } from '../config/api';
-import { AreaCode, Attachment, ClaimKPIs, ClaimStatus, DoaChainRow, ExpenseClaim, MobileMonthItem, SAPError, TaxCode } from '../types';
+import { AreaCode, Attachment, ClaimKPIs, ClaimStatus, DoaChainRow, ExpenseClaim, MobCapRow, MobileMonthItem, SAPError, TaxCode } from '../types';
 import { getClaimCreatedTimestamp } from '../utils/claim-date';
 import { useAuth } from './AuthContext';
 
@@ -26,7 +26,7 @@ interface ClaimContextType {
   // CapFound is blank (no cap row found for this grade) - both mean "don't enforce a cap or show a
   // warning", per the backend's EligibilitySet contract.
   fetchEligibility: (empId: string, monthKey: string) => Promise<{ eligibleAmount: number | null; grade?: string; category?: string } | null>;
-  // Non-CTC: Mobile Exp, non-sales (Category='B') above the eligibility cap - lists the HoD(s)
+  // Non-CTC: Mobile Exp, non-sales (Category='NS') above the eligibility cap - lists the HoD(s)
   // flagged in the DOA chain (MBN, slab = claim amount) for the employee's cost centre. Empty
   // array (not an error) when there's nothing to choose - the backend falls back to the
   // supervisor flow in that case.
@@ -51,6 +51,10 @@ interface ClaimContextType {
   fetchDoaChain: (filters?: { doaCtype?: string; kostl?: string; expgrp?: string; amtFrom?: number; active?: boolean }) => Promise<DoaChainRow[]>;
   createDoaChainRow: (row: DoaChainRow, adminPernr: string) => Promise<DoaChainRow>;
   updateDoaChainRow: (row: DoaChainRow, adminPernr: string) => Promise<DoaChainRow>;
+  // Mobile Expense Cap Maintenance Actions — CRUD against the new MobCapSet entity.
+  fetchMobCaps: (filters?: { mcat?: string; kostl?: string; trfgr?: string; trfst?: string; active?: boolean }) => Promise<MobCapRow[]>;
+  createMobCapRow: (row: MobCapRow, adminPernr: string) => Promise<MobCapRow>;
+  updateMobCapRow: (row: MobCapRow, adminPernr: string) => Promise<MobCapRow>;
   // Error Management Actions
   retrySAPPosting: (errorId: string) => void;
   // Getters & Filters
@@ -822,7 +826,7 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  // Non-CTC: Mobile Exp - HoD choice list for non-sales (Category='B') claims above the cap.
+  // Non-CTC: Mobile Exp - HoD choice list for non-sales (Category='NS') claims above the cap.
   // Amount is the OData decimal literal format the backend example gives (e.g. "Amount eq 1200m").
   const fetchHodApprovers = async (empId: string, amount: number): Promise<{ apprId: string; apprName: string; apprEmail: string }[]> => {
     try {
@@ -1314,6 +1318,58 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return handleSapWriteResponse(response, 'Failed to update DOA chain row');
   };
 
+  // Mobile Expense Cap Maintenance (SM30-style grid) — new MobCapSet entity, live on dev
+  // 2026-11-24. Same optional-filters/no-filter-returns-everything pattern as DoaChainSet.
+  const fetchMobCaps = async (filters?: { mcat?: string; kostl?: string; trfgr?: string; trfst?: string; active?: boolean }): Promise<MobCapRow[]> => {
+    const parts: string[] = [];
+    if (filters?.mcat) parts.push(`Mcat eq '${filters.mcat}'`);
+    if (filters?.kostl) parts.push(`Kostl eq '${filters.kostl.toUpperCase()}'`);
+    if (filters?.trfgr) parts.push(`Trfgr eq '${filters.trfgr}'`);
+    if (filters?.trfst !== undefined) parts.push(`Trfst eq '${filters.trfst}'`);
+    if (filters?.active !== undefined) parts.push(`Active eq ${filters.active}`);
+    const filterQuery = parts.length ? `$filter=${encodeURIComponent(parts.join(' and '))}&` : '';
+    const response = await sapClient.get(`${SAP_BASE_URL}/MobCapSet?${filterQuery}$format=json`);
+    if (response.status < 200 || response.status >= 300) {
+      const errData = response.data;
+      const errMsg = errData?.error?.message?.value || errData?.error || errData?.d?.Message || errData?.Message || 'Failed to fetch mobile caps';
+      throw new Error(errMsg);
+    }
+    return extractSapResults(response.data) as MobCapRow[];
+  };
+
+  // ValidFrom/ValidTo must go as SAP's /Date(ms)/ literal on write - a plain 'YYYY-MM-DD' string
+  // silently lands as null, same gotcha toODataDate above already works around for claim fields.
+  const buildMobCapPayload = (row: MobCapRow, adminPernr: string) => ({
+    ...row,
+    ValidFrom: toODataDate(row.ValidFrom),
+    ValidTo: toODataDate(row.ValidTo),
+    Aenam: adminPernr,
+  });
+
+  const createMobCapRow = async (row: MobCapRow, adminPernr: string): Promise<MobCapRow> => {
+    const postData = buildMobCapPayload(row, adminPernr);
+    const response = await sapClient.post(`${SAP_BASE_URL}/MobCapSet`, postData, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    return handleSapWriteResponse(response, 'Failed to create mobile cap row') as MobCapRow;
+  };
+
+  // PUT must resend every field (whole-row replace, including Active); key fields can't change.
+  // Falls back to POST if the gateway rejects PUT-with-key-predicates, same as DoaChainSet.
+  const updateMobCapRow = async (row: MobCapRow, adminPernr: string): Promise<MobCapRow> => {
+    const putData = buildMobCapPayload(row, adminPernr);
+    const keyUrl = `MobCapSet(Mcat='${row.Mcat}',Kostl='${row.Kostl}',Trfgr='${row.Trfgr}',Trfst='${row.Trfst}')`;
+    let response = await sapClient.put(`${SAP_BASE_URL}/${keyUrl}`, putData, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (response.status === 405) {
+      response = await sapClient.post(`${SAP_BASE_URL}/MobCapSet`, putData, {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    return handleSapWriteResponse(response, 'Failed to update mobile cap row');
+  };
+
   // BR-018, BR-019: Retry SAP Posting — local-only, backs the debug-only errors screen.
   const retrySAPPosting = (errorId: string) => {
     setErrors((prev) => prev.map((err) => {
@@ -1448,6 +1504,9 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         fetchDoaChain,
         createDoaChainRow,
         updateDoaChainRow,
+        fetchMobCaps,
+        createMobCapRow,
+        updateMobCapRow,
         retrySAPPosting,
         getClaimById,
         filterClaims,
