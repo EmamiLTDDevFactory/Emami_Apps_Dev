@@ -2,7 +2,7 @@ import {
   Landmark, Truck, Activity, Receipt, Home, LayoutGrid, Star,
   HelpCircle, CircleUserRound, ShieldCheck, ClipboardCheck, TrendingUp, Code2, PackageSearch, Wallet,
   CalendarClock, FileCheck2, HeartPulse, LineChart, ScanSearch, ShieldAlert, FileSpreadsheet, FileSearch, Gavel, Calculator, Hourglass,
-  Bot, DoorOpen, UserCog, LifeBuoy, Layers, Contact, MessageSquareReply, Route, Megaphone,
+  Bot, DoorOpen, UserCog, LifeBuoy, Layers, Contact, MessageSquareReply, Route, Megaphone, KeyRound,
 } from 'lucide-react';
 import type { AppItem, NavItem, CategoryFilter } from '../types';
 
@@ -101,6 +101,7 @@ export const NAV: NavItem[] = [
   { id: 'MyApplications', label: 'My Applications', icon: LayoutGrid },
   { id: 'Favorites', label: 'Favorites', icon: Star },
   { id: 'People', label: 'People', icon: Contact },
+  { id: 'AccessRequests', label: 'Access Requests', icon: KeyRound },
   { id: 'Help', label: 'Help & Support', icon: HelpCircle },
   { id: 'Settings', label: 'My Profile', icon: CircleUserRound },
   { id: 'UserAccess', label: 'Admin Center', icon: ShieldCheck },
@@ -114,6 +115,7 @@ export const NAV_ROUTES: Record<string, string> = {
   Favorites: '/favorites',
   Recent: '/recent',
   People: '/people',
+  AccessRequests: '/access-requests',
   Help: '/help',
   Settings: '/settings',
   UserAccess: '/manage-access',
