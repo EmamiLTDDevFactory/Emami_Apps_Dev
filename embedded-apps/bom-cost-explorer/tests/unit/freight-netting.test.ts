@@ -59,7 +59,7 @@ describe('debit / credit netting', () => {
   it('the PO line exports carry the net standard side and the purchase org', () => {
     const lines = poLines(comps, [act('10', '12', { Ekorg: '1000' }), std('10', '9', { Ekorg: '1000' })], range);
     const h = poLinesSheet(lines, DEFAULT_RULE).cols.map((c) => c.header);
-    for (const need of ['Net actual condition value (INR)', 'Net standard condition value (INR)', 'Variance amount (Actual - Standard, INR)', 'Purchase org']) expect(h).toContain(need);
+    for (const need of ['Net actual condition value (INR)', 'Std Freight', 'Variance amount (Actual - Standard, INR)', 'Purchase org']) expect(h).toContain(need);
     expect(lines[0].purchOrg).toBe('1000');
   });
 });

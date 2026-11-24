@@ -81,3 +81,9 @@ Machine, Labour, Power and Steam are SAP routing activities priced with the acti
 2. Sales view and MIS use "actual cost of the period" (SAP WAC); the Margin tab uses the invoice cost conditions or your current-COGM file.
 3. Sales budget (`ZSALES_BUD_TGT`) is empty, so the price-volume-mix bridge shows nothing.
 4. Five-way variance bridge, projection and scheme breakup are not built.
+
+## Freight analysis (Analysis > Freight analysis)
+- **Screen variants:** save the whole selection (materials, plants, material types, dates, freight look-back, purchase organisations, include freight, latest only) and the alert rule under a name; "Dates relative to today" saves "N days back" so a variant always means the same window; one variant can be the default and is applied when the screen opens. Variants are kept in this browser (no SAP object).
+- **Excel headers:** the standard quantity is "GRN QTY" and the standard amount "Std Freight" (was "Standard delivered quantity" / "Net standard condition value").
+- **Plant wise:** a view that compares Std Freight with the actual freight per plant (all lines, and the variance on the lines that have both sides), with Excel; click a plant to open its components.
+- **Supplier / vendor name and Source / origin location:** columns in the component and material views and in their Excel (the PO view already had them). Supplier = `Name1` / `Lifnr` of the PO line; Source / origin location = the place of supply (`PlcSup`) SAP sends with the goods receipt.
