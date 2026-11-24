@@ -119,7 +119,7 @@ export default function AccessRequestForm({ mode, initialFirstName = '', initial
         <div style={{ width: 56, height: 56, borderRadius: 28, margin: '0 auto 14px', backgroundColor: colors.greenTint, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <CheckCircle2 size={30} color={colors.green} />
         </div>
-        <p style={{ margin: 0, fontSize: 20, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink }}>Request submitted</p>
+        <p style={{ margin: 0, fontSize: 20, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink }}>Incident raised</p>
         <p style={{ margin: '8px auto 0', maxWidth: 380, fontSize: 13.5, fontFamily: fonts.sansRegular, color: colors.inkSoft, lineHeight: '20px' }}>
           A Super Admin will review each application and role. You will get an email at <b style={{ color: colors.ink }}>{email.trim().toLowerCase()}</b> with the outcome{mode === 'public' ? ', and your access is switched on automatically once approved' : ''}.
         </p>
@@ -127,11 +127,11 @@ export default function AccessRequestForm({ mode, initialFirstName = '', initial
           type="button"
           onClick={() => { navigator.clipboard?.writeText(done).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1800); }).catch(() => {}); }}
           style={{ marginTop: 18, display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderRadius: radii.lg, border: `1px dashed ${colors.rust}66`, backgroundColor: `${colors.rust}0d`, cursor: 'pointer', fontSize: 16, letterSpacing: 0.6, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.rust }}
-          title="Copy reference"
+          title="Copy incident number"
         >
           {done} <Copy size={14} />
         </button>
-        <p style={{ margin: '8px 0 0', fontSize: 11.5, color: colors.inkSoft, fontFamily: fonts.sansRegular }}>{copied ? 'Copied.' : 'Keep this reference — it is how you track the request.'}</p>
+        <p style={{ margin: '8px 0 0', fontSize: 11.5, color: colors.inkSoft, fontFamily: fonts.sansRegular }}>{copied ? 'Copied.' : 'Keep this incident number — it is how you track the request.'}</p>
         {onReset && (
           <button type="button" className="ac-btn" onClick={onReset} style={{ marginTop: 18, background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.rust }}>
             Done

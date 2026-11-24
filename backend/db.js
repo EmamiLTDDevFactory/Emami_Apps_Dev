@@ -265,6 +265,13 @@ async function runMigrations() {
             CREATE INDEX IF NOT EXISTS access_change_history_occurred_at_idx
                 ON emami_apps.access_change_history (occurred_at DESC)
         `);
+        // Incident (Access Request) a grant came from — see accessRequests.js.
+        await pool.query(`
+            ALTER TABLE emami_apps.access_change_history
+                ADD COLUMN IF NOT EXISTS incident_id bigint,
+                ADD COLUMN IF NOT EXISTS incident_ref text,
+                ADD COLUMN IF NOT EXISTS incident_note text
+        `);
         console.log('[postgres] Access change history schema up to date (emami_apps.access_change_history).');
     } catch (err) {
         console.error('[postgres] Access change history migration failed:', err.message);

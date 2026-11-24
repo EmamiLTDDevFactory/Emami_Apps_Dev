@@ -5,6 +5,8 @@ import { UserPlus, UserMinus, Power, ShieldCheck, AppWindow, Phone, PenLine } fr
 import type { AccessChangeEntry, AccessChangeType } from '../../types';
 import { colors, fonts, fontWeights } from '../../theme/tokens';
 import { TONE_COLOR, changeTone, describeChange } from './adminShared';
+import { useAuth } from '../../context/AuthContext';
+import { useRouter } from 'next/navigation';
 
 const TYPE_ICON: Record<AccessChangeType, React.ElementType> = {
   USER_ADDED: UserPlus,
@@ -29,6 +31,9 @@ function dayLabel(iso: string): string {
 /** Day-grouped audit trail — each entry gets a tone-coloured icon (green = granted/added,
  * red = revoked/removed, indigo = changed). */
 export default function ChangeTimeline({ changes, hideTarget, onOpenUser }: { changes: AccessChangeEntry[]; hideTarget?: boolean; onOpenUser?: (email: string) => void }) {
+  const router = useRouter();
+  const { access } = useAuth();
+  const canOpenIncident = access?.accessLevel === 'Super Admin'; // the Requests tab is Super Admin only
   const groups: { day: string; items: AccessChangeEntry[] }[] = [];
   for (const c of changes) {
     const day = dayLabel(c.occurredAt);
@@ -70,6 +75,17 @@ export default function ChangeTimeline({ changes, hideTarget, onOpenUser }: { ch
                         ))}
                       {c.changedBy && c.changedBy !== c.targetEmail ? `${hideTarget ? '' : ' · '}by ${c.changedBy}` : ''}
                     </p>
+                    {c.incidentRef && (
+                      <p style={{ margin: '3px 0 0', fontSize: 11.5, fontFamily: fonts.sansRegular, color: colors.inkSoft, lineHeight: '16px' }}>
+                        Incident{' '}
+                        {canOpenIncident && c.incidentId ? (
+                          <button type="button" onClick={() => router.push(`/manage-access/?tab=requests&request=${c.incidentId}`)} style={{ background: `${colors.rust}12`, border: 'none', borderRadius: 6, padding: '1px 7px', cursor: 'pointer', color: colors.rust, fontSize: 11, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold }}>{c.incidentRef}</button>
+                        ) : (
+                          <span style={{ background: `${colors.rust}12`, borderRadius: 6, padding: '1px 7px', color: colors.rust, fontSize: 11, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold }}>{c.incidentRef}</span>
+                        )}
+                        {c.incidentNote ? ` — ${c.incidentNote}` : ''}
+                      </p>
+                    )}
                   </div>
                 </div>
               );

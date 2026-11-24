@@ -79,6 +79,9 @@ export interface AccessChange {
   oldValue: string | null;
   newValue: string | null;
   occurredAt: string;
+  /** Access Request incident this grant came from (INC-2026-00001), with the requester's reason. */
+  incidentRef?: string | null;
+  incidentNote?: string | null;
 }
 
 /** 401 = no/expired hub session, 403 = signed in but not a Super Admin/Admin. */

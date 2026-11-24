@@ -2,6 +2,7 @@
 // Same Postgres-reachable backend as Manage Access (NEXT_PUBLIC_ACCESS_API_URL). authFetch attaches the session token when
 // there is one: a signed-in request is stored as verified, one from the login page (no token) as unverified.
 import { authFetch } from './authFetch';
+import { ACCESS_CHANGED_EVENT } from './accessApi';
 
 const ACCESS_API_URL =
   process.env.NEXT_PUBLIC_ACCESS_API_URL || process.env.NEXT_PUBLIC_AUTH_API_URL || 'http://localhost:4000/api';
@@ -102,10 +103,15 @@ export const listAccessRequests = (status?: RequestStatus) =>
 
 export const getAccessRequest = (id: number) => call(`${BASE}/${id}`, undefined, (d) => ({ request: d.request as AccessRequestDetail }));
 
-export const decideAccessRequest = (
+export const decideAccessRequest = async (
   id: number,
   body: { decisions?: { itemId: number; decision: 'Approved' | 'Rejected'; note?: string }[]; sendBack?: boolean; note?: string }
-) => call(`${BASE}/${id}/decision`, json('POST', body), (d) => ({ status: d.status as RequestStatus }));
+) => {
+  const res = await call(`${BASE}/${id}/decision`, json('POST', body), (d) => ({ status: d.status as RequestStatus }));
+  // A decision changes someone's access and the pending count: tell the sidebar badge / own-grants refresh.
+  if (res.ok && typeof window !== 'undefined') window.dispatchEvent(new Event(ACCESS_CHANGED_EVENT));
+  return res;
+};
 
 /** Downloads one stored document. The route needs the Authorization header, so it is fetched and saved from a blob. */
 export async function downloadRequestFile(requestId: number, file: RequestFile): Promise<{ ok: boolean; error?: string }> {
