@@ -14,6 +14,8 @@ import { buildBreakup, qtyText, sumBreakups, type BreakupLine, type ElementCell,
 import { CONVERSION_ELEMENTS, ELEMENT_LABEL, MATERIAL_ELEMENTS, type Element, type ProcOrderRow } from '@/lib/costbreakup/procOrder';
 import { useProcOrders } from '@/lib/costbreakup/useProcOrders';
 import { recentPeriods } from '@/lib/costbreakup/activity';
+import AiNarrateSlot from '../ai/AiNarrateSlot';
+import { costingSpec } from '@/lib/ai/builders/quality';
 import { useActivities } from '@/lib/costbreakup/useActivities';
 import { isLeafRow } from '@/lib/cost/tree';
 import { exportTable, type XCol } from '@/lib/client/export';
@@ -115,6 +117,7 @@ export default function CostBreakup<T extends BreakupLine>({ lines, qtyOf, fgQty
             <Pill tone={po.rows.length ? 'good' : 'neutral'}>{po.rows.length ? `${po.rows.length.toLocaleString('en-IN')} rows` : 'no orders in the period'}</Pill>
           </>
         )}
+        <AiNarrateSlot className="basis-full" label="Why could this differ from CK13N?" build={() => costingSpec({ fgs, lines: lines.filter((l) => isLeafRow(l)).map((l) => ({ SelSource: l.SelSource, SelRatePcInr: l.SelRatePcInr })), periodText: perTxt, auto: act.auto, actStatus: act.status })} />
         <Button size="sm" className="ml-auto" onClick={doExport}><FileSpreadsheet size={14} /> Excel</Button>
       </div>
 

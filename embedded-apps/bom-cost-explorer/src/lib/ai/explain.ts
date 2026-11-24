@@ -2,10 +2,9 @@
  * Cost-change explainer: variance result -> FACTS (every number the model may use) -> model narrative under the
  * numbers rule, or the deterministic template (no model) when there is no key, the call fails or validation fails twice.
  */
-import type Anthropic from '@anthropic-ai/sdk';
 import { D } from '../cost/decimal';
 import { FactBook } from './facts';
-import { answerFromFacts, type FactsAnswer } from './gateway';
+import { answerFromFacts, type AiClient, type FactsAnswer } from './gateway';
 import { EXPLAINER_SYSTEM } from './prompts/explainer';
 import type { AiAnswer } from './validate';
 import type { ExplainResult, EffectType } from './variance';
@@ -61,10 +60,10 @@ export function explainTemplate(r: ExplainResult, f: ExplainFacts, c: ExplainCon
   return { paragraphs, checks };
 }
 
-export async function explainWithModel(client: Anthropic | null, model: string, r: ExplainResult, c: ExplainContext, user: string): Promise<FactsAnswer & { facts: ExplainFacts }> {
+export async function explainWithModel(client: AiClient | null, model: string, r: ExplainResult, c: ExplainContext, user: string): Promise<FactsAnswer & { facts: ExplainFacts }> {
   const facts = explainFacts(r, c);
   const template = () => explainTemplate(r, facts, c);
-  if (!client) return { answer: template(), template: true, validatorOk: false, attempts: 0, usage: { input: 0, output: 0 }, facts, error: 'No Claude API key: showing the template. Add a key in AI settings for a written explanation.' };
+  if (!client) return { answer: template(), template: true, validatorOk: false, attempts: 0, usage: { input: 0, output: 0 }, facts, error: 'No Grok API key: showing the template. Add a key in AI settings for a written explanation.' };
   const task = `Explain the cost change of ${c.sku} (${c.headtxt}) in plant ${c.plant}, ${c.baselineLabel} versus ${c.currentLabel}. Warnings: ${r.warnings.length ? r.warnings.join(' ') : 'none'}.`;
   const res = await answerFromFacts({ client, model, system: EXPLAINER_SYSTEM, facts: facts.book.list(), task, template, ignore: [c.plant, c.sku], feature: 'explain', user, question: task, sapSystem: c.system });
   return { ...res, facts };

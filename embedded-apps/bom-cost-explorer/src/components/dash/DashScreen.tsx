@@ -12,6 +12,10 @@ import { errorText } from '../budget-mgmt/shared';
 import { fetchMis, fetchMisDetail } from '@/lib/dash/service';
 import { MisFgTable } from './MisDetail';
 import BridgeBlock from './BridgeBlock';
+import AiNarrateSlot from '../ai/AiNarrateSlot';
+import AiExtras from '../ai/AiExtras';
+import AskDashButton from '../ai/AskDashButton';
+import { misSpec } from '@/lib/ai/builders/screens';
 import FgOrdersDrawer, { type FgTarget } from './FgOrdersDrawer';
 import { brandViews, insights, totals, type BrandView, type Window } from '@/lib/dash/logic';
 import { BAND, Link, NeedsSap, fyStart, lakh, pct, tdCls, thCls, today } from './parts';
@@ -74,7 +78,7 @@ export default function DashScreen() {
   return (
     <PlanFrame active="dash">
       <div className="mx-auto flex w-full max-w-[1800px] flex-col gap-3">
-        <h2 className="text-lg font-extrabold">Costing dashboard</h2>
+        <div className="flex flex-wrap items-center gap-3"><h2 className="text-lg font-extrabold">Costing dashboard</h2><AskDashButton /></div>
         <Tabs label="Costing dashboard" tabs={TABS} value={tab} onChange={setTab} />
 
         {tab === 'mis' && (
@@ -110,6 +114,7 @@ export default function DashScreen() {
                   Plants {ran?.plants} · as of {ran?.asOf} · month to date and financial year to date{fy ? ` (FY ${fy}` : ''}{fy && version ? `, latest approved budget version ${version}` : ''}{fy ? ')' : ''}. Actual = RM + PM + perfume + conversion of the period (SAP, INR).
                   Budget = approved budget cost per piece x actual quantity (ZMM_FBUDCOST_SUM, matched on plant, CRSSKU, business, scheme and material type, as in Margin). Amounts in ₹ lakh.
                 </p>
+                <AiNarrateSlot build={() => (rows && ran ? misSpec({ brands, tot, plants: ran.plants, asOf: ran.asOf, fy, version, bn: hn.brand }) : null)} label="Explain the MIS with AI" />
                 <MisTable brands={brands} tot={tot} bn={hn.brand} detail={detail} busy={detailBusy} err={detailErr} onNeed={loadDetail} pn={hn.product} onFg={(r) => ran && setFgT({ matnr: r.Matnr, maktx: r.Maktx, werks: r.Werks ?? ran.plants.split(/[\s,;]+/)[0], brand: r.Zbrand, from: fyStart(ran.asOf), to: ran.asOf })} />
                 <FgOrdersDrawer target={fgT} onClose={() => setFgT(null)} />
               </>
@@ -146,10 +151,11 @@ export default function DashScreen() {
             {fy && <p className="mt-3 text-xs text-muted">The MIS tab used the latest approved version{version ? ` (${version})` : ''} of financial year {fy}.</p>}
           </Card>
         )}
+        {tab === 'ai' && <AiExtras />}
         {tab === 'ai' && (
           <Card className="p-4">
             <h3 className="mb-1 text-base font-extrabold">Notes from the numbers</h3>
-            <p className="mb-3 text-xs text-muted">Rule-based: each note only states what the MIS figures show (brand red above 3 % over budget, amber above 2 %). No language model is used.</p>
+            <p className="mb-3 text-xs text-muted">Rule-based: each note only states what the MIS figures show (brand red above 3 % over budget, amber above 2 %). No language model writes these notes; the AI tools above use Grok on the screens' figures.</p>
             {!rows ? <p className="text-sm text-muted">Run the MIS tab first; the notes are made from its result.</p>
               : !notes.length ? <p className="text-sm text-muted">Nothing to flag: no brand is above the amber threshold and every finished good has a budget.</p>
               : <ul className="flex flex-col gap-2">{notes.map((n, i) => (

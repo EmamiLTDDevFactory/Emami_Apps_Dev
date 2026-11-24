@@ -5,7 +5,7 @@
      (Edm.Decimal "m" suffix, Edm.Boolean flags on CostLineSet, BudgetYr quoted, "or" lists).
    - buildSnapshots: one snapshot per FG header, leaf rows only, one line per component + unit (the app's
      src/lib/snapshots format, plus sel_curr): q = ProdQty / ExplQty, rates quantity-weighted.
-   - evaluateRules: R1..R9 on yesterday vs today (and 30 days ago), with rupee impact, severity and evidence.
+   - evaluateRules: R1..R10 on yesterday vs today (and 30 days ago), with rupee impact, severity and evidence.
    - shouldNotify: an unchanged open alert is not repeated for 7 days unless it got 25 % worse; snoozed = silent.
    - digest: subject, HTML / text table ranked by impact, deterministic summary, signed acknowledge / snooze links.
    - validateNumbers: the AI numbers rule (every number in the summary must be a cited fact).
@@ -136,7 +136,7 @@ function severity(impactInr, t) {
  * prev / cur / d30: snapshots ({ total_per_unit, lines }); history: totals of the last 7 days; volume: pieces for the
  * rupee impact (plan quantity or 1000); checks: { prev: [...], cur: [...] } PlanCheckSet rows (R9).
  */
-function evaluateRules({ prev, cur, d30, history = [], monthStart = null, volume = 1000, thresholds = {}, checks = null }) {
+function evaluateRules({ prev, cur, d30, history = [], history30 = [], monthStart = null, volume = 1000, thresholds = {}, checks = null }) {
     const t = { ...DEFAULT_THRESHOLDS, ...thresholds };
     const out = [];
     const vol = toBig(volume || 1000);
@@ -178,6 +178,17 @@ function evaluateRules({ prev, cur, d30, history = [], monthStart = null, volume
             if (qp !== null && Math.abs(qp) > t.r7QtyPct) add('R7', l1.idnrk, qp > 0 ? 'qty up' : 'qty down', Dec.mul(toBig(l1.q) - toBig(l0.q), p0), { text: 'Quantity per piece changed', before: l0.q, after: l1.q, pct: qp, maktx: l1.maktx });
         }
         for (const [k, l0] of b) if (!c.has(k)) add('R7', l0.idnrk, 'removed', -perPc(l0), { text: 'Component removed from the BOM', before: l0.q, maktx: l0.maktx });
+    }
+    // R10: statistical outlier of today's cost per piece against its own last 30 days (needs 8 snapshots; z above 3 and a real spread; not when R1 already flagged the move)
+    if (prev && history30.length >= 8 && !out.some((x) => x.rule === 'R1')) {
+        const xs = history30.map((h) => Number(h)).filter((x) => Number.isFinite(x));
+        const m = xs.reduce((a, b) => a + b, 0) / xs.length;
+        const sd = Math.sqrt(xs.reduce((a, b) => a + (b - m) ** 2, 0) / xs.length);
+        const cur1 = Number(Dec.str(total1, 6));
+        if (xs.length >= 8 && sd > 0 && m > 0 && sd / m > 0.0005) {
+            const z = (cur1 - m) / sd;
+            if (Math.abs(z) > (t.r10Z || 3)) add('R10', '', z > 0 ? 'up' : 'down', total1 - toBig(String(m.toFixed(6))), { text: 'Cost per piece is a statistical outlier against its last 30 days', after: cur.total_per_unit, mean_30d: m.toFixed(6), stdev_30d: sd.toFixed(6), z: Math.round(z * 100) / 100, snapshots: xs.length });
+        }
     }
     // R4 / R8 need no history
     const total = total1 === 0n ? 1n : total1;
@@ -229,7 +240,7 @@ function verifyLink(secret, token) {
 /* ---------- digest ---------- */
 const inr = (n) => Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const RULE_NAME = { R1: 'Cost per piece moved', R2: 'Component rate moved', R3: 'Rate source worse', R4: 'No / MBEW-only rate', R5: 'Freight jump', R6: 'FX moved', R7: 'BOM changed', R8: 'Low cover', R9: 'Plan check' };
+const RULE_NAME = { R1: 'Cost per piece moved', R2: 'Component rate moved', R3: 'Rate source worse', R4: 'No / MBEW-only rate', R5: 'Freight jump', R6: 'FX moved', R7: 'BOM changed', R8: 'Low cover', R9: 'Plan check', R10: 'Statistical outlier' };
 
 function digestSubject(date, alerts) {
     const high = alerts.filter((a) => a.severity === 'high').length;

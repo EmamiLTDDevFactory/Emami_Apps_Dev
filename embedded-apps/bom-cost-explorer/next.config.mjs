@@ -18,7 +18,7 @@ const DEPLOYED_APP_ENV = 'qa';
 // off. `next dev` and the tests stay off unless PLAN_MODULE_ENABLED is set.
 const DEPLOYED_PLAN_MODULE = 'true';
 // AI layer (explain change, costing assistant): on for the deployed DEV build so it can be tried; off elsewhere unless
-// AI_ENABLED / NEXT_PUBLIC_AI_ENABLED is set. Each user types their own Claude API key on the AI settings screen.
+// AI_ENABLED / NEXT_PUBLIC_AI_ENABLED is set. Grok (xAI) is the model: each user types their Grok API key on the AI settings screen, or the hub backend holds one key (NEXT_PUBLIC_AI_BASE_URL + NEXT_PUBLIC_AI_SERVER_KEY, see docs/AI_FEATURES.md).
 const DEPLOYED_AI_ENABLED = 'true';
 // Daily cost watch pages (backend: hub backend /api/me/cost-watch). WATCH_ENABLED / NEXT_PUBLIC_WATCH_ENABLED win.
 const DEPLOYED_WATCH_ENABLED = 'true';

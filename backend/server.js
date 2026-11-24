@@ -83,6 +83,8 @@ try {
 apiRouter.use('/me/notifications', require('./notifications').router);
 // Daily cost watch (Costing Cockpit): rides the existing nginx /api/me rule; see costWatch.js.
 apiRouter.use('/me/cost-watch', require('./costWatch'));
+// Costing Cockpit AI proxy (Grok / xAI, key on the server); rides /api/me. See cockpitAi.js.
+apiRouter.use('/me/cockpit-ai', require('./cockpitAi'));
 // Cascade Pricing -> SAP ZMM_CASCADE_SRV (server side; the app is static). Rides /api/me; see cascadePricing.js.
 apiRouter.use('/me/cascade-pricing', require('./cascadePricing'));
 // CAPEX Portal (Fiori ZCAPEX_PORTAL -> Emami Apps) -> SAP ZCAPEX_PORTAL_SRV; identity travels as zcpxmail/zcpxkey. Rides /api/me; see capex.js.

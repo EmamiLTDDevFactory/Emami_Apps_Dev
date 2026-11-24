@@ -9,6 +9,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Card, Empty, Segmented, Spinner, Stat, cx, inputBase, inputCls } from '../ui';
 import { ErrorBox, errorText } from '../budget-mgmt/shared';
 import { fetchMargin, type MarginSel } from '@/lib/dash/service';
+import AiNarrateSlot from '../ai/AiNarrateSlot';
+import { marginSpec } from '@/lib/ai/builders/screens';
 import SalesInvoices, { type InvoiceTarget } from './SalesInvoices';
 import CdrillDrawer, { type DrillTarget } from './CdrillDrawer';
 import { NO_DRIVERS, cogmDrivers, groupBy, marginNotes, parseCurrentCogm, parseMargin, promoBreakeven, sensitivity, totalOf, type Basis, type Cur, type Drivers, type Group, type MLine, type Result } from '@/lib/dash/margin';
@@ -188,6 +190,7 @@ export default function MarginView() {
           </Card>
           <Card className="p-4">
             <h3 className="text-sm font-extrabold">Reading</h3>
+            <AiNarrateSlot className="mb-2 mt-1" label="Explain the margin with AI" build={() => (ran ? marginSpec({ base, scen, groups, nbc, by: by === 'brand' ? 'brand' : by === 'prod' ? 'brand and product' : by === 'cat' ? 'product category' : by === 'sku' ? 'material' : 'customer', period: `${ran.from} to ${ran.to}`, sens }) : null)} />
             <ul className="mt-1 list-disc pl-5 text-xs">{notes.map((n, i) => <li key={i} className={n.tone === 'bad' ? 'text-bad' : n.tone === 'warn' ? 'text-warn' : n.tone === 'good' ? 'text-good' : ''}>{n.text}</li>)}</ul>
             <p className="mt-2 text-2xs text-muted">Gross margin = revenue - COGS; GM % = gross margin / revenue x 100. Channel margins: retailer = ZREM + ZTDP, distributor = ZDIM + ZTDM, super stockist = ZSSM + ZTSM. GST = JOIG + JOCG + JOSG. Budget cost is the latest approved version of the financial year, matched on CRSSKU + business vertical + scheme; SKUs without one are flagged NBC. Finished goods (FERT), INR invoices; invoices and debit memos add, cancellations and credit memos subtract.</p>
           </Card>

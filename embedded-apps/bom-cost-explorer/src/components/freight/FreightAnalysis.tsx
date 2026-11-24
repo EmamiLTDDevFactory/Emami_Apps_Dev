@@ -9,6 +9,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { AlertTriangle, BellRing, FileSpreadsheet, Play, Square } from 'lucide-react';
 import PlanFrame from '../plan/PlanFrame';
+import AiNarrateSlot from '../ai/AiNarrateSlot';
+import { freightSpec } from '@/lib/ai/builders/screens';
 import { MaterialPicker, PlantPicker } from '../Pickers';
 import type { PlantsState } from '../FilterPanel';
 import { Button, Card, Empty, Field, Pill, Segmented, Stat, cx, inputCls } from '../ui';
@@ -307,6 +309,7 @@ function Results({ data, ran, rule, latestOnly, stale }: { data: AnalysisData; r
         <Button size="sm" variant="ghost" onClick={() => doExport('csv')} disabled={view === 'plant' ? !plantRows.length : view === 'material' ? !matRows.length : view === 'posting' ? !postingRows.length : view === 'po' ? !poRows.length : !rows.length}>CSV</Button>
         <span className="ml-auto text-xs text-faint">Alerts first, then the biggest gap.</span>
       </div>
+      <AiNarrateSlot label="Explain the freight with AI" build={() => freightSpec({ totals, materials: allMat, plants: plantRows, rule: ruleText(rule), period: allDates ? `all dates (${hidden.earliest} to ${hidden.latest})` : `${ran.range.from} to ${ran.range.to}` })} />
       {view === 'plant' ? (
       <div className="overflow-x-auto rounded-2xl border border-line bg-panel shadow-card">
         <table className="w-full text-sm">

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AiClient, ChatResult } from '@/lib/ai/gateway';
 import { resetSapConfig } from '@/lib/sap/config';
 import { mockRequestLog } from '../../mock/sap';
 import { FactBook } from '@/lib/ai/facts';
@@ -17,12 +17,12 @@ const ctx = (o: Partial<ToolContext> = {}): ToolContext => ({ book: new FactBook
 const q = () => ({ ...defaultQuery('B'), materials: ['FG1001'], plants: ['1000'] });
 
 /** Scripted mock model: each call returns the next message. */
-function mockClient(script: Partial<Anthropic.Message>[]) {
-  const next = () => ({ id: 'm', type: 'message', role: 'assistant', model: 'x', stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 10, output_tokens: 5 }, content: [], ...script.shift() }) as Anthropic.Message;
-  return { messages: { create: async () => next(), stream: () => ({ on() { return this; }, finalMessage: async () => next() }) } } as unknown as Anthropic;
+function mockClient(script: Partial<ChatResult>[]): AiClient {
+  const next = (): ChatResult => ({ content: '', toolCalls: [], finish: 'stop', usage: { input: 10, output: 5 }, ...script.shift() });
+  return { chat: async () => next(), stream: async () => next() };
 }
-const text = (t: string) => ({ content: [{ type: 'text', text: t, citations: null }] as Anthropic.ContentBlock[] });
-const tool = (name: string, input: unknown) => ({ stop_reason: 'tool_use' as const, content: [{ type: 'tool_use', id: `t${Math.random()}`, name, input }] as Anthropic.ContentBlock[] });
+const text = (t: string): Partial<ChatResult> => ({ content: t });
+const tool = (name: string, input: unknown): Partial<ChatResult> => ({ finish: 'tool_calls', toolCalls: [{ id: `t${Math.random()}`, name, arguments: JSON.stringify(input) }] });
 
 describe('AI flag', () => {
   it('AI is off by default (no button, no request, no AI code loaded)', () => expect(AI_ENABLED).toBe(false));

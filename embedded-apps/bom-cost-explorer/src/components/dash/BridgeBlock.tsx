@@ -7,6 +7,8 @@ import { ErrorBox, errorText } from '../budget-mgmt/shared';
 import { fetchBridge } from '@/lib/dash/service';
 import type { BridgeRow } from '@/lib/dash/types';
 import { lakh, tdCls, thCls } from './parts';
+import AiNarrateSlot from '../ai/AiNarrateSlot';
+import { bridgeSpec } from '@/lib/ai/builders/screens';
 
 const LABEL: Record<string, string> = {
   BUDGET: 'Budget (flexed to actual quantity)', RATE_R: 'Raw material: rate', USAGE_R: 'Raw material: usage', RATE_P: 'Packing material: rate', USAGE_P: 'Packing material: usage',
@@ -60,6 +62,7 @@ export default function BridgeBlock({ plants, asOf, bn }: { plants: string; asOf
         Overheads compare the actual conversion with the budget machine, labour, power and steam. Mix and currency need data SAP does not hold yet. Rate and usage are split per component: usage = (actual qty - budget qty) x budget rate; rate = actual value - actual qty x budget rate.
       </p>
       {error && <div className="mt-2"><ErrorBox>{error}</ErrorBox></div>}
+      {rows && rows.length > 0 && <AiNarrateSlot className="mt-2" label="Explain the bridge with AI" build={() => bridgeSpec(brand === 'ALL' ? rows : rows.filter((r) => r.Zbrand === brand), brand === 'ALL' ? '' : bn(brand) || brand, plants, asOf)} />}
       {rows && !rows.length && <p className="mt-2 text-xs text-muted">SAP returned no rows (no production in the period, or no approved budget).</p>}
       {rows && rows.length > 0 && (
         <div className="mt-3 overflow-x-auto rounded-xl border border-line">

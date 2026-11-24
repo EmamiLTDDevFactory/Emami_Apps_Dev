@@ -19,7 +19,7 @@ import { prioLabel } from '@/lib/rates/priority';
 import { buildSnapshots, listSnapshots, loadSnapshot, type Snapshot } from '@/lib/snapshots/snapshot';
 import { budgetBaseline, explainChange, type ExplainResult } from '@/lib/ai/variance';
 import { explainWithModel, type ExplainFacts } from '@/lib/ai/explain';
-import { getApiKey, getModels } from '@/lib/ai/config';
+import { getApiKey, getModels, hasAiAccess } from '@/lib/ai/config';
 import { makeClient } from '@/lib/ai/gateway';
 import type { AiAnswer } from '@/lib/ai/validate';
 import type { Fact } from '@/lib/ai/facts';
@@ -73,7 +73,7 @@ export default function ExplainDrawer({ open, onClose, rows, query, system, user
       const b = await baseline();
       const r = explainChange(b.lines, cur.lines, b.params, cur.params);
       const key = getApiKey();
-      const res = await explainWithModel(key ? makeClient(key) : null, getModels().main, r, { sku: cur.sku, headtxt: cur.headtxt, plant: cur.plant, baselineLabel: b.label, currentLabel: 'the current run', system }, user);
+      const res = await explainWithModel(hasAiAccess() ? makeClient(key) : null, getModels().main, r, { sku: cur.sku, headtxt: cur.headtxt, plant: cur.plant, baselineLabel: b.label, currentLabel: 'the current run', system }, user);
       setState({ busy: false, error: res.error ?? '', result: r, answer: res.answer, facts: res.facts, template: res.template, note: b.note, baseLabel: b.label, at: new Date().toLocaleString('en-IN') });
     } catch (e) {
       setState((x) => ({ ...x, busy: false, error: (e as Error).message }));
@@ -132,7 +132,7 @@ export default function ExplainDrawer({ open, onClose, rows, query, system, user
         )}
         <div className="flex items-center gap-2">
           <Button variant="primary" disabled={state.busy || !cur} onClick={run}><Sparkles size={14} /> {state.busy ? 'Explaining…' : 'Explain'}</Button>
-          {!getApiKey() && <span className="text-xs text-muted">No API key: you get the plain template. Add one in AI settings for a written explanation.</span>}
+          {!hasAiAccess() && <span className="text-xs text-muted">No API key: you get the plain template. Add one in AI settings for a written explanation.</span>}
         </div>
         {state.error && <div role="alert" className="flex items-start gap-2 rounded-lg border border-warn/40 bg-warn/[0.07] px-3 py-2 text-xs"><AlertTriangle size={14} className="mt-0.5 shrink-0 text-warn" />{state.error}</div>}
 

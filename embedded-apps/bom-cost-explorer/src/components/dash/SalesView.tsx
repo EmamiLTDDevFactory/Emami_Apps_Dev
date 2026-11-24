@@ -14,6 +14,8 @@ import type { PvmRow, SalesRow, ThreshRow } from '@/lib/dash/types';
 import { ls } from '@/lib/client/storage';
 import { useHierNames } from '@/lib/client/useHierNames';
 import { MaterialHierarchyPicker, MaterialPicker } from '../Pickers';
+import AiNarrateSlot from '../ai/AiNarrateSlot';
+import { salesSpec } from '@/lib/ai/builders/screens';
 import SalesInvoices, { type InvoiceTarget } from './SalesInvoices';
 import type { SalesExtra } from '@/lib/dash/service';
 import { BAND, NeedsSap, fyStart, lakh, money, pct, tdCls, thCls, today } from './parts';
@@ -120,6 +122,7 @@ export default function SalesView() {
             Plants {ran?.plants || 'all'} · {ran?.from} to {ran?.to} · finished goods (FERT), INR invoices; invoices and debit memos add, cancellations and credit memos subtract.
             COGM = SAP's actual cost per piece of the same period x sold quantity. GM % bands per SKU category come from SAP ({thr.length ? `${thr.length} band rows` : 'none set: red below 18 %, amber below 22 %'}).
           </p>
+          <AiNarrateSlot label="Explain the sales view with AI" build={() => (ran ? salesSpec({ brands, tot, plants: ran.plants, period: `${ran.from} to ${ran.to}`, bn: hn.brand }) : null)} />
           <BrandTable rows={brands} products={products} tot={tot} bn={hn.brand} pn={hn.product} onProduct={(b, p) => { setBrand(b); setProduct(p); }} />
           <Card className="p-3">
             <div className="mb-2 flex flex-wrap items-center gap-2">

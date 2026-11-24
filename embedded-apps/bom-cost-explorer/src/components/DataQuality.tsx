@@ -4,6 +4,8 @@ import type { CostLine } from '@/lib/sap/fields';
 import { dataQuality, DQ_LABEL, type DqKind } from '@/lib/cost/analytics';
 import { fmtNum } from '@/lib/format';
 import { cx, Empty, Pill } from './ui';
+import AiNarrateSlot from './ai/AiNarrateSlot';
+import { dqSpec } from '@/lib/ai/builders/quality';
 
 const TONE: Record<DqKind, 'bad' | 'warn' | 'neutral' | 'accent'> = { NO_RATE: 'bad', UOM: 'warn', ZERO_FX: 'bad', DONOR: 'accent', OPTIONS: 'warn' };
 
@@ -19,6 +21,7 @@ export default function DataQuality({ rows, onOpenRow }: { rows: CostLine[]; onO
   if (issues.length === 0) return <Empty title="No data-quality findings" icon="✓">Every leaf line has a rate, non-zero FX and no UoM conversion hints.</Empty>;
   return (
     <div className="flex h-full min-h-0 flex-col">
+      <AiNarrateSlot className="border-b border-line px-3 py-2" label="Draft the fix requests with AI" build={() => dqSpec(issues, rows)} />
       <div className="flex flex-wrap gap-1.5 border-b border-line px-3 py-2" role="group" aria-label="Filter findings">
         {(['ALL', 'NO_RATE', 'UOM', 'ZERO_FX', 'DONOR', 'OPTIONS'] as const).map((k) => (
           <button key={k} type="button" aria-pressed={kind === k} onClick={() => setKind(k)} className={cx('rounded-full border px-2.5 py-0.5 text-xs', kind === k ? 'border-accent bg-accent/10 text-ink' : 'border-line text-muted hover:text-ink')}>
