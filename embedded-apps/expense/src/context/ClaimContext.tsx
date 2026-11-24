@@ -45,7 +45,7 @@ interface ClaimContextType {
   rejectClaimFinance: (id: string, remarks: string) => Promise<{ success: boolean; error?: string }>;
   // Admin Actions (ZEXP_ADMIN) — search any claim, reject any open claim. See lib/adminAccess.ts
   // for how isAdmin is resolved.
-  adminSearchClaims: (adminLoginId: string, criteria: { claimId?: string }) => Promise<ExpenseClaim[]>;
+  adminSearchClaims: (adminLoginId: string, criteria: { claimId?: string; empId?: string; empName?: string; status?: string; costCenter?: string }) => Promise<ExpenseClaim[]>;
   adminRejectClaim: (claimId: string, adminLoginId: string, reason: string) => Promise<{ Status?: string; Message?: string }>;
   // DOA Chain Maintenance Actions — CRUD against the new DoaChainSet entity.
   fetchDoaChain: (filters?: { doaCtype?: string; kostl?: string; expgrp?: string; amtFrom?: number; active?: boolean }) => Promise<DoaChainRow[]>;
@@ -1250,13 +1250,23 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  // Admin search — Zview='ADMIN' restricts the GET to rows this admin PERNR is allowed to see.
-  // Only ClaimId, LoginId, Zview are filterable server-side today; EmpId/EmpName/Status/
-  // CostCenter need a backend metadata change first (open prerequisite) — the admin page itself
-  // discloses this and only wires up the ClaimId criterion for now.
-  const adminSearchClaims = async (adminLoginId: string, criteria: { claimId?: string }): Promise<ExpenseClaim[]> => {
+  // Admin search — Zview='ADMIN' + LoginId (the admin's own PERNR) authorizes the call as a listed
+  // admin; ClaimId/EmpId/EmpName/Status/CostCenter are the actual search criteria, ANDed in only
+  // when filled. EmpId is sent exactly as typed — the backend itself pads it with ALPHA, so this
+  // must not pre-pad/reformat it. EmpId and Status are confirmed working on dev; CostCenter and
+  // EmpName returned no rows in the backend's own test - worth re-checking against cost centres/
+  // names known to actually have claims before assuming those two don't work. EmpName is an exact
+  // match server-side (OData eq, not a contains/wildcard search).
+  const adminSearchClaims = async (
+    adminLoginId: string,
+    criteria: { claimId?: string; empId?: string; empName?: string; status?: string; costCenter?: string }
+  ): Promise<ExpenseClaim[]> => {
     const parts = [`Zview eq 'ADMIN'`, `LoginId eq '${adminLoginId}'`];
     if (criteria.claimId) parts.push(`ClaimId eq '${criteria.claimId}'`);
+    if (criteria.empId) parts.push(`EmpId eq '${criteria.empId}'`);
+    if (criteria.status) parts.push(`Status eq '${criteria.status}'`);
+    if (criteria.costCenter) parts.push(`CostCenter eq '${criteria.costCenter}'`);
+    if (criteria.empName) parts.push(`EmpName eq '${criteria.empName}'`);
     const filter = encodeURIComponent(parts.join(' and '));
     const response = await sapClient.get(`${SAP_BASE_URL}/ClaimHeaderSet?$filter=${filter}&$expand=CLAIMNAV&$format=json`);
     if (response.status < 200 || response.status >= 300) {

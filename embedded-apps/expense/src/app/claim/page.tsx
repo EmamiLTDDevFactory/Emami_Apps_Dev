@@ -536,15 +536,14 @@ function ClaimDetailInner() {
                 <div>
                   <p className="text-sm font-bold text-inkSoft">{formatDate(entry.ActionDate)} • {formatTime(entry.ActionTime)}</p>
                   <p className="mt-0.5 text-sm font-semibold text-ink">{entry.ActionByName || entry.ActionBy || 'Unknown'}</p>
-                  <p className="mt-0.5 text-xs text-inkSoft">{entry.Action || getStatusLabel(entry.Status)} • {getActionLevelLabel(entry.ActionLevel)}</p>
+                  {getActionLevelLabel(entry.ActionLevel) !== 'Employee Action' && (
+                    <p className="mt-0.5 text-xs text-inkSoft">{entry.Action || getStatusLabel(entry.Status)} • {getActionLevelLabel(entry.ActionLevel)}</p>
+                  )}
                 </div>
                 <span className="shrink-0 rounded-full px-2.5 py-1 text-2xs font-bold text-white" style={{ backgroundColor: palette.border }}>{entryStatus}</span>
               </div>
               {shouldShowNextApprover && (
-                // Only one approver PERNR is ever returned, even for a parallel (rule O/A) level
-                // with several valid approvers - worded as "one of" rather than "the", per the
-                // DOA handover, so this doesn't read as the exclusive next approver.
-                <p className="mt-2 text-xs"><span className="font-bold text-inkSoft">One of this level's approvers: </span><span className="text-ink">{nextApproverName || nextApproverValue}</span></p>
+                <p className="mt-2 text-xs"><span className="font-bold text-inkSoft">Next Approver: </span><span className="text-ink">{nextApproverName || nextApproverValue}</span></p>
               )}
               {entry.Remarks && isEligibilityException ? (
                 <div className="mt-2">
