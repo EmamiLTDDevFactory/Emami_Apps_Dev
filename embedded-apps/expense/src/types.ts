@@ -156,3 +156,46 @@ export interface MobCapRow {
   Aedat?: string;
   Aezet?: string;
 }
+
+// Admin configuration maintenance (ConfigVarSet/ConfigLogSet, live on dev 2026-11-24) - replaces
+// the former STVARV variables. Each variable is a list of lines (Numb = line number, backend-
+// assigned on create); High is only meaningful for ZEXP_FINANCE ('POST' | 'PARK').
+export type ConfigVarName =
+  | 'ZEXP_ADMIN'
+  | 'ZEXP_DOA_ADMIN'
+  | 'ZEXP_FINANCE'
+  | 'ZFI_NONCTC_USER'
+  | 'ZEXP_EXPTYPE_SET'
+  | 'ZEXP_MOBILE_SET'
+  | 'ZEXP_NON_CTC_GO_LIVE'
+  | 'ZFI_EXPENCE_CLAIM';
+
+export interface ConfigVarRow {
+  Name: string; // one of ConfigVarName
+  Numb: string; // line number - backend-assigned; '0000' for the two single-line variables
+  VarType?: string;
+  Sign?: string;
+  Opti?: string;
+  Low: string; // PERNR / GL set name / PERSK / date YYYYMMDD / absolute path, depending on Name
+  High?: string; // 'POST' | 'PARK' - ZEXP_FINANCE only
+  LowText?: string; // backend-resolved display text (employee name / set text / subgroup text)
+  Aenam?: string; // logged-in admin's PERNR - must be sent on every POST/PUT
+  Remove?: boolean; // PUT-only - true removes the line; there is no DELETE
+}
+
+export interface ConfigLogRow {
+  LogDate: string;
+  LogTime: string;
+  Seqno: string;
+  Varname: string;
+  Numb: string;
+  Action: string; // ADD | CHANGE | REMOVE
+  OldLow?: string;
+  OldHigh?: string;
+  NewLow?: string;
+  NewHigh?: string;
+  ChangedBy?: string;
+  ChangedName?: string;
+  Remark?: string;
+  Aenam?: string;
+}
