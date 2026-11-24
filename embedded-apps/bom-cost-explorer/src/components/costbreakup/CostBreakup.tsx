@@ -82,6 +82,7 @@ export default function CostBreakup<T extends BreakupLine>({ lines, qtyOf, fgQty
   const actMats = useMemo(() => [...new Set([...fgCodes, ...semis.map((l) => l.Idnrk)])], [fgCodes, semis]);
   const [actPer, setActPer] = useState('');
   const act = useActivities(actPlants, actMats, active, actPer ? { gjahr: actPer.slice(0, 4), poper: actPer.slice(4) } : undefined);
+  const perTxt = act.auto ? 'of each material\'s latest cost estimate' : `${act.period.poper}/${act.period.gjahr}`;
   const fgs = useMemo(() => buildBreakup(lines, qtyOf, fgQtyOf, po.actuals, act.perUnit), [lines, qtyOf, fgQtyOf, po.actuals, act.perUnit]);
   const showActual = po.status === 'ready';
   const all = useMemo(() => sumBreakups(fgs), [fgs]);
@@ -93,7 +94,7 @@ export default function CostBreakup<T extends BreakupLine>({ lines, qtyOf, fgQty
 
   const doExport = () => {
     const cols = breakupCols(fgs);
-    void exportTable({ fmt: 'xlsx', name: exportName, cols, count: fgs.length, extraParams: [['FG quantity', qtyLabel], ['Material', 'Leaf components by type: ROH = Raw Material (group 106 = Perfume), PKGN / VERP = Pack Material'], ['Conversion', `SAP routing activities (ActivityCostSet) of the FG and its semi-finished components, period ${act.period.poper}/${act.period.gjahr}, x their quantity`], ['Activity rows', act.status === 'ready' ? `${act.rows.length}` : act.note || act.status], ['Process orders', po.status === 'ready' ? `${po.rows.length} rows (last ${months} months)` : po.note || po.status]] });
+    void exportTable({ fmt: 'xlsx', name: exportName, cols, count: fgs.length, extraParams: [['FG quantity', qtyLabel], ['Material', 'Leaf components by type: ROH = Raw Material (group 106 = Perfume), PKGN / VERP = Pack Material'], ['Conversion', `SAP routing activities (ActivityCostSet) of the FG and its semi-finished components, period ${perTxt}, x their quantity`], ['Activity rows', act.status === 'ready' ? `${act.rows.length}` : act.note || act.status], ['Process orders', po.status === 'ready' ? `${po.rows.length} rows (last ${months} months)` : po.note || po.status]] });
   };
 
   return (
@@ -102,11 +103,11 @@ export default function CostBreakup<T extends BreakupLine>({ lines, qtyOf, fgQty
         <span className="text-muted">{fgs.length} finished good{fgs.length === 1 ? '' : 's'} · FG quantity = {qtyLabel}</span>
         <label className="flex items-center gap-1 text-muted">· Conversion: SAP activity price period
           <select className="rounded-lg border border-line bg-panel px-1.5 py-1 text-xs font-semibold text-ink" value={actPer} onChange={(e) => setActPer(e.target.value)} title="Choose the period of the costing estimate you compare with (CK13N): activity prices differ by period">
-            <option value="">{actPer ? 'Current period' : `${act.period.poper}/${act.period.gjahr} (current)`}</option>
-            {recentPeriods().slice(1).map((p) => <option key={p.gjahr + p.poper} value={p.gjahr + p.poper}>{p.poper}/{p.gjahr}</option>)}
+            <option value="">Automatic: period of the latest cost estimate (as CK13N)</option>
+            {recentPeriods().map((p) => <option key={p.gjahr + p.poper} value={p.gjahr + p.poper}>{p.poper}/{p.gjahr}</option>)}
           </select>
         </label>
-        <ActivityNote status={act.status} note={act.note} rows={act.rows.length} priced={act.rows.some((r) => D(r.ActPrice).gt(0) || D(r.ActValue).gt(0))} period={`${act.period.poper}/${act.period.gjahr}`} />
+        <ActivityNote status={act.status} note={act.note} rows={act.rows.length} priced={act.rows.some((r) => D(r.ActPrice).gt(0) || D(r.ActValue).gt(0))} period={perTxt} />
         {showActual && (
           <>
             <span className="text-muted">· Process orders:</span>
@@ -146,9 +147,9 @@ export default function CostBreakup<T extends BreakupLine>({ lines, qtyOf, fgQty
         <ElementTable title={`All ${fgs.length} finished goods`} cells={all.elements} material={all.material} conversion={all.conversion} total={all.total} curr={all.curr} fgQty={null} actualOrders={null} showActual={showActual} onOpen={(el) => setDetail({ el, fgKey: null })} />
       )}
 
-      <p className="text-2xs text-muted">Material elements come from SAP&apos;s costing: each component by its material type - ROH = Raw Material (material group 106 = Perfume), PKGN / VERP = Pack Material - at its landed cost. Machine, Labour, Power and Steam are SAP&apos;s routing activities (ActivityCostSet, period {act.period.poper}/{act.period.gjahr}) of the FG and of its semi-finished / bulk components, per BOM unit x their quantity; other activity types count as Conversion Charge. Costs in the plant currency, and in INR. Click an element for its detail.</p>
+      <p className="text-2xs text-muted">Material elements come from SAP&apos;s costing: each component by its material type - ROH = Raw Material (material group 106 = Perfume), PKGN / VERP = Pack Material - at its landed cost. Machine, Labour, Power and Steam are SAP&apos;s routing activities (ActivityCostSet, period {perTxt}) of the FG and of its semi-finished / bulk components, per BOM unit x their quantity; other activity types count as Conversion Charge. Costs in the plant currency, and in INR. Click an element for its detail.</p>
 
-      {detail && <DetailDrawer detail={detail} fgs={fgs} lines={lines} qtyOf={qtyOf} period={`${act.period.poper}/${act.period.gjahr}`} onClose={() => setDetail(null)} />}
+      {detail && <DetailDrawer detail={detail} fgs={fgs} lines={lines} qtyOf={qtyOf} period={perTxt} onClose={() => setDetail(null)} />}
     </div>
   );
 }

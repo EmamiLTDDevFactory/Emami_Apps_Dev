@@ -69,6 +69,9 @@ Rule-based notes made from the MIS result (no language model): overall variance,
 - Tables: `ZMIS_ALERT_THR` (alert bands), `ZSALES_BUD_TGT` (sales budget, empty).
 - After an import: clear the gateway caches (`/IWFND/CACHE_CLEANUP`, `/IWBEP/CACHE_CLEANUP`).
 
+## Cost breakup: activity price period
+Machine, Labour, Power and Steam are SAP routing activities priced with the activity prices of one fiscal period. The default is **automatic**: the app sends `Poper = 999` and `ZCL_MM_BOM_COST_ACT` prices each material in the period of its latest cost estimate (`KEKO`, version 01), so the value ties to CK13N. A material without an estimate uses the current period. The selector can force a fixed period. A system without the class change returns no priced rows for `999`; the app then falls back to the current period. Transport `EDSK9B0ENZ` (class `ZCL_MM_BOM_COST_ACT`).
+
 ## Known gaps
 1. (Closed) MIS and Margin both read `ZMM_FBUDCOST_SUM`.
 2. Sales view and MIS use "actual cost of the period" (SAP WAC); the Margin tab uses the invoice cost conditions or your current-COGM file.

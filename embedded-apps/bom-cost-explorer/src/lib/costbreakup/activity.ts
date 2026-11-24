@@ -59,7 +59,7 @@ const anyOf = (prop: string, values: string[]) => {
 };
 
 export function activityRequest(plants: string[], mats: string[], period: { gjahr: string; poper: string }) {
-  const f = [anyOf('Matnr', mats), anyOf('Werks', plants), `Gjahr eq ${odataString(period.gjahr)}`, `Poper eq ${odataString(period.poper)}`].filter(Boolean).join(' and ');
+  const f = [anyOf('Matnr', mats), anyOf('Werks', plants), period.gjahr ? `Gjahr eq ${odataString(period.gjahr)}` : '', `Poper eq ${odataString(period.poper)}`].filter(Boolean).join(' and ');
   return { entitySet: ACTIVITY_SET, params: { $filter: f } as Record<string, string | undefined> };
 }
 
@@ -146,4 +146,15 @@ export function activitiesPerUnit(rows: ActivityRow[], poper?: string): Map<stri
     out.set(mk, m);
   }
   return out;
+}
+
+/** Poper value that asks SAP for "the period of each material's latest cost estimate" (the period the CK13N figures are priced in). */
+export const EST_POPER = '999';
+
+/** Automatic period: SAP prices every material in its latest estimate's period; a system without that change (no priced row comes back) falls back to the current fiscal period. */
+export async function fetchActivitiesAuto(plants: string[], mats: string[], opts: SapGetOptions = {}): Promise<Feed<ActivityRow> & { auto: boolean }> {
+  const f = await fetchActivities(plants, mats, { gjahr: '', poper: EST_POPER }, opts);
+  if (f.status === 'ready' && f.rows.some((r) => r.Poper && r.Poper !== '000')) return { ...f, auto: true };
+  const cur = await fetchActivities(plants, mats, fiscalPeriod(), opts);
+  return { ...cur, auto: false };
 }

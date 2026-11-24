@@ -208,3 +208,12 @@ describe('rate summary in local currency for non-INR plants', () => {
     expect(inr.fgs[0].locPerInr).toBeNull();
   });
 });
+
+describe('activity price period: automatic', () => {
+  it('asks SAP for the estimate period (Poper 999, no Gjahr)', async () => {
+    const { activityRequest, EST_POPER } = await import('@/lib/costbreakup/activity');
+    const f = activityRequest(['UN02'], ['400018689'], { gjahr: '', poper: EST_POPER }).params.$filter!;
+    expect(f).toContain("Poper eq '999'");
+    expect(f).not.toContain('Gjahr');
+  });
+});
