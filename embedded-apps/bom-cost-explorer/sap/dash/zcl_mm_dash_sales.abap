@@ -85,18 +85,16 @@ CLASS zcl_mm_dash_sales IMPLEMENTATION.
 
     " ---- actual cost per piece of the period, per material (all selected plants)
     DATA(lo_util) = NEW zcl_mm_bom_cost_util( ).
-    " no plant chosen = all plants: the cost is then read for every plant but only for the materials that were sold
+    " the billing plant is usually a depot that sells but does not produce: the actual cost is therefore read in EVERY plant, for the materials that were sold
     DATA(ls_cpar) = ms_par.
-    IF ls_cpar-werks IS INITIAL.
-      SELECT werks FROM t001w INTO TABLE @DATA(lt_allw).
-      ls_cpar-werks = VALUE #( FOR w IN lt_allw ( sign = 'I' option = 'EQ' low = w-werks ) ).
-      CLEAR ls_cpar-matnr.
-      LOOP AT lt_b ASSIGNING <b>.
-        APPEND VALUE #( sign = 'I' option = 'EQ' low = <b>-matnr ) TO ls_cpar-matnr.
-      ENDLOOP.
-      SORT ls_cpar-matnr BY low.
-      DELETE ADJACENT DUPLICATES FROM ls_cpar-matnr COMPARING low.
-    ENDIF.
+    SELECT werks FROM t001w INTO TABLE @DATA(lt_allw).
+    ls_cpar-werks = VALUE #( FOR w IN lt_allw ( sign = 'I' option = 'EQ' low = w-werks ) ).
+    CLEAR ls_cpar-matnr.
+    LOOP AT lt_b ASSIGNING <b>.
+      APPEND VALUE #( sign = 'I' option = 'EQ' low = <b>-matnr ) TO ls_cpar-matnr.
+    ENDLOOP.
+    SORT ls_cpar-matnr BY low.
+    DELETE ADJACENT DUPLICATES FROM ls_cpar-matnr COMPARING low.
     NEW zcl_mm_wac_actual( lo_util )->read( EXPORTING is_par = ls_cpar IMPORTING et_act = lt_act et_msg = lt_m ).
     LOOP AT lt_act ASSIGNING FIELD-SYMBOL(<a>) WHERE qty > 0.
       CLEAR ls_c.
@@ -146,7 +144,7 @@ CLASS zcl_mm_dash_sales IMPLEMENTATION.
         <r>-sku_nocogm = 1.
       ENDIF.
       <r>-sku_cnt = 1.
-      <r>-msg = COND #( WHEN <r>-sku_nocogm = 1 THEN 'No actual cost in the period: left out of the margin' ).
+      <r>-msg = COND #( WHEN <r>-sku_nocogm = 1 THEN 'No actual cost in the period: left out of the margin' && COND string( WHEN lt_m IS NOT INITIAL THEN | ({ lt_m[ 1 ] })| ) ).
     ENDLOOP.
     rt_sales = lt_s.
 
