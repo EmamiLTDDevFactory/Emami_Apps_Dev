@@ -4,9 +4,10 @@
  * backend checks the Publicity Expenses grant in Manage Access. A dev.emamiapps.in page reads the dev backend through
  * /dev-api (same split as the sibling apps). NEXT_PUBLIC_PUBEXP_API_URL overrides the base (local development).
  */
+import { compactPeriods } from './format';
 import { getHubToken } from './hub';
 import type {
-  AppConfig, AuditEntry, Breakdown, BudgetLine, BudgetStatus, Candidate, DetailRow, Impact, MappingInfo, Mapping, Me, Meta, Rule, RuleWithImpact,
+  AppConfig, AuditEntry, Breakdown, BudgetLine, BudgetStatus, Candidate, DrillRequest, DrillResult, Impact, MappingInfo, Mapping, Me, Meta, Rule, RuleWithImpact,
   SummaryRow, TemplateLine, TrendMonth, UploadResult, UploadRow, ExclusionMeta, Dimension,
 } from './types';
 
@@ -48,21 +49,24 @@ async function call<T>(method: string, path: string, params: Record<string, stri
 }
 const get = <T>(path: string, params: Record<string, string | number | undefined> = {}) => call<T>('GET', path, params);
 
-export interface Period { fy: string; period: number; company?: string; refresh?: boolean; excl?: boolean; /** settings revision: changes after a save so screens refetch */ rev?: number }
-const qp = (p: Period) => ({ fy: p.fy, period: p.period, company: p.company, refresh: p.refresh ? 1 : undefined, exclusions: p.excl === false ? 'off' : undefined });
+/** The selection every data call carries: fiscal year, periods (added up; P01..Pn = YTD), companies (empty = all). */
+export interface Period { fy: string; periods: number[]; companies: string[]; refresh?: boolean; excl?: boolean; /** settings revision: changes after a save so screens refetch */ rev?: number }
+const qp = (p: Period) => ({ fy: p.fy, periods: compactPeriods(p.periods), companies: p.companies.join(',') || undefined, refresh: p.refresh ? 1 : undefined, exclusions: p.excl === false ? 'off' : undefined });
+const body = (p: Period) => ({ fy: p.fy, periods: compactPeriods(p.periods), companies: p.companies, exclusions: p.excl === false ? 'off' : undefined });
 export type RuleInput = Omit<Rule, 'id' | 'createdBy' | 'createdAt' | 'updatedBy' | 'updatedAt'>;
 
 export const api = {
   me: () => get<Me>('/me'),
   config: () => get<{ config: AppConfig }>('/config').then((b) => b.config),
   summary: (p: Period) => get<{ rows: SummaryRow[]; meta: Meta }>('/summary', qp(p)),
-  detail: (p: Period, cell: { key: string; gl?: string; site?: string }) => get<{ rows: DetailRow[]; excluded: DetailRow[]; meta: Meta }>('/detail', { ...qp(p), ...cell }),
-  trend: (p: Period) => get<{ months: TrendMonth[]; meta: Meta }>('/trend', qp(p)),
+  /** POST: a sub-total can carry hundreds of report rows. */
+  detail: (p: Period, req: DrillRequest) => call<DrillResult>('POST', '/detail', {}, { ...body(p), ...req }),
+  trend: (p: Period) => get<{ months: TrendMonth[]; periods: number[]; meta: Meta }>('/trend', qp(p)),
   breakdown: (p: Period) => get<Breakdown>('/breakdown', qp(p)),
   // Admin
   rules: (p: Period) => get<{ rules: RuleWithImpact[]; total: ExclusionMeta; reportTotal: number; dimensions: Dimension[] }>('/exclusions', qp(p)),
   candidates: (p: Period, dimension: string) => get<{ values: Candidate[] }>('/exclusions/candidates', { ...qp(p), dimension }).then((b) => b.values),
-  previewRule: (p: Period, rule: Pick<RuleInput, 'dimension' | 'values' | 'pattern'>) => call<{ impact: Impact }>('POST', '/exclusions/preview', {}, { fy: p.fy, period: p.period, company: p.company, rule }).then((b) => b.impact),
+  previewRule: (p: Period, rule: Pick<RuleInput, 'dimension' | 'values' | 'pattern'>) => call<{ impact: Impact }>('POST', '/exclusions/preview', {}, { ...body(p), rule }).then((b) => b.impact),
   createRule: (r: RuleInput) => call<{ rule: Rule }>('POST', '/exclusions', {}, r).then((b) => b.rule),
   updateRule: (id: number, r: RuleInput) => call<{ rule: Rule }>('PUT', `/exclusions/${id}`, {}, r).then((b) => b.rule),
   deleteRule: (id: number) => call<{ rule: Rule }>('DELETE', `/exclusions/${id}`),

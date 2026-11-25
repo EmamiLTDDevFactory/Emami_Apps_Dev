@@ -4,7 +4,7 @@ import { ArrowLeft, BarChart3, Building2, Calendar, Gauge, LayoutDashboard, Mega
 import { api, ApiError } from '@/lib/api';
 import { BASE_PATH } from '@/lib/config';
 import { AppContext, type Ctx, type View } from '@/lib/context';
-import { amt, defaultPeriod, fmtDateTime, ytdLabel, type Unit } from '@/lib/format';
+import { amt, compactPeriods, currentPeriod, fmtDateTime, isYtd, parsePeriodList, range, selLabel, type Unit } from '@/lib/format';
 import { getHubEmail, hasHubSession, nameFromEmail } from '@/lib/hub';
 import { applyFilters } from '@/lib/model';
 import type { AppConfig, Filters, Me, Meta, SummaryRow } from '@/lib/types';
@@ -30,35 +30,42 @@ const NAV: { id: View; label: string; hint: string; icon: LucideIcon; admin?: bo
 ];
 const VIEWS = new Set<View>(NAV.map((n) => n.id));
 
-// ---------------------------------------------------------------- URL state (?v=report&fy=2026&p=7&site=HO,UN ...)
+// ---------------------------------------------------------------- URL state (?v=report&fy=2026&pp=1-8&cc=1000|EM01&site=HO ...)
 
-const LIST_KEYS = ['site', 'groups', 'categories', 'brands'] as const;
+/** The app opens on company 1000 and the current period only (one SAP read, so it opens fast). */
+const DEFAULT_COMPANIES = ['1000'];
+const LIST_KEYS = ['site', 'groups', 'categories', 'brands', 'gls'] as const;
 function readUrl(): { view: View; filters: Filters; unit: Unit } {
-  const d = defaultPeriod();
+  const cur = currentPeriod();
   const q = typeof window === 'undefined' ? new URLSearchParams() : new URLSearchParams(window.location.search);
   const view = (q.get('v') as View) || 'overview';
-  const period = Number(q.get('p'));
   const unit = q.get('u') as Unit;
   const list = (k: string) => (q.get(k) || '').split('|').filter(Boolean);
+  // pp = the periods ("1-8", "4-6,9"); links from before multi-select carry p=n, which meant YTD up to n.
+  let periods = parsePeriodList(q.get('pp') || '');
+  const old = Number(q.get('p'));
+  if (!periods.length && Number.isInteger(old) && old >= 1 && old <= 12) periods = range(1, old);
+  if (!periods.length) periods = [cur.period];
+  const cc = (q.get('cc') || '').toUpperCase();
   return {
     view: VIEWS.has(view) ? view : 'overview',
     unit: unit === 'crore' || unit === 'inr' ? unit : 'lakh',
     filters: {
-      fy: /^20\d\d$/.test(q.get('fy') || '') ? (q.get('fy') as string) : d.fy,
-      period: Number.isInteger(period) && period >= 1 && period <= 12 ? period : d.period,
-      company: (q.get('cc') || '').toUpperCase(),
-      site: list('site'), groups: list('groups'), categories: list('categories'), brands: list('brands'),
+      fy: /^20\d\d$/.test(q.get('fy') || '') ? (q.get('fy') as string) : cur.fy,
+      periods,
+      companies: cc === 'ALL' ? [] : cc ? cc.split(/[|,]/).filter((c) => /^[A-Z0-9]{4}$/.test(c)) : DEFAULT_COMPANIES,
+      site: list('site'), groups: list('groups'), categories: list('categories'), brands: list('brands'), gls: list('gl'),
       excl: q.get('x') !== '0',
     },
   };
 }
 function writeUrl(view: View, f: Filters, unit: Unit) {
   const q = new URLSearchParams();
-  q.set('v', view); q.set('fy', f.fy); q.set('p', String(f.period));
-  if (f.company) q.set('cc', f.company);
+  q.set('v', view); q.set('fy', f.fy); q.set('pp', compactPeriods(f.periods));
+  q.set('cc', f.companies.length ? f.companies.join('|') : 'all');
   if (unit !== 'lakh') q.set('u', unit);
   if (!f.excl) q.set('x', '0');
-  for (const k of LIST_KEYS) if (f[k].length) q.set(k, f[k].join('|'));
+  for (const k of LIST_KEYS) if (f[k].length) q.set(k === 'gls' ? 'gl' : k, f[k].join('|'));
   try { window.history.replaceState(null, '', `${window.location.pathname}?${q}`); } catch { /* sandboxed */ }
 }
 
@@ -83,37 +90,41 @@ export default function App() {
 
   useEffect(() => { if (filters) writeUrl(view, filters, unit); }, [view, filters, unit]);
 
-  const fy = filters?.fy; const period = filters?.period; const excl = filters?.excl;
+  const fy = filters?.fy; const excl = filters?.excl;
+  // Plain strings, so effects and memos change only when the selection really changes.
+  const periodsKey = filters ? compactPeriods(filters.periods) : '';
+  const companiesKey = filters ? filters.companies.join(',') : '';
   const [settingsRev, setSettingsRev] = useState(0);
   const [busy, setBusy] = useState(false);
+  // fy / periods / companies / exclusions switch for every API call; settingsRev changes after a settings save.
+  const q = useMemo(() => (fy && periodsKey ? { fy, periods: parsePeriodList(periodsKey), companies: companiesKey ? companiesKey.split(',') : [], excl: excl !== false, rev: settingsRev } : null), [fy, periodsKey, companiesKey, excl, settingsRev]);
   useEffect(() => {
-    if (!session || !fy || !period) return;
+    if (!session || !q) return;
     let live = true;
     // Keep the current screen while new data loads (a thin bar shows it), so a screen keeps its state - e.g. the
     // confirmation after a settings save. Only the very first load shows the skeleton.
     setLoad((l) => (l.kind === 'ready' ? l : { kind: 'loading' }));
     setBusy(true);
-    Promise.all([api.config(), api.summary({ fy, period, excl, refresh: nonce > 0 }), me ? Promise.resolve(me) : api.me()])
+    Promise.all([api.config(), api.summary({ ...q, refresh: nonce > 0 }), me ? Promise.resolve(me) : api.me()])
       .then(([c, s, m]) => { if (!live) return; setConfig(c); setMe(m); setLoad({ kind: 'ready', rows: s.rows, meta: s.meta }); })
       .catch((e: ApiError) => live && setLoad({ kind: 'error', message: e.message, status: e.status }))
       .finally(() => live && setBusy(false));
     return () => { live = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- me is read once; nonce = manual refresh; settingsRev = settings saved
-  }, [session, fy, period, excl, nonce, settingsRev]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- me is read once; nonce = manual refresh
+  }, [session, q, nonce]);
 
   const setFilters = useCallback((f: Partial<Filters>) => setFiltersState((old) => (old ? { ...old, ...f } : old)), []);
   const go = useCallback((v: View, f?: Partial<Filters>) => { setView(v); if (f) setFilters(f); setMenu(false); }, [setFilters]);
 
-  // Stable while fy / period / company / exclusions stay the same, so screens refetch only when these change (or settings are saved).
-  const company = filters?.company;
-  const q = useMemo(() => (fy && period ? { fy, period, company: company || undefined, excl: excl !== false, rev: settingsRev } : null), [fy, period, company, excl, settingsRev]);
-
   const ctx: Ctx | null = useMemo(() => {
     if (!filters || !config || !me || !q || load.kind !== 'ready') return null;
-    const all = filters.company ? load.rows.filter((r) => r.CompanyCode === filters.company || (r.IsBudget && !r.CompanyCode)) : load.rows;
+    const all = load.rows;
+    const ps = filters.periods;
+    const sel = { periods: ps, latest: ps[ps.length - 1], n: ps.length, ytd: isYtd(ps), cy: selLabel(filters.fy, ps), py: selLabel(Number(filters.fy) - 1, ps) };
+    const companies = [...new Set([...(load.meta.companiesInData ?? []), ...filters.companies, ...all.map((r) => r.CompanyCode)].filter(Boolean))].sort();
     return {
-      me, q, refreshAll: () => setSettingsRev((n) => n + 1),
-      config, meta: load.meta, all, companies: [...new Set(load.rows.map((r) => r.CompanyCode).filter(Boolean))].sort(), rows: applyFilters(all, filters), filters, setFilters, unit, setUnit,
+      me, q, sel, refreshAll: () => setSettingsRev((n) => n + 1),
+      config, meta: load.meta, all, companies, rows: applyFilters(all, filters), filters, setFilters, unit, setUnit,
       fmt: (v: number) => amt(v, unit), go, reload: () => setNonce((n) => n + 1),
     };
   }, [filters, config, me, q, load, unit, setFilters, go]);
@@ -222,7 +233,8 @@ export default function App() {
                 {view !== 'settings' && <ExclusionBanner />}
                 {view !== 'settings' && sapEmpty && (
                   <div className="mt-2"><Notice tone="warn">
-                    SAP ({sapEmpty.system}) answered but has <b>no rows</b> for {ytdLabel(sapEmpty.fy, sapEmpty.period)} (fiscal year {sapEmpty.fy}, period {String(sapEmpty.period).padStart(3, '0')}).
+                    SAP ({sapEmpty.system}) answered but has <b>no rows</b> for {selLabel(sapEmpty.fy, sapEmpty.periods ?? [sapEmpty.period])} (fiscal year {sapEmpty.fy}, period {(sapEmpty.periods ?? [sapEmpty.period]).map((p) => String(p).padStart(3, '0')).join(', ')}).
+                    {(sapEmpty.companies ?? []).length > 0 && <> Company filter: {sapEmpty.companies.join(', ')}{sapEmpty.companiesInData?.length ? ` (SAP has data for ${sapEmpty.companiesInData.join(', ')})` : ''}.</>}
                     The connection works; the CDS view ZC_ATLBTL_EXP_SUMMARY returned nothing - check in that SAP client that ZREP_SEQ_MAP and the FSV (FAGL_011ZC) are maintained, FAGLFLEXT has postings (ledger 0L, version 001) and ZNET_SALE_MASTER / ZPROD_HIERARCHY have data.
                   </Notice></div>
                 )}

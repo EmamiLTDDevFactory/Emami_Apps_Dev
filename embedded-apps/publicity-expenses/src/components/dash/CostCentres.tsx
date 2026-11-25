@@ -34,7 +34,7 @@ export default function CostCentres() {
   const totalCy = rec.detailCy;
   const unPct = share(data.unmapped.cy, totalCy);
   const bars = (b: Bucket[], label?: (b: Bucket) => string) => b.map((x) => ({ key: x.key, label: label ? label(x) : x.key, value: x.cy, compare: x.py, detail: `${pct(growth(x.cy, x.py))} YoY · ${x.rows} lines` }));
-  const filtered = filters.site.length + filters.groups.length + filters.categories.length + filters.brands.length > 0;
+  const filtered = filters.site.length + filters.groups.length + filters.categories.length + filters.brands.length + filters.gls.length > 0;
 
   return (
     <div className="space-y-3">
@@ -43,7 +43,7 @@ export default function CostCentres() {
           <BarList rows={data.excludedByRule.map((b) => ({ key: b.key, label: `Rule #${b.key} · ${meta?.exclusions?.byRule.find((r) => String(r.id) === b.key)?.reason ?? ''}`, value: b.cy, compare: b.py, detail: `${b.rows} lines` }))} fmt={fmt} compareLabel="PY" />
         </Card>
       )}
-      {filtered && <Notice tone="warn">This screen shows the whole period and company; the site, header, category and brand filters do not apply here.</Notice>}
+      {filtered && <Notice tone="warn">This screen shows the whole selection (periods and companies); the site, header, category, brand and G/L filters do not apply here.</Notice>}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Kpi icon={Math.abs(rec.glCheck) < 1 && Math.abs(rec.difference) < 1 ? CheckCircle2 : AlertTriangle} tone={Math.abs(rec.glCheck) < 1 && Math.abs(rec.difference) < 1 ? 'good' : 'bad'}
           label="G/L = report + excluded" value={Math.abs(rec.glCheck) < 1 && Math.abs(rec.difference) < 1 ? 'Reconciled' : fmt(rec.glCheck || rec.difference)}

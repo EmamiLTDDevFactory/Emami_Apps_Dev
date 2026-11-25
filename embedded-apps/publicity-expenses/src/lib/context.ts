@@ -6,15 +6,19 @@ import type { AppConfig, Filters, Me, Meta, SummaryRow } from './types';
 
 export type View = 'overview' | 'report' | 'brands' | 'media' | 'budget' | 'costcentres' | 'settings';
 
+/** The period selection in words, for labels: cy = "YTD-Nov'26" / "Nov'26" / "Q2 FY'27" ..., py = the same periods a year earlier. */
+export interface Selection { periods: number[]; latest: number; n: number; ytd: boolean; cy: string; py: string }
+
 export interface Ctx {
   me: Me;
-  /** fy / period / company / exclusions switch for API calls. */
+  /** fy / periods / companies / exclusions switch for API calls. */
   q: Period;
+  sel: Selection;
   config: AppConfig;
   meta: Meta | null;
-  /** All summary rows of the period (company filter applied), before the dimension filters. */
+  /** All summary rows of the selection (periods and companies applied by the server), before the dimension filters. */
   all: SummaryRow[];
-  /** Company codes in the data. */
+  /** Company codes to offer in the company filter (in the data + selected). */
   companies: string[];
   /** Rows after every filter. */
   rows: SummaryRow[];

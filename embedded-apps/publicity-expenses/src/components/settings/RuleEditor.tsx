@@ -8,7 +8,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import { api, type ApiError } from '@/lib/api';
 import { useApp } from '@/lib/context';
-import { defaultPeriod, fyLabel, periodLabel, short, ytdLabel } from '@/lib/format';
+import { defaultPeriod, fyLabel, periodLabel, short } from '@/lib/format';
 import type { Candidate, Impact, Rule } from '@/lib/types';
 import { Button, Drawer, Field, Notice, Pill, Select, Skeleton, Tabs, cx, inputCls, textareaCls } from '../ui';
 
@@ -16,7 +16,7 @@ const SHOW_MAX = 400;
 type Show = 'all' | 'picked' | 'free';
 
 export default function RuleEditor({ rule, onClose, onSaved }: { rule: Rule | null; onClose: () => void; onSaved: (r: Rule, isNew: boolean) => void }) {
-  const { q, config, filters } = useApp();
+  const { q, config, filters, sel } = useApp();
   const [dimension, setDimension] = useState(rule?.dimension ?? 'GL');
   const [picked, setPicked] = useState<Set<string>>(new Set(rule?.values ?? []));
   const [pattern, setPattern] = useState(rule?.pattern ?? '');
@@ -92,7 +92,7 @@ export default function RuleEditor({ rule, onClose, onSaved }: { rule: Rule | nu
           <Field label="Exclude by">
             <Select label="Dimension" value={dimension} onChange={(v) => { setDimension(v); setPicked(new Set()); setSearch(''); setShow('all'); }} options={config.dimensions.map((d) => ({ value: d.id, label: d.label }))} className="w-full" />
           </Field>
-          <Field label="Selected" hint={notInData.length ? `${notInData.length} picked value(s) have no postings in ${ytdLabel(filters.fy, filters.period)}: ${notInData.slice(0, 5).join(', ')}` : undefined}>
+          <Field label="Selected" hint={notInData.length ? `${notInData.length} picked value(s) have no postings in ${sel.cy}: ${notInData.slice(0, 5).join(', ')}` : undefined}>
             <div className="flex min-h-9 flex-wrap items-center gap-1 rounded-xl border border-line bg-sunken/50 px-2 py-1.5">
               {values.length === 0 && <span className="text-xs text-faint">Pick values below{pattern ? ' (or rely on the pattern)' : ''}</span>}
               {values.slice(0, 12).map((v) => (
@@ -144,7 +144,7 @@ export default function RuleEditor({ rule, onClose, onSaved }: { rule: Rule | nu
               {shown.length > SHOW_MAX && <p className="border-t border-line px-3 py-2 text-2xs text-muted">Showing {SHOW_MAX} of {shown.length} - narrow the search to see the rest.</p>}
             </div>
           )}
-          <p className="border-t border-line px-3 py-2 text-2xs text-faint">Values with postings in {ytdLabel(filters.fy, filters.period)} or the same period last year, largest CY first.</p>
+          <p className="border-t border-line px-3 py-2 text-2xs text-faint">Values with postings in {sel.cy} or the same periods last year, largest CY first.</p>
         </div>
 
         <Field label="Pattern (optional)" hint="For codes that may come later: a range 508000-508099, a wildcard EH19* or 5080??, several separated by commas. Leading zeros of numbers are ignored.">
@@ -168,7 +168,7 @@ export default function RuleEditor({ rule, onClose, onSaved }: { rule: Rule | nu
           {impact === null && <span className="text-muted">Pick values or give a pattern to see what the rule removes.</span>}
           {impact === 'error' && <span className="text-bad">Could not work out the impact.</span>}
           {impact && impact !== 'error' && (
-            <span>In {ytdLabel(filters.fy, filters.period)} this rule on its own removes <b className="num">{short(impact.cy)}</b> CY and <b className="num">{short(impact.py)}</b> PY in {impact.lines} posting line{impact.lines === 1 ? '' : 's'}{impact.matched !== undefined ? ` (${impact.matched} code${impact.matched === 1 ? '' : 's'})` : ''}.</span>
+            <span>In {sel.cy} this rule on its own removes <b className="num">{short(impact.cy)}</b> CY and <b className="num">{short(impact.py)}</b> PY in {impact.lines} posting line{impact.lines === 1 ? '' : 's'}{impact.matched !== undefined ? ` (${impact.matched} code${impact.matched === 1 ? '' : 's'})` : ''}.</span>
           )}
         </div>
 

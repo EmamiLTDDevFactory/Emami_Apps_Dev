@@ -111,13 +111,15 @@ export function Select({ value, onChange, options, label, className }: { value: 
  * Dropdown with checkboxes: pick any number of values ("Pending" and "Resolved" together). An empty pick means "any".
  * The button reads "Status: Any", the single choice, or "Status: 3 selected".
  */
-export function MultiSelect({ label, values, onChange, options, className, align = 'left' }: {
+export function MultiSelect({ label, values, onChange, options, className, align = 'left', anyLabel = 'Any' }: {
   label: string;
   values: string[];
   onChange: (v: string[]) => void;
   options: { value: string; label: string }[];
   className?: string;
   align?: 'left' | 'right';
+  /** What the button reads when nothing is picked (default "Any"). */
+  anyLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState('');
@@ -132,7 +134,9 @@ export function MultiSelect({ label, values, onChange, options, className, align
   }, [open]);
   const picked = new Set(values);
   const shown = filter ? options.filter((o) => o.label.toLowerCase().includes(filter.toLowerCase())) : options;
-  const summary = values.length === 0 ? 'Any' : values.length === 1 ? options.find((o) => o.value === values[0])?.label ?? values[0] : `${values.length} selected`;
+  const labelOf = (v: string) => options.find((o) => o.value === v)?.label ?? v;
+  const two = values.length === 2 ? `${labelOf(values[0])}, ${labelOf(values[1])}` : '';
+  const summary = values.length === 0 ? anyLabel : values.length === 1 ? labelOf(values[0]) : two && two.length <= 16 ? two : `${values.length} selected`;
   const toggle = (v: string) => onChange(picked.has(v) ? values.filter((x) => x !== v) : [...values, v]);
   return (
     <div ref={box} className={cx('relative', className)}>

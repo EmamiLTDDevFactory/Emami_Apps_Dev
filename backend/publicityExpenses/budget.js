@@ -25,8 +25,16 @@ function envBudgetSource() {
 
 // ---------------------------------------------------------------- mock
 
-function applyMockBudget(rows, fy, period) {
-    const p = Math.min(12, Math.max(1, Number(period) || 12));
+/** Selected periods from a list, or 1..n from a single period (YTD up to n). */
+function selected(periods) {
+    if (Array.isArray(periods)) return periods.filter((p) => Number.isInteger(p) && p >= 1 && p <= 12);
+    const n = Math.min(12, Math.max(1, Number(periods) || 12));
+    return Array.from({ length: n }, (_, i) => i + 1);
+}
+
+/** Mock OB / RB from the run-rate of the selection (actuals of the selected periods / their number x 12), straight-line. */
+function applyMockBudget(rows, fy, periods) {
+    const p = selected(periods).length || 12;
     for (const row of rows) {
         const base = row.CYYTDAmount > 0 ? row.CYYTDAmount : row.PYYTDAmount > 0 ? row.PYYTDAmount : 0;
         const r = rng(`budget|${fy}|${row.ReportingKey}|${row.HeaderGroup || row.ReportHeader}`);
@@ -125,10 +133,11 @@ function validateUpload(input, known, mapping) {
 
 /**
  * Set the SAP rows' budget fields to 0 and add one budget-only row per company x reporting row x header x site.
- * active: { OB?: { lines }, RB?: { lines } }. Rows are already enriched (HeaderGroup etc.).
+ * active: { OB?: { lines }, RB?: { lines } }. Rows are already enriched (HeaderGroup etc.). periods = the selected
+ * periods (budget "YTD" = their monthly budget added up) or a single period n (= 1..n).
  */
-function applyUploadedBudget(rows, active, period, mapping) {
-    const p = Math.min(12, Math.max(1, Number(period) || 12));
+function applyUploadedBudget(rows, active, periods, mapping) {
+    const sel = selected(periods);
     const tmpl = new Map();
     for (const r of rows) {
         r.OBAnnualAmount = 0; r.RBAnnualAmount = 0; r.OBYTDAmount = 0; r.RBYTDAmount = 0; r.CYvsRBYTDDeviation = r.CYYTDAmount;
@@ -154,7 +163,7 @@ function applyUploadedBudget(rows, active, period, mapping) {
                 };
                 out.set(k, b);
             }
-            const ytd = l.months.slice(0, p).reduce((a, m) => a + m, 0);
+            const ytd = sel.reduce((a, q) => a + (Number(l.months[q - 1]) || 0), 0);
             if (kind === 'OB') { b.OBAnnualAmount = r2(b.OBAnnualAmount + l.annual); b.OBYTDAmount = r2(b.OBYTDAmount + ytd); }
             else { b.RBAnnualAmount = r2(b.RBAnnualAmount + l.annual); b.RBYTDAmount = r2(b.RBYTDAmount + ytd); b.CYvsRBYTDDeviation = r2(-b.RBYTDAmount); }
         }
