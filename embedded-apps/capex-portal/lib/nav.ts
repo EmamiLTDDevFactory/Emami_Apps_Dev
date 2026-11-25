@@ -15,7 +15,7 @@ export const NAV: NavItem[] = [
   { href: '/quota/', label: 'Unit Quota', group: 'Assets', fiori: 'UnitQuota' },
   { href: '/reports/', label: 'Reports', group: 'Insights', fiori: 'Reports' },
   { href: '/audit/', label: 'Audit Trail', group: 'Insights', fiori: 'AuditTrail' },
-  { href: '/admin/doa/', label: 'DOA Matrix', group: 'Admin', adminOnly: true, fiori: 'DOAMatrix' },
+  { href: '/admin/doa/', label: 'Maintenance', group: 'Admin', adminOnly: true, fiori: 'DOAMatrix' },
   // detail / action screens (not in the side menu)
   { href: '/budget/detail/', label: 'Budget', group: 'Budget', hidden: true, fiori: 'BudgetDetail' },
   { href: '/cpe/detail/', label: 'CPE', group: 'CPE', hidden: true, fiori: 'CPEDetail' },

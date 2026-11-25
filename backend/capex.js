@@ -43,6 +43,8 @@ async function requireUser(req, res, next) {
         if (!grant.rows.length || user.rows[0]?.is_active === false) return res.status(403).json({ error: 'You do not have access to the CAPEX Portal. Ask an Emami Apps admin for it in Admin Center.' });
         req.email = email;
         req.role = String(grant.rows[0].role || '');
+        // Maintenance (users, DOA rules, settings) belongs to whoever is Admin of this app in Emami Apps (Admin Center).
+        req.hubAdmin = req.role.trim().toLowerCase() === 'admin';
         next();
     } catch (e) {
         console.error('[capex] access check', e.message);
@@ -65,6 +67,18 @@ function checkedPath(raw) {
     return raw;
 }
 
+// Maintenance lists/saves are only for the app's Admins; SAP re-checks the hub's vouching (zcpxadm) as a second gate.
+const ADMIN_SETS = new Set(['AdminDataSet']);
+const ADMIN_FUNCTIONS = new Set(['AdminSave']);
+const needAdmin = (req, res) => {
+    if (req.hubAdmin) return true;
+    res.status(403).json({ error: 'Maintenance is only for CAPEX Portal administrators (Admin role for this app in Emami Apps).' });
+    return false;
+};
+
+/** What the signed-in person may do here, from the Emami Apps grant (not from SAP). */
+router.get('/access', (req, res) => res.json({ role: req.role, isAdmin: req.hubAdmin }));
+
 router.get('/health', async (req, res) => {
     if (!sap.isConfigured()) return res.status(502).json({ ok: false, error: 'The SAP connection for the CAPEX Portal is not configured on the server.' });
     try {
@@ -79,9 +93,11 @@ router.get('/health', async (req, res) => {
 router.get(/^\/odata\/(.+)$/, async (req, res) => {
     const path = checkedPath(decodeURIComponent(req.params[0] || ''));
     if (!path) return res.status(404).json({ error: 'Unknown entity set.' });
+    const admin = ADMIN_SETS.has(path.split('(')[0].split('/')[0]);
+    if (admin && !needAdmin(req, res)) return;
     const t0 = Date.now();
     try {
-        const out = await sap.read(path, req.query, req.email);
+        const out = await sap.read(path, req.query, req.email, admin);
         console.info(`[capex] ${req.email} GET ${path.split('(')[0]} ms=${Date.now() - t0}`);
         res.json(out);
     } catch (e) { fail(res, e, `GET ${path}`); }
@@ -90,9 +106,11 @@ router.get(/^\/odata\/(.+)$/, async (req, res) => {
 router.post('/fn/:name', async (req, res) => {
     const name = req.params.name;
     if (!sap.FUNCTIONS[name]) return res.status(404).json({ error: 'Unknown function.' });
+    const admin = ADMIN_FUNCTIONS.has(name);
+    if (admin && !needAdmin(req, res)) return;
     const t0 = Date.now();
     try {
-        const out = await sap.callFunction(name, req.body || {}, req.email);
+        const out = await sap.callFunction(name, req.body || {}, req.email, admin);
         console.info(`[capex] ${req.email} ${name} ms=${Date.now() - t0}`);
         res.json(out ?? {});
     } catch (e) { fail(res, e, name); }

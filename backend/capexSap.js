@@ -55,10 +55,13 @@ function literal(type, v) {
     }
 }
 
-function identityQuery(email) {
+function identityQuery(email, admin) {
     const { secret } = config();
     const q = [];
     if (email && secret) q.push(`zcpxmail=${encodeURIComponent(email)}`, `zcpxkey=${encodeURIComponent(secret)}`);
+    // zcpxadm: the hub vouches that this person is an Admin of the CAPEX Portal app (maintenance). Only capex.js sets it,
+    // after checking the grant; a browser-sent zcpx* option is stripped before this point.
+    if (email && secret && admin) q.push('zcpxadm=X');
     return q;
 }
 
@@ -90,10 +93,10 @@ async function fetchCsrf() {
     return csrf;
 }
 
-async function send(method, path, queryParts, email, body) {
+async function send(method, path, queryParts, email, body, admin) {
     const { base } = config();
     if (!base) throw new SapError('The SAP connection for the CAPEX Portal is not configured on the server (CAPEX_SAP_ODATA_BASE).', 503);
-    const query = withCommon([...queryParts, ...identityQuery(email)]).join('&');
+    const query = withCommon([...queryParts, ...identityQuery(email, admin)]).join('&');
     const write = method !== 'GET';
     // Through the Azure gateway a write's query string is dropped, so it travels as an encoded path (the proxy turns it back).
     // A direct SAP host (local testing) needs the plain query.
@@ -129,21 +132,21 @@ async function send(method, path, queryParts, email, body) {
 const unwrap = (j) => (j && j.d ? (Array.isArray(j.d.results) ? j.d.results : j.d.results === undefined && j.d.__count === undefined ? j.d : j.d) : j);
 
 /** GET <set>[(key)][/nav] with the caller's OData options. Returns { rows | row, count? }. */
-async function read(path, options, email) {
+async function read(path, options, email, admin) {
     const q = [];
     for (const [k, v] of Object.entries(options || {})) {
         if (/^zcpx/i.test(k) || /^sap-/i.test(k) || /^\$format$/i.test(k)) continue;
         if (v !== undefined && v !== '') q.push(`${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
     }
     q.push('$format=json');
-    const j = await send('GET', path, q, email);
+    const j = await send('GET', path, q, email, undefined, admin);
     const d = j?.d;
     if (d && Array.isArray(d.results)) return { rows: d.results, count: d.__count !== undefined ? Number(d.__count) : undefined };
     return { row: d ?? null };
 }
 
 /** POST a function import. Params are typed from the live $metadata. */
-async function callFunction(name, params, email) {
+async function callFunction(name, params, email, admin) {
     const f = FUNCTIONS[name];
     if (!f) throw new SapError(`Unknown function ${name}`, 404);
     const q = [];
@@ -151,7 +154,7 @@ async function callFunction(name, params, email) {
         if (params && params[p] !== undefined && params[p] !== null) q.push(`${p}=${encodeURIComponent(literal(t, params[p]))}`);
     }
     if (f.method === 'GET') q.push('$format=json'); // a POST takes JSON from the Accept header; $format is refused there
-    const j = await send(f.method === 'GET' ? 'GET' : 'POST', name, q, email);
+    const j = await send(f.method === 'GET' ? 'GET' : 'POST', name, q, email, undefined, admin);
     // OData V2 answers a function import as { d: { <FunctionName>: {...result...} } }: hand the screens the result itself.
     const d = j && j.d ? j.d : j;
     if (d && typeof d === 'object' && d[name] !== undefined) return d[name];

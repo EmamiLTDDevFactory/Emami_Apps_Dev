@@ -41,6 +41,52 @@ CLASS zcl_zcapex_portal_mpc_ext DEFINITION
              content   TYPE string,
            END OF ts_doc_xfer.
 
+    " Maintenance (Admin Console of Emami Apps): rows travel as one JSON string, camelCase.
+    TYPES: BEGIN OF ts_admin_data,
+             kind TYPE c LENGTH 10,
+             json TYPE string,
+           END OF ts_admin_data.
+    TYPES: BEGIN OF ts_admin_save,
+             kind TYPE c LENGTH 10,
+             json TYPE string,
+           END OF ts_admin_save.
+    TYPES tt_adm_plants TYPE STANDARD TABLE OF werks_d WITH DEFAULT KEY.
+    TYPES: BEGIN OF ts_adm_user,
+             userid    TYPE zcapex_user-userid,
+             fullname  TYPE zcapex_user-fullname,
+             email     TYPE zcapex_user-email,
+             role      TYPE zcapex_user-role,
+             unit      TYPE zcapex_user-unit,
+             is_admin  TYPE zcapex_user-is_admin,
+             is_global TYPE zcapex_user-is_global,
+             active    TYPE zcapex_user-active,
+             plants    TYPE tt_adm_plants,
+           END OF ts_adm_user.
+    TYPES tt_adm_user TYPE STANDARD TABLE OF ts_adm_user WITH DEFAULT KEY.
+    TYPES: BEGIN OF ts_adm_chain,
+             seqnr     TYPE zcapex_doachn-seqnr,
+             role      TYPE zcapex_doachn-role,
+             approver  TYPE zcapex_doachn-approver,
+             sla_days  TYPE zcapex_doachn-sla_days,
+             mandatory TYPE zcapex_doachn-mandatory,
+             eval_req  TYPE zcapex_doachn-eval_req,
+           END OF ts_adm_chain.
+    TYPES tt_adm_chain TYPE STANDARD TABLE OF ts_adm_chain WITH DEFAULT KEY.
+    TYPES: BEGIN OF ts_adm_doa,
+             doaid       TYPE zcapex_doa-doaid,
+             capextype   TYPE zcapex_doa-capextype,
+             doctype     TYPE zcapex_doa-doctype,
+             amount_from TYPE zcapex_doa-amount_from,
+             amount_to   TYPE zcapex_doa-amount_to,
+             waers       TYPE zcapex_doa-waers,
+             range_text  TYPE zcapex_doa-range_text,
+             active      TYPE zcapex_doa-active,
+             valid_from  TYPE zcapex_doa-valid_from,
+             valid_to    TYPE zcapex_doa-valid_to,
+             chain       TYPE tt_adm_chain,
+           END OF ts_adm_doa.
+    TYPES tt_adm_doa TYPE STANDARD TABLE OF ts_adm_doa WITH DEFAULT KEY.
+
     TYPES: BEGIN OF ts_remove_doc,
              doctype TYPE c LENGTH 15,
              docid   TYPE c LENGTH 15,
@@ -63,6 +109,8 @@ CLASS zcl_zcapex_portal_mpc_ext DEFINITION
     METHODS define_budget_item
       RAISING /iwbep/cx_mgw_med_exception.
     METHODS define_remove_document
+      RAISING /iwbep/cx_mgw_med_exception.
+    METHODS define_admin
       RAISING /iwbep/cx_mgw_med_exception.
 ENDCLASS.
 
@@ -92,11 +140,42 @@ CLASS ZCL_ZCAPEX_PORTAL_MPC_EXT IMPLEMENTATION.
 
     define_doc_xfer( ).
     define_remove_document( ).
+    define_admin( ).
 
     " A step that has not been reached yet has no ReachedOn date. The generated property is mandatory,
     " so the gateway failed the whole read (HTTP 500) for any CPE still in approval or on hold.
     model->get_entity_type( iv_entity_name = 'ApprovalStep' )->get_property( iv_property_name = 'ReachedOn' )->set_nullable( abap_true ).
 
+  ENDMETHOD.
+
+
+  METHOD define_admin.
+    " Additive: read rows of users / DOA rules as JSON (AdminDataSet?$filter=Kind eq 'USERS') and save one row (AdminSave).
+    " Both answer only to a verified Emami Apps Admin (zcl_capex_auth=>proxy_admin) or a SAP CAPEX admin; Fiori never uses them.
+    DATA(lo_t) = model->create_entity_type( iv_entity_type_name = 'AdminData' iv_def_entity_set = abap_false ).
+    lo_t->bind_structure( iv_structure_name = 'ZCL_ZCAPEX_PORTAL_MPC_EXT=>TS_ADMIN_DATA' ).
+    DATA(lo_s) = lo_t->create_entity_set( 'AdminDataSet' ).
+    lo_s->set_creatable( abap_false ).  lo_s->set_updatable( abap_false ).  lo_s->set_deletable( abap_false ).
+    lo_s->set_pageable( abap_false ).  lo_s->set_addressable( abap_true ).  lo_s->set_has_ftxt_search( abap_false ).
+    lo_s->set_subscribable( abap_false ).  lo_s->set_filter_required( abap_false ).
+    xprop( io_type = lo_t iv_name = 'Kind' iv_len = 10 iv_key = abap_true ).
+    DATA(lo_p) = lo_t->create_property( iv_property_name = 'Json' iv_abap_fieldname = 'JSON' ).
+    lo_p->set_type_edm_string( ).
+    lo_p->set_creatable( abap_false ).
+    lo_p->set_updatable( abap_false ).
+    lo_p->set_nullable( abap_true ).
+    lo_p->set_filterable( abap_false ).
+
+    DATA(lo_action) = model->create_action( 'AdminSave' ).
+    lo_action->set_return_complex_type( 'ActionResult' ).
+    lo_action->set_http_method( 'POST' ).
+    lo_action->set_return_multiplicity( '1' ).
+    DATA(lo_par) = lo_action->create_input_parameter( iv_parameter_name = 'Kind' iv_abap_fieldname = 'KIND' ).
+    lo_par->/iwbep/if_mgw_odata_property~set_type_edm_string( ).
+    lo_par->set_maxlength( iv_max_length = 10 ).
+    lo_par = lo_action->create_input_parameter( iv_parameter_name = 'Json' iv_abap_fieldname = 'JSON' ).
+    lo_par->/iwbep/if_mgw_odata_property~set_type_edm_string( ).
+    lo_action->bind_input_structure( iv_structure_name = 'ZCL_ZCAPEX_PORTAL_MPC_EXT=>TS_ADMIN_SAVE' ).
   ENDMETHOD.
 
 
@@ -183,7 +262,7 @@ CLASS ZCL_ZCAPEX_PORTAL_MPC_EXT IMPLEMENTATION.
 
   METHOD get_last_modified.
     " Bump whenever the model in this class changes, so Gateway refreshes its metadata cache.
-    CONSTANTS lc_model_changed TYPE timestamp VALUE '20261125170000'.
+    CONSTANTS lc_model_changed TYPE timestamp VALUE '20261126120000'.
     rv_last_modified = super->get_last_modified( ).
     IF rv_last_modified LT lc_model_changed.
       rv_last_modified = lc_model_changed.

@@ -14,7 +14,7 @@ function Frame({ children }: { children: ReactNode }) {
   const path = (usePathname() || '/').replace(BASE, '') || '/';
   const [open, setOpen] = useState(false);
   useEffect(() => setOpen(false), [path]);
-  const groups = Array.from(new Set(NAV.filter((n) => !n.hidden && (!n.adminOnly || s.isAdmin)).map((n) => n.group)));
+  const groups = Array.from(new Set(NAV.filter((n) => !n.hidden && (!n.adminOnly || s.hubAdmin)).map((n) => n.group)));
   const active = (href: string) => (href === '/' ? path === '/' : path.startsWith(href));
 
   return (
@@ -28,7 +28,7 @@ function Frame({ children }: { children: ReactNode }) {
         <div className="flex items-center gap-2 text-[12px]">
           {s.fiscalYear && <Chip tone="info">FY {s.fiscalYear}</Chip>}
           {s.role && <Chip>{s.role}</Chip>}
-          {s.isAdmin && <Chip tone="warning">Admin</Chip>}
+          {(s.isAdmin || s.hubAdmin) && <Chip tone="warning">Admin</Chip>}
           {s.active && !s.loading && !s.error && <NotificationBell />}
           <span className="hidden font-bold sm:inline">{s.fullName || s.userId}</span>
         </div>
@@ -38,7 +38,7 @@ function Frame({ children }: { children: ReactNode }) {
           {groups.map((g) => (
             <div key={g} className="mb-3">
               <div className="px-2 pb-1 text-[10px] font-extrabold uppercase tracking-wider text-sap-muted">{g}</div>
-              {NAV.filter((n) => n.group === g && !n.hidden && (!n.adminOnly || s.isAdmin)).map((n) => (
+              {NAV.filter((n) => n.group === g && !n.hidden && (!n.adminOnly || s.hubAdmin)).map((n) => (
                 <Link key={n.href} href={n.href} className={`block rounded-lg px-2.5 py-1.5 text-[12.5px] font-semibold ${active(n.href) ? 'nav-glow bg-plum text-white' : 'text-sap-ink hover:bg-[#EEF0FB]'}`}>{n.label}</Link>
               ))}
             </div>
@@ -47,8 +47,12 @@ function Frame({ children }: { children: ReactNode }) {
         <main className="min-w-0 flex-1">
           {s.loading ? <Spinner label="Loading your CAPEX profile" />
             : s.error ? <ErrorBox message={s.error} onRetry={s.reload} />
-            : !s.active ? <ErrorBox message="Your Emami Apps e-mail is not set up as a CAPEX user in SAP yet (no active ZCAPEX_USER record). Ask the CAPEX administrator to add you, then reload." />
-            : children}
+            : !s.active && !(s.hubAdmin && path.startsWith('/admin')) ? (
+              <>
+                <ErrorBox message="Your Emami Apps e-mail is not set up as a CAPEX user yet (no active CAPEX user with this e-mail). Ask a CAPEX Portal administrator to add you in Maintenance, then reload." />
+                {s.hubAdmin && <p className="mt-3 text-[12px]">You are an administrator: <Link href="/admin/doa/" className="font-bold text-plum underline">open Maintenance</Link> to add yourself as a CAPEX user.</p>}
+              </>
+            ) : children}
         </main>
       </div>
     </div>

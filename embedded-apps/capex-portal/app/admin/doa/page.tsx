@@ -1,34 +1,43 @@
 'use client';
 import { useMemo } from 'react';
 import { Card, PageHeader, Spinner } from '@/components/ui';
-import { adminWritesEnabled, ADMIN_WRITES_OFF_NOTE } from '@/lib/admin';
+import { loadAdmin, normalizeDoa, normalizeUser, toRuleLike, type AdminDoa, type AdminUser } from '@/lib/admin';
 import { useSession } from '@/lib/session';
 import { useList } from '@/lib/useData';
+import { useAdminList } from '@/lib/useAdminList';
 import type { ValueHelp } from '@/lib/entities';
 import DoaMatrixCard from '@/components/admin/DoaMatrixCard';
 import SimulatorCard from '@/components/admin/SimulatorCard';
 import UsersCard from '@/components/admin/UsersCard';
 import { QuotaCard, SapSyncCard, SlaCard } from '@/components/admin/SettingsCards';
-import { capexTypeOptions, mapDoaRule, type RawDoaRule } from '@/components/admin/doaLogic';
+import { capexTypeOptions, type MatrixRule } from '@/components/admin/doaLogic';
 
-/** Admin Console (Fiori DOAMatrix + Admin scope): stacked sections. Writes stay disabled until lib/admin.ts enables them. */
+/** Maintenance (Fiori DOAMatrix + Admin scope): users, DOA rules, SLA and quota settings. Only for the app's Admins in Emami Apps. */
 export default function Page() {
   const s = useSession();
-  const rules = useList<RawDoaRule>(s.isAdmin ? 'DoaRuleSet' : null, { $expand: 'DoaRuleToChain' });
-  const vh = useList<ValueHelp>(s.isAdmin ? 'ValueHelpSet' : null);
-  const matrix = useMemo(() => rules.rows.map(mapDoaRule), [rules.rows]);
-  const types = useMemo(() => capexTypeOptions(vh.rows, matrix), [vh.rows, matrix]);
+  const users = useAdminList<AdminUser>(s.hubAdmin, () => loadAdmin('USERS', normalizeUser));
+  const rules = useAdminList<AdminDoa>(s.hubAdmin, () => loadAdmin('DOA', normalizeDoa));
+  const vh = useList<ValueHelp>(s.hubAdmin && s.active ? 'ValueHelpSet' : null);
+  const types = useMemo(
+    () => capexTypeOptions(vh.rows, rules.rows.map((r) => ({ capexType: r.capextype, capexTypeText: r.capextype }) as MatrixRule)),
+    [vh.rows, rules.rows],
+  );
+  const roles = useMemo(
+    () => Array.from(new Set([...users.rows.map((u) => u.role), ...rules.rows.flatMap((r) => r.chain.map((c) => c.role))].filter(Boolean))).sort(),
+    [users.rows, rules.rows],
+  );
+  const ruleLikes = useMemo(() => rules.rows.map(toRuleLike), [rules.rows]);
 
   if (s.loading) return <Spinner />;
-  if (!s.isAdmin) return (<><PageHeader title="Admin Console" /><Card><p className="text-[12px] text-sap-muted">You are not allowed to view this page. It is for CAPEX administrators only.</p></Card></>);
+  if (!s.hubAdmin) return (<><PageHeader title="Maintenance" /><Card><p className="text-[12px] text-sap-muted">You are not allowed to view this page. It is for administrators of the CAPEX Portal (Admin role for this app in Emami Apps).</p></Card></>);
   return (
     <div className="space-y-4">
-      <PageHeader title="Admin Console" subtitle={adminWritesEnabled() ? 'Users, DOA rules and settings' : `Read-only. ${ADMIN_WRITES_OFF_NOTE}`} />
-      <UsersCard />
-      <DoaMatrixCard rules={matrix} capexTypes={types} loading={rules.loading} error={rules.error} onRetry={rules.reload} />
-      <SimulatorCard rawRules={rules.rows} capexTypes={types} />
-      <SlaCard config={s.config} />
-      <QuotaCard config={s.config} />
+      <PageHeader title="Maintenance" subtitle="Users, DOA rules and settings. Changes are saved in SAP and apply at once." />
+      <UsersCard users={users.rows} roles={roles} loading={users.loading} error={users.error} onRetry={users.reload} onSaved={users.reload} />
+      <DoaMatrixCard rules={rules.rows} users={users.rows} roles={roles} capexTypes={types} loading={rules.loading} error={rules.error} onRetry={rules.reload} onSaved={rules.reload} />
+      <SimulatorCard rawRules={ruleLikes.filter((r) => r.Active === 'X')} capexTypes={types} />
+      <SlaCard config={s.config} onSaved={s.reload} />
+      <QuotaCard config={s.config} onSaved={s.reload} />
       <SapSyncCard />
     </div>
   );

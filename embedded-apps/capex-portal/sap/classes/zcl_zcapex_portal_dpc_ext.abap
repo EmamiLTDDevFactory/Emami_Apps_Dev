@@ -174,6 +174,24 @@ private section.
       !ES_RESPONSE_CONTEXT type /IWBEP/IF_MGW_APPL_SRV_RUNTIME=>TY_S_MGW_RESPONSE_CONTEXT
     changing
       !CT_DATA type STANDARD TABLE .
+  methods ADMIN_ALLOWED
+    returning
+      value(RV_OK) type ABAP_BOOL .
+  methods ADMIN_READ
+    importing
+      !IV_KIND type CSEQUENCE
+    returning
+      value(RV_JSON) type STRING
+    raising
+      /IWBEP/CX_MGW_BUSI_EXCEPTION .
+  methods ADMIN_SAVE
+    importing
+      !IV_KIND type CSEQUENCE
+      !IV_JSON type STRING
+    returning
+      value(RV_MSG) type STRING
+    raising
+      /IWBEP/CX_MGW_BUSI_EXCEPTION .
   methods RAISE_BUSI
     importing
       !IV_TEXT type CSEQUENCE
@@ -586,6 +604,10 @@ CLASS ZCL_ZCAPEX_PORTAL_DPC_EXT IMPLEMENTATION.
             ENDIF.
             ls_res = VALUE #( success = abap_true message = |{ sy-dbcnt } notification(s) marked as read| ).
 
+          WHEN 'AdminSave'.
+            ls_res-success = abap_true.
+            ls_res-message = admin_save( iv_kind = p( `Kind` ) iv_json = p( `Json` ) ).
+
           WHEN 'RemoveDocument'.
             " POST form of DocumentSet DELETE (the proxy drops DELETE): same visibility and status rules.
             documentset_delete_entity(
@@ -683,6 +705,14 @@ CLASS ZCL_ZCAPEX_PORTAL_DPC_EXT IMPLEMENTATION.
 
   METHOD /iwbep/if_mgw_appl_srv_runtime~get_entityset.
     capture_identity( ).
+    IF iv_entity_set_name = 'AdminDataSet'.
+      " Maintenance read: $filter=Kind eq 'USERS' | 'DOA' -> one row whose Json is the list (camelCase).
+      DATA lt_adm TYPE STANDARD TABLE OF zcl_zcapex_portal_mpc_ext=>ts_admin_data WITH EMPTY KEY.
+      DATA(lv_kind) = to_upper( CONV string( filter_value( io_tech = io_tech_request_context iv_property = `KIND` ) ) ).
+      APPEND VALUE #( kind = lv_kind json = admin_read( lv_kind ) ) TO lt_adm.
+      copy_data_to_ref( EXPORTING is_data = lt_adm CHANGING cr_data = er_entityset ).
+      RETURN.
+    ENDIF.
     IF iv_entity_set_name = 'DocXferSet'.
       " Emami Apps download: $filter=Doctype eq 'CPE' and Docid eq '..' and Docseq eq '0001' -> one row with Content as base64.
       DATA lt_xfer TYPE STANDARD TABLE OF zcl_zcapex_portal_mpc_ext=>ts_doc_xfer WITH EMPTY KEY.
@@ -2272,9 +2302,215 @@ CLASS ZCL_ZCAPEX_PORTAL_DPC_EXT IMPLEMENTATION.
 
   endmethod.
 
+  METHOD admin_allowed.
+    rv_ok = xsdbool( zcl_capex_auth=>proxy_admin( ) = abap_true OR zcl_capex_auth=>is_admin( ) = abap_true ).
+  ENDMETHOD.
+
+
+  METHOD admin_read.
+    IF admin_allowed( ) = abap_false.
+      raise_busi( 'Maintenance is only for CAPEX Portal administrators.' ).
+    ENDIF.
+    CASE to_upper( iv_kind ).
+      WHEN 'USERS'.
+        DATA lt_users TYPE zcl_zcapex_portal_mpc_ext=>tt_adm_user.
+        SELECT userid, fullname, email, role, unit, is_admin, is_global, active
+          FROM zcapex_user INTO CORRESPONDING FIELDS OF TABLE @lt_users ORDER BY userid.
+        SELECT userid, werks FROM zcapex_usrplt INTO TABLE @DATA(lt_plt) ORDER BY userid, werks.
+        LOOP AT lt_users ASSIGNING FIELD-SYMBOL(<ls_u>).
+          LOOP AT lt_plt INTO DATA(ls_p) WHERE userid = <ls_u>-userid.
+            APPEND ls_p-werks TO <ls_u>-plants.
+          ENDLOOP.
+        ENDLOOP.
+        rv_json = /ui2/cl_json=>serialize( data = lt_users compress = abap_true
+                                           pretty_name = /ui2/cl_json=>pretty_mode-camel_case ).
+      WHEN 'DOA'.
+        DATA lt_doa TYPE zcl_zcapex_portal_mpc_ext=>tt_adm_doa.
+        SELECT doaid, capextype, doctype, amount_from, amount_to, waers, range_text, active, valid_from, valid_to
+          FROM zcapex_doa INTO CORRESPONDING FIELDS OF TABLE @lt_doa ORDER BY doaid.
+        SELECT doaid, seqnr, role, approver, sla_days, mandatory, eval_req
+          FROM zcapex_doachn INTO TABLE @DATA(lt_chn) ORDER BY doaid, seqnr.
+        LOOP AT lt_doa ASSIGNING FIELD-SYMBOL(<ls_d>).
+          LOOP AT lt_chn INTO DATA(ls_c) WHERE doaid = <ls_d>-doaid.
+            APPEND CORRESPONDING #( ls_c ) TO <ls_d>-chain.
+          ENDLOOP.
+        ENDLOOP.
+        rv_json = /ui2/cl_json=>serialize( data = lt_doa compress = abap_true
+                                           pretty_name = /ui2/cl_json=>pretty_mode-camel_case ).
+      WHEN OTHERS.
+        raise_busi( |Unknown maintenance list { iv_kind }.| ).
+    ENDCASE.
+  ENDMETHOD.
+
+
+  METHOD admin_save.
+    IF admin_allowed( ) = abap_false.
+      raise_busi( 'Maintenance is only for CAPEX Portal administrators.' ).
+    ENDIF.
+    DATA(lv_who) = COND string( WHEN zcl_capex_auth=>proxy_email( ) IS NOT INITIAL
+                                THEN zcl_capex_auth=>proxy_email( ) ELSE CONV string( sy-uname ) ).
+
+    CASE to_upper( iv_kind ).
+
+      WHEN 'USER'.
+        DATA ls_u TYPE zcl_zcapex_portal_mpc_ext=>ts_adm_user.
+        /ui2/cl_json=>deserialize( EXPORTING json = iv_json pretty_name = /ui2/cl_json=>pretty_mode-camel_case
+                                   CHANGING data = ls_u ).
+        ls_u-userid = to_upper( condense( ls_u-userid ) ).
+        ls_u-email  = condense( ls_u-email ).
+        IF ls_u-userid IS INITIAL OR ls_u-fullname IS INITIAL OR ls_u-email IS INITIAL OR ls_u-role IS INITIAL.
+          raise_busi( 'User ID, name, e-mail and role are required.' ).
+        ENDIF.
+        DATA(lv_mail) = condense( CONV string( ls_u-email ) ).
+        IF lv_mail NS '@' OR lv_mail CS ` `.
+          raise_busi( 'Enter a valid e-mail address.' ).
+        ENDIF.
+        ls_u-is_admin  = COND #( WHEN ls_u-is_admin  = 'X' THEN 'X' ELSE ' ' ).
+        ls_u-is_global = COND #( WHEN ls_u-is_global = 'X' THEN 'X' ELSE ' ' ).
+        ls_u-active    = COND #( WHEN ls_u-active    = 'X' THEN 'X' ELSE ' ' ).
+        " A login must match exactly ONE active user (zcl_capex_auth=>effective_user).
+        IF ls_u-active = 'X'.
+          SELECT userid, email FROM zcapex_user INTO TABLE @DATA(lt_all) WHERE active = 'X'.
+          LOOP AT lt_all INTO DATA(ls_o) WHERE userid <> ls_u-userid.
+            IF to_upper( condense( CONV string( ls_o-email ) ) ) = to_upper( CONV string( ls_u-email ) ).
+              raise_busi( |E-mail { ls_u-email } already belongs to the active user { ls_o-userid }.| ).
+            ENDIF.
+          ENDLOOP.
+        ENDIF.
+        DATA ls_dbu TYPE zcapex_user.
+        MOVE-CORRESPONDING ls_u TO ls_dbu.
+        MODIFY zcapex_user FROM @ls_dbu.
+        DELETE FROM zcapex_usrplt WHERE userid = @ls_u-userid.
+        DATA ls_dbp TYPE zcapex_usrplt.
+        LOOP AT ls_u-plants INTO DATA(lv_w).
+          IF lv_w IS INITIAL.
+            CONTINUE.
+          ENDIF.
+          ls_dbp-userid = ls_u-userid.
+          ls_dbp-werks  = to_upper( lv_w ).
+          INSERT zcapex_usrplt FROM @ls_dbp.
+        ENDLOOP.
+        COMMIT WORK.
+        zcl_capex_log=>audit( iv_doctype = 'ADMIN' iv_docid = ls_u-userid iv_action = 'CAPEX user maintained'
+                              iv_comment = |{ lv_who }: role { ls_u-role }, active { ls_u-active }, admin { ls_u-is_admin }, plants { lines( ls_u-plants ) }| ).
+        rv_msg = |User { ls_u-userid } saved.|.
+
+      WHEN 'DOA'.
+        DATA ls_d TYPE zcl_zcapex_portal_mpc_ext=>ts_adm_doa.
+        /ui2/cl_json=>deserialize( EXPORTING json = iv_json pretty_name = /ui2/cl_json=>pretty_mode-camel_case
+                                   CHANGING data = ls_d ).
+        ls_d-doaid = to_upper( condense( ls_d-doaid ) ).
+        IF ls_d-doaid IS INITIAL.
+          " New rule: next free D<n>.
+          SELECT doaid FROM zcapex_doa INTO TABLE @DATA(lt_ids).
+          DATA(lv_max) = 0.
+          LOOP AT lt_ids INTO DATA(lv_id).
+            DATA(lv_num) = substring( val = lv_id-doaid off = 1 ).
+            IF lv_id-doaid(1) = 'D' AND lv_num CO '0123456789 '.
+              lv_max = nmax( val1 = lv_max val2 = CONV i( lv_num ) ).
+            ENDIF.
+          ENDLOOP.
+          ls_d-doaid = |D{ lv_max + 1 }|.
+        ENDIF.
+        IF ls_d-capextype IS INITIAL.
+          raise_busi( 'CAPEX type is required (use * for all types).' ).
+        ENDIF.
+        ls_d-active = COND #( WHEN ls_d-active = 'X' THEN 'X' ELSE ' ' ).
+        " The approval engine matches a rule on the document type exactly (CPE or BUD), so a blank one never applies.
+        ls_d-doctype = to_upper( condense( ls_d-doctype ) ).
+        IF ls_d-active = 'X' AND ls_d-doctype <> 'CPE' AND ls_d-doctype <> 'BUD'.
+          raise_busi( 'Document type must be CPE or BUD for an active rule.' ).
+        ENDIF.
+        IF ls_d-waers IS INITIAL.
+          ls_d-waers = 'INR'.
+        ENDIF.
+        IF ls_d-amount_from < 0 OR ls_d-amount_to < ls_d-amount_from.
+          raise_busi( 'The upper amount must be at least the lower amount.' ).
+        ENDIF.
+        IF ls_d-valid_to IS NOT INITIAL AND ls_d-valid_to < ls_d-valid_from.
+          raise_busi( 'Valid to cannot be before valid from.' ).
+        ENDIF.
+        IF ls_d-chain IS INITIAL.
+          raise_busi( 'Add at least one approval step.' ).
+        ENDIF.
+        " Two active rules of the same CAPEX type + document type must not cover the same amount.
+        IF ls_d-active = 'X'.
+          SELECT doaid, amount_from, amount_to, valid_from, valid_to FROM zcapex_doa INTO TABLE @DATA(lt_oth)
+            WHERE active = 'X' AND capextype = @ls_d-capextype AND doctype = @ls_d-doctype.
+          LOOP AT lt_oth INTO DATA(ls_x) WHERE doaid <> ls_d-doaid.
+            DATA(lv_dates) = xsdbool( ( ls_x-valid_to IS INITIAL OR ls_x-valid_to >= ls_d-valid_from )
+                                  AND ( ls_d-valid_to IS INITIAL OR ls_d-valid_to >= ls_x-valid_from ) ).
+            IF lv_dates = abap_true AND ls_d-amount_from <= ls_x-amount_to AND ls_x-amount_from <= ls_d-amount_to.
+              raise_busi( |Rule { ls_x-doaid } already covers part of this amount range for the same CAPEX type and document type.| ).
+            ENDIF.
+          ENDLOOP.
+        ENDIF.
+        DATA lt_dbc TYPE STANDARD TABLE OF zcapex_doachn WITH DEFAULT KEY.
+        DATA(lv_seq) = 0.
+        LOOP AT ls_d-chain INTO DATA(ls_ch).
+          IF ls_ch-role IS INITIAL.
+            raise_busi( 'Every approval step needs a role.' ).
+          ENDIF.
+          lv_seq = lv_seq + 1.
+          APPEND VALUE #( doaid = ls_d-doaid seqnr = lv_seq role = ls_ch-role approver = to_upper( ls_ch-approver )
+                          sla_days = nmax( val1 = 0 val2 = ls_ch-sla_days )
+                          mandatory = COND #( WHEN ls_ch-mandatory = 'X' THEN 'X' ELSE ' ' )
+                          eval_req  = COND #( WHEN ls_ch-eval_req  = 'X' THEN 'X' ELSE ' ' ) ) TO lt_dbc.
+        ENDLOOP.
+        DATA ls_dbd TYPE zcapex_doa.
+        MOVE-CORRESPONDING ls_d TO ls_dbd.
+        ls_dbd-range_text = COND #( WHEN ls_d-range_text IS NOT INITIAL THEN ls_d-range_text ELSE |{ ls_d-amount_from DECIMALS = 0 } - { ls_d-amount_to DECIMALS = 0 }| ).
+        MODIFY zcapex_doa FROM @ls_dbd.
+        DELETE FROM zcapex_doachn WHERE doaid = @ls_d-doaid.
+        INSERT zcapex_doachn FROM TABLE @lt_dbc.
+        COMMIT WORK.
+        zcl_capex_log=>audit( iv_doctype = 'ADMIN' iv_docid = ls_d-doaid iv_action = 'DOA rule maintained'
+                              iv_comment = |{ lv_who }: { ls_d-capextype }/{ ls_d-doctype } { ls_d-amount_from DECIMALS = 0 }-{ ls_d-amount_to DECIMALS = 0 }, { lines( lt_dbc ) } steps, active { ls_d-active }| ).
+        rv_msg = |DOA rule { ls_d-doaid } saved.|.
+
+      WHEN 'CONFIG'.
+        TYPES: BEGIN OF ty_cfg, param TYPE zcapex_config-param, value TYPE zcapex_config-value, END OF ty_cfg.
+        DATA ls_cfg TYPE ty_cfg.
+        /ui2/cl_json=>deserialize( EXPORTING json = iv_json pretty_name = /ui2/cl_json=>pretty_mode-camel_case
+                                   CHANGING data = ls_cfg ).
+        ls_cfg-param = to_upper( condense( ls_cfg-param ) ).
+        ls_cfg-value = condense( ls_cfg-value ).
+        " Only the settings the Admin Console shows. Never PROXY_* or the other technical parameters.
+        DATA(lv_ok) = xsdbool( ls_cfg-param = 'SLA_WARN_DAYS' OR ls_cfg-param = 'SLA_BREACH_DAYS'
+                            OR ls_cfg-param = 'SLA_AUTO_ESCALATE' OR ls_cfg-param = 'QUOTA_YEAR_CAP'
+                            OR ls_cfg-param = 'QUOTA_SINGLE_CAP' OR ls_cfg-param CP 'QUOTA_YEAR_CAP_+*' ).
+        IF lv_ok = abap_false.
+          raise_busi( |Setting { ls_cfg-param } cannot be changed here.| ).
+        ENDIF.
+        IF ls_cfg-param = 'SLA_AUTO_ESCALATE'.
+          ls_cfg-value = COND #( WHEN to_upper( ls_cfg-value ) = 'X' THEN 'X' ELSE '' ).
+        ELSEIF ls_cfg-value IS INITIAL OR condense( CONV string( ls_cfg-value ) ) CN '0123456789.'.
+          raise_busi( |{ ls_cfg-param } must be a number.| ).
+        ENDIF.
+        SELECT SINGLE * FROM zcapex_config INTO @DATA(ls_old) WHERE param = @ls_cfg-param.
+        DATA ls_dbc TYPE zcapex_config.
+        IF sy-subrc = 0.
+          ls_dbc = ls_old.
+        ELSE.
+          ls_dbc-param = ls_cfg-param.
+        ENDIF.
+        ls_dbc-value = ls_cfg-value.
+        MODIFY zcapex_config FROM @ls_dbc.
+        COMMIT WORK.
+        zcl_capex_log=>audit( iv_doctype = 'ADMIN' iv_docid = ls_cfg-param iv_action = 'CAPEX setting changed'
+                              iv_comment = |{ lv_who }: { ls_old-value } -> { ls_cfg-value }| ).
+        rv_msg = |Setting { ls_cfg-param } saved.|.
+
+      WHEN OTHERS.
+        raise_busi( |Unknown maintenance action { iv_kind }.| ).
+    ENDCASE.
+  ENDMETHOD.
+
+
   METHOD capture_identity.
     DATA: lv_email TYPE string,
-          lv_key   TYPE string.
+          lv_key   TYPE string,
+          lv_admin TYPE string.
     IF mr_request_details IS BOUND.
       " The custom query options may sit in any of these tables depending on the request kind.
       DATA(lt_all) = mr_request_details->*-parameters.
@@ -2285,6 +2521,7 @@ CLASS ZCL_ZCAPEX_PORTAL_DPC_EXT IMPLEMENTATION.
         CASE to_lower( <ls_prm>-name ).
           WHEN 'zcpxmail'. lv_email = <ls_prm>-value.
           WHEN 'zcpxkey'.  lv_key   = <ls_prm>-value.
+          WHEN 'zcpxadm'.  lv_admin = <ls_prm>-value.
         ENDCASE.
       ENDLOOP.
       " Custom (non-system) URI query options are kept in this table.
@@ -2293,10 +2530,11 @@ CLASS ZCL_ZCAPEX_PORTAL_DPC_EXT IMPLEMENTATION.
           " Query values are kept percent-encoded by the framework (amit%40x.com): decode them.
           WHEN 'zcpxmail'. lv_email = cl_http_utility=>unescape_url( <ls_qry>-value ).
           WHEN 'zcpxkey'.  lv_key   = cl_http_utility=>unescape_url( <ls_qry>-value ).
+          WHEN 'zcpxadm'.  lv_admin = cl_http_utility=>unescape_url( <ls_qry>-value ).
         ENDCASE.
       ENDLOOP.
     ENDIF.
-    zcl_capex_auth=>set_proxy_identity( iv_email = lv_email iv_key = lv_key ).
+    zcl_capex_auth=>set_proxy_identity( iv_email = lv_email iv_key = lv_key iv_admin = lv_admin ).
   ENDMETHOD.
 
 

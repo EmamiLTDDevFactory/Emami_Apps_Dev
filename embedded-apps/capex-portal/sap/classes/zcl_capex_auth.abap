@@ -44,10 +44,20 @@ CLASS zcl_capex_auth DEFINITION PUBLIC FINAL CREATE PUBLIC.
     "! Called once per OData request by the data provider with the raw query options.
     CLASS-METHODS set_proxy_identity
       IMPORTING iv_email TYPE string OPTIONAL
-                iv_key   TYPE string OPTIONAL.
+                iv_key   TYPE string OPTIONAL
+                iv_admin TYPE string OPTIONAL.
+    "! True only for a verified hub call (same PROXY_SECRET + PROXY_USERS checks as effective_user) on which the hub
+    "! vouched that the signed-in person is an Admin of the CAPEX Portal app in Emami Apps (query option zcpxadm = X).
+    "! Maintenance (users, DOA rules, settings) is allowed on this; Fiori never sends it, so Fiori is unaffected.
+    CLASS-METHODS proxy_admin
+      RETURNING VALUE(rv_ok) TYPE abap_bool.
+    "! The hub e-mail of the current request (only meaningful together with proxy_admin; used for the audit trail).
+    CLASS-METHODS proxy_email
+      RETURNING VALUE(rv_email) TYPE string.
   PRIVATE SECTION.
     CLASS-DATA gv_email    TYPE string.
     CLASS-DATA gv_key      TYPE string.
+    CLASS-DATA gv_admin    TYPE string.
     CLASS-DATA gv_resolved TYPE abap_bool.
     CLASS-DATA gv_user     TYPE xubname.
     TYPES: BEGIN OF ty_plant,
@@ -176,7 +186,34 @@ CLASS ZCL_CAPEX_AUTH IMPLEMENTATION.
   METHOD set_proxy_identity.
     gv_email = condense( iv_email ).
     gv_key = iv_key.
+    gv_admin = condense( iv_admin ).
     CLEAR: gv_resolved, gv_user.
+  ENDMETHOD.
+
+
+  METHOD proxy_email.
+    rv_email = gv_email.
+  ENDMETHOD.
+
+
+  METHOD proxy_admin.
+    IF gv_admin <> 'X'.
+      RETURN.
+    ENDIF.
+    DATA(lv_secret) = condense( CONV string( zcl_capex_config=>get( 'PROXY_SECRET' ) ) ).
+    IF lv_secret IS INITIAL OR gv_key <> lv_secret.
+      RETURN.
+    ENDIF.
+    DATA(lv_trusted) = condense( CONV string( zcl_capex_config=>get( 'PROXY_USERS' ) ) ).
+    IF lv_trusted IS INITIAL.
+      lv_trusted = `WDA_AUDIT`.
+    ENDIF.
+    SPLIT lv_trusted AT ',' INTO TABLE DATA(lt_trusted).
+    LOOP AT lt_trusted INTO DATA(lv_t).
+      IF to_upper( condense( lv_t ) ) = sy-uname.
+        rv_ok = abap_true.
+      ENDIF.
+    ENDLOOP.
   ENDMETHOD.
 
 
