@@ -1351,10 +1351,15 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // bare number fails SAP's gateway parser the same way an unformatted MaxAmt does on MobCapSet
   // (CX_SXML_PARSE_ERROR). The composite-key URL already uses .toFixed(2) on the raw row value -
   // this keeps the body payload's own precision consistent with that.
+  // ValidFrom/ValidTo must go as SAP's /Date(ms)/ literal on write, same gotcha toODataDate already
+  // works around for MobCapSet below - a plain 'YYYY-MM-DD' string fails gateway conversion
+  // (CX_SY_CONVERSION_NO_DATE_TIME "Conversion error for property 'ValidFrom'").
   const buildDoaChainPayload = (row: DoaChainRow, adminPernr: string) => ({
     ...row,
     AmtFrom: row.AmtFrom.toFixed(2),
     AmtTo: row.AmtTo.toFixed(2),
+    ValidFrom: toODataDate(row.ValidFrom),
+    ValidTo: toODataDate(row.ValidTo),
     Aenam: adminPernr,
   });
 

@@ -762,10 +762,12 @@ function CreateClaimInner() {
 
       setMonthClaims((prev) => {
         const entry = prev[monthKey] || BLANK_MONTH_ENTRY;
-        // Default Claim Amount to the invoice amount, capped at the grade's Eligible Amount if one
-        // applies (null eligibleAmount = no cap) - only when the user hasn't already typed a value.
+        // Default Claim Amount to the actual invoice amount, uncapped - only when the user hasn't
+        // already typed a value. The Eligible Amount field (and the "higher than eligibility"
+        // warning below) still shows the grade's cap separately; this auto-fill no longer silently
+        // caps Claim Amount down to it.
         const claimAmount = (!entry.claimAmount && totalAmount && Number(totalAmount) > 0)
-          ? (entry.eligibleAmount != null ? Math.min(Number(totalAmount), entry.eligibleAmount) : Number(totalAmount)).toString()
+          ? Number(totalAmount).toString()
           : entry.claimAmount;
 
         let dateMismatchWarning: string | null = null;
