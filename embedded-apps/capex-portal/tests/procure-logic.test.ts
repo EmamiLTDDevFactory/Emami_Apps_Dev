@@ -11,11 +11,11 @@ describe('CWIP create', () => {
     const e = validateCwip({ ...draft, assetClass: '', costCenter: ' ', timeframeWeeks: '0', paymentTerms: 'short' }).errors;
     expect(e).toEqual(['Asset class is required.', 'Cost center is required.', 'Execution timeframe is required.', 'Payment terms are required (at least 15 characters).']);
   });
-  it('builds the CreateCWIP params, AssetDesc only when supported', () => {
+  it('builds the CreateCWIP params, AssetDesc now sent (the SAP service supports it)', () => {
     const p = buildCreateCwipParams('CPE-1', { ...draft, assetClass: ' ABCDEFGHIJ ' });
     expect(p).toMatchObject({ CpeId: 'CPE-1', AssetClass: 'ABCDEFGH', CostCenter: '1100-PROD', WbsElement: '', TimeframeWeeks: 12, ExecProcess: 'TURNKEY', ProfitCenter: 'PC-1100' });
-    expect('AssetDesc' in p).toBe(false);
-    expect(buildCreateCwipParams('CPE-1', draft, true).AssetDesc).toBe('x');
+    expect(p.AssetDesc).toBe('x');
+    expect('AssetDesc' in buildCreateCwipParams('CPE-1', draft, false)).toBe(false);
   });
   it('suggests an asset class from the capex type', () => {
     expect(suggestAssetClass('MOULDS')).toBe('3100');

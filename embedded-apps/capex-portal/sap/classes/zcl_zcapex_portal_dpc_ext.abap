@@ -174,6 +174,23 @@ private section.
       !ES_RESPONSE_CONTEXT type /IWBEP/IF_MGW_APPL_SRV_RUNTIME=>TY_S_MGW_RESPONSE_CONTEXT
     changing
       !CT_DATA type STANDARD TABLE .
+  methods SET_VENDOR_CODE
+    importing
+      !IV_CPEID type CSEQUENCE
+      !IV_LIFNR type CSEQUENCE
+    returning
+      value(RV_MSG) type STRING
+    raising
+      /IWBEP/CX_MGW_BUSI_EXCEPTION .
+  methods REVISE_AMOUNT
+    importing
+      !IV_CPEID type CSEQUENCE
+      !IV_NEW type STRING
+      !IV_REASON type CSEQUENCE
+    returning
+      value(RV_MSG) type STRING
+    raising
+      /IWBEP/CX_MGW_BUSI_EXCEPTION .
   methods ADMIN_ALLOWED
     returning
       value(RV_OK) type ABAP_BOOL .
@@ -558,11 +575,25 @@ CLASS ZCL_ZCAPEX_PORTAL_DPC_EXT IMPLEMENTATION.
                             exec_process = p( `ExecProcess` )
                             prctr         = p( `ProfitCenter` )
                             remarks       = p( `Remarks` ) ).
+            " AssetDesc (new, optional): becomes the description of the fixed asset created at capitalization.
+            DATA(lv_adesc) = condense( p( `AssetDesc` ) ).
+            IF strlen( lv_adesc ) > 50.
+              raise_busi( 'Asset description can be 50 characters at most.' ).
+            ENDIF.
             IF ls_in-kostl IS NOT INITIAL. ls_in-kostl = |{ ls_in-kostl ALPHA = IN }|. ENDIF.
             IF ls_in-prctr IS NOT INITIAL. ls_in-prctr = |{ ls_in-prctr ALPHA = IN }|. ENDIF.
             zcl_capex_sap=>push_cwip( EXPORTING is_input = ls_in
                                       IMPORTING ev_cwipid = DATA(lv_cwipid)
                                                 ev_ebeln = DATA(lv_ebeln) ).
+            IF lv_adesc IS NOT INITIAL AND lv_cwipid IS NOT INITIAL.
+              " Stored as a settings row CWIPDESC_<cwip> (no new table, nothing of Fiori's changes); read at capitalization.
+              DATA ls_adesc TYPE zcapex_config.
+              ls_adesc-param  = |CWIPDESC_{ lv_cwipid }|.
+              ls_adesc-value  = lv_adesc.
+              ls_adesc-remark = 'Asset description from CWIP creation'.
+              MODIFY zcapex_config FROM @ls_adesc.
+              COMMIT WORK.
+            ENDIF.
             ls_res = result( iv_doctype = 'CPE' iv_docid = ls_in-cpeid
                              iv_message = |Pushed to SAP. CWIP { lv_cwipid } - Purchase Order { lv_ebeln }.| ).
             ls_res-sap_object = lv_ebeln.
@@ -603,6 +634,14 @@ CLASS ZCL_ZCAPEX_PORTAL_DPC_EXT IMPLEMENTATION.
                 WHERE recipient = @( zcl_capex_auth=>effective_user( ) ) AND notifid = @lv_nid.
             ENDIF.
             ls_res = VALUE #( success = abap_true message = |{ sy-dbcnt } notification(s) marked as read| ).
+
+          WHEN 'SetCpeVendorCode'.
+            DATA(lv_vmsg) = set_vendor_code( iv_cpeid = p( `CpeId` ) iv_lifnr = p( `Lifnr` ) ).
+            ls_res = result( iv_doctype = 'CPE' iv_docid = p( `CpeId` ) iv_message = lv_vmsg ).
+
+          WHEN 'ReviseCpeAmount'.
+            DATA(lv_rmsg) = revise_amount( iv_cpeid = p( `CpeId` ) iv_new = p( `NewAmount` ) iv_reason = p( `Reason` ) ).
+            ls_res = result( iv_doctype = 'CPE' iv_docid = p( `CpeId` ) iv_message = lv_rmsg ).
 
           WHEN 'AdminSave'.
             ls_res-success = abap_true.
@@ -2301,6 +2340,98 @@ CLASS ZCL_ZCAPEX_PORTAL_DPC_EXT IMPLEMENTATION.
       ORDER BY lifnr.
 
   endmethod.
+
+  METHOD set_vendor_code.
+    IF admin_allowed( ) = abap_false.
+      raise_busi( 'Only a CAPEX administrator can set the vendor code.' ).
+    ENDIF.
+    DATA(lv_cpe) = CONV zcapex_de_cpeid( iv_cpeid ).
+    DATA(lv_vc) = to_upper( condense( CONV string( iv_lifnr ) ) ).
+    IF lv_vc IS INITIAL OR strlen( lv_vc ) > 10 OR lv_vc CN 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.
+      raise_busi( 'Vendor code must be 1 to 10 letters or digits.' ).
+    ENDIF.
+    DATA lv_lifnr TYPE lifnr.
+    lv_lifnr = lv_vc.
+    lv_lifnr = |{ lv_lifnr ALPHA = IN }|.     " numeric codes are padded with leading zeros
+    SELECT SINGLE lifnr FROM lfa1 INTO @DATA(lv_chk) WHERE lifnr = @lv_lifnr.
+    IF sy-subrc <> 0.
+      raise_busi( |Vendor { lv_lifnr } does not exist in SAP.| ).
+    ENDIF.
+    SELECT SINGLE status FROM zcapex_cpe INTO @DATA(lv_st) WHERE cpeid = @lv_cpe.
+    IF sy-subrc <> 0.
+      raise_busi( |CPE { lv_cpe } not found.| ).
+    ENDIF.
+    IF lv_st <> 'APPROVED' AND lv_st <> 'CAPITALIZED' AND lv_st <> 'COMPLETED'.
+      raise_busi( |The vendor code can be set after final approval (status is { lv_st }).| ).
+    ENDIF.
+    " Locked once a purchase order exists for the CPE.
+    SELECT ebeln FROM zcapex_cwip INTO TABLE @DATA(lt_po) WHERE cpeid = @lv_cpe.
+    LOOP AT lt_po INTO DATA(ls_po) WHERE ebeln IS NOT INITIAL.
+      raise_busi( |Locked: purchase order { ls_po-ebeln } was already created for { lv_cpe }.| ).
+    ENDLOOP.
+    UPDATE zcapex_cpeven SET lifnr = @lv_lifnr WHERE cpeid = @lv_cpe AND selected = @abap_true.
+    IF sy-subrc <> 0.
+      raise_busi( |{ lv_cpe } has no selected vendor.| ).
+    ENDIF.
+    COMMIT WORK.
+    zcl_capex_log=>audit( iv_doctype = 'CPE' iv_docid = lv_cpe iv_action = 'Vendor code set'
+                          iv_comment = |{ lv_lifnr } by { COND string( WHEN zcl_capex_auth=>proxy_email( ) IS NOT INITIAL THEN zcl_capex_auth=>proxy_email( ) ELSE CONV string( sy-uname ) ) }| ).
+    rv_msg = |Vendor code { lv_lifnr } saved for { lv_cpe }.|.
+  ENDMETHOD.
+
+
+  METHOD revise_amount.
+    IF admin_allowed( ) = abap_false.
+      raise_busi( 'Only a CAPEX administrator can revise an amount.' ).
+    ENDIF.
+    DATA(lv_cpe) = CONV zcapex_de_cpeid( iv_cpeid ).
+    DATA(lv_new) = CONV zcapex_de_amount( zcl_capex_util=>to_amount( iv_new ) ).
+    IF lv_new <= 0.
+      raise_busi( 'The new amount must be greater than zero.' ).
+    ENDIF.
+    DATA(lv_reason) = condense( CONV string( iv_reason ) ).
+    IF strlen( lv_reason ) < 5.
+      raise_busi( 'Give a reason for the revision.' ).
+    ENDIF.
+    SELECT SINGLE * FROM zcapex_cpe INTO @DATA(ls_cpe) WHERE cpeid = @lv_cpe.
+    IF sy-subrc <> 0.
+      raise_busi( |CPE { lv_cpe } not found.| ).
+    ENDIF.
+    IF ls_cpe-status <> 'APPROVED'.
+      raise_busi( |The amount can be revised on an approved CPE only (status is { ls_cpe-status }).| ).
+    ENDIF.
+    IF lv_new = ls_cpe-amount.
+      raise_busi( 'The new amount is the same as the current amount.' ).
+    ENDIF.
+    SELECT ebeln FROM zcapex_cwip INTO TABLE @DATA(lt_po) WHERE cpeid = @lv_cpe.
+    LOOP AT lt_po INTO DATA(ls_po) WHERE ebeln IS NOT INITIAL.
+      raise_busi( |Locked: purchase order { ls_po-ebeln } was already created at the old amount.| ).
+    ENDLOOP.
+    " The supporting document goes first (category AMT_REV), then the revision.
+    SELECT SINGLE docseq FROM zcapex_doc INTO @DATA(lv_seq)
+      WHERE doctype = 'CPE' AND docid = @lv_cpe AND category = 'AMT_REV'.
+    IF sy-subrc <> 0.
+      raise_busi( 'Attach the amount-revision document first (category Amount Revision).' ).
+    ENDIF.
+    IF lv_new > ls_cpe-amount.
+      TRY.
+          DATA(ls_pos) = zcl_capex_budget=>position( ls_cpe-budgetid ).
+        CATCH zcx_capex_error INTO DATA(lx_pos).
+          raise_busi( lx_pos->get_text( ) ).
+      ENDTRY.
+      IF lv_new - ls_cpe-amount > ls_pos-available.
+        raise_busi( |Budget { ls_cpe-budgetid } has only { zcl_capex_util=>lakhs( ls_pos-available ) } available for the increase.| ).
+      ENDIF.
+    ENDIF.
+    DATA(lv_by) = zcl_capex_auth=>effective_user( ).
+    UPDATE zcapex_cpe SET amount = @lv_new, changed_by = @lv_by, changed_on = @sy-datum, changed_at = @sy-uzeit WHERE cpeid = @lv_cpe.
+    UPDATE zcapex_cwip SET amount = @lv_new WHERE cpeid = @lv_cpe.
+    COMMIT WORK.
+    zcl_capex_log=>audit( iv_doctype = 'CPE' iv_docid = lv_cpe iv_action = 'Amount revised'
+                          iv_comment = |{ ls_cpe-amount DECIMALS = 2 } -> { lv_new DECIMALS = 2 }: { lv_reason }| ).
+    rv_msg = |Amount of { lv_cpe } revised to { lv_new DECIMALS = 2 }.|.
+  ENDMETHOD.
+
 
   METHOD admin_allowed.
     rv_ok = xsdbool( zcl_capex_auth=>proxy_admin( ) = abap_true OR zcl_capex_auth=>is_admin( ) = abap_true ).

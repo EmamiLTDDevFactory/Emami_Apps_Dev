@@ -69,7 +69,7 @@ function checkedPath(raw) {
 
 // Maintenance lists/saves are only for the app's Admins; SAP re-checks the hub's vouching (zcpxadm) as a second gate.
 const ADMIN_SETS = new Set(['AdminDataSet']);
-const ADMIN_FUNCTIONS = new Set(['AdminSave']);
+const ADMIN_FUNCTIONS = new Set(['AdminSave', 'SetCpeVendorCode', 'ReviseCpeAmount']);
 const needAdmin = (req, res) => {
     if (req.hubAdmin) return true;
     res.status(403).json({ error: 'Maintenance is only for CAPEX Portal administrators (Admin role for this app in Emami Apps).' });

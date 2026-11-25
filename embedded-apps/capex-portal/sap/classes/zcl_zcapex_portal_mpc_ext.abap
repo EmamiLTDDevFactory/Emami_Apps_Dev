@@ -87,6 +87,29 @@ CLASS zcl_zcapex_portal_mpc_ext DEFINITION
            END OF ts_adm_doa.
     TYPES tt_adm_doa TYPE STANDARD TABLE OF ts_adm_doa WITH DEFAULT KEY.
 
+    " Parameters the live Fiori service did not have yet (additive): CreateCWIP.AssetDesc, SetCpeVendorCode, ReviseCpeAmount.
+    TYPES: BEGIN OF ts_create_cwip_x,
+             remarks        TYPE c LENGTH 2000,
+             profitcenter   TYPE c LENGTH 10,
+             execprocess    TYPE c LENGTH 10,
+             timeframeweeks TYPE i,
+             paymentterms   TYPE c LENGTH 2000,
+             wbselement     TYPE c LENGTH 24,
+             costcenter     TYPE c LENGTH 10,
+             assetclass     TYPE c LENGTH 8,
+             cpeid          TYPE c LENGTH 15,
+             assetdesc      TYPE c LENGTH 50,
+           END OF ts_create_cwip_x.
+    TYPES: BEGIN OF ts_set_vendor,
+             cpeid TYPE c LENGTH 15,
+             lifnr TYPE c LENGTH 10,
+           END OF ts_set_vendor.
+    TYPES: BEGIN OF ts_revise_amt,
+             cpeid     TYPE c LENGTH 15,
+             newamount TYPE p LENGTH 8 DECIMALS 2,
+             reason    TYPE c LENGTH 500,
+           END OF ts_revise_amt.
+
     TYPES: BEGIN OF ts_remove_doc,
              doctype TYPE c LENGTH 15,
              docid   TYPE c LENGTH 15,
@@ -111,6 +134,8 @@ CLASS zcl_zcapex_portal_mpc_ext DEFINITION
     METHODS define_remove_document
       RAISING /iwbep/cx_mgw_med_exception.
     METHODS define_admin
+      RAISING /iwbep/cx_mgw_med_exception.
+    METHODS define_cpe_extras
       RAISING /iwbep/cx_mgw_med_exception.
 ENDCLASS.
 
@@ -141,11 +166,59 @@ CLASS ZCL_ZCAPEX_PORTAL_MPC_EXT IMPLEMENTATION.
     define_doc_xfer( ).
     define_remove_document( ).
     define_admin( ).
+    define_cpe_extras( ).
 
     " A step that has not been reached yet has no ReachedOn date. The generated property is mandatory,
     " so the gateway failed the whole read (HTTP 500) for any CPE still in approval or on hold.
     model->get_entity_type( iv_entity_name = 'ApprovalStep' )->get_property( iv_property_name = 'ReachedOn' )->set_nullable( abap_true ).
 
+  ENDMETHOD.
+
+
+  METHOD define_cpe_extras.
+    " CreateCWIP gets AssetDesc (kept: every existing parameter, same order of meaning).
+    DATA(lo_cw) = model->get_action( 'CreateCWIP' ).
+    DATA(lo_p) = lo_cw->create_input_parameter( iv_parameter_name = 'AssetDesc' iv_abap_fieldname = 'ASSETDESC' ).
+    lo_p->/iwbep/if_mgw_odata_property~set_type_edm_string( ).
+    lo_p->set_maxlength( iv_max_length = 50 ).
+    lo_cw->bind_input_structure( iv_structure_name = 'ZCL_ZCAPEX_PORTAL_MPC_EXT=>TS_CREATE_CWIP_X' ).
+
+    DATA(lo_sv) = model->create_action( 'SetCpeVendorCode' ).
+    lo_sv->set_return_complex_type( 'ActionResult' ).
+    lo_sv->set_http_method( 'POST' ).
+    lo_sv->set_return_multiplicity( '1' ).
+    lo_p = lo_sv->create_input_parameter( iv_parameter_name = 'CpeId' iv_abap_fieldname = 'CPEID' ).
+    lo_p->/iwbep/if_mgw_odata_property~set_type_edm_string( ).
+    lo_p->set_maxlength( iv_max_length = 15 ).
+    lo_p = lo_sv->create_input_parameter( iv_parameter_name = 'Lifnr' iv_abap_fieldname = 'LIFNR' ).
+    lo_p->/iwbep/if_mgw_odata_property~set_type_edm_string( ).
+    lo_p->set_maxlength( iv_max_length = 10 ).
+    lo_sv->bind_input_structure( iv_structure_name = 'ZCL_ZCAPEX_PORTAL_MPC_EXT=>TS_SET_VENDOR' ).
+
+    DATA(lo_ra) = model->create_action( 'ReviseCpeAmount' ).
+    lo_ra->set_return_complex_type( 'ActionResult' ).
+    lo_ra->set_http_method( 'POST' ).
+    lo_ra->set_return_multiplicity( '1' ).
+    lo_p = lo_ra->create_input_parameter( iv_parameter_name = 'CpeId' iv_abap_fieldname = 'CPEID' ).
+    lo_p->/iwbep/if_mgw_odata_property~set_type_edm_string( ).
+    lo_p->set_maxlength( iv_max_length = 15 ).
+    lo_p = lo_ra->create_input_parameter( iv_parameter_name = 'NewAmount' iv_abap_fieldname = 'NEWAMOUNT' ).
+    lo_p->/iwbep/if_mgw_odata_property~set_type_edm_decimal( ).
+    lo_p->set_precison( iv_precision = 2 ).
+    lo_p->set_maxlength( iv_max_length = 2 ).
+    lo_p = lo_ra->create_input_parameter( iv_parameter_name = 'Reason' iv_abap_fieldname = 'REASON' ).
+    lo_p->/iwbep/if_mgw_odata_property~set_type_edm_string( ).
+    lo_p->set_maxlength( iv_max_length = 500 ).
+    lo_ra->bind_input_structure( iv_structure_name = 'ZCL_ZCAPEX_PORTAL_MPC_EXT=>TS_REVISE_AMT' ).
+
+    " DoaRule.Doctype: the bound structure ZCAPEX_S_DOARULE already carries DOCTYPE; only the property was never published.
+    DATA(lo_dp) = model->get_entity_type( iv_entity_name = 'DoaRule' )->create_property( iv_property_name = 'Doctype' iv_abap_fieldname = 'DOCTYPE' ).
+    lo_dp->set_type_edm_string( ).
+    lo_dp->set_maxlength( iv_max_length = 5 ).
+    lo_dp->set_nullable( abap_true ).
+    lo_dp->set_creatable( abap_false ).
+    lo_dp->set_updatable( abap_false ).
+    lo_dp->set_filterable( abap_true ).
   ENDMETHOD.
 
 
@@ -262,7 +335,7 @@ CLASS ZCL_ZCAPEX_PORTAL_MPC_EXT IMPLEMENTATION.
 
   METHOD get_last_modified.
     " Bump whenever the model in this class changes, so Gateway refreshes its metadata cache.
-    CONSTANTS lc_model_changed TYPE timestamp VALUE '20261126120000'.
+    CONSTANTS lc_model_changed TYPE timestamp VALUE '20261126180000'.
     rv_last_modified = super->get_last_modified( ).
     IF rv_last_modified LT lc_model_changed.
       rv_last_modified = lc_model_changed.

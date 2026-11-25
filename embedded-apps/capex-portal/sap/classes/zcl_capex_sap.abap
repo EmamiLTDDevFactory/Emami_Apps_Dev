@@ -152,6 +152,13 @@ CLASS ZCL_CAPEX_SAP IMPLEMENTATION.
     ls_key-companycode    = zcl_capex_config=>get( 'COMPANY_CODE' ).
     ls_gen-assetclass     = ls_ic-anlkl.
     ls_gen-descript       = ls_ic-title.
+    " Description typed on the CWIP screen (CreateCWIP.AssetDesc), when there is one.
+    IF ls_ic-cwipid IS NOT INITIAL.
+      DATA(lv_adesc) = zcl_capex_config=>get( |CWIPDESC_{ ls_ic-cwipid }| ).
+      IF lv_adesc IS NOT INITIAL.
+        ls_gen-descript = lv_adesc.
+      ENDIF.
+    ENDIF.
     ls_genx-assetclass    = abap_true.
     ls_genx-descript      = abap_true.
     ls_post-cap_date      = ls_ic-commission_dt.
