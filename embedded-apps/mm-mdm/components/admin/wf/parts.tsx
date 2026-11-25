@@ -106,16 +106,16 @@ export function useValueList(kind: string, appId: string, enabled = true) {
  * Field with an F4 list: a code input that suggests live values from SAP (users by id or name, other lists from their SAP tables).
  * Free text stays possible: SAP validates it on save.
  */
-export function VhInput({ id, label, value, onChange, kind, appId = '', placeholder, disabled, hint, className, required, onPick, labelHidden }: {
+export function VhInput({ id, label, value, onChange, kind, appId = '', placeholder, disabled, hint, className, required, onPick, labelHidden, keepCase }: {
   id: string; label: string; value: string; onChange: (v: string) => void; kind: string; appId?: string; placeholder?: string; disabled?: boolean;
-  hint?: ReactNode; className?: string; required?: boolean; onPick?: (item: WfItem) => void; labelHidden?: boolean;
+  hint?: ReactNode; className?: string; required?: boolean; onPick?: (item: WfItem) => void; labelHidden?: boolean; keepCase?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const [remote, setRemote] = useState<WfItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const isUser = kind === 'USER';
+  const isUser = kind === 'USER' || kind === 'EMAIL';
   const { items: all } = useValueList(isUser ? '' : kind, appId, open && !isUser);
   const box = useRef<HTMLDivElement>(null);
   const lid = `${id}-list`;
@@ -128,7 +128,7 @@ export function VhInput({ id, label, value, onChange, kind, appId = '', placehol
     setBusy(true);
     let live = true;
     const t = setTimeout(() => {
-      wfApi.valueHelp('USER', appId, q, 25).then((r) => { if (live) { setRemote(r); setErr(''); } }).catch((e: Error) => { if (live) setErr(e.message); }).finally(() => { if (live) setBusy(false); });
+      wfApi.valueHelp(kind, appId, q, 25).then((r) => { if (live) { setRemote(r); setErr(''); } }).catch((e: Error) => { if (live) setErr(e.message); }).finally(() => { if (live) setBusy(false); });
     }, 260);
     return () => { live = false; clearTimeout(t); };
   }, [isUser, open, value, appId]);
@@ -165,7 +165,7 @@ export function VhInput({ id, label, value, onChange, kind, appId = '', placehol
           <input
             id={id} value={value} disabled={disabled} placeholder={placeholder} autoComplete="off" spellCheck={false}
             role="combobox" aria-expanded={open} aria-controls={lid} aria-autocomplete="list" aria-activedescendant={open && shown[active] ? `${id}-o${active}` : undefined}
-            onChange={(e) => { onChange(e.target.value.toUpperCase()); setOpen(true); }}
+            onChange={(e) => { onChange(keepCase ? e.target.value : e.target.value.toUpperCase()); setOpen(true); }}
             onFocus={() => { if (!isUser) setOpen(true); }}
             onKeyDown={onKey}
           />
@@ -174,7 +174,7 @@ export function VhInput({ id, label, value, onChange, kind, appId = '', placehol
       </div>
       {open && (
         <ul className="wf-vh-list" id={lid} role="listbox" aria-label={label}>
-          {isUser && value.trim().length < 2 && <li className="wf-vh-note">Type at least 2 letters of the user id or name</li>}
+          {isUser && value.trim().length < 2 && <li className="wf-vh-note">{kind === 'EMAIL' ? 'Type at least 2 letters of the e-mail or name' : 'Type at least 2 letters of the user id or name'}</li>}
           {busy && <li className="wf-vh-note">Searching SAP users…</li>}
           {err && <li className="wf-vh-note wf-vh-err">{err}</li>}
           {!busy && !err && shown.length === 0 && (!isUser || value.trim().length >= 2) && <li className="wf-vh-note">{all === null && !isUser ? 'Loading from SAP…' : 'Nothing found - the value is kept as typed'}</li>}

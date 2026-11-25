@@ -2,13 +2,13 @@
 
 import { useMemo, useState } from 'react';
 import { WfCfg, WfGroup, WfView } from '@/lib/admin/wfApi';
-import { AREA_LABEL, flowOrder } from '@/lib/admin/wfLogic';
+import { AREA_LABEL, flowOrder, viewSig } from '@/lib/admin/wfLogic';
 import { IconPlus, IconTrash } from '../../icons';
 import { VhInput, useValueList } from './parts';
 
 /** Which tabs of the request each step may see: Initiator (L0, the tabs the requester fills) and every level (per approver on parallel levels) */
-export default function ViewsPanel({ group, cfg, onChange, scope, setScope }: {
-  group: WfGroup; cfg: WfCfg | undefined; onChange: (g: WfGroup) => void; scope: string; setScope: (s: string) => void;
+export default function ViewsPanel({ group, base, cfg, onChange, scope, setScope }: {
+  group: WfGroup; base: WfGroup; cfg: WfCfg | undefined; onChange: (g: WfGroup) => void; scope: string; setScope: (s: string) => void;
 }) {
   const appId = group.appId;
   const { items: appViews, error } = useValueList('VIEW', appId, !!appId && cfg?.viewsEnabled !== false);
@@ -24,6 +24,7 @@ export default function ViewsPanel({ group, cfg, onChange, scope, setScope }: {
   const agents = useMemo(() => Array.from(new Set([...approvers, ...rows.map((v) => v.agent).filter(Boolean)])), [approvers, rows]);
   const curAgent = parallel ? (agents.includes(agentSel) ? agentSel : agents[0] || '') : '';
   const shown = rows.map((v, i) => ({ v, i })).filter(({ v }) => !parallel || v.agent === curAgent);
+  const baseRows = new Set((isL0 ? base.l0Views : base.levels.find((l) => l.lvl === scope)?.views || []).map(viewSig));
   const desc = (name: string) => appViews?.find((x) => x.key === name)?.text || '';
 
   if (cfg && cfg.viewsEnabled === false) return <div className="alert alert-info">This application has no view visibility: it does not use tab sets per level.</div>;
@@ -70,16 +71,16 @@ export default function ViewsPanel({ group, cfg, onChange, scope, setScope }: {
       {(isL0 || level) && (
         <>
           <div className="wf-views-add">
-            <VhInput id="wf-views-pick" label="Add a tab" kind="VIEW" appId={appId} value={pick} placeholder="view name" onChange={setPick} onPick={(it) => add(it.key)} />
-            <button type="button" className="btn btn-sm" disabled={!pick.trim() || (parallel && !curAgent)} onClick={() => add(pick)}><IconPlus size={14} /> Add</button>
-            <button type="button" className="btn btn-sm" disabled={!appViews?.length || (parallel && !curAgent)} onClick={addAll}>Add all</button>
+            <VhInput id="wf-views-pick" label={isL0 ? 'Add a tab (display only for the Initiator)' : 'Add a tab'} kind="VIEW" appId={appId} value={pick} placeholder="view name" disabled={isL0} onChange={setPick} onPick={(it) => add(it.key)} />
+            <button type="button" className="btn btn-sm" disabled={isL0 || !pick.trim() || (parallel && !curAgent)} onClick={() => add(pick)}><IconPlus size={14} /> Add</button>
+            <button type="button" className="btn btn-sm" disabled={isL0 || !appViews?.length || (parallel && !curAgent)} onClick={addAll}>Add all</button>
             {sources.length > 0 && (
               <span className="wf-copyfrom">
                 <label className="wf-sr" htmlFor="wf-views-copy">Copy tabs from</label>
-                <select id="wf-views-copy" value={copyFrom} onChange={(e) => setCopyFrom(e.target.value)}>
+                <select id="wf-views-copy" disabled={isL0} value={copyFrom} onChange={(e) => setCopyFrom(e.target.value)}>
                   <option value="">Copy tabs from…</option>{sources.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
                 </select>
-                <button type="button" className="btn btn-sm" disabled={!copyFrom} onClick={doCopy}>Copy</button>
+                <button type="button" className="btn btn-sm" disabled={isL0 || !copyFrom} onClick={doCopy}>Copy</button>
               </span>
             )}
           </div>
@@ -90,12 +91,12 @@ export default function ViewsPanel({ group, cfg, onChange, scope, setScope }: {
                 <thead><tr><th>View description</th><th>View name</th><th>Active</th><th>Read only</th><th /></tr></thead>
                 <tbody>
                   {shown.map(({ v, i }) => (
-                    <tr key={`${v.agent}-${v.viewName}-${i}`} className={v.active ? '' : 'wf-off'}>
+                    <tr key={`${v.agent}-${v.viewName}-${i}`} className={`${v.active ? '' : 'wf-off'} ${baseRows.has(viewSig(v)) ? '' : 'wf-chg'}`}>
                       <td>{desc(v.viewName) || v.description || <span className="muted">-</span>}</td>
                       <td><code>{v.viewName}</code>{appViews && !appViews.some((x) => x.key === v.viewName) && <span className="badge badge-error" title="not a tab of this application">?</span>}</td>
-                      <td><input type="checkbox" checked={v.active} aria-label={`${v.viewName} active`} onChange={(e) => patch(i, { active: e.target.checked })} /></td>
-                      <td><input type="checkbox" checked={v.readOnly} aria-label={`${v.viewName} read only`} onChange={(e) => patch(i, { readOnly: e.target.checked })} /></td>
-                      <td><button type="button" className="btn btn-sm btn-danger-ghost" aria-label={`Remove ${v.viewName}`} onClick={() => write(rows.filter((_, k) => k !== i))}><IconTrash size={14} /></button></td>
+                      <td className="wf-c-chk"><input type="checkbox" className="chk-active" checked={v.active} aria-label={`${v.viewName} active`} onChange={(e) => patch(i, { active: e.target.checked })} /></td>
+                      <td className="wf-c-chk"><input type="checkbox" className="chk-ro" checked={v.readOnly} aria-label={`${v.viewName} read only`} onChange={(e) => patch(i, { readOnly: e.target.checked })} /></td>
+                      <td className="wf-c-chk"><button type="button" className="btn btn-sm btn-danger-ghost" aria-label={`Remove ${v.viewName}`} onClick={() => write(rows.filter((_, k) => k !== i))}><IconTrash size={14} /></button></td>
                     </tr>
                   ))}
                 </tbody>
