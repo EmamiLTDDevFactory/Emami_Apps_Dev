@@ -217,7 +217,7 @@ CLASS zcl_mm_dash_margin IMPLEMENTATION.
 
     " ---- master data
     SELECT matnr, maktx FROM makt FOR ALL ENTRIES IN @lt_q WHERE matnr = @lt_q-matnr AND spras = @sy-langu INTO TABLE @DATA(lt_t).
-    SELECT matnr, zbrand, matkl, zscheme, zskugrcodecrs, zbusiness, mtart FROM mara FOR ALL ENTRIES IN @lt_q WHERE matnr = @lt_q-matnr INTO TABLE @DATA(lt_m).
+    SELECT matnr, zbrand, matkl, prodha, zscheme, zskugrcodecrs, zbusiness, mtart FROM mara FOR ALL ENTRIES IN @lt_q WHERE matnr = @lt_q-matnr INTO TABLE @DATA(lt_m).
     SELECT kunnr, name1 FROM kna1 FOR ALL ENTRIES IN @lt_q WHERE kunnr = @lt_q-kunag INTO TABLE @DATA(lt_c).
     SORT: lt_t BY matnr, lt_m BY matnr, lt_c BY kunnr.
 
@@ -255,7 +255,7 @@ CLASS zcl_mm_dash_margin IMPLEMENTATION.
         IF sy-subrc = 0. ls_r-maktx = ls_t-maktx. ENDIF.
         READ TABLE lt_m INTO DATA(ls_m) WITH KEY matnr = <d>-matnr BINARY SEARCH.
         IF sy-subrc = 0.
-          ls_r-zbrand = ls_m-zbrand. ls_r-matkl = ls_m-matkl. ls_r-zscheme = ls_m-zscheme. ls_r-crssku = ls_m-zskugrcodecrs. ls_r-zbusiness = ls_m-zbusiness. ls_r-mtart = ls_m-mtart.
+          ls_r-zbrand = ls_m-zbrand. ls_r-matkl = ls_m-matkl. ls_r-prodha = ls_m-prodha. ls_r-zscheme = ls_m-zscheme. ls_r-crssku = ls_m-zskugrcodecrs. ls_r-zbusiness = ls_m-zbusiness. ls_r-mtart = ls_m-mtart.
         ENDIF.
         ls_r-date_from = ms_par-date_from. ls_r-date_to = ms_par-date_to.
         READ TABLE lt_bud INTO ls_bud WITH TABLE KEY werks = ls_r-bwtar crssku = ls_r-crssku bus = ls_r-zbusiness scheme = ls_r-zscheme mtart = ls_r-mtart.

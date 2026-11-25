@@ -3,7 +3,7 @@
 
    Every morning (06:00 Asia/Kolkata) each active watch item costs its SKUs in its plants in SAP (CostLineSet Mode B,
    the same filter the Costing Cockpit sends), stores a snapshot, compares it with yesterday / the 7-day median / 30 days
-   ago, evaluates rules R1-R9, upserts alerts and sends one digest per item (email via Resend + the hub's bell).
+   ago, evaluates rules R1-R10, upserts alerts and sends one digest per item (email via Resend + the hub's bell).
    Read-only towards SAP. The scheduler runs inside this backend (no Azure Functions on this box); the same work can be
    triggered from outside through the internal routes with the shared secret.
 
@@ -20,7 +20,7 @@
 
    Env: WATCH_ENABLED (default false), WATCH_SCHEDULER (true on the one instance that runs the 06:00 job),
    WATCH_SAP_SYSTEM (default NGQ), SAP_GATEWAY_HOST, DIGEST_SIGNING_SECRET (falls back to INTERNAL / JWT secret),
-   WATCH_ADMIN_EMAILS, APP_BASE_URL / HUB_AUTH_FRONTEND_URL, RESEND_API_KEY + RESEND_FROM_EMAIL, ANTHROPIC_API_KEY +
+   WATCH_ADMIN_EMAILS, APP_BASE_URL / HUB_AUTH_FRONTEND_URL, RESEND_API_KEY + RESEND_FROM_EMAIL, GROQ_API_KEY (Groq) +
    AI_MODEL_FAST (optional AI summary; template otherwise), SNAPSHOT_RETENTION_DAYS (400).
 */
 const crypto = require('crypto');
@@ -29,6 +29,7 @@ const jwt = require('jsonwebtoken');
 const { pool } = require('./db');
 const { JWT_SECRET } = require('./sessionAuth');
 const C = require('./costWatchCore');
+const { tileAllowed } = require('./appTiles');
 
 const APP_ID = 'bom-cost-explorer';
 const ENABLED = String(process.env.WATCH_ENABLED || 'false').toLowerCase() === 'true';
@@ -107,10 +108,12 @@ async function requireUser(req, res, next) {
     try {
         await ready;
         const [grant, user] = await Promise.all([
-            pool.query('SELECT role FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = $2', [email, APP_ID]),
+            pool.query('SELECT role, tiles FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = $2', [email, APP_ID]),
             pool.query('SELECT is_active FROM emami_apps.authorized_users WHERE email = $1', [email]),
         ]);
         if (!grant.rows.length || user.rows[0]?.is_active === false) return res.status(403).json({ success: false, error: 'You do not have access to the Costing Cockpit.' });
+        // A screen-limited grant (Manage Access) that leaves out the Cost watch screen is refused here too, not just hidden.
+        if (!tileAllowed(grant.rows[0].tiles, 'watch')) return res.status(403).json({ success: false, error: 'Your Costing Cockpit access does not include the Cost watch.' });
         const role = grant.rows[0].role;
         req.email = email;
         // Only the Costing Cockpit role counts. Admin has all access: the admin view and everything a Planner does.
@@ -183,12 +186,13 @@ async function runItem(watchId, sku, plant, trigger = 'schedule') {
         }
         const d30 = (await q(`SELECT total_per_unit FROM cost_watch.run_snapshot WHERE watch_id = $1 AND sku = $2 AND plant = $3 AND params_hash = $4 AND ts <= now() - interval '30 days' AND NOT suspect ORDER BY ts DESC LIMIT 1`, [watchId, snap.sku, snap.plant, snap.params_hash]))[0] || null;
         const history = (await q(`SELECT total_per_unit FROM cost_watch.run_snapshot WHERE watch_id = $1 AND sku = $2 AND plant = $3 AND params_hash = $4 AND ts >= now() - interval '7 days' AND ts < $5 AND NOT suspect`, [watchId, snap.sku, snap.plant, snap.params_hash, today])).map((x) => String(x.total_per_unit));
+        const history30 = (await q(`SELECT total_per_unit FROM cost_watch.run_snapshot WHERE watch_id = $1 AND sku = $2 AND plant = $3 AND params_hash = $4 AND ts >= now() - interval '30 days' AND ts < $5 AND NOT suspect`, [watchId, snap.sku, snap.plant, snap.params_hash, today])).map((x) => String(x.total_per_unit));
         const monthStart = (await q(`SELECT total_per_unit FROM cost_watch.run_snapshot WHERE watch_id = $1 AND sku = $2 AND plant = $3 AND params_hash = $4 AND ts >= date_trunc('month', now() AT TIME ZONE 'Asia/Kolkata') AT TIME ZONE 'Asia/Kolkata' AND NOT suspect ORDER BY ts LIMIT 1`, [watchId, snap.sku, snap.plant, snap.params_hash]))[0] || null;
         const volume = await plannedVolume(item, snap.sku, snap.plant);
         const checks = await planChecks(item, snap.plant);
         const alerts = C.evaluateRules({
             prev: prev ? { total_per_unit: String(prev.total_per_unit), lines: prev.lines } : null,
-            cur: snap, d30: d30 ? { total_per_unit: String(d30.total_per_unit) } : null, history, monthStart: monthStart ? { total_per_unit: String(monthStart.total_per_unit) } : null,
+            cur: snap, d30: d30 ? { total_per_unit: String(d30.total_per_unit) } : null, history, history30, monthStart: monthStart ? { total_per_unit: String(monthStart.total_per_unit) } : null,
             volume, thresholds: item.thresholds || {}, checks,
         });
         nAlerts = alerts.length;
@@ -241,18 +245,19 @@ async function adminNotice(subject, text) {
     for (const e of to) await sendEmail(e, subject, `<p>${text}</p>`).catch((err) => console.error('[cost-watch] admin email:', err.message));
 }
 
+/** The digest summary is written by Groq (Groq, OpenAI compatible API) from the FACTS only, under the numbers rule; without a key, or when the text fails the check twice, the deterministic template is used. */
 async function aiSummary(alerts) {
     const { facts, template } = C.digestFacts(alerts);
-    const key = process.env.ANTHROPIC_API_KEY;
+    const key = process.env.GROQ_API_KEY;
     if (!key || !alerts.length) return { text: template, template: true, model: '' };
-    const model = process.env.AI_MODEL_FAST || 'claude-haiku-5-5';
+    const model = process.env.AI_MODEL_FAST || 'llama-3.1-8b-instant';
+    const url = `${(process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1').replace(/\/+$/, '')}/chat/completions`;
     try {
-        const Anthropic = require('@anthropic-ai/sdk');
-        const client = new Anthropic({ apiKey: key, maxRetries: 1, timeout: 60000 });
-        const messages = [{ role: 'user', content: `FACTS:\n${JSON.stringify(facts.map(({ id, label, value, display, unit }) => ({ id, label, value, display, unit })))}` }];
+        const messages = [{ role: 'system', content: DIGEST_SYSTEM }, { role: 'user', content: `FACTS:\n${JSON.stringify(facts.map(({ id, label, value, display, unit }) => ({ id, label, value, display, unit })))}` }];
         for (let attempt = 1; attempt <= 2; attempt++) {
-            const msg = await client.messages.create({ model, max_tokens: 600, system: [{ type: 'text', text: DIGEST_SYSTEM, cache_control: { type: 'ephemeral' } }], messages });
-            const raw = msg.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+            const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` }, body: JSON.stringify({ model, max_tokens: 600, temperature: 0.2, messages }), signal: AbortSignal.timeout(60000) });
+            if (!r.ok) throw new Error(`Groq ${r.status}`);
+            const raw = String((await r.json())?.choices?.[0]?.message?.content ?? '');
             let j = null;
             try { j = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1)); } catch { /* invalid */ }
             if (j && typeof j.text === 'string') {
@@ -280,7 +285,8 @@ async function digest(watchId) {
     let sent = 0;
     for (const to of recipients) {
         // every recipient must hold the Costing Cockpit grant (the app has no per-plant access yet: all of the item's plants)
-        const ok = (await pool.query('SELECT 1 FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = $2', [to, APP_ID])).rows.length > 0;
+        const g = (await pool.query('SELECT tiles FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = $2', [to, APP_ID])).rows[0];
+        const ok = !!g && tileAllowed(g.tiles, 'watch');
         if (!ok) { await logDigest(watchId, to, alerts.length, summary, 'skipped', 'no Costing Cockpit access'); continue; }
         const links = Object.fromEntries(alerts.map((a) => [a.id, {
             ack: `${API_PUBLIC}/me/cost-watch/act?t=${C.signLink(SIGNING, { a: 'ack', id: a.id, by: to })}`,

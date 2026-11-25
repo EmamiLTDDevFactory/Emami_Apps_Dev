@@ -6,7 +6,8 @@ import type { AccessChangeEntry, AccessLevel, AppRole, UserAccessEntry } from '.
 import { getMyProfile, type UserProfile } from '../../lib/authApi';
 import type { MyActivity } from '../../lib/authApi';
 import { getAdminUserActivity, getAdminUserAppStats, type AdminUserAppStat } from '../../lib/adminApi';
-import { CCB_APP_ID, getAccessHistory, getCcbRoles, removeAuthorizedUser, setAccessLevel, setAppAccess, setCcbRoles, setUserActive, setUserName } from '../../lib/accessApi';
+import type { AppTile } from '../../lib/accessApi';
+import { CCB_APP_ID, getAccessHistory, getCcbRoles, removeAuthorizedUser, getAppTiles, setAccessLevel, setAppAccess, setCcbRoles, setUserActive, setUserName } from '../../lib/accessApi';
 import { exportUserReportToExcel } from '../../lib/exportAdminExcel';
 import { appColor, colors, fontWeights, fonts, radii } from '../../theme/tokens';
 import SidePanel, { PanelTabs } from './SidePanel';
@@ -16,7 +17,7 @@ import {
   AUDIT_CAPA_APP_ID, AUDIT_CAPA_DEPOTS, auditCapaRoleNeedsDepot, GRANTABLE_LEVELS, ROLE_MANAGED_INTERNALLY, SORTED_APPS,
   AppIcon, EmptyState, Initials, LevelBadge, Skeleton, Spinner, StatusDot, Switch,
   appLabel, canSetLevel, chipStyle, depotOf, displayName, errorTextStyle, formatDateTime, inputStyle, inputWrapStyle,
-  labelStyle, primaryBtnStyle, roleOf, roleOptionsFor, secondaryBtnStyle, timeAgo,
+  labelStyle, primaryBtnStyle, roleOf, roleOptionsFor, secondaryBtnStyle, tilesOf, timeAgo,
   type AdminUser,
 } from './adminShared';
 
@@ -28,7 +29,11 @@ interface Draft {
   accessLevel: AccessLevel;
   roles: Record<string, AppRole | null>;
   depots: Record<string, string | null>;
+  /** Screen limit per app: null = every screen of the role. */
+  tiles: Record<string, string[] | null>;
 }
+
+const sameTiles = (a: string[] | null | undefined, b: string[] | null | undefined) => (a ?? []).join('|') === (b ?? []).join('|');
 
 function draftFrom(user: UserAccessEntry): Draft {
   return {
@@ -36,6 +41,7 @@ function draftFrom(user: UserAccessEntry): Draft {
     accessLevel: user.accessLevel,
     roles: Object.fromEntries(SORTED_APPS.map((a) => [a.id, roleOf(user, a.id)])),
     depots: Object.fromEntries(SORTED_APPS.map((a) => [a.id, depotOf(user, a.id)])),
+    tiles: Object.fromEntries(SORTED_APPS.map((a) => [a.id, tilesOf(user, a.id)])),
   };
 }
 
@@ -58,6 +64,9 @@ export default function UserDrawer({
 }) {
   const usageRef = useRef<HTMLParagraphElement>(null);
   const [tab, setTab] = useState<Tab>('access');
+  // Apps whose grant can be limited to some screens (Costing Cockpit, Service PO Automation); empty until loaded.
+  const [appTiles, setAppTiles] = useState<Record<string, AppTile[]>>({});
+  useEffect(() => { void getAppTiles().then(setAppTiles); }, []);
   const [draft, setDraft] = useState<Draft>(() => draftFrom(user));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -137,7 +146,7 @@ export default function UserDrawer({
 
   const isSuper = user.accessLevel === 'Super Admin';
   const changedAppIds = SORTED_APPS.filter(
-    (a) => draft.roles[a.id] !== roleOf(user, a.id) || (draft.roles[a.id] && draft.depots[a.id] !== depotOf(user, a.id))
+    (a) => draft.roles[a.id] !== roleOf(user, a.id) || (draft.roles[a.id] && draft.depots[a.id] !== depotOf(user, a.id)) || (draft.roles[a.id] && !sameTiles(draft.tiles[a.id], tilesOf(user, a.id)))
   ).map((a) => a.id);
   const changeCount = changedAppIds.length + (ccbChanged ? 1 : 0) + (draft.isActive !== user.isActive ? 1 : 0) + (draft.accessLevel !== user.accessLevel ? 1 : 0);
   const dirty = changeCount > 0;
@@ -160,6 +169,16 @@ export default function UserDrawer({
       // Picking Depot/View on Audit & CAPA defaults the depot so the grant is never saved half-filled.
       depots: appId === AUDIT_CAPA_APP_ID && auditCapaRoleNeedsDepot(role) && !d.depots[appId] ? { ...d.depots, [appId]: AUDIT_CAPA_DEPOTS[0] } : d.depots,
     }));
+  };
+
+  const toggleTile = (appId: string, tileId: string) => {
+    setDraft((d) => {
+      const all = (appTiles[appId] || []).map((t) => t.id);
+      const cur = d.tiles[appId] ?? all;
+      const next = cur.includes(tileId) ? cur.filter((x) => x !== tileId) : [...cur, tileId];
+      if (next.length === 0) return d; // at least one screen; revoke the app to remove everything
+      return { ...d, tiles: { ...d.tiles, [appId]: next.length === all.length ? null : all.filter((x) => next.includes(x)) } };
+    });
   };
 
   const grantAllAsUser = () => {
@@ -187,7 +206,7 @@ export default function UserDrawer({
       if (draft.accessLevel !== user.accessLevel && actingEmail) calls.push(setAccessLevel(user.email, draft.accessLevel, actingEmail));
       for (const appId of changedAppIds) {
         const role = draft.roles[appId];
-        calls.push(setAppAccess(user.email, appId, role, role ? draft.depots[appId] : null, actingEmail || undefined));
+        calls.push(setAppAccess(user.email, appId, role, role ? draft.depots[appId] : null, actingEmail || undefined, role && appTiles[appId] ? draft.tiles[appId] ?? null : undefined));
       }
       const results = await Promise.all(calls);
       // CCB roles after the grants: they need the Change Control Board & CR Tracker grant to exist first.
@@ -205,6 +224,7 @@ export default function UserDrawer({
         appId: a.id,
         role: draft.roles[a.id] as AppRole,
         depot: a.id === AUDIT_CAPA_APP_ID ? draft.depots[a.id] ?? undefined : undefined,
+        tiles: appTiles[a.id] ? draft.tiles[a.id] ?? null : undefined,
       }));
       // Keep any grant for an app id the hub catalog no longer lists, untouched.
       const unknown = user.apps.filter((g) => !SORTED_APPS.some((a) => a.id === g.appId));
@@ -456,6 +476,32 @@ export default function UserDrawer({
                           {role
                             ? 'Change Control Board roles. A person can hold more than one; nobody approves a request they logged.'
                             : `Still holds ${ccb.saved.join(', ')}. These apply again if access is re-granted; grant access to change them.`}
+                        </p>
+                      </div>
+                    )}
+                    {role && appTiles[app.id] && (
+                      <div style={{ marginTop: 10, paddingLeft: 40 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <span style={{ ...labelStyle, fontSize: 10 }}>Screens</span>
+                          <button type="button" onClick={() => setDraft((x) => ({ ...x, tiles: { ...x.tiles, [app.id]: null } }))} aria-pressed={!draft.tiles[app.id]}
+                            style={{ ...chipStyle(!draft.tiles[app.id], accent), padding: '4px 10px', fontSize: 11.5 }}>
+                            All screens of the role
+                          </button>
+                          {draft.tiles[app.id] && <span style={{ fontSize: 10.5, color: colors.inkSoft, fontFamily: fonts.sansRegular }}>Limited to {draft.tiles[app.id]!.length} of {appTiles[app.id].length}</span>}
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                          {appTiles[app.id].map((t) => {
+                            const on = !draft.tiles[app.id] || draft.tiles[app.id]!.includes(t.id);
+                            return (
+                              <button key={t.id} type="button" onClick={() => toggleTile(app.id, t.id)} aria-pressed={on} title={t.group}
+                                style={{ ...chipStyle(on, accent), padding: '4px 10px', fontSize: 11.5, opacity: draft.tiles[app.id] || on ? 1 : 0.7 }}>
+                                {t.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <p style={{ margin: '6px 0 0', fontSize: 10.5, color: colors.inkSoft, fontFamily: fonts.sansRegular }}>
+                          Untick a screen to hide it from this person. It can only narrow what the role already gives, never add to it.
                         </p>
                       </div>
                     )}

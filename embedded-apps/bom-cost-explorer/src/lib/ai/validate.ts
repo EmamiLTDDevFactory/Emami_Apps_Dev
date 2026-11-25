@@ -32,7 +32,7 @@ function blank(text: string, ignore: string[]): string {
   kill(/\b\d{1,2}:\d{2}(:\d{2})?\b/g); // times
   kill(/\b[A-Za-z]+\d+[A-Za-z\d]*\b/g); // FG1001, H2, ZFR1, BD10
   kill(/\b\d+[A-Za-z][A-Za-z\d]*\b/g); // 1000m, 2026a - glued codes (a unit after a space is kept)
-  for (const w of ignore.filter(Boolean)) kill(new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g'));
+  for (const w of ignore.filter(Boolean)) kill(new RegExp(`(?<![\\w.,])${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w]|[.,]\\d)`, 'g'));  // never inside a longer number (an ignored "7" must not eat the 7 of 16.7)
   return t;
 }
 

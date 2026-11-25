@@ -13,6 +13,9 @@ import { fetchBasePrcDet } from '@/lib/budgetMgmt/api';
 import type { BasePrcRow } from '@/lib/budgetMgmt/types';
 import { basePrcBreakup, showDate, stripZeros } from '@/lib/budgetMgmt/rules';
 import { fmtNum } from '@/lib/format';
+import AiNarrateSlot from '../ai/AiNarrateSlot';
+import { rateOutlook } from '@/lib/ai/forecast';
+import { rateOutlookSpec } from '@/lib/ai/builders/quality';
 
 const Stat = ({ k, v, sub, strong }: { k: string; v: string; sub?: string; strong?: boolean }) => (
   <div className="rounded-xl border border-line bg-panel px-3 py-2"><p className="text-2xs text-muted">{k}</p><p className={cx('num text-lg', strong && 'font-extrabold text-accent')}>{v}</p>{sub && <p className="text-2xs text-muted">{sub}</p>}</div>
@@ -34,6 +37,7 @@ export default function BasePriceBreakup({ matnr, bukrs, land1, title, onClose }
   const cur = b?.currency || 'INR';
   // Rate of each PO line over time (oldest first) against the weighted average.
   const timeline = useMemo(() => (b ? [...b.lines].filter((l) => l.rate !== null).reverse().map((l) => ({ label: `${showDate(l.Podate)} · ${l.Ebeln}`, rate: l.rate as number, qty: l.Qtybase })) : []), [b]);
+  const outlook = useMemo(() => (b ? rateOutlook(b.byMonth) : null), [b]);
   const vendors = useMemo(() => (b ? b.byVendor.map((v) => ({ name: v.vendor, value: v.value, qty: v.qty, avg: v.avg ?? 0 })) : []), [b]);
   const tip = { contentStyle: { background: t.surface, border: `1px solid ${t.grid}`, borderRadius: 6, fontSize: 12, color: t.text } };
 
@@ -58,6 +62,15 @@ export default function BasePriceBreakup({ matnr, bukrs, land1, title, onClose }
                   <Stat k="Weighted average" v={b.avg === null ? '—' : fmtNum(b.avg, 3)} sub={`${fmtNum(b.totalValue, 2)} ÷ ${fmtNum(b.totalQty, 3)}`} strong />
                   <Stat k="SAP's Avg base price" v={b.sapAvg === null ? '—' : fmtNum(b.sapAvg, 3)} sub={b.sapAvg === null ? 'no summary row' : b.agrees ? '✓ matches the lines' : '≠ differs from the lines'} />
                 </div>
+                {outlook && (
+                  <div className="mt-3 rounded-xl border border-line bg-sunken/30 p-3 text-xs">
+                    <p className="font-bold">Rate outlook (statistics on the purchase history, a suggestion for the budget-rate owner)</p>
+                    {outlook.enough && outlook.outlook !== null
+                      ? <p className="mt-1 text-muted">Last month {outlook.latest !== null ? fmtNum(outlook.latest, 3) : '—'} · 3-month avg {outlook.avg3 !== null ? fmtNum(outlook.avg3, 3) : '—'} · 6-month avg {outlook.avg6 !== null ? fmtNum(outlook.avg6, 3) : '—'} · trend {fmtNum(outlook.slopePctPerMonth ?? 0, 2)} % a month · outlook for {outlook.horizon} months <b className="text-ink">{fmtNum(outlook.outlook, 3)}</b> (range {fmtNum(outlook.low ?? 0, 3)} to {fmtNum(outlook.high ?? 0, 3)} {cur} / {b.uom || 'unit'}). {outlook.reason}</p>
+                      : <p className="mt-1 text-muted">{outlook.reason}</p>}
+                    <AiNarrateSlot className="mt-2" label="Explain the outlook with AI" build={() => rateOutlookSpec({ material: stripZeros(matnr), title, unit: b.uom, currency: cur, out: outlook })} />
+                  </div>
+                )}
                 <p className="mt-2 text-xs text-muted">Avg base price = Σ value of the lines ÷ Σ quantity of the lines. A line with a negative value (a return or credit) lowers the average.</p>
               </section>
 

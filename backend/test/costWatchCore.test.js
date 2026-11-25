@@ -133,3 +133,17 @@ test('Consumption / MBEW lines: SAP freight is not counted (rate already include
   assert.equal(C.freightIncluded('consump'), true);
   assert.equal(C.freightIncluded('INFOREC'), false);
 });
+
+test('R10: a statistical outlier against the last 30 days (needs 8 snapshots, a real spread, and no R1)', () => {
+  const hist = ['100.0', '100.2', '99.9', '100.1', '100.0', '99.8', '100.2', '100.1', '99.9', '100.0'];
+  const cur = base(); // cost per piece of the base snapshot
+  const mk = (total) => ({ ...snap(base()), total_per_unit: total });
+  const flat = C.evaluateRules({ prev: snap(base()), cur: mk('100.05'), history30: hist });
+  assert.ok(!flat.some((a) => a.rule === 'R10'));
+  const few = C.evaluateRules({ prev: snap(base()), cur: mk('130'), history30: hist.slice(0, 5), thresholds: { r1DayPct: 1000, r1MonthPct: 1000 } });
+  assert.ok(!few.some((a) => a.rule === 'R10'));
+  const out = C.evaluateRules({ prev: { total_per_unit: '129.9', lines: [] }, cur: mk('130'), history30: hist, thresholds: { r1DayPct: 1000, r1MonthPct: 1000 } });
+  const r10 = out.find((a) => a.rule === 'R10');
+  assert.ok(r10 && r10.direction === 'up' && r10.evidence.z > 3);
+  void cur;
+});

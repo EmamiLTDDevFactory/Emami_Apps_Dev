@@ -26,6 +26,9 @@ import type { FactBook } from '../facts';
 import type { VendorMask } from '../guard';
 import type { CostLine } from '../../sap/fields';
 import type { ToolDef } from '../gateway';
+import { fetchMis, fetchSales, fetchMargin } from '../../dash/service';
+import { brandViews, totals as misTotals, salesViews, brandSales, salesTotals } from '../../dash/logic';
+import { parseMargin, totalOf, NO_DRIVERS } from '../../dash/margin';
 
 export const ROW_CAP = 50;
 const RESULT_TTL = 30 * 60_000;
@@ -86,6 +89,9 @@ const S = {
   run_scenario: z.object({ result_id: z.string(), rate_pct_by_source: z.record(z.number()).optional(), component_pct: z.record(z.number()).optional(), fx_pct: z.record(z.number()).optional(), qty_pct: z.number().optional(), repick: z.enum(['sap', 'priority', 'cheapest', 'latest']).optional() }),
   get_plan_summary: z.object({ plan: z.string(), werks: z.string() }),
   get_shortages: z.object({ plan: z.string(), werks: z.string() }),
+  get_mis: z.object({ plants: z.array(z.string().min(1)).min(1).max(10), as_of: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }),
+  get_sales_summary: z.object({ plants: z.array(z.string()).max(10).default([]), from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), vkorg: z.array(z.string()).max(5).optional(), matnr: z.array(z.string()).max(20).optional() }),
+  get_margin_summary: z.object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), plants: z.array(z.string()).max(10).default([]), vkorg: z.array(z.string()).max(5).default([]), matnr: z.array(z.string()).max(20).default([]) }),
 };
 export type ToolName = keyof typeof S;
 
@@ -103,6 +109,9 @@ export const TOOL_DEFS: ToolDef[] = [
   { name: 'explain_change', description: 'Why the cost per piece changed: current result vs baseline ("budget", "previous" = last stored run of that FG, or another result_id). Gives quantity / rate / freight / FX effects and top drivers.', input_schema: { type: 'object', properties: { current: prop('string', 'result id or "current"'), baseline: prop('string', '"budget", "previous" or a result id'), matnr: prop('string', 'FG (if the result has several)'), werks: prop('string', 'plant') } } },
   { name: 'run_scenario', description: 'What-if on a result in the browser (no SAP): rate % by source, % by component (key plant|component), FX % by currency, quantity %, re-pick (priority/cheapest/latest). Returns simulated vs SAP cost per piece.', input_schema: { type: 'object', required: ['result_id'], properties: { result_id: prop('string', 'result id or "current"'), rate_pct_by_source: prop('object', 'e.g. {"CONTRACT":5}'), component_pct: prop('object', 'e.g. {"1000|RM0001":-3}'), fx_pct: prop('object', 'e.g. {"USD":2}'), qty_pct: prop('number', 'quantity change %'), repick: prop('string', 'rate re-pick', { enum: ['sap', 'priority', 'cheapest', 'latest'] }) } } },
   { name: 'get_plan_summary', description: 'Production plan component requirement for a plan and plant (top components by quantity).', input_schema: { type: 'object', required: ['plan', 'werks'], properties: { plan: prop('string', 'plan name, exactly'), werks: prop('string', 'plant') } } },
+  { name: 'get_mis', description: 'MIS of the costing dashboard (read-only): budget vs actual COGM by brand, month and year to date, in rupees lakh, for production plants and an as-of date (default today). Brands over budget, finished goods without a budget.', input_schema: { type: 'object', required: ['plants'], properties: { plants: prop('array', 'production plant codes', { items: { type: 'string' } }), as_of: prop('string', 'YYYY-MM-DD, default today') } } },
+  { name: 'get_sales_summary', description: 'Sales view of the dashboard (read-only): invoiced GSV, NSV, deductions, COGM and gross margin by brand for a period; optional billing plants, sales organisations and materials. COGM is SAP actual cost per piece of the period x sold quantity.', input_schema: { type: 'object', required: ['from', 'to'], properties: { from: prop('string', 'YYYY-MM-DD'), to: prop('string', 'YYYY-MM-DD'), plants: prop('array', 'billing plants, empty = all', { items: { type: 'string' } }), vkorg: prop('array', 'sales organisations', { items: { type: 'string' } }), matnr: prop('array', 'material numbers', { items: { type: 'string' } }) } } },
+  { name: 'get_margin_summary', description: 'Margin analysis of the dashboard (read-only): gross margin and percent from the invoice cost conditions for a period; give at least one of materials, sales organisation or plants.', input_schema: { type: 'object', required: ['from', 'to'], properties: { from: prop('string', 'YYYY-MM-DD'), to: prop('string', 'YYYY-MM-DD'), plants: prop('array', 'plants', { items: { type: 'string' } }), vkorg: prop('array', 'sales organisations', { items: { type: 'string' } }), matnr: prop('array', 'material numbers', { items: { type: 'string' } }) } } },
   { name: 'get_shortages', description: 'Components of a plan and plant whose requirement exceeds stock plus open PO.', input_schema: { type: 'object', required: ['plan', 'werks'], properties: { plan: prop('string', 'plan name'), werks: prop('string', 'plant') } } },
 ];
 
@@ -272,6 +281,47 @@ export async function runAiTool(name: string, input: Record<string, unknown>, c:
         return { fg, plant, sap_per_pc: `[${fact(c, `SAP cost per piece of ${fg}`, s0, 'INR/pc', `run_scenario.${r.id}`, 4)}]`, simulated_per_pc: `[${fact(c, `Simulated cost per piece of ${fg}`, s1, 'INR/pc', `run_scenario.${r.id}`, 4)}]`, change_pct: s0.isZero() ? null : `[${fact(c, `Simulated change of ${fg} in percent`, s1.minus(s0).div(s0).times(100), '%', `run_scenario.${r.id}`)}]` };
       });
       return { summary: 'Simulated in the browser on the SAP result (not an SAP figure).', rows: list, facts: factsOf(c, list.flatMap((x) => [x.sap_per_pc, x.simulated_per_pc, x.change_pct].filter(Boolean).map((s) => (s as string).slice(1, -1)))) };
+    }
+    case 'get_mis': {
+      const plants = (a.plants as string[]).map((p) => p.toUpperCase());
+      const asOf = String(a.as_of ?? new Date().toISOString().slice(0, 10));
+      const r = await fetchMis(plants, asOf);
+      const brands = brandViews(r.rows); const t = misTotals(brands);
+      const L = (v: Decimal) => v.div(100000);
+      const ids = [
+        fact(c, `MIS year-to-date budget COGM, plants ${plants.join(', ')}`, L(t.ytm.budget), 'lakh', 'get_mis.ytm.budget', 1),
+        fact(c, 'MIS year-to-date actual COGM (same finished goods)', L(t.ytm.actualCmp), 'lakh', 'get_mis.ytm.actualCmp', 1),
+        fact(c, 'MIS year-to-date variance (actual minus budget)', L(t.ytm.variance), 'lakh', 'get_mis.ytm.variance', 1),
+        ...(t.ytm.variancePct ? [fact(c, 'MIS year-to-date variance in percent of budget', t.ytm.variancePct, '%', 'get_mis.ytm.variancePct', 1)] : []),
+      ];
+      const list = brands.filter((b) => b.ytm.variancePct).sort((x, y) => y.ytm.variance.abs().cmp(x.ytm.variance.abs())).slice(0, 10).map((b) => ({ brand: b.brand, finished_goods: b.fgCnt, without_budget: b.fgNoBudget,
+        variance_lakh: `[${fact(c, `Brand ${b.brand} year-to-date variance`, L(b.ytm.variance), 'lakh', `get_mis.brand.${b.brand}`, 1)}]`, variance_pct: `[${fact(c, `Brand ${b.brand} variance in percent`, b.ytm.variancePct!, '%', `get_mis.brand.${b.brand}.pct`, 1)}]` }));
+      return { summary: `MIS as of ${asOf}, plants ${plants.join(', ')}: ${brands.length} brand(s). Amounts in rupees lakh.`, rows: list, facts: factsOf(c, ids) };
+    }
+    case 'get_sales_summary': {
+      const plants = (a.plants as string[]).map((p) => p.toUpperCase());
+      const r = await fetchSales(plants, String(a.from), String(a.to), undefined, { vkorg: (a.vkorg as string[] | undefined) ?? [], matnr: (a.matnr as string[] | undefined) ?? [] });
+      const b = brandSales(salesViews(r.rows)); const t = salesTotals(b);
+      const L = (v: Decimal) => v.div(100000);
+      const ids = [
+        fact(c, 'Gross sales value (GSV)', L(t.gsv), 'lakh', 'get_sales_summary.gsv', 1), fact(c, 'Net sales value (NSV)', L(t.nsv), 'lakh', 'get_sales_summary.nsv', 1),
+        fact(c, 'Deductions (GSV minus NSV)', L(t.deductions), 'lakh', 'get_sales_summary.deductions', 1), fact(c, 'COGM of the sold volume', L(t.cogm), 'lakh', 'get_sales_summary.cogm', 1),
+        fact(c, 'Gross margin', L(t.gm), 'lakh', 'get_sales_summary.gm', 1), ...(t.gmPct ? [fact(c, 'Gross margin in percent of NSV', t.gmPct, '%', 'get_sales_summary.gmPct', 1)] : []),
+      ];
+      const list = [...b].sort((x, y) => y.nsv.cmp(x.nsv)).slice(0, 10).map((x) => ({ brand: x.brand, nsv_lakh: `[${fact(c, `Brand ${x.brand} NSV`, L(x.nsv), 'lakh', `get_sales_summary.brand.${x.brand}`, 1)}]`, ...(x.gmPct ? { gm_pct: `[${fact(c, `Brand ${x.brand} gross margin percent`, x.gmPct, '%', `get_sales_summary.brand.${x.brand}.gm`, 1)}]` } : {}) }));
+      return { summary: `Sales ${a.from} to ${a.to}${plants.length ? `, plants ${plants.join(', ')}` : ', all plants'}: ${b.length} brand(s). Amounts in rupees lakh; the margin covers lines that have an actual cost.`, rows: list, facts: factsOf(c, ids) };
+    }
+    case 'get_margin_summary': {
+      const sel = { plants: (a.plants as string[]).map((p) => p.toUpperCase()), vkorg: a.vkorg as string[], vtweg: [], crssku: [], vbeln: [], matnr: a.matnr as string[] };
+      const r = await fetchMargin(sel, String(a.from), String(a.to));
+      const parsed = parseMargin(r.rows);
+      const t = totalOf(parsed.sku, NO_DRIVERS, 'gross');
+      const L = (v: Decimal) => v.div(100000);
+      const ids = [
+        fact(c, 'Revenue', L(t.revenue), 'lakh', 'get_margin_summary.revenue', 3), fact(c, 'Cost of goods sold', L(t.cogs), 'lakh', 'get_margin_summary.cogs', 3), fact(c, 'Gross margin', L(t.gm), 'lakh', 'get_margin_summary.gm', 3),
+        ...(t.gmPct ? [fact(c, 'Gross margin in percent of revenue', t.gmPct, '%', 'get_margin_summary.gmPct', 1)] : []), fact(c, 'Quantity sold', t.qty, 'pcs', 'get_margin_summary.qty'),
+      ];
+      return { summary: `Margin ${a.from} to ${a.to}: ${parsed.sku.length} SKU line(s). Revenue basis: gross sales.`, facts: factsOf(c, ids) };
     }
     case 'get_plan_summary':
     case 'get_shortages': {

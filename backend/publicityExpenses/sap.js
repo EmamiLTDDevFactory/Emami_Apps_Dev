@@ -131,8 +131,13 @@ async function getAll(url) {
 
 /** All result rows of a period through the gateway: the parameters entity with its Set expanded. */
 async function getViaGateway(base, view, fy, period) {
-    const d = (await getJson(`${base}/${view}(${paramsKey(fy, period)})?$expand=Set`))?.d;
-    return Array.isArray(d?.Set?.results) ? d.Set.results : [];
+    // The gateway forwards one path segment, and `(params)?$expand=Set` makes SAP run the view with INITIAL parameters
+    // (P_FiscalYear='0000' -> always zero rows). `/Set` must reach SAP, so the slash is double-encoded (%252F): the gateway
+    // decodes it once and SAP decodes the rest. Checked live on NWP and NGD.
+    const d = (await getJson(`${base}/${view}(${paramsKey(fy, period)})%252FSet?$format=json`))?.d;
+    const list = Array.isArray(d?.results) ? d.results : [];
+    if (d?.__next) throw new SapError('SAP returned a paged answer through the gateway; the period is incomplete.');
+    return list;
 }
 
 const AMOUNTS = ['CYYTDAmount', 'PYYTDAmount', 'CYPeriodAmount', 'PYPeriodAmount', 'CYvsPYVariance', 'OBAnnualAmount', 'RBAnnualAmount', 'OBYTDAmount', 'RBYTDAmount', 'CYvsRBYTDDeviation'];
@@ -194,8 +199,10 @@ async function expandSkus(rows) {
             const r = work[i++];
             if (!r._entity || !/^[A-Za-z0-9_]+\(.*\)$/.test(r._entity)) continue;
             try {
-                const d = (await getJson(`${base}/${r._entity}?$expand=to_NetSaleMaster`))?.d;
-                r.to_NetSaleMaster = Array.isArray(d?.to_NetSaleMaster?.results) ? d.to_NetSaleMaster.results.map((x) => clean(x)) : [];
+                // The live service names the navigation toto_NetSaleMaster; the app (and the mock) use to_NetSaleMaster.
+                const d = (await getJson(`${base}/${r._entity}?$expand=toto_NetSaleMaster`))?.d;
+                const nav = d?.toto_NetSaleMaster ?? d?.to_NetSaleMaster;
+                r.to_NetSaleMaster = Array.isArray(nav?.results) ? nav.results.map((x) => clean(x)) : [];
             } catch { r.to_NetSaleMaster = []; }
         }
     }));

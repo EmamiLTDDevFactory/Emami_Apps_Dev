@@ -7,10 +7,10 @@ import { PSUM_ENABLED } from '@/lib/psum/flag';
 import { COGM_ENABLED } from '@/lib/margin/flag';
 import { CK_ENABLED } from '@/lib/ck/flag';
 import { BUDGET_ENABLED } from '@/lib/budget/flag';
-import { activeOf, navSections, sectionPath, type NavSection, type PlanNav, type SectionId } from '@/lib/nav/sections';
+import { activeOf, navSections, sectionPath, tileAllowed, type NavSection, type PlanNav, type SectionId } from '@/lib/nav/sections';
 import { PriceContextBar, PriceContextProvider } from './price-context/slots';
 import { COGM_SO_ENABLED } from '@/lib/so/flag';
-import { fetchAppRole, fetchIsAdmin } from '@/lib/client/hubAccess';
+import { fetchAppRole, fetchAppTiles, fetchIsAdmin } from '@/lib/client/hubAccess';
 import { MODE_LABEL, type Mode } from '@/lib/query/schema';
 import { BASE_PATH } from '@/lib/client/session';
 import { leaveApp } from '@/lib/useScreenHistory';
@@ -134,7 +134,13 @@ export default function Shell({ mode, email, actions, children, env, onBack, pla
   // Budget costing: the person's role of this app; with the flag off no request is made.
   const [budgetRole, setBudgetRole] = useState('');
   useEffect(() => { if (BUDGET_ENABLED && email) void fetchAppRole(email).then(setBudgetRole); }, [email]);
-  const sections = useMemo(() => navSections({ wac: wacNavVisible(WAC_ENABLED, wacAdmin), ck: wacNavVisible(CK_ENABLED, wacAdmin), so: wacNavVisible(COGM_SO_ENABLED, wacAdmin), psum: wacNavVisible(PSUM_ENABLED, wacAdmin), marginRole, budgetRole }), [wacAdmin, marginRole, budgetRole]);
+  // Screen limit from Manage Access: undefined while loading, null = no limit.
+  const [tiles, setTiles] = useState<string[] | null | undefined>(undefined);
+  useEffect(() => { if (email) void fetchAppTiles(email).then(setTiles); else setTiles(null); }, [email]);
+  const sections = useMemo(() => navSections({ wac: wacNavVisible(WAC_ENABLED, wacAdmin), ck: wacNavVisible(CK_ENABLED, wacAdmin), so: wacNavVisible(COGM_SO_ENABLED, wacAdmin), psum: wacNavVisible(PSUM_ENABLED, wacAdmin), marginRole, budgetRole, tiles }), [wacAdmin, marginRole, budgetRole, tiles]);
+  // The screen on show, by its Manage Access id: a section page lists screens, so it is not itself limited.
+  const shownId = section ? null : planActive && planActive !== 'section' ? planActive : planActive ? null : `mode-${mode}`;
+  const blocked = tiles !== undefined && shownId !== null && !tileAllowed(tiles, shownId);
   const now = activeOf(sections, planActive, mode, section);
   const wide = useIsWide();
   const [open, setOpen] = useState(false);
@@ -182,7 +188,14 @@ export default function Shell({ mode, email, actions, children, env, onBack, pla
             </div>
           </div>
         </header>
-        <main className="flex min-h-0 flex-1 flex-col overflow-clip animate-pageIn">{children}</main>
+        <main className="flex min-h-0 flex-1 flex-col overflow-clip animate-pageIn">
+          {tiles === undefined ? null : blocked ? (
+            <div className="m-auto max-w-md p-8 text-center">
+              <h2 className="text-lg font-extrabold text-ink">This screen is not part of your access</h2>
+              <p className="mt-2 text-sm text-inkSoft">Your Costing Cockpit access is limited to some screens. Use the side pane to open one of them, or ask for access from the Emami Apps hub.</p>
+            </div>
+          ) : children}
+        </main>
       </div>
     </div>
     </NavContext.Provider>

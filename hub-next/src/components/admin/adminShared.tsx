@@ -45,6 +45,9 @@ export function roleOptionsFor(appId: string): AppRole[] {
 export function roleOf(user: UserAccessEntry, appId: string): AppRole | null {
   return user.apps.find((a) => a.appId === appId)?.role ?? null;
 }
+export function tilesOf(user: UserAccessEntry, appId: string): string[] | null {
+  return user.apps.find((a) => a.appId === appId)?.tiles ?? null;
+}
 export function depotOf(user: UserAccessEntry, appId: string): string | null {
   return user.apps.find((a) => a.appId === appId)?.depot ?? null;
 }

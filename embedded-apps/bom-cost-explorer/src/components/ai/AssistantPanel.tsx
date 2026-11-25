@@ -10,7 +10,7 @@ import { Button, cx, inputBase } from '../ui';
 import type { CostQuery } from '@/lib/query/schema';
 import type { CostResult } from '@/lib/client/api';
 import { ask, newConversation, type AskResult } from '@/lib/ai/assistant';
-import { getApiKey, getModels } from '@/lib/ai/config';
+import { getApiKey, getModels, hasAiAccess } from '@/lib/ai/config';
 import { makeClient } from '@/lib/ai/gateway';
 import { audit } from '@/lib/ai/guard';
 import type { ToolContext } from '@/lib/ai/tools/registry';
@@ -40,7 +40,7 @@ export default function AssistantPanel({ open, onClose, onSettings, current, sys
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }); }, [msgs, progress, confirm]);
   useEffect(() => { if (!busy) return; const t = setInterval(() => tick((n) => n + 1), 500); return () => clearInterval(t); }, [busy]);
   useEffect(() => () => abort.current?.abort(), []);
-  const hasKey = !!getApiKey();
+  const hasKey = hasAiAccess();
   const known = new Set(current?.result.rows.flatMap((r) => [r.Idnrk, r.Headmat]) ?? []);
 
   async function send() {
@@ -86,7 +86,7 @@ export default function AssistantPanel({ open, onClose, onSettings, current, sys
                 <li key={x}><button type="button" className="text-left text-accent hover:underline" onClick={() => setQ(x)}>{x}</button></li>
               ))}
             </ul>
-            {!hasKey && <p className="mt-3 rounded-lg border border-warn/40 bg-warn/[0.07] px-3 py-2 text-ink">Add your Claude API key in <button type="button" className="font-semibold text-accent underline" onClick={onSettings}>AI settings</button> to start.</p>}
+            {!hasKey && <p className="mt-3 rounded-lg border border-warn/40 bg-warn/[0.07] px-3 py-2 text-ink">Add your Groq API key in <button type="button" className="font-semibold text-accent underline" onClick={onSettings}>AI settings</button> to start.</p>}
           </div>
         )}
         {msgs.map((m, i) => m.role === 'user' ? (
@@ -115,7 +115,7 @@ export default function AssistantPanel({ open, onClose, onSettings, current, sys
 
       <div className="border-t border-line p-3">
         <div className="flex gap-2">
-          <textarea aria-label="Ask a question" rows={2} className={cx(inputBase, 'min-h-[44px] flex-1 resize-none py-2 text-sm')} placeholder={hasKey ? 'Ask about this costing…' : 'Add a Claude API key in AI settings first'} value={q}
+          <textarea aria-label="Ask a question" rows={2} className={cx(inputBase, 'min-h-[44px] flex-1 resize-none py-2 text-sm')} placeholder={hasKey ? 'Ask about this costing…' : 'Add a Groq API key in AI settings first'} value={q}
             onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }} disabled={busy} />
           <Button variant="primary" aria-label="Send" disabled={busy || !q.trim()} onClick={() => void send()}><Send size={15} /></Button>
         </div>

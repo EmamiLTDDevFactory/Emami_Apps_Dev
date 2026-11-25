@@ -25,13 +25,13 @@ test('gateway URL -> parameters entity with $expand=Set, filters in memory, no A
     assert.equal(sap.systemLabel(), 'NGD via Azure gateway');
     const seen = [];
     const real = global.fetch;
-    global.fetch = fakeFetch(seen, [[/ZC_ATLBTL_EXP_SUMMARY\(/, { d: { P_FiscalYear: '2026', Set: { results: [
+    global.fetch = fakeFetch(seen, [[/ZC_ATLBTL_EXP_SUMMARY\(/, { d: { results: [
         { __metadata: { uri: 'x' }, CompanyCode: '1000', ReportingKey: 'BR001', GLAccount: '0000507929', Site: 'HO', CYYTDAmount: '10.50' },
         { CompanyCode: '2000', ReportingKey: 'BR001', GLAccount: '0000507929', Site: 'HO', CYYTDAmount: '1' },
-    ] } } }]]);
+    ] } }]]);
     try {
         const rows = await sap.fetchSummary('2026', 7, { CompanyCode: '1000' });
-        assert.equal(seen[0].url, `${GW}/ZC_ATLBTL_EXP_SUMMARY_CDS/ZC_ATLBTL_EXP_SUMMARY(P_FiscalYear='2026',P_FiscalPeriod='007')?$expand=Set`);
+        assert.equal(seen[0].url, `${GW}/ZC_ATLBTL_EXP_SUMMARY_CDS/ZC_ATLBTL_EXP_SUMMARY(P_FiscalYear='2026',P_FiscalPeriod='007')%252FSet?$format=json`);
         assert.equal(seen[0].auth, undefined, 'the gateway signs in itself');
         assert.deepEqual(rows, [{ CompanyCode: '1000', ReportingKey: 'BR001', GLAccount: '0000507929', Site: 'HO', CYYTDAmount: 10.5 }]);
     } finally { global.fetch = real; }
@@ -42,18 +42,18 @@ test('gateway drill-down: SKUs read through each line\'s own entity; internal fi
     const real = global.fetch;
     const entity = "ZC_ATLBTL_EXP_DETAILSet(P_FiscalYear='2026',P_FiscalPeriod='007',CompanyCode='1000',GLAccount='0000507929',CostCenter='EH193',ProfitCenter='EMHO01')";
     global.fetch = fakeFetch(seen, [
-        [/ZC_ATLBTL_EXP_DETAILSet\(.*\$expand=to_NetSaleMaster$/, { d: { CostCenter: 'EH193', to_NetSaleMaster: { results: [{ __metadata: {}, Material: '400001', SKUSize: '100 ML' }] } } }],
-        [/ZC_ATLBTL_EXP_DETAIL\(/, { d: { Set: { results: [
+        [/ZC_ATLBTL_EXP_DETAILSet\(.*\$expand=toto_NetSaleMaster$/, { d: { CostCenter: 'EH193', toto_NetSaleMaster: { results: [{ __metadata: {}, Material: '400001', SKUSize: '100 ML' }] } } }],
+        [/ZC_ATLBTL_EXP_DETAIL\(/, { d: { results: [
             { __metadata: { uri: `https://sapgw.internal:443/sap/opu/odata/sap/ZC_ATLBTL_EXP_DETAIL_CDS/${entity}` }, CompanyCode: '1000', ReportingKey: 'BR001', GLAccount: '0000507929', Site: 'HO', CostCenter: 'EH193', CYYTDAmount: '5', to_NetSaleMaster: { __deferred: { uri: 'y' } } },
             { __metadata: { uri: 'https://h/ZC_ATLBTL_EXP_DETAILSet(x)' }, CompanyCode: '1000', ReportingKey: 'BR002', GLAccount: '0000507929', Site: 'HO', CostCenter: 'EH194', CYYTDAmount: '7' },
-        ] } } }],
+        ] } }],
     ]);
     try {
         const rows = await sap.fetchDetail('2026', 7, { ReportingKey: 'BR001' }, { expand: true });
         assert.equal(rows.length, 1);
         assert.equal(rows[0]._entity, entity);
         assert.deepEqual(rows[0].to_NetSaleMaster, [{ Material: '400001', SKUSize: '100 ML' }]);
-        assert.equal(seen[1].url, `${GW}/ZC_ATLBTL_EXP_DETAIL_CDS/${entity}?$expand=to_NetSaleMaster`);
+        assert.equal(seen[1].url, `${GW}/ZC_ATLBTL_EXP_DETAIL_CDS/${entity}?$expand=toto_NetSaleMaster`);
         assert.ok(seen.every((s) => !s.url.includes('sapgw.internal')), 'only the gateway is called');
         assert.equal('_entity' in sap.publicRow(rows[0]), false);
     } finally { global.fetch = real; }

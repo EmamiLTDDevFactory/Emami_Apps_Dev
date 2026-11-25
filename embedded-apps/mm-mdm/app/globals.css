@@ -1854,3 +1854,57 @@ h1 { font-size: 22px; } h2 { font-size: 16px; } h3 { font-size: 14px; margin-bot
 .nav-icon { width: 26px; height: 26px; }
 .nav-item { grid-template-columns: 26px 1fr auto; }
 @media (max-width: 1024px) { .brand-logo img { width: 84px; } }
+
+/* ---- Workflow maintenance: compact, high-contrast ---- */
+.wf-page { gap: 10px; }
+.wf-page .page-header { margin-bottom: 0; }
+.wf-page .page-header h1 { font-size: 18px; margin: 0; }
+.wf-page .page-header p { font-size: 12.5px; margin: 2px 0 0; max-width: 100ch; }
+.wf-head { padding: 10px 14px 0; }
+.wf-app { gap: 10px 16px; margin-bottom: 4px; }
+.wf-app .field { min-width: min(360px, 100%); }
+.wf-appinfo { margin: 0 0 6px; font-size: 12.5px; }
+.wf-page select, .wf-page input:not([type='checkbox']) { height: 30px; font-size: 13px; padding: 0 8px; color: var(--ink, #1b1f3b); }
+.wf-page .field-label, .wf-page label { font-size: 11.5px; font-weight: 700; color: #3b3f66; margin-bottom: 2px; }
+.wf-page .tabs { gap: 2px; }
+.wf-page .tab { padding: 7px 12px; font-size: 13px; font-weight: 600; color: #3b3f66; }
+.wf-page .tab.active { color: #4338ca; border-bottom: 3px solid #f97316; }
+.wf-page .card-bar { padding: 8px 14px; min-height: 0; }
+.wf-page .card-bar h2 { font-size: 14px; margin: 0; }
+.wf-page .tab-body { padding: 12px 14px; }
+.wf-split { grid-template-columns: minmax(280px, 0.75fr) minmax(0, 1.7fr); gap: 10px; }
+.wf-filter { gap: 8px; padding: 8px 12px; }
+.wf-filter .field { min-width: 120px; flex: 1 1 120px; }
+.wf-table th { font-size: 11.5px; padding: 6px 8px; white-space: nowrap; }
+.wf-table td { font-size: 13px; padding: 5px 8px; color: #1b1f3b; }
+.wf-table tr:hover td { background: #eef0ff; }
+.wf-sel td { background: #e0e4ff !important; font-weight: 600; }
+.wf-list .table-wrap { max-height: calc(100vh - 330px); overflow: auto; }
+.wf-list .table-wrap thead th { position: sticky; top: 0; z-index: 2; }
+.wf-editor-bar { position: sticky; top: 0; z-index: 5; background: #fff; border-bottom: 1px solid var(--line); }
+.wf-editor-body { padding: 10px 14px 14px; gap: 10px; }
+.wf-keyfields { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.wf-level { padding: 8px 10px; margin-bottom: 8px; border-radius: 8px; border-color: #c9cdea; border-left-width: 5px; }
+.wf-level-head { margin-bottom: 6px; }
+.wf-level-head h3 { font-size: 13.5px; color: #1e2470; }
+.wf-level-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px 12px; }
+.wf-check { min-height: 28px; font-size: 12.5px; }
+.wf-sub { margin: 10px 0 6px; font-size: 13px; color: #1e2470; font-weight: 700; }
+.wf-agents { gap: 6px; margin-bottom: 6px; }
+.wf-agent { padding: 6px 8px; border-color: #c9cdea; background: #f7f8ff; }
+.wf-agent-top { margin-bottom: 6px; gap: 6px; }
+.wf-agent-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px 10px; }
+.wf-step { padding: 6px 10px; flex-basis: 130px; }
+.wf-flow { gap: 6px; }
+.wf-page .btn { min-height: 30px; }
+.wf-page .muted { color: #5a5f86; }
+@media (max-width: 1100px) {
+  .wf-split { grid-template-columns: minmax(0, 1fr); }
+  .wf-list .table-wrap { max-height: 320px; }
+}
+@media (max-width: 640px) {
+  .wf-head { padding: 8px 10px 0; }
+  .wf-page .tabs { overflow-x: auto; flex-wrap: nowrap; }
+  .wf-page .tab { white-space: nowrap; }
+  .wf-level-grid, .wf-agent-grid, .wf-keyfields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

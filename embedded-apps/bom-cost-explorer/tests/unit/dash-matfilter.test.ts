@@ -24,3 +24,34 @@ describe('sales: all plants', () => {
     expect(() => buildSalesFilter([], '2026-04-01', '2026-11-24', { requirePlant: true })).toThrow();
   });
 });
+
+describe('MIS finished-good detail', () => {
+  it('reads the same set with Grain eq F', async () => {
+    const { DASH_MIS_FG_FIELDS } = await import('@/lib/dash/fields');
+    expect(Object.keys(DASH_MIS_FG_FIELDS)).toEqual(expect.arrayContaining(['Zbrand', 'Matnr', 'BudPc', 'ActPc', 'BudSrc', 'Grain']));
+  });
+});
+
+describe('sales: invoice number and invoice list', () => {
+  it('adds the invoice filter and refuses an unnarrowed invoice list', async () => {
+    const { buildSalesFilter, fetchSalesInvoices } = await import('@/lib/dash/service');
+    expect(buildSalesFilter([], '2026-04-01', '2026-11-24', { vbeln: ['90046171'] })).toContain("Vbeln eq '90046171'");
+    expect(() => buildSalesFilter([], '2026-04-01', '2026-11-24', { vbeln: ['12AB'] })).toThrow();
+    expect(() => fetchSalesInvoices([], '2026-04-01', '2026-11-24', {})).toThrow();
+  });
+});
+
+describe('BOM plants of the chosen materials', () => {
+  it('asks SAP per material and groups the answer by plant, most materials first', async () => {
+    const { bomPlantsRequest, groupBomPlants } = await import('@/lib/client/bomPlants');
+    expect(bomPlantsRequest(['000400010469', 'FG2']).params.$filter).toBe("(Matnr eq '400010469' or Matnr eq 'FG2')");
+    const g = groupBomPlants([
+      { Matnr: '000000000400010469', Werks: 'UN13', Stlal: '1', Name1: 'Pachoria', Stlan: '1', Stlnr: '1', Stlst: '01' },
+      { Matnr: '400010469', Werks: 'UN13', Stlal: '2', Name1: 'Pachoria', Stlan: '1', Stlnr: '1', Stlst: '01' },
+      { Matnr: 'FG2', Werks: 'UN13', Stlal: '1', Name1: 'Pachoria', Stlan: '1', Stlnr: '2', Stlst: '01' },
+      { Matnr: 'FG2', Werks: 'UN02', Stlal: '1', Name1: 'Guwahati', Stlan: '1', Stlnr: '3', Stlst: '01' },
+    ]);
+    expect(g.map((x) => x.werks)).toEqual(['UN13', 'UN02']);
+    expect(g[0].materials).toEqual(['400010469', 'FG2']); expect(g[0].alternatives).toBe(3);
+  });
+});

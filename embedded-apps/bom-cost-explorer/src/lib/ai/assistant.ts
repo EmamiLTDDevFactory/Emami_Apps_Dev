@@ -3,9 +3,8 @@
  * (lib/ai/tools/registry.ts). The final answer must be JSON whose every number cites a fact from the tool results
  * (numbers rule); one regeneration with the errors, then a deterministic template from the facts the tools returned.
  */
-import type Anthropic from '@anthropic-ai/sdk';
 import { ASSISTANT_OUTPUT, ASSISTANT_SYSTEM } from './prompts/assistant';
-import { runToolLoop, type LoopEvent } from './gateway';
+import { runToolLoop, type AiClient, type ChatMessage, type LoopEvent } from './gateway';
 import { parseAnswer, validateAnswer, errorsForModel, type AiAnswer } from './validate';
 import { FactBook } from './facts';
 import { VendorMask, audit } from './guard';
@@ -13,13 +12,13 @@ import { TOOL_DEFS, runAiTool, type ToolContext } from './tools/registry';
 import type { CostQuery } from '../query/schema';
 import type { CostResult } from '../client/api';
 
-export interface Conversation { history: Anthropic.MessageParam[]; book: FactBook; mask: VendorMask }
+export interface Conversation { history: ChatMessage[]; book: FactBook; mask: VendorMask }
 export const newConversation = (): Conversation => ({ history: [], book: new FactBook(), mask: new VendorMask() });
 
 export interface AskResult { answer: AiAnswer; template: boolean; validatorOk: boolean; tools: { name: string; input: unknown; ms: number }[]; usage: { input: number; output: number }; error?: string; newFactIds: string[] }
 
 export async function ask(o: {
-  client: Anthropic; model: string; conv: Conversation; question: string; system: string; user: string;
+  client: AiClient; model: string; conv: Conversation; question: string; system: string; user: string;
   current?: { query: CostQuery; result: CostResult } | null;
   confirm: ToolContext['confirm']; onEvent?: (e: LoopEvent) => void; signal?: AbortSignal;
 }): Promise<AskResult> {

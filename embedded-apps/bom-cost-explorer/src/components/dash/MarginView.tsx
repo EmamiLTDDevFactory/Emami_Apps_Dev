@@ -9,6 +9,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Card, Empty, Segmented, Spinner, Stat, cx, inputBase, inputCls } from '../ui';
 import { ErrorBox, errorText } from '../budget-mgmt/shared';
 import { fetchMargin, type MarginSel } from '@/lib/dash/service';
+import AiNarrateSlot from '../ai/AiNarrateSlot';
+import { marginSpec } from '@/lib/ai/builders/screens';
+import SalesInvoices, { type InvoiceTarget } from './SalesInvoices';
 import CdrillDrawer, { type DrillTarget } from './CdrillDrawer';
 import { NO_DRIVERS, cogmDrivers, groupBy, marginNotes, parseCurrentCogm, parseMargin, promoBreakeven, sensitivity, totalOf, type Basis, type Cur, type Drivers, type Group, type MLine, type Result } from '@/lib/dash/margin';
 import type { MarginRow } from '@/lib/dash/types';
@@ -17,7 +20,7 @@ import { useHierNames } from '@/lib/client/useHierNames';
 import { MaterialHierarchyPicker, MaterialPicker } from '../Pickers';
 import { fyStart, lakh, money, pct, tdCls, thCls, today } from './parts';
 
-type By = 'brand' | 'cat' | 'sku' | 'cust';
+type By = 'brand' | 'prod' | 'cat' | 'sku' | 'cust';
 const MAX_MATS = 50;
 const SLIDERS: { k: keyof Drivers; label: string; min: number; max: number }[] = [
   { k: 'price', label: 'Selling price', min: -20, max: 20 }, { k: 'promo', label: 'Promo discount', min: 0, max: 30 }, { k: 'volume', label: 'Volume', min: -50, max: 100 },
@@ -47,6 +50,7 @@ export default function MarginView() {
   const [brand, setBrand] = useState('');
   const [ran, setRan] = useState<{ sel: MarginSel; from: string; to: string } | null>(null);
   const [drill, setDrill] = useState<DrillTarget | null>(null);
+  const [inv, setInv] = useState<InvoiceTarget | null>(null);
   const ctl = useRef<AbortController | null>(null);
   useEffect(() => { setCurText(ls.get<string>('bce:dash-curcogm', '')); return () => ctl.current?.abort(); }, []);
 
@@ -81,8 +85,9 @@ export default function MarginView() {
   const scen = useMemo(() => totalOf(skus, dr, basis, cur), [skus, dr, basis, cur]);
   const groups = useMemo<Group[]>(() => {
     if (by === 'cust') return groupBy(parsed.customers, (l) => l.kunag, (l) => l.label, dr, basis);
-    const key = by === 'brand' ? (l: MLine) => l.brand : by === 'cat' ? (l: MLine) => l.matkl : (l: MLine) => l.matnr;
-    const lab = by === 'sku' ? (l: MLine) => `${l.matnr.replace(/^0+/, '')} ${l.label}` : by === 'brand' ? (l: MLine) => hn.brand(l.brand) : key;
+    const key = by === 'brand' ? (l: MLine) => l.brand : by === 'prod' ? (l: MLine) => `${l.brand}|${l.prodha}` : by === 'cat' ? (l: MLine) => l.matkl : (l: MLine) => l.matnr;
+    const lab = by === 'sku' ? (l: MLine) => `${l.matnr.replace(/^0+/, '')} ${l.label}` : by === 'brand' ? (l: MLine) => hn.brand(l.brand)
+      : by === 'prod' ? (l: MLine) => `${hn.brand(l.brand) || '(none)'} · ${hn.product(l.prodha) || l.prodha || '(no product)'}` : key;
     return groupBy(skus, key, lab, dr, basis, cur);
   }, [by, skus, parsed.customers, dr, basis, cur, hn]);
   const sens = useMemo(() => sensitivity(skus, dr, basis, cur), [skus, dr, basis, cur]);
@@ -174,23 +179,25 @@ export default function MarginView() {
           </div>
           <Card className="p-3">
             <div className="mb-2 flex flex-wrap items-center gap-2">
-              <Segmented label="Group by" size="sm" value={by} onChange={setBy} options={[{ value: 'brand', label: 'Brand' }, { value: 'cat', label: 'Product category' }, { value: 'sku', label: 'Material' }, { value: 'cust', label: 'Customer' }]} />
+              <Segmented label="Group by" size="sm" value={by} onChange={setBy} options={[{ value: 'brand', label: 'Brand' }, { value: 'prod', label: 'Brand · product' }, { value: 'cat', label: 'Product category' }, { value: 'sku', label: 'Material' }, { value: 'cust', label: 'Customer' }]} />
               {by !== 'cust' && <select aria-label="Filter by brand" className={cx(inputBase, 'h-9 ml-auto w-56')} value={brand} onChange={(e) => setBrand(e.target.value)}><option value="">All brands</option>{brands.map((b) => <option key={b} value={b}>{hn.brand(b) || '(none)'}</option>)}</select>}
             </div>
             <GroupTable groups={groups} material={by === 'sku'} onBreakup={ran ? (g) => {
               const q = g.base.qty;
               setDrill({ matnr: g.lines[0].matnr, label: g.label, sel: ran.sel, from: ran.from, to: ran.to, invoice: q.isZero() ? null : { rm: g.base.rm.div(q), pm: g.base.pm.div(q), pf: g.base.pf.div(q), oh: g.base.oh.div(q) } });
-            } : undefined} />
+            } : undefined} onInvoices={ran ? (g) => setInv({ title: g.label, plants: ran.sel.plants, from: ran.from, to: ran.to, extra: { matnr: [g.lines[0].matnr.replace(/^0+/, '')], vkorg: ran.sel.vkorg, vtweg: ran.sel.vtweg, vbeln: ran.sel.vbeln } }) : undefined} />
             {by === 'cust' && <p className="mt-2 text-2xs text-muted">Customer lines use the invoice cost (the current COGM data set is by SKU).</p>}
           </Card>
           <Card className="p-4">
             <h3 className="text-sm font-extrabold">Reading</h3>
+            <AiNarrateSlot className="mb-2 mt-1" label="Explain the margin with AI" build={() => (ran ? marginSpec({ base, scen, groups, nbc, by: by === 'brand' ? 'brand' : by === 'prod' ? 'brand and product' : by === 'cat' ? 'product category' : by === 'sku' ? 'material' : 'customer', period: `${ran.from} to ${ran.to}`, sens }) : null)} />
             <ul className="mt-1 list-disc pl-5 text-xs">{notes.map((n, i) => <li key={i} className={n.tone === 'bad' ? 'text-bad' : n.tone === 'warn' ? 'text-warn' : n.tone === 'good' ? 'text-good' : ''}>{n.text}</li>)}</ul>
             <p className="mt-2 text-2xs text-muted">Gross margin = revenue - COGS; GM % = gross margin / revenue x 100. Channel margins: retailer = ZREM + ZTDP, distributor = ZDIM + ZTDM, super stockist = ZSSM + ZTSM. GST = JOIG + JOCG + JOSG. Budget cost is the latest approved version of the financial year, matched on CRSSKU + business vertical + scheme; SKUs without one are flagged NBC. Finished goods (FERT), INR invoices; invoices and debit memos add, cancellations and credit memos subtract.</p>
           </Card>
         </>
       )}
       <CdrillDrawer target={drill} onClose={() => setDrill(null)} />
+      <SalesInvoices target={inv} onClose={() => setInv(null)} />
     </>
   );
 }
@@ -216,7 +223,7 @@ function Waterfall({ base, scen, changed, budGap }: { base: Result; scen: Result
   );
 }
 
-function GroupTable({ groups, material, onBreakup }: { groups: Group[]; material: boolean; onBreakup?: (g: Group) => void }) {
+function GroupTable({ groups, material, onBreakup, onInvoices }: { groups: Group[]; material: boolean; onBreakup?: (g: Group) => void; onInvoices?: (g: Group) => void }) {
   const qty = (v: Decimal) => (material ? money(v, 0) : lakh(v, 3));
   const val = (v: Decimal) => (material ? money(v, 0) : lakh(v, 3));
   if (!groups.length) return <p className="text-sm text-muted">No lines for this choice.</p>;
@@ -236,7 +243,7 @@ function GroupTable({ groups, material, onBreakup }: { groups: Group[]; material
                 <td className={cx(tdCls, 'font-bold', gmTone(g.scen.gmPct))}>{pct(g.scen.gmPct)}</td>
                 <td className={tdCls}>{g.scen.qty.isZero() ? '-' : money(g.scen.gm.div(g.scen.qty))}</td>
                 <td className={cx(tdCls, g.scen.gm.gte(g.base.gm) ? 'text-good' : 'text-bad')}>{lakh(g.scen.gm.minus(g.base.gm), 3)}</td>
-                {material && onBreakup && <td className={tdCls}><button type="button" className="rounded-lg border border-line px-2 py-0.5 text-2xs font-bold text-accent hover:bg-sunken" onClick={() => onBreakup(g)}>Breakup</button></td>}
+                {material && onBreakup && <td className={tdCls}><button type="button" className="rounded-lg border border-line px-2 py-0.5 text-2xs font-bold text-accent hover:bg-sunken" onClick={() => onBreakup(g)}>Breakup</button>{onInvoices && <button type="button" className="ml-1 rounded-lg border border-line px-2 py-0.5 text-2xs font-bold text-accent hover:bg-sunken" onClick={() => onInvoices(g)}>Invoices</button>}</td>}
                 <td className={tdCls}>{g.lines[0]?.grain === 'C' ? '-' : nbc ? <span className="rounded-full bg-warn/15 px-2 py-0.5 text-2xs font-bold text-warn" title="No Budgeted Cost / trading goods">NBC {nbc}</span> : 'OK'}</td>
               </tr>
             );

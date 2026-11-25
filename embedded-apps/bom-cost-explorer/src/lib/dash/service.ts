@@ -1,7 +1,7 @@
 import { odataDate, odataString } from '../sap/filter';
 import { readSet, type Read } from '../price-context/odata';
-import { DASH_FILTER as F, DASH_CDRILL_FIELDS, DASH_CDRILL_SET, DASH_MARGIN_FIELDS, DASH_MARGIN_FILTER as MF, DASH_MARGIN_SET, DASH_MIS_FIELDS, DASH_PVM_FIELDS, DASH_PVM_SET, DASH_SALES_FIELDS, DASH_SALES_SET, DASH_SET, DASH_THRESH_FIELDS, DASH_THRESH_SET } from './fields';
-import type { CdrillRow, MarginRow, MisRow, PvmRow, SalesRow, ThreshRow } from './types';
+import { DASH_FILTER as F, DASH_CDRILL_FIELDS, DASH_CDRILL_SET, DASH_MARGIN_FIELDS, DASH_MARGIN_FILTER as MF, DASH_MARGIN_SET, DASH_BRIDGE_FIELDS, DASH_BRIDGE_SET, DASH_MIS_FG_FIELDS, DASH_MIS_FIELDS, DASH_PVM_FIELDS, DASH_PVM_SET, DASH_SALES_FIELDS, DASH_SALES_SET, DASH_SET, DASH_THRESH_FIELDS, DASH_THRESH_SET } from './fields';
+import type { BridgeRow, CdrillRow, MarginRow, MisFgRow, MisRow, PvmRow, SalesRow, ThreshRow } from './types';
 
 const NONE: ReadonlySet<string> = new Set();
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -19,8 +19,22 @@ export function buildMisFilter(plants: string[], dateTo: string): string {
 export const fetchMis = (plants: string[], dateTo: string, signal?: AbortSignal): Promise<Read<MisRow>> =>
   readSet<MisRow>(DASH_SET, DASH_MIS_FIELDS, NONE, buildMisFilter(plants, dateTo), signal);
 
+/** The same read at finished-good level (SAP: Grain eq 'F'): per material the actual, the budget and the budget key that was matched. */
+export const fetchMisDetail = (plants: string[], dateTo: string, signal?: AbortSignal): Promise<Read<MisFgRow>> =>
+  readSet<MisFgRow>(DASH_SET, DASH_MIS_FG_FIELDS, NONE, `${buildMisFilter(plants, dateTo)} and Grain eq 'F'`, signal);
+
+/** Invoice lines (SAP: Grain eq I): one row per invoice x material x channel x sales organisation. Needs a narrowing (material, sales org or invoice) because a year of invoices is large. */
+export const fetchSalesInvoices = (plants: string[], dateFrom: string, dateTo: string, extra: SalesExtra, signal?: AbortSignal): Promise<Read<SalesRow>> => {
+  if (!(extra.matnr?.length || extra.vkorg?.length || extra.vbeln?.length)) throw new Error('Choose a material, a sales organisation or an invoice number to list invoices.');
+  return readSet<SalesRow>(DASH_SALES_SET, DASH_SALES_FIELDS, NONE, `${buildSalesFilter(plants, dateFrom, dateTo, extra)} and Grain eq 'I'`, signal);
+};
+
+/** COGM variance bridge per brand (heavy: SAP reads the component consumption of the largest variances): plants and the as-of date, like the MIS read. */
+export const fetchBridge = (plants: string[], dateTo: string, signal?: AbortSignal): Promise<Read<BridgeRow>> =>
+  readSet<BridgeRow>(DASH_BRIDGE_SET, DASH_BRIDGE_FIELDS, NONE, buildMisFilter(plants, dateTo), signal);
+
 /** $filter of the Sales view read: plants, from and to date. */
-export interface SalesExtra { matnr?: string[]; vkorg?: string[]; vtweg?: string[]; requirePlant?: boolean }
+export interface SalesExtra { matnr?: string[]; vkorg?: string[]; vtweg?: string[]; vbeln?: string[]; requirePlant?: boolean }
 export function buildSalesFilter(plants: string[], dateFrom: string, dateTo: string, extra: SalesExtra = {}): string {
   if (!DAY.test(dateFrom) || !DAY.test(dateTo)) throw new Error('Enter both dates.');
   if (dateFrom > dateTo) throw new Error('The "from" date is after the "to" date.');
@@ -31,7 +45,9 @@ export function buildSalesFilter(plants: string[], dateFrom: string, dateTo: str
   if (matnr.some((x) => !/^[A-Z0-9]{1,18}$/.test(x))) throw new Error('A material number is up to 18 characters.');
   if (vkorg.some((x) => !/^[A-Z0-9]{4}$/.test(x))) throw new Error('A sales organisation is 4 characters.');
   if (vtweg.some((x) => !/^[A-Z0-9]{2}$/.test(x))) throw new Error('A distribution channel is 2 characters.');
-  return [base, `DateFrom eq ${odataDate(dateFrom)}`, anyOf(MF.Matnr, matnr), anyOf(MF.Vkorg, vkorg), anyOf(MF.Vtweg, vtweg)].filter(Boolean).join(' and ');
+  const vbeln = uniq(extra.vbeln ?? []);
+  if (vbeln.some((x) => !/^\d{1,10}$/.test(x))) throw new Error('An invoice number is up to 10 digits.');
+  return [base, `DateFrom eq ${odataDate(dateFrom)}`, anyOf(MF.Matnr, matnr), anyOf(MF.Vkorg, vkorg), anyOf(MF.Vtweg, vtweg), anyOf(MF.Vbeln, vbeln)].filter(Boolean).join(' and ');
 }
 
 export const fetchSales = (plants: string[], dateFrom: string, dateTo: string, signal?: AbortSignal, extra: SalesExtra = {}): Promise<Read<SalesRow>> =>
