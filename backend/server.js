@@ -87,6 +87,8 @@ apiRouter.use('/me/cost-watch', require('./costWatch'));
 apiRouter.use('/me/cockpit-ai', require('./cockpitAi'));
 // Cascade Pricing -> SAP ZMM_CASCADE_SRV (server side; the app is static). Rides /api/me; see cascadePricing.js.
 apiRouter.use('/me/cascade-pricing', require('./cascadePricing'));
+// Order to Cash (JAVIS-style PO -> SO -> delivery -> cash) -> SAP ZSD_O2C_SRV + Groq PO reading. Rides /api/me; see orderToCash.js.
+apiRouter.use('/me/order-to-cash', require('./orderToCash'));
 // CAPEX Portal (Fiori ZCAPEX_PORTAL -> Emami Apps) -> SAP ZCAPEX_PORTAL_SRV; identity travels as zcpxmail/zcpxkey. Rides /api/me; see capex.js.
 apiRouter.use('/me/capex', require('./capex'));
 // Material master requests -> SAP ZMM_MDM_SRV (server side; the app is static). Rides /api/me; see mmMdm.js.
