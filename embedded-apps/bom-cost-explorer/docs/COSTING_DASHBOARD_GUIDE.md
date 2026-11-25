@@ -90,3 +90,9 @@ Machine, Labour, Power and Steam are SAP routing activities priced with the acti
 
 ## Costing > BOM costing: plants with a BOM
 Under the materials of the selection, "BOM exists in these plants (click to select)" lists the plants where SAP has a BOM of the chosen materials (with several materials, "2/3" = how many of them have a BOM there). Clicking a plant adds it to the Plants field (BOM plant in plant comparison). SAP: `BomPlantSet` (structure `ZMM_S_BOMPLANT`: `MAST` joined with `STKO`, deleted BOMs left out, only plants the user may see; transport `EDSK9B0EP0`). Display help only; the costing itself is unchanged.
+
+## BOM costing: which alternative BOM is exploded (`ZCL_MM_BOM_COST_BOM`, transport `EDSK9B0EP2`)
+1. Normal: the explosion selects the alternative itself (it follows the production version).
+2. Several active alternatives: the latest active one is used.
+3. No active alternative but an inactive one exists: the latest alternative is used without BOM status filter (info message).
+4. **Production version on a locked alternative:** an active alternative exists, but the production version(s) valid on the date name an alternative that is not active (locked / inactive), or are locked themselves. The automatic selection then finds no BOM, so the latest active alternative is exploded, with the info message "the production version names alternative X, which is not active (locked); active alternative Y used". When a valid production version points to an active alternative nothing changes.
