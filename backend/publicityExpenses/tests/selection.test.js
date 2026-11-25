@@ -127,7 +127,14 @@ test('drill-down: a sub-total (several rows) with an amount per selected period 
         assert.ok(l.CostCenter && l.GLAccount && l.CompanyCode);
     }
     assert.ok(new Set(d.body.rows.map((l) => l.CompanyCode)).size >= 1);
-    assert.ok(d.body.rows.every((l) => !('to_NetSaleMaster' in l)), 'no SKU reads for a sub-total');
+    assert.ok(d.body.rows.every((l) => !('to_NetSaleMaster' in l)), 'SKUs once per SKU group, not on every line');
+    // ZNET_SALE_MASTER columns for every line of a sub-total: one group per SKU group key, ZSKUGRCODECRS starts with the key.
+    const withKey = d.body.rows.filter((l) => l.SkuGroupKey);
+    assert.ok(withKey.length > 0 && withKey.every((l) => d.body.skuGroups[l.SkuGroupKey]?.length > 0), 'every brand line finds its SKU group');
+    for (const [k, skus] of Object.entries(d.body.skuGroups)) {
+        assert.ok(skus.every((s) => s.SkuGroupCode.startsWith(k) && s.Product && s.ProductType && s.ProductRange && s.ItemCategory && s.Material), `SKU group ${k}`);
+    }
+    assert.equal(d.body.skuError, undefined);
     // One G/L x site of one row, a header group, HO only.
     const cell = rows.find((r) => r.Site === 'HO');
     const one = await call('POST', '/detail', { ...sel, keys: [cell.ReportingKey], gls: [cell.GLAccount], sites: ['HO'], groups: [cell.HeaderGroup] });
@@ -196,12 +203,19 @@ test('G/L drill-down: SAP sends the G/L without leading zeros (507926) - a G/L c
     process.env.PUBEXP_SAP_SUMMARY_BASE = `${GW}/ZC_ATLBTL_EXP_SUMMARY_CDS`;
     process.env.PUBEXP_SAP_DETAIL_BASE = `${GW}/ZC_ATLBTL_EXP_DETAIL_CDS`;
     const real = global.fetch;
-    let sapReads = 0;
+    let sapReads = 0; let masterReads = 0;
     // As the live NWP detail view answers: G/L 6 digits, two posting lines of 507926 (31,500) and one of 508034.
     const line = (gl, cc, amt) => ({ CompanyCode: '1000', ReportingKey: 'NF-KOSTL-70', GLAccount: gl, Site: 'HO', ReportHeader: 'ATL', CostCenter: cc, ProfitCenter: 'EH00',
-        CYYTDAmount: String(amt), PYYTDAmount: '0', CYPeriodAmount: String(amt), PYPeriodAmount: '0' });
+        SkuGroupKey: cc === 'BEH70' ? '200110013' : '', CYYTDAmount: String(amt), PYYTDAmount: '0', CYPeriodAmount: String(amt), PYPeriodAmount: '0' });
+    // ZI_ATLBTL_NETSALEMASTER as the live entity set answers (two SKUs of group 200110013, one of another group).
+    const sku = (code, material) => ({ __metadata: { uri: 'x' }, SerialNo: '1', ItemCategory: 'EXISTING-CCD', ProductRange: 'NR RANGE', ProductType: 'OIL', Product: 'NRO EXTRA THANDA',
+        SKUSize: '500', Material: material, SkuGroupKey: code.slice(0, 9), BaseUnit: 'ML', SkuGroupCode: code, Season: '', CreatedOn: '/Date(1795564800000)/' });
     global.fetch = async (url, o) => {
         if (String(url).startsWith('http://127.0.0.1')) return real(url, o); // the test's own calls to the router
+        if (/\/ZI_ATLBTL_NETSALEMASTER\?\$format=json$/.test(String(url))) {
+            masterReads++;
+            return new Response(JSON.stringify({ d: { results: [sku('2001100136906', '400004182'), sku('2001100131234', '400004183'), sku('1025208319999', '400009999')] } }), { status: 200 });
+        }
         sapReads++;
         return new Response(JSON.stringify({ d: { results: [line('507926', 'BEH70', 31000), line('507926', 'BEH71', 500), line('508034', 'BEH70', 200000)] } }), { status: 200 });
     };
@@ -218,6 +232,16 @@ test('G/L drill-down: SAP sends the G/L without leading zeros (507926) - a G/L c
             const all = await call('POST', '/detail', cell);
             assert.equal(sum(all.body.rows, 'CYYTDAmount'), 231500, 'no G/L: every G/L of the row');
             assert.equal(sapReads, 1, 'the period is read once through the gateway, then filtered from the cache');
+            // ZNET_SALE_MASTER: read once for all drill-downs, joined on SkuGroupKey; technical fields stay on the server.
+            assert.equal(masterReads, 1, 'one read of the SKU master, then the cache');
+            assert.deepEqual(Object.keys(all.body.skuGroups), ['200110013']);
+            assert.deepEqual(all.body.skuGroups['200110013'].map((s) => s.SkuGroupCode), ['2001100131234', '2001100136906']);
+            assert.deepEqual(all.body.skuGroups['200110013'][0], { SkuGroupCode: '2001100131234', Material: '400004183', SKUSize: '500', BaseUnit: 'ML', Product: 'NRO EXTRA THANDA', ProductType: 'OIL', ProductRange: 'NR RANGE', ItemCategory: 'EXISTING-CCD' });
+            assert.ok(all.body.rows.every((l) => !('to_NetSaleMaster' in l)));
+            const legacy = await call('POST', '/detail', { ...cell, skus: true });
+            assert.equal(legacy.body.rows.find((l) => l.CostCenter === 'BEH70').to_NetSaleMaster.length, 2, 'older clients: SKUs on each line, from the same master');
+            assert.deepEqual(legacy.body.rows.find((l) => l.CostCenter === 'BEH71').to_NetSaleMaster, []);
+            assert.equal(sapReads + masterReads, 2, 'no SAP call per line');
         });
     } finally {
         global.fetch = real;

@@ -4,11 +4,11 @@
  * ZC_ATLBTL_EXP_DETAIL (G/L x cost centre x profit centre of the report rows under the figure) with company code,
  * cost-centre description, mapping rule and the amount of every selected period (P04, P05, ...) next to the total of
  * the selection. The screen checks that the lines add up to the figure clicked. Views: posting lines, by G/L, by cost
- * centre, by report row. One report row: the SKUs of each line (ZNET_SALE_MASTER), read in a second call in the
- * background (one SAP call per line through the gateway), so the lines show at once. The Excel export carries the
- * selection, the source and how SAP was read.
+ * centre, by report row. At the end of every posting line: its SKU group in ZNET_SALE_MASTER - ZSKUGRCODECRS, product,
+ * PRD_TYP, PRD_RNG, ITEM_CAT - with the SKUs one click away; they come with the lines (one cached read of the master on
+ * the server, joined on the SKU group key). The Excel export carries the selection, the source and how SAP was read.
  */
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Download, Search } from 'lucide-react';
 import { api, type ApiError } from '@/lib/api';
 import { useApp } from '@/lib/context';
@@ -40,8 +40,18 @@ const P = (p: number) => `P${String(p).padStart(2, '0')}`;
 const noZeros = (s?: string) => (s ?? '').replace(/^0+(?=\d)/, '');
 const rowLabel = (l: DrillLine) => l.MISHeading || l.Product || l.ProductGroup || l.ReportingKey;
 const ccKey = (l: DrillLine) => `${l.CompanyCode}|${l.CostCenter ?? ''}`;
-/** One posting line (the server's line grain), to match the SKUs of the second call to the lines of the first. */
-const lineId = (l: DrillLine) => [l.CompanyCode, l.ReportingKey, l.GLAccount, l.Site, l.CostCenter, l.ProfitCenter, l.CostCenterType, l.MappingRule].join('|');
+
+/** ZNET_SALE_MASTER columns at the end of the posting lines: table field name (as Finance knows it) and what it is. */
+const SKU_COLS = [
+  { key: 'SkuGroupCode', field: 'ZSKUGRCODECRS', label: 'SKU group code' },
+  { key: 'Product', field: 'Product', label: 'Product' },
+  { key: 'ProductType', field: 'Prd_Typ', label: 'Product type' },
+  { key: 'ProductRange', field: 'Prd_Rng', label: 'Product range' },
+  { key: 'ItemCategory', field: 'Item_Cat', label: 'Item category' },
+] as const satisfies readonly { key: keyof Sku; field: string; label: string }[];
+type SkuCol = (typeof SKU_COLS)[number]['key'];
+/** Distinct values of one master field over a line's SKUs (codes are one per SKU; the others are usually one value). */
+const skuValues = (sk: Sku[], k: SkuCol) => [...new Set(sk.map((s) => s[k]).filter((x): x is string => !!x))];
 
 function totalsOf(lines: DrillLine[], n: number): Totals {
   const cy = Array<number>(n).fill(0); const py = Array<number>(n).fill(0); let cyT = 0; let pyT = 0;
@@ -75,7 +85,6 @@ export default function DetailDrawer({ cell, onClose }: { cell: Cell; onClose: (
   const [find, setFind] = useState('');
   const [limit, setLimit] = useState(PAGE);
   const [open, setOpen] = useState<Set<number>>(new Set());
-  const [skuMap, setSkuMap] = useState<Map<string, Sku[]> | 'loading' | 'error' | null>(null);
 
   // The figure's own header group(s) / site / G/L, narrowed by the filters in force (the figure was shown with them).
   const req = useMemo(() => {
@@ -86,20 +95,8 @@ export default function DetailDrawer({ cell, onClose }: { cell: Cell; onClose: (
 
   useEffect(() => {
     let live = true;
-    setState(null); setOpen(new Set()); setLimit(PAGE); setSkuMap(null);
-    api.detail(q, req).then((b) => {
-      if (!live) return;
-      setState(b);
-      if (req.keys.length !== 1 || !b.rows.length) return;
-      // One report row: SKUs in a second call - through the gateway every line is its own SAP call.
-      setSkuMap('loading');
-      api.detail(q, { ...req, skus: true }).then((s) => {
-        if (!live) return;
-        const m = new Map<string, Sku[]>();
-        for (const l of s.rows) if (l.to_NetSaleMaster?.length) m.set(lineId(l), l.to_NetSaleMaster);
-        setSkuMap(m);
-      }).catch(() => live && setSkuMap('error'));
-    }).catch((e: ApiError) => live && setState({ error: e.message }));
+    setState(null); setOpen(new Set()); setLimit(PAGE);
+    api.detail(q, req).then((b) => { if (live) setState(b); }).catch((e: ApiError) => live && setState({ error: e.message }));
     return () => { live = false; };
   }, [req, q]);
 
@@ -109,13 +106,16 @@ export default function DetailDrawer({ cell, onClose }: { cell: Cell; onClose: (
   const multiP = n > 1;
   const multiRow = cell.keys.length !== 1;
   const lines = useMemo(() => (ready ? [...ready.rows].sort((a, b) => Math.abs(b.CYYTDAmount) - Math.abs(a.CYYTDAmount) || Math.abs(b.PYYTDAmount) - Math.abs(a.PYYTDAmount)) : []), [ready]);
+  /** The SKUs (ZNET_SALE_MASTER rows) of a line's SKU group; older servers put them on the line itself. */
+  const skusOf = useCallback((l: DrillLine): Sku[] => (l.SkuGroupKey ? ready?.skuGroups?.[l.SkuGroupKey] : undefined) ?? l.to_NetSaleMaster ?? [], [ready]);
   const shown = useMemo(() => {
     const t = find.trim().toLowerCase();
     const idx = lines.map((l, i) => ({ l, i }));
     if (!t) return idx;
-    return idx.filter(({ l }) => [l.GLAccount, noZeros(l.GLAccount), l.GLAccountName, l.CostCenter, l.CostCenterName, l.CompanyCode, l.ProfitCenter, rowLabel(l), l.ReportingKey, l.HeaderLabel, l.MappingRule]
+    return idx.filter(({ l }) => [l.GLAccount, noZeros(l.GLAccount), l.GLAccountName, l.CostCenter, l.CostCenterName, l.CompanyCode, l.ProfitCenter, rowLabel(l), l.ReportingKey, l.HeaderLabel, l.MappingRule,
+      ...skusOf(l).flatMap((s) => [s.SkuGroupCode, s.Material, s.Product, s.ProductType, s.ProductRange, s.ItemCategory])]
       .some((x) => (x ?? '').toLowerCase().includes(t)));
-  }, [lines, find]);
+  }, [lines, find, skusOf]);
   const all = useMemo(() => totalsOf(lines, n), [lines, n]);
   const part = useMemo(() => totalsOf(shown.map((x) => x.l), n), [shown, n]);
   const aggs = useMemo(() => (view === 'lines' ? [] : aggregate(shown.map((x) => x.l), view, n)), [shown, view, n]);
@@ -126,8 +126,7 @@ export default function DetailDrawer({ cell, onClose }: { cell: Cell; onClose: (
   const got = cell.measure === 'py' ? all.pyT : all.cyT;
   const matches = target === undefined ? null : Math.abs(got - target) < 1;
   const periodGap = multiP ? all.cy.reduce((a, b) => a + b, 0) - all.cyT : 0;
-  const skusOf = (l: DrillLine): Sku[] => l.to_NetSaleMaster ?? (skuMap instanceof Map ? skuMap.get(lineId(l)) : undefined) ?? [];
-  const skus = !multiRow && lines.some((l) => skusOf(l).length > 0);
+  const skus = lines.some((l) => skusOf(l).length > 0);
   const companies = q.companies.length ? q.companies.join(', ') : 'all companies';
   const source = ready ? (ready.meta.source === 'sap' ? `SAP ${ready.meta.system}` : 'Mock data') : '';
 
@@ -147,17 +146,21 @@ export default function DetailDrawer({ cell, onClose }: { cell: Cell; onClose: (
       ['Compared with', sel.py],
       ['Company codes', companies],
       ['Source', `${source} · CDS ZC_ATLBTL_EXP_DETAIL · read as ${ready.reads.text}`],
+      ['SKU columns', 'ZNET_SALE_MASTER (CDS ZI_ATLBTL_NETSALEMASTER) of the line\'s SKU group (first 9 characters of ZSKUGRCODECRS); the amount is booked per cost centre, not split per SKU'],
       ['Exclusion rules', q.excl === false ? 'not applied (report shown without them)' : 'applied (rules in force for the latest selected period)'],
       ['Amounts in', UNIT_LABEL[unit]],
       ['Read at', fmtDateTime(ready.meta.fetchedAt)],
       [],
     ];
     const head = ['Company code', 'Reporting key', 'Report row', 'Header', 'G/L', 'G/L name', 'Cost centre', 'Cost centre description', 'CC type', 'Profit centre', 'Site', 'Mapping rule', 'Lookup field', 'Derived no.', 'Product hierarchy', 'Sales brand',
-      ...(multiP ? per.map((x) => `CY ${x}`) : []), `CY ${sel.cy}`, ...(multiP ? per.map((x) => `PY ${x}`) : []), `PY ${sel.py}`];
+      ...(multiP ? per.map((x) => `CY ${x}`) : []), `CY ${sel.cy}`, ...(multiP ? per.map((x) => `PY ${x}`) : []), `PY ${sel.py}`,
+      ...SKU_COLS.map((c) => (c.field === c.label ? c.field : `${c.field} (${c.label.toLowerCase()})`))];
     const body = lines.map((l) => [l.CompanyCode, l.ReportingKey, rowLabel(l), l.HeaderLabel ?? '', noZeros(l.GLAccount), l.GLAccountName ?? '', l.CostCenter ?? '', l.CostCenterName ?? '', l.CostCenterType ?? '', l.ProfitCenter ?? '', l.Site ?? '',
       l.MappingRule ?? '', l.LookupField ?? '', l.DerivedCostCenterNo ?? '', l.ProductHierarchy ?? '', l.SalesBrand ?? '',
-      ...(multiP ? l.cy.map(v) : []), v(l.CYYTDAmount), ...(multiP ? l.py.map(v) : []), v(l.PYYTDAmount)]);
-    const total = ['Total', ...Array<string>(15).fill(''), ...(multiP ? all.cy.map(v) : []), v(all.cyT), ...(multiP ? all.py.map(v) : []), v(all.pyT)];
+      ...(multiP ? l.cy.map(v) : []), v(l.CYYTDAmount), ...(multiP ? l.py.map(v) : []), v(l.PYYTDAmount),
+      ...SKU_COLS.map((c) => skuValues(skusOf(l), c.key).join(', '))]);
+    const total = ['Total', ...Array<string>(15).fill(''), ...(multiP ? all.cy.map(v) : []), v(all.cyT), ...(multiP ? all.py.map(v) : []), v(all.pyT), ...SKU_COLS.map(() => '')];
+    const amountCols = 2 + (multiP ? 2 * n : 0);
     const aggSheet = (name: string, kind: Exclude<View, 'lines'>, cols: string[]) => ({
       name,
       rows: [[`${cell.label} · ${sel.cy} · ${UNIT_LABEL[unit]}`], [], [...cols, 'Lines', 'Cost centres', ...(multiP ? per.map((x) => `CY ${x}`) : []), `CY ${sel.cy}`, `PY ${sel.py}`],
@@ -165,11 +168,17 @@ export default function DetailDrawer({ cell, onClose }: { cell: Cell; onClose: (
       widths: [16, 34, 16, 7, 9, ...periods.map(() => 12), 13, 13], freeze: { rows: 3 },
     });
     const sheets = [
-      { name: 'Drill-down', rows: [...info, head, ...body, total] as XCell[][], widths: [9, 10, 28, 14, 11, 30, 12, 30, 7, 11, 6, 9, 14, 10, 16, 14, ...head.slice(16).map(() => 13)], freeze: { rows: info.length + 1 } },
+      { name: 'Drill-down', rows: [...info, head, ...body, total] as XCell[][], widths: [9, 10, 28, 14, 11, 30, 12, 30, 7, 11, 6, 9, 14, 10, 16, 14, ...Array<number>(amountCols).fill(13), 34, 28, 18, 18, 18], freeze: { rows: info.length + 1 } },
       aggSheet('By G-L', 'gl', ['G/L', 'G/L name', 'Header']),
       aggSheet('By cost centre', 'cc', ['Cost centre', 'Description', 'Company code']),
       ...(multiRow ? [aggSheet('By report row', 'row', ['Report row', 'Reporting key', 'Brand family'])] : []),
-      ...(skus ? [{ name: 'SKUs', rows: [['Cost centre', 'G/L', 'Material', 'SKU size', 'Product', 'Base unit'], ...lines.flatMap((l) => skusOf(l).map((s) => [l.CostCenter ?? '', noZeros(l.GLAccount), noZeros(s.Material), s.SKUSize, s.Product, s.BaseUnit]))] as XCell[][], widths: [12, 11, 18, 10, 30, 8] }] : []),
+      ...(skus ? [{
+        name: 'SKUs',
+        rows: [['Company code', 'Cost centre', 'G/L', 'Reporting key', 'ZSKUGRCODECRS', 'Material', 'SKU size', 'Base unit', 'Product', 'Prd_Typ', 'Prd_Rng', 'Item_Cat'],
+          ...lines.flatMap((l) => skusOf(l).map((s) => [l.CompanyCode, l.CostCenter ?? '', noZeros(l.GLAccount), l.ReportingKey, s.SkuGroupCode ?? '', noZeros(s.Material), s.SKUSize ?? '', s.BaseUnit ?? '',
+            s.Product ?? '', s.ProductType ?? '', s.ProductRange ?? '', s.ItemCategory ?? '']))] as XCell[][],
+        widths: [9, 12, 11, 14, 16, 14, 9, 7, 28, 16, 16, 16], freeze: { rows: 1 },
+      }] : []),
     ];
     await writeBook(`ATL-BTL-drilldown-${cell.label.replace(/[^A-Za-z0-9]+/g, '-').slice(0, 60)}-${sel.cy.replace(/[^A-Za-z0-9'-]+/g, '-')}.xlsx`, sheets);
   }
@@ -189,12 +198,32 @@ export default function DetailDrawer({ cell, onClose }: { cell: Cell; onClose: (
     </>
   );
   const textCols = view === 'lines' ? 7 + (multiRow ? 1 : 0) : 5;
+  const skuHeads = SKU_COLS.map((c, i) => (
+    <th key={c.key} className={cx('whitespace-nowrap px-2 py-2 font-bold', i === 0 && 'border-l border-line')}>
+      <div>{c.field}</div><div className="text-[10px] font-medium normal-case text-faint">{c.field === c.label ? 'ZNET_SALE_MASTER' : c.label}</div>
+    </th>
+  ));
+  /** The line's SKU group in ZNET_SALE_MASTER: one cell per master column (codes: the first, "+n" more, all in the tooltip). */
+  const skuCells = (l: DrillLine) => {
+    const sk = skusOf(l);
+    const none = l.SkuGroupKey ? (ready?.skuGroups ? `SKU group ${l.SkuGroupKey} is not in ZNET_SALE_MASTER` : '') : 'No SKU group: the cost centre is not mapped to a brand';
+    return SKU_COLS.map((c, i) => {
+      const vals = skuValues(sk, c.key);
+      return (
+        <td key={c.key} className={cx('px-2 py-1.5', i === 0 && 'border-l border-line')} data-col={i === 0 ? 'sku-code' : undefined}>
+          {!vals.length ? <span className="text-faint" title={none}>–</span> : c.key === 'SkuGroupCode'
+            ? <span className="whitespace-nowrap font-mono text-[11px]" title={vals.join('\n')}>{vals[0]}{vals.length > 1 && <span className="ml-1 rounded bg-sunken px-1 font-sans text-2xs font-semibold text-muted">+{vals.length - 1}</span>}</span>
+            : <div className="max-w-[13rem] truncate" title={vals.join(', ')}>{vals.join(', ')}</div>}
+        </td>
+      );
+    });
+  };
 
   return (
     <Drawer
       open
       onClose={onClose}
-      width={Math.min(1640, 1180 + Math.max(0, n - 3) * 72)}
+      width={Math.min(1800, 1440 + Math.max(0, n - 3) * 72)}
       title={
         <div>
           <div className="text-2xs font-bold uppercase tracking-wide text-muted">Drill-down · {sel.cy} · {UNIT_LABEL[unit]}</div>
@@ -236,9 +265,9 @@ export default function DetailDrawer({ cell, onClose }: { cell: Cell; onClose: (
           <p className="text-2xs text-muted" data-testid="drill-basis">
             <b className="text-ink">Basis:</b> {source} · CDS ZC_ATLBTL_EXP_DETAIL (G/L × cost centre × profit centre) · fiscal year {filters.fy} · read as <span className="font-mono">{ready.reads.text}</span>
             {' '}· {companies} · {q.excl === false ? 'without exclusion rules' : `exclusion rules in force for ${P(sel.latest)} applied`}. Each period column is that period alone; CY is the selection total, read the same way as the report.
+            {' '}The last columns are the line&apos;s SKU group in ZNET_SALE_MASTER (first 9 characters of ZSKUGRCODECRS); the amount is booked per cost centre, not split per SKU.
           </p>
-          {skuMap === 'loading' && <p className="text-2xs text-muted" data-testid="sku-loading">Reading the SKUs of each line (ZNET_SALE_MASTER) from SAP in the background - about a second per line; the lines and amounts above are complete.</p>}
-          {skuMap === 'error' && <p className="text-2xs text-warn">The SKUs could not be read from SAP; the lines and amounts are complete.</p>}
+          {ready.skuError && <p className="text-2xs text-warn" data-testid="sku-error">{ready.skuError}</p>}
           {Math.abs(periodGap) >= 1 && (
             <Notice tone="warn"><AlertTriangle size={13} className="mr-1 inline" />The period columns add up to {fmt(all.cy.reduce((a, b) => a + b, 0))}; the selection total read from SAP as YTD is {fmt(all.cyT)} (difference {fmt(periodGap)}): SAP counts postings in the YTD that are in no single period 1-12 (e.g. special periods 13-16).</Notice>
           )}
@@ -253,7 +282,7 @@ export default function DetailDrawer({ cell, onClose }: { cell: Cell; onClose: (
             ]} />
             <label className={cx('flex h-8 min-w-[10rem] flex-1 items-center gap-1.5 sm:max-w-[16rem]', inputBase)}>
               <Search size={13} className="text-faint" />
-              <input value={find} onChange={(e) => { setFind(e.target.value); setLimit(PAGE); }} placeholder="Find G/L, cost centre, name…" aria-label="Find in the drill-down" className="h-full min-w-0 flex-1 bg-transparent text-xs outline-none" />
+              <input value={find} onChange={(e) => { setFind(e.target.value); setLimit(PAGE); }} placeholder="Find G/L, cost centre, SKU, product…" aria-label="Find in the drill-down" className="h-full min-w-0 flex-1 bg-transparent text-xs outline-none" />
             </label>
             <div className="flex-1" />
             <Button size="sm" onClick={exportXlsx}><Download size={14} /> Excel</Button>
@@ -266,6 +295,7 @@ export default function DetailDrawer({ cell, onClose }: { cell: Cell; onClose: (
                   <tr className="border-b border-line align-bottom text-2xs uppercase tracking-wide text-muted">
                     {['', 'G/L', 'Cost centre', 'Co. code', 'Profit centre', 'Site', ...(multiRow ? ['Report row'] : []), 'Mapping'].map((h, i) => <th key={`${h}${i}`} className="whitespace-nowrap px-2 py-2 font-bold">{h}</th>)}
                     {amountHeads}
+                    {skuHeads}
                   </tr>
                 ) : (
                   <tr className="border-b border-line align-bottom text-2xs uppercase tracking-wide text-muted">
@@ -297,14 +327,15 @@ export default function DetailDrawer({ cell, onClose }: { cell: Cell; onClose: (
                         {multiRow && <td className="px-2 py-1.5"><div className="max-w-[12rem] truncate" title={rowLabel(l)}>{rowLabel(l)}</div><div className="text-2xs text-muted">{l.ReportingKey}</div></td>}
                         <td className="px-2 py-1.5"><Pill title={`Looked up in ${l.LookupField ?? '–'}, derived number ${l.DerivedCostCenterNo ?? '–'}${l.ProductHierarchy ? `, product hierarchy ${l.ProductHierarchy}` : ''}`}>{l.MappingRule ?? '–'}</Pill><div className="text-2xs text-muted">{l.LookupField}</div></td>
                         {amountCells({ cy: l.cy, cyT: l.CYYTDAmount, pyT: l.PYYTDAmount })}
+                        {skuCells(l)}
                       </tr>
                       {isOpen && (
                         <tr className="bg-sunken/60">
                           <td />
-                          <td colSpan={textCols - 1 + (multiP ? n : 0) + 2} className="px-2 py-2">
-                            <div className="mb-1 text-2xs font-bold uppercase tracking-wide text-muted">SKUs in this product group (ZNET_SALE_MASTER) - the amount is booked per cost centre, not split per SKU</div>
+                          <td colSpan={textCols - 1 + (multiP ? n : 0) + 2 + SKU_COLS.length} className="px-2 py-2">
+                            <div className="mb-1 text-2xs font-bold uppercase tracking-wide text-muted">{sk.length} SKU{sk.length === 1 ? '' : 's'} of SKU group {l.SkuGroupKey ?? ''} (ZNET_SALE_MASTER) - the amount is booked per cost centre, not split per SKU</div>
                             <div className="flex flex-wrap gap-1.5">
-                              {sk.map((s) => <span key={s.Material} className="rounded-lg border border-line bg-panel px-2 py-1 text-2xs"><b>{noZeros(s.Material)}</b> · {s.SKUSize} · {s.Product}</span>)}
+                              {sk.map((s) => <span key={`${s.SkuGroupCode ?? ''}|${s.Material}`} className="rounded-lg border border-line bg-panel px-2 py-1 text-2xs"><b>{noZeros(s.Material)}</b> · {s.SKUSize}{s.BaseUnit ? ` ${s.BaseUnit}` : ''} · {s.Product}{s.SkuGroupCode ? <span className="font-mono text-muted"> · {s.SkuGroupCode}</span> : null}</span>)}
                             </div>
                           </td>
                         </tr>
@@ -324,6 +355,7 @@ export default function DetailDrawer({ cell, onClose }: { cell: Cell; onClose: (
                 <tr className="bg-sunken font-bold">
                   <td colSpan={textCols} className="px-2 py-1.5">Total{find ? ` (${shown.length} matching lines)` : ''}</td>
                   {amountCells(part, true, true)}
+                  {view === 'lines' && <td colSpan={SKU_COLS.length} className="border-l border-line" />}
                 </tr>
               </tbody>
             </table>

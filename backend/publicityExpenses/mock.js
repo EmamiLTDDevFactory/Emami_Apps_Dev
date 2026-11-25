@@ -150,7 +150,38 @@ const RULES_UN = [['R01', 'KOSTL'], ['R02', 'ZZUNIQUE_KEY_IMD']];
 const NB_RULE = { 'Misc - Unit non Brand': 'R10', 'Misc - HO non Brand': 'R09', 'IBD non Brand': 'R08', 'Not covered by mapping logic': 'R99', 'Brand - hierarchy not found': 'R07' };
 const SIZES = ['25 G', '50 G', '100 G', '50 ML', '100 ML', '200 ML', '400 ML'];
 
-/** ZC_ATLBTL_EXP_DETAIL rows: each summary line split over 1-3 cost centres; SKUs under to_NetSaleMaster. */
+/** Derived number of a reporting row (3 digits) and the 9-character SKU group key of its brand rows. */
+const numOf = (row) => pad(Number(row.SerialNo || 900 + Object.keys(NB_RULE).indexOf(row.ProductGroup)) % 1000);
+const skuKeyOf = (row) => (row._brand ? `${pad(Number(row.T1), 2)}${pad(Number(row.T3), 3)}${numOf(row)}`.slice(0, 9) : '');
+
+/**
+ * ZI_ATLBTL_NETSALEMASTER (ZNET_SALE_MASTER, the target of to_NetSaleMaster) as the live entity set answers: 1-4 SKUs
+ * per brand row, SkuGroupKey = the first 9 characters of SkuGroupCode (ZSKUGRCODECRS).
+ */
+let masterRows = null;
+function skuMaster() {
+    if (masterRows) return masterRows;
+    const out = [];
+    const seen = new Set();
+    for (const row of ROWS) {
+        const key = skuKeyOf(row);
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        const rs = rng(`sku|${key}`);
+        const n = 1 + Math.floor(rs() * 4);
+        for (let s = 0; s < n; s++) {
+            out.push({
+                SerialNo: row.SerialNo, ItemCategory: row.ItemCategory, T1: row.T1, ProductRange: row.ProductRange, T2: row.T2, ProductType: row.ProductType,
+                T3: row.T3, Product: row.Product, T4: `${row.T3}.${pad(s + 1, 2)}`, SKUSize: SIZES[Math.floor(rs() * SIZES.length)], Material: `400${numOf(row)}${s}`,
+                SkuGroupKey: key, BaseUnit: 'EA', SkuGroupCode: `${key}${pad(Math.floor(rs() * 9000) + 1000, 4)}`, Season: '', MISHeading: row.MISHeading, VisibleInMIS: row.VisibleInMIS,
+            });
+        }
+    }
+    masterRows = out;
+    return out;
+}
+
+/** ZC_ATLBTL_EXP_DETAIL rows: each summary line split over 1-3 cost centres; with expand, SKUs under to_NetSaleMaster. */
 function detail(fy, period, where, { expand = false } = {}) {
     const p = Math.min(12, Math.max(1, period));
     const out = [];
@@ -164,7 +195,7 @@ function detail(fy, period, where, { expand = false } = {}) {
         const weights = Array.from({ length: n }, () => 0.3 + r());
         const total = weights.reduce((a, b) => a + b, 0);
         const a = amounts(l, p);
-        const num = pad(Number(l.row.SerialNo || 900 + Object.keys(NB_RULE).indexOf(l.row.ProductGroup)) % 1000);
+        const num = numOf(l.row);
         let left = { ...a };
         for (let k = 0; k < n; k++) {
             const f = weights[k] / total;
@@ -182,23 +213,14 @@ function detail(fy, period, where, { expand = false } = {}) {
                 CostCenterCompanyCode: l.company, CostCenterProfitCenter: '', FSVVersion: 'ZATL', FSVItem: `ATLBTL${pad(l.gl.headerSeq, 2)}`,
                 ReportHeader: l.gl.header, ReportHeaderSequence: l.gl.headerSeq, MappingRule: rule, LookupField: lookup, DerivedCostCenterNo: num,
                 ProductHierarchy: l.row._brand ? `0${pad(Number(l.row.T1), 2)}${pad(Number(l.row.T3), 3)}${num}0` : '', SalesBrand: l.row._brand ? l.row.ProductType : '',
-                SkuGroupKey: l.row._brand ? `${pad(Number(l.row.T1), 2)}${pad(Number(l.row.T3), 3)}${num}`.slice(0, 9) : '',
+                SkuGroupKey: skuKeyOf(l.row),
                 ...a, ...part, CYvsPYVariance: round2(part.CYYTDAmount - part.PYYTDAmount), CYvsRBYTDDeviation: part.CYYTDAmount,
             };
-            if (expand) {
-                // Own random stream: the cost centres of a line are the same with or without SKUs.
-                const rs = rng(`${seed}|sku|${k}`);
-                const ns = l.row._brand ? 1 + Math.floor(rs() * 4) : 0;
-                row.to_NetSaleMaster = Array.from({ length: ns }, (_, s) => ({
-                    SerialNo: l.row.SerialNo, ItemCategory: l.row.ItemCategory, ProductRange: l.row.ProductRange, ProductType: l.row.ProductType,
-                    Product: l.row.Product, SKUSize: SIZES[Math.floor(rs() * SIZES.length)], Material: `0000000000400${num}${s}`.slice(-18),
-                    SkuGroupKey: row.SkuGroupKey, BaseUnit: 'EA', MISHeading: l.row.MISHeading, VisibleInMIS: l.row.VisibleInMIS,
-                }));
-            }
+            if (expand) row.to_NetSaleMaster = row.SkuGroupKey ? skuMaster().filter((x) => x.SkuGroupKey === row.SkuGroupKey) : [];
             out.push(row);
         }
     }
     return out;
 }
 
-module.exports = { summary, detail, rng, hash, ROWS };
+module.exports = { summary, detail, skuMaster, rng, hash, ROWS };

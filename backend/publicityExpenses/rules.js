@@ -30,6 +30,19 @@ const MAX_VALUES = 3000;
 
 const norm = (v) => { const s = String(v ?? '').trim().toUpperCase(); return /^\d+$/.test(s) ? s.replace(/^0+(?=\d)/, '') : s; };
 
+/**
+ * Wildcard match (* = any run, ? = one character) in linear time: no regular expression, so a pattern like *A*A*A*...B
+ * cannot make the server backtrack for minutes (ReDoS). Classic greedy match with one backtrack point.
+ */
+function glob(p, s) {
+    let i = 0; let j = 0; let star = -1; let mark = 0;
+    while (j < s.length) {
+        if (i < p.length && (p[i] === '?' || p[i] === s[j])) { i++; j++; } else if (i < p.length && p[i] === '*') { star = i++; mark = j; } else if (star >= 0) { i = star + 1; j = ++mark; } else return false;
+    }
+    while (i < p.length && p[i] === '*') i++;
+    return i === p.length;
+}
+
 /** One pattern item -> predicate on a normalised value. Throws on a malformed item. */
 function itemMatcher(raw) {
     const item = String(raw).trim().toUpperCase();
@@ -37,9 +50,9 @@ function itemMatcher(raw) {
     if (item.length > 40) throw new Error('A value in the pattern is longer than 40 characters.');
     if (!/^[A-Z0-9_\-*?./ ]+$/.test(item)) throw new Error(`"${raw}" has characters that are not allowed (letters, digits, - _ . / * ? only).`);
     if (/[*?]/.test(item)) {
-        const n = /^\d[\d*?]*$/.test(item) ? item.replace(/^0+(?=[\d*?])/, '') : item;
-        const re = new RegExp(`^${n.replace(/[.+^${}()|[\]\\/-]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.')}$`);
-        return (v) => re.test(v);
+        // (the value is upper-case and trimmed, as norm() leaves it; the item is upper-case too)
+        const n = (/^\d[\d*?]*$/.test(item) ? item.replace(/^0+(?=[\d*?])/, '') : item).replace(/\*+/g, '*');
+        return (v) => glob(n, v);
     }
     const m = /^([A-Z0-9_./]+)\s*-\s*([A-Z0-9_./]+)$/.exec(item);
     if (m) {

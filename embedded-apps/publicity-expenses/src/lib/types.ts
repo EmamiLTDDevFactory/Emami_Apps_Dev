@@ -44,12 +44,25 @@ export interface SummaryRow extends Amounts {
   IsBudget?: boolean;
 }
 
+/** One SKU of ZNET_SALE_MASTER (CDS ZI_ATLBTL_NETSALEMASTER; table field names in the comments). */
 export interface Sku {
+  /** ZSKUGRCODECRS; its first 9 characters are the SKU group key the posting line carries. */
+  SkuGroupCode?: string;
+  /** MATNR */
   Material: string;
-  SKUSize: string;
-  Product: string;
-  SkuGroupKey: string;
-  BaseUnit: string;
+  /** SKU */
+  SKUSize?: string;
+  /** MEINS */
+  BaseUnit?: string;
+  /** PRODUCT */
+  Product?: string;
+  /** PRD_TYP */
+  ProductType?: string;
+  /** PRD_RNG */
+  ProductRange?: string;
+  /** ITEM_CAT */
+  ItemCategory?: string;
+  /** BEZEI */
   Season?: string;
 }
 
@@ -75,6 +88,8 @@ export interface DrillLine {
   DerivedCostCenterNo?: string;
   ProductHierarchy?: string;
   SalesBrand?: string;
+  /** Key of the line's SKU group in ZNET_SALE_MASTER (DrillResult.skuGroups). */
+  SkuGroupKey?: string;
   ProductGroup?: string;
   ItemCategory?: string;
   ProductRange?: string;
@@ -96,10 +111,14 @@ export interface DrillResult {
   periods: number[];
   /** How SAP was read, e.g. "YTD P06 - YTD P03 + P08". */
   reads: { text: string; terms: { period: number; field: 'ytd' | 'period'; sign: number }[] };
+  /** ZNET_SALE_MASTER rows by SKU group key, for the lines' SkuGroupKey (one cached read of the master on the server). */
+  skuGroups?: Record<string, Sku[]>;
+  /** Set when the SKU master could not be read (the lines are still complete). */
+  skuError?: string;
   meta: Meta;
 }
 /** What a drill-down asks for: report rows (keys of a row or a sub-total), optionally one G/L, sites, header groups. */
-export interface DrillRequest { keys: string[]; gls?: string[]; sites?: string[]; groups?: string[]; /** add the SKUs (one report row; slow through the gateway) */ skus?: boolean }
+export interface DrillRequest { keys: string[]; gls?: string[]; sites?: string[]; groups?: string[] }
 
 export interface ExclusionMeta { rules: number; cy: number; py: number; cyP?: number; lines: number; byRule: { id: number; dimension: string; reason: string; cy: number; py: number; lines: number }[] }
 

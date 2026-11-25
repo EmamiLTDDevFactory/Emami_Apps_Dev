@@ -11,10 +11,10 @@
      GET  /me                                  { email, role, admin }
      GET  /config                              header groups (overrides applied), classes, media buckets, dimensions
      GET  /summary   ?fy&periods[&companies][&exclusions=off]   summary rows (exclusions + budget applied) + meta
-     POST /detail    { fy, periods, companies, keys[], gls[], sites[], groups[], exclusions, skus }   drill-down of any
+     POST /detail    { fy, periods, companies, keys[], gls[], sites[], groups[], exclusions }   drill-down of any
                      report figure (one row or a sub-total): posting lines (G/L x cost centre) with the amount of every
-                     selected period; skus: true (one report row) adds the SKUs - one SAP call per line through the
-                     gateway, so the app asks for them in a second call. GET with key / gl / site still works (with SKUs).
+                     selected period, and skuGroups = the ZNET_SALE_MASTER rows of their SKU groups (one cached read of
+                     the master). GET with key / gl / site, or skus: true, also puts the SKUs on each line (older clients).
      GET  /trend     ?fy&periods[&companies][&exclusions=off]   CY / PY per period 1..latest selected, by header group
      GET  /breakdown ?fy&periods[&companies][&exclusions=off]   detail totals by site, profit centre, type, rule, cost centre
    Admin only (role Admin):
@@ -35,6 +35,10 @@
    without them, for checking. Raw SAP answers are cached 10 minutes per fiscal year / period, all companies in one
    read (the company filter is applied here, so switching companies does not read SAP again; ?refresh=1 skips the
    cache); rules, budget and mapping are read on every request, so a change shows at once.
+
+   Protection (guard.js): security headers on every answer, per-IP flood ceiling, per-user rate limits and in-flight cap
+   (429 + Retry-After), at most 6 SAP reads at once for the whole app (queue, 503 when full), compressed JSON, SAP's own
+   error text kept in the server log.
 */
 const express = require('express');
 const jwt = require('jsonwebtoken');
@@ -46,10 +50,12 @@ const { headerGroup, medium, publicConfig, isUnmapped, validateMapping } = requi
 const { applyMockBudget, envBudgetSource, validateUpload, applyUploadedBudget } = require('./budget');
 const R = require('./rules');
 const S = require('./selection');
+const G = require('./guard');
 const { getStore } = require('./store');
 
 const APP_ID = 'publicity-expenses';
 const TTL = 10 * 60 * 1000;
+const MASTER_TTL = 60 * 60 * 1000; // ZNET_SALE_MASTER: master data, read at most once an hour (Refresh reads it again)
 const router = express.Router();
 
 function source() {
@@ -141,9 +147,9 @@ function params(q, { cell = false } = {}) {
 // ---------------------------------------------------------------- raw SAP / mock data (cached)
 
 const cache = new Map();
-function cached(key, refresh, load) {
+function cached(key, refresh, load, ttl = TTL) {
     const hit = cache.get(key);
-    if (!refresh && hit && Date.now() - hit.at < TTL) return hit.promise;
+    if (!refresh && hit && Date.now() - hit.at < ttl) return hit.promise;
     const promise = load();
     cache.set(key, { at: Date.now(), promise });
     promise.catch(() => cache.delete(key));
@@ -156,34 +162,54 @@ const byCompany = (rows, companies) => (companies?.length ? rows.filter((r) => c
 /** Summary rows of ONE fiscal period as SAP returns them (YTD + period amounts); all companies read once, filtered here. */
 function rawSummary({ fy, period, companies, refresh }) {
     const src = source();
-    return cached(`s|${src}|${fy}|${period}`, refresh, async () => (src === 'sap' ? sap.fetchSummary(fy, period, {}) : mock.summary(fy, period, {})))
+    return cached(`s|${src}|${fy}|${period}`, refresh, async () => (src === 'sap' ? G.sapSlot(() => sap.fetchSummary(fy, period, {})) : mock.summary(fy, period, {})))
         .then((rows) => byCompany(rows, companies));
 }
 
 /**
  * Detail rows of ONE fiscal period. `where` (report rows, sites) goes to SAP in direct mode when it is short; through
  * the gateway, or for long lists, the whole period is read once (cached) and filtered here. The G/L list is always
- * filtered here, without leading zeros on either side (SAP sends 507926; a padded 0000507926 never matched it). SKUs
- * (expand) only for the lines asked for. Company filter always here.
+ * filtered here, without leading zeros on either side (SAP sends 507926; a padded 0000507926 never matched it).
+ * Company filter always here. SKUs come from the SKU master (skuGroups), never per line.
  */
-function rawDetail({ fy, period, companies, refresh }, where = {}, opts = {}) {
+function rawDetail({ fy, period, companies, refresh }, where = {}) {
     const src = source();
-    const ck = `d|${src}|${fy}|${period}|${JSON.stringify(where)}|${opts.expand ? 1 : 0}`;
+    const ck = `d|${src}|${fy}|${period}|${JSON.stringify(where)}`;
     const { GLAccount: glList, ...rest } = where;
     const gls = glList?.length ? new Set(glList.map(glNo)) : null;
     const keep = (r) => !gls || gls.has(glNo(r.GLAccount));
     const long = Object.values(rest).some((v) => Array.isArray(v) && v.length > 25);
     let promise;
     if (src === 'sap' && Object.keys(where).length && (sap.isGateway() || long || !Object.keys(rest).length)) {
-        promise = cached(ck, refresh, async () => {
-            const all = await rawDetail({ fy, period, refresh }, {}, {});
-            const rows = all.filter((r) => sap.matches(r, rest) && keep(r));
-            return opts.expand && sap.isGateway() ? sap.expandSkus(rows) : rows;
-        });
+        promise = cached(ck, refresh, async () => (await rawDetail({ fy, period, refresh }, {})).filter((r) => sap.matches(r, rest) && keep(r)));
     } else {
-        promise = cached(ck, refresh, async () => (await (src === 'sap' ? sap.fetchDetail(fy, period, rest, opts) : mock.detail(fy, period, rest, opts))).filter(keep));
+        promise = cached(ck, refresh, async () => (await (src === 'sap' ? G.sapSlot(() => sap.fetchDetail(fy, period, rest)) : mock.detail(fy, period, rest))).filter(keep));
     }
     return promise.then((rows) => byCompany(rows, companies));
+}
+
+/** What a drill-down shows of a SKU (ZNET_SALE_MASTER row). SkuGroupCode = ZSKUGRCODECRS. */
+const SKU_FIELDS = ['SkuGroupCode', 'Material', 'SKUSize', 'BaseUnit', 'Product', 'ProductType', 'ProductRange', 'ItemCategory', 'Season'];
+/**
+ * ZNET_SALE_MASTER by SKU group key (first 9 characters of ZSKUGRCODECRS): one read of the whole master (~1,600 rows),
+ * cached an hour. The drill-down joins its lines on SkuGroupKey - the association to_NetSaleMaster, without one SAP
+ * call per line.
+ */
+function skuGroupsAll(refresh) {
+    const src = source();
+    return cached(`m|${src}`, refresh, async () => {
+        const rows = src === 'sap' ? await G.sapSlot(() => sap.fetchSkuMaster()) : mock.skuMaster();
+        const m = new Map();
+        for (const r of rows) {
+            const k = String(r.SkuGroupKey || String(r.SkuGroupCode || '').slice(0, 9)).trim();
+            if (!k) continue;
+            const o = {};
+            for (const f of SKU_FIELDS) if (r[f] !== undefined && r[f] !== null && r[f] !== '') o[f] = typeof r[f] === 'string' ? r[f].trim() : r[f];
+            (m.get(k) || m.set(k, []).get(k)).push(o);
+        }
+        for (const list of m.values()) list.sort((a, b) => String(a.SkuGroupCode ?? '').localeCompare(String(b.SkuGroupCode ?? '')) || String(a.Material ?? '').localeCompare(String(b.Material ?? '')));
+        return m;
+    }, MASTER_TTL);
 }
 
 /** Read each needed period at most 3 at a time. */
@@ -298,18 +324,32 @@ async function mapLimit(items, limit, fn) {
 
 // ---------------------------------------------------------------- routes
 
+// Order: headers on every answer -> flood ceiling per IP -> session + Manage Access -> per-user limits (see guard.js).
+router.use(G.securityHeaders);
+router.use(G.ipLimit);
 router.use(requireUser);
+router.use(G.inFlight);
+router.use(...G.userLimits);
+
+/** What the browser is told about a failure: our own messages as they are; SAP's own error text only in the server log. */
+function publicError(e, status) {
+    if (status === 500) return 'Something went wrong while reading the expenses.';
+    if (e instanceof sap.SapError && /^SAP refused/.test(e.message)) return 'SAP refused the request. Please try again later; if it persists, contact IT.';
+    if (e instanceof sap.SapError && /^SAP error/.test(e.message)) return 'SAP returned an error. Please try again; if it persists, contact IT (the details are in the server log).';
+    return e.message;
+}
 
 const handle = (name, fn) => async (req, res) => {
     const t0 = Date.now();
     try {
         const body = await fn(req);
         console.log(`[publicity-expenses] ${req.email} ${name} ${body.rows ? body.rows.length : ''} ${Date.now() - t0}ms`);
-        res.set('Cache-Control', 'no-store').json({ success: true, ...body });
+        await G.sendJson(req, res, 200, { success: true, ...body });
     } catch (e) {
         const status = e.status || 500;
         if (status >= 500) console.error(`[publicity-expenses] ${name}`, e.message);
-        res.status(status).json({ success: false, error: status === 500 ? 'Something went wrong while reading the expenses.' : e.message });
+        if (status === 503 && e instanceof G.Busy) res.set('Retry-After', '30');
+        await G.sendJson(req, res, status, { success: false, error: publicError(e, status) }).catch(() => {});
     }
 };
 const audit = (req, action, detail) => store().audit.add(req.email, action, detail);
@@ -319,7 +359,7 @@ const meta = (p, extra = {}) => ({
     companies: p.companies, exclusionsOn: p.exclusions, fetchedAt: new Date().toISOString(), ...extra,
 });
 
-router.get('/health', handle('health', async () => ({ ok: true, source: source(), budget: envBudgetSource(), system: source() === 'sap' ? sap.systemLabel() : 'Mock data' })));
+router.get('/health', handle('health', async () => ({ ok: true, source: source(), budget: envBudgetSource(), system: source() === 'sap' ? sap.systemLabel() : 'Mock data', sapReads: G.sapStats() })));
 router.get('/me', handle('me', async (req) => ({ email: req.email, role: req.role, admin: req.role === 'Admin' })));
 router.get('/config', handle('config', async () => ({ config: { ...publicConfig(await mappingNow()), dimensions: Object.entries(R.DIMENSIONS).map(([id, d]) => ({ id, label: d.label, level: d.level })) } })));
 
@@ -329,12 +369,18 @@ router.get('/summary', handle('summary', async (req) => {
     const latest = await rawSummary({ fy: p.fy, period: p.period }); // cached by now
     // Company codes with data in the latest selected period (all companies), for the company filter.
     const companiesInData = uniq(latest.map((r) => r.CompanyCode).filter(Boolean)).sort();
-    return { rows: out.rows, meta: meta(p, { sourceRows: out.rawCount, companiesInData, budget: out.budget.source, budgetVersions: out.budget.versions, exclusions: exclusionMeta(out.excluded, out.rules) }) };
+    return { rows: out.rows.map(summaryRow), meta: meta(p, { sourceRows: out.rawCount, companiesInData, budget: out.budget.source, budgetVersions: out.budget.versions, exclusions: exclusionMeta(out.excluded, out.rules) }) };
 }));
+
+/** What the report needs of a summary row (the CDS sends ~40 more technical fields; they never reach the browser). */
+const SUMMARY_FIELDS = ['CompanyCode', 'ReportingKey', 'GLAccount', 'Site', 'GLAccountName', 'ReportHeader', 'ReportHeaderSequence', 'FSVItem', 'ProductGroup', 'SerialNo',
+    'ItemCategory', 'T1', 'ProductRange', 'T2', 'ProductType', 'T3', 'Product', 'MISHeading', 'VisibleInMIS', 'Currency', 'HeaderGroup', 'HeaderLabel', 'SpendClass',
+    'InMIS', 'Medium', 'Unmapped', 'IsBudget', ...sap.AMOUNTS];
+const summaryRow = (r) => { const o = {}; for (const f of SUMMARY_FIELDS) if (r[f] !== undefined) o[f] = r[f]; return o; };
 
 /** What a drill-down line sends to the browser: the posting-line fields, the selection totals, one amount per selected period. */
 const DRILL_FIELDS = ['CompanyCode', 'ReportingKey', 'GLAccount', 'GLAccountName', 'Site', 'HeaderGroup', 'HeaderLabel', 'CostCenter', 'CostCenterName', 'CostCenterType',
-    'ProfitCenter', 'MappingRule', 'LookupField', 'DerivedCostCenterNo', 'ProductHierarchy', 'SalesBrand', 'ProductGroup', 'ItemCategory', 'ProductRange', 'ProductType',
+    'ProfitCenter', 'MappingRule', 'LookupField', 'DerivedCostCenterNo', 'ProductHierarchy', 'SalesBrand', 'SkuGroupKey', 'ProductGroup', 'ItemCategory', 'ProductRange', 'ProductType',
     'MISHeading', 'Product', 'CYYTDAmount', 'PYYTDAmount', 'CYPeriodAmount', 'PYPeriodAmount', 'cy', 'py', 'to_NetSaleMaster', 'ExcludedBy'];
 const drillRow = (r) => { const o = {}; for (const f of DRILL_FIELDS) if (r[f] !== undefined && r[f] !== '') o[f] = r[f]; return o; };
 
@@ -342,9 +388,10 @@ const drillRow = (r) => { const o = {}; for (const f of DRILL_FIELDS) if (r[f] !
    Drill-down of any report figure: one report row (key) or a sub-total (keys of its rows), optionally one G/L, sites,
    header groups. Lines = G/L x cost centre x profit centre with the selection total (read like the summary, so it equals
    the report figure) and the amount of each selected period (cy[i] / py[i] for periods[i]) - the basis to check against
-   SAP (FAGLB03 / KSB1). SKUs (ZNET_SALE_MASTER) only when asked for (skus: true) and one report row is drilled: through
-   the gateway each line is its own SAP call (~1 s each, 4 at a time), so the app shows the lines first and asks again
-   for the SKUs (cached 10 minutes like everything else).
+   SAP (FAGLB03 / KSB1). The SKUs of every line (ZNET_SALE_MASTER: ZSKUGRCODECRS, product, type, range, category) come
+   once per SKU group in skuGroups { SkuGroupKey: [...] } from the cached master - no SAP call per line, any drill-down.
+   Older clients asking skus: true (or GET) also get them on each line (to_NetSaleMaster). If the master cannot be read,
+   the lines still come, with skuError.
 */
 async function drill(req) {
     const src = req.method === 'POST' ? (req.body || {}) : req.query;
@@ -352,9 +399,12 @@ async function drill(req) {
     const mapping = await mappingNow();
     const where = { ...(p.keys.length ? { ReportingKey: p.keys } : {}), ...(p.gls.length ? { GLAccount: p.gls } : {}), ...(p.sites.length ? { Site: p.sites } : {}) };
     const terms = S.termsOf(p.periods);
-    const expand = p.keys.length === 1 && (req.method === 'GET' || src.skus === true || src.skus === 'true');
-    const reads = await readPeriods(uniq([...p.periods, ...terms.map((t) => t.period)]).sort((a, b) => a - b),
-        (q) => rawDetail({ ...p, period: q }, where, { expand: expand && q === p.period }));
+    const perLine = req.method === 'GET' || src.skus === true || src.skus === 'true';
+    const masterP = skuGroupsAll(p.refresh).then((m) => ({ m }), (e) => {
+        console.error('[publicity-expenses] SKU master', e.message);
+        return { error: e instanceof G.Busy ? e.message : 'The SKU master (ZNET_SALE_MASTER) could not be read just now - the posting lines are complete; try again for the SKU columns.' };
+    });
+    const reads = await readPeriods(uniq([...p.periods, ...terms.map((t) => t.period)]).sort((a, b) => a - b), (q) => rawDetail({ ...p, period: q }, where));
     const combined = S.combine(terms.map((t) => ({ term: t, rows: reads.get(t.period) })), S.lineKey, p.period);
     const index = new Map(combined.map((r) => [S.lineKey(r), Object.assign(r, { cy: p.periods.map(() => 0), py: p.periods.map(() => 0) })]));
     p.periods.forEach((q, i) => {
@@ -375,7 +425,14 @@ async function drill(req) {
     const live = (r) => Math.abs(r.CYYTDAmount) >= 0.005 || Math.abs(r.PYYTDAmount) >= 0.005 || r.cy.some((v) => Math.abs(v) >= 0.005) || r.py.some((v) => Math.abs(v) >= 0.005);
     rows = rows.filter(live); excluded = excluded.filter(live);
     if (rows.length > MAX_LINES) throw new BadInput(`${rows.length} posting lines - too many to show at once. Drill into a smaller part of the report or pick fewer periods.`);
-    return { rows: rows.map(drillRow), excluded: excluded.map(drillRow), periods: p.periods, reads: { terms, text: S.describe(terms) }, meta: meta(p) };
+    const master = await masterP;
+    const skuGroups = {};
+    if (master.m) for (const r of [...rows, ...excluded]) if (r.SkuGroupKey && master.m.has(r.SkuGroupKey)) skuGroups[r.SkuGroupKey] = master.m.get(r.SkuGroupKey);
+    const out = (r) => { const o = drillRow(r); if (perLine && master.m) o.to_NetSaleMaster = (r.SkuGroupKey && master.m.get(r.SkuGroupKey)) || []; return o; };
+    return {
+        rows: rows.map(out), excluded: excluded.map(out), skuGroups, ...(master.error ? { skuError: master.error } : {}),
+        periods: p.periods, reads: { terms, text: S.describe(terms) }, meta: meta(p),
+    };
 }
 router.get('/detail', handle('detail', drill));
 router.post('/detail', handle('detail', drill));

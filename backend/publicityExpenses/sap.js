@@ -188,6 +188,23 @@ async function fetchDetail(fy, period, where, { expand = false } = {}) {
     return (await getAll(buildUrl(base, entityPath('ZC_ATLBTL_EXP_DETAIL', fy, period), { filter: filterOf(where), expand: expand ? 'to_NetSaleMaster' : '' }))).map((r) => clean(r));
 }
 
+/**
+ * ZNET_SALE_MASTER in one read: the entity set of CDS ZI_ATLBTL_NETSALEMASTER (target of to_NetSaleMaster, exposed in
+ * the detail service; ~1,600 rows on NWP). The drill-down joins it on SkuGroupKey, so no SAP call per posting line.
+ * PUBEXP_SAP_SKU_SET overrides the entity set name.
+ */
+async function fetchSkuMaster() {
+    const { base, gateway } = requireBase('detail');
+    const set = env('PUBEXP_SAP_SKU_SET') || 'ZI_ATLBTL_NETSALEMASTER';
+    if (!/^[A-Za-z][A-Za-z0-9_]{0,59}$/.test(set)) throw new SapError('PUBEXP_SAP_SKU_SET is not a valid entity set name.', 500);
+    if (gateway) {
+        const d = (await getJson(`${base}/${set}?$format=json`))?.d;
+        if (d?.__next) throw new SapError('SAP returned a paged answer for the SKU master; it is incomplete.');
+        return (Array.isArray(d?.results) ? d.results : []).map((r) => clean(r));
+    }
+    return (await getAll(buildUrl(base, set))).map((r) => clean(r));
+}
+
 /** Gateway mode: read the SKUs (to_NetSaleMaster) of each line through its own entity, 4 at a time, at most 80 lines. */
 async function expandSkus(rows) {
     const { base } = requireBase('detail');
@@ -221,4 +238,4 @@ function systemLabel() {
     return [sys.toUpperCase(), c.gateway ? '' : c.client].filter(Boolean).join(' ') + (c.gateway ? ' via Azure gateway' : '');
 }
 
-module.exports = { fetchSummary, fetchDetail, expandSkus, isConfigured, isGateway, systemLabel, SapError, filterOf, entityPath, buildUrl, clean, publicRow, matches, AMOUNTS };
+module.exports = { fetchSummary, fetchDetail, fetchSkuMaster, expandSkus, isConfigured, isGateway, systemLabel, SapError, filterOf, entityPath, buildUrl, clean, publicRow, matches, AMOUNTS };

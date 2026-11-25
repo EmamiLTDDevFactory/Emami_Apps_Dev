@@ -86,8 +86,12 @@ test('MIS report: G/L columns open, a figure drills down and the drill-down adds
   await expect(drawer.getByText('Drill-down').first()).toBeVisible();
   await expect(drawer.getByTestId('drill-total-cy')).toHaveText(shown);
   await expect(drawer.getByTestId('drill-check')).toBeVisible();
-  // One report row: its SKUs arrive from a second call, after the lines.
-  await expect(drawer.getByRole('button', { name: 'Show SKUs' }).first()).toBeVisible({ timeout: 30_000 });
+  // SKUs come with the lines: the ZNET_SALE_MASTER columns at the end, and a line opens to its SKUs.
+  await expect(drawer.getByTestId('drill-table').locator('thead')).toContainText('ZSKUGRCODECRS');
+  const showSkus = drawer.getByRole('button', { name: 'Show SKUs' }).first();
+  await expect(showSkus).toBeVisible();
+  await showSkus.click();
+  await expect(drawer.getByText(/SKUs? of SKU group/).first()).toBeVisible();
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/${info.project.name === 'mobile-360' ? 'm' : 'd'}-drilldown.png` });
 });
 
