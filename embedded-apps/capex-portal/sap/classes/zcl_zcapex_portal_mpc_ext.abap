@@ -41,6 +41,12 @@ CLASS zcl_zcapex_portal_mpc_ext DEFINITION
              content   TYPE string,
            END OF ts_doc_xfer.
 
+    TYPES: BEGIN OF ts_remove_doc,
+             doctype TYPE c LENGTH 15,
+             docid   TYPE c LENGTH 15,
+             docseq  TYPE c LENGTH 4,
+           END OF ts_remove_doc.
+
     METHODS get_last_modified
         REDEFINITION .
     METHODS define
@@ -55,6 +61,8 @@ CLASS zcl_zcapex_portal_mpc_ext DEFINITION
                 iv_key  TYPE abap_bool DEFAULT abap_false
       RAISING   /iwbep/cx_mgw_med_exception.
     METHODS define_budget_item
+      RAISING /iwbep/cx_mgw_med_exception.
+    METHODS define_remove_document
       RAISING /iwbep/cx_mgw_med_exception.
 ENDCLASS.
 
@@ -83,7 +91,32 @@ CLASS ZCL_ZCAPEX_PORTAL_MPC_EXT IMPLEMENTATION.
     lo_mime->set_as_content_type( ).
 
     define_doc_xfer( ).
+    define_remove_document( ).
 
+    " A step that has not been reached yet has no ReachedOn date. The generated property is mandatory,
+    " so the gateway failed the whole read (HTTP 500) for any CPE still in approval or on hold.
+    model->get_entity_type( iv_entity_name = 'ApprovalStep' )->get_property( iv_property_name = 'ReachedOn' )->set_nullable( abap_true ).
+
+  ENDMETHOD.
+
+
+  METHOD define_remove_document.
+    " Additive function import: the Azure proxy drops HTTP DELETE, so Emami Apps removes an attachment with a POST.
+    " Same rules as DocumentSet DELETE (DPC DOCUMENTSET_DELETE_ENTITY); Fiori is not affected.
+    DATA(lo_action) = model->create_action( 'RemoveDocument' ).
+    lo_action->set_return_complex_type( 'ActionResult' ).
+    lo_action->set_http_method( 'POST' ).
+    lo_action->set_return_multiplicity( '1' ).
+    DATA(lo_par) = lo_action->create_input_parameter( iv_parameter_name = 'Doctype' iv_abap_fieldname = 'DOCTYPE' ).
+    lo_par->/iwbep/if_mgw_odata_property~set_type_edm_string( ).
+    lo_par->set_maxlength( iv_max_length = 15 ).
+    lo_par = lo_action->create_input_parameter( iv_parameter_name = 'Docid' iv_abap_fieldname = 'DOCID' ).
+    lo_par->/iwbep/if_mgw_odata_property~set_type_edm_string( ).
+    lo_par->set_maxlength( iv_max_length = 15 ).
+    lo_par = lo_action->create_input_parameter( iv_parameter_name = 'Docseq' iv_abap_fieldname = 'DOCSEQ' ).
+    lo_par->/iwbep/if_mgw_odata_property~set_type_edm_string( ).
+    lo_par->set_maxlength( iv_max_length = 4 ).
+    lo_action->bind_input_structure( iv_structure_name = 'ZCL_ZCAPEX_PORTAL_MPC_EXT=>TS_REMOVE_DOC' ).
   ENDMETHOD.
 
 
@@ -150,7 +183,7 @@ CLASS ZCL_ZCAPEX_PORTAL_MPC_EXT IMPLEMENTATION.
 
   METHOD get_last_modified.
     " Bump whenever the model in this class changes, so Gateway refreshes its metadata cache.
-    CONSTANTS lc_model_changed TYPE timestamp VALUE '20261124130000'.
+    CONSTANTS lc_model_changed TYPE timestamp VALUE '20261125170000'.
     rv_last_modified = super->get_last_modified( ).
     IF rv_last_modified LT lc_model_changed.
       rv_last_modified = lc_model_changed.

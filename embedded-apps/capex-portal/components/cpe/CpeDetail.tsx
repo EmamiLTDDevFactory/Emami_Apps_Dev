@@ -121,7 +121,7 @@ export default function CpeDetail() {
     { key: 'note', header: 'Note', hideBelow: 'lg', render: (d) => orDash(d.Note) },
     { key: 'size', header: 'Size', align: 'right', hideBelow: 'md', render: (d) => d.SizeText },
     { key: 'by', header: 'Uploaded', align: 'right', hideBelow: 'md', render: (d) => <><div>{d.UploadedByName || d.UploadedBy}</div><div className="text-[11px] text-sap-muted">{fmtDate(d.UploadedOn)}</div></> },
-    { key: 'act', header: '', align: 'right', render: (d) => <DocActions doc={d} /> },
+    { key: 'act', header: '', align: 'right', render: (d) => <DocActions doc={d} onRemoved={canUploadDocs(status) ? () => setDocs((x) => x.filter((y) => y.Docseq !== d.Docseq || y.Doctype !== d.Doctype || y.Docid !== d.Docid)) : undefined} /> },
   ];
 
   return (

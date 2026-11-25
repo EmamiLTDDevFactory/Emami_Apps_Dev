@@ -586,6 +586,19 @@ CLASS ZCL_ZCAPEX_PORTAL_DPC_EXT IMPLEMENTATION.
             ENDIF.
             ls_res = VALUE #( success = abap_true message = |{ sy-dbcnt } notification(s) marked as read| ).
 
+          WHEN 'RemoveDocument'.
+            " POST form of DocumentSet DELETE (the proxy drops DELETE): same visibility and status rules.
+            documentset_delete_entity(
+              EXPORTING iv_entity_name     = `Document`
+                        iv_entity_set_name = `DocumentSet`
+                        iv_source_name     = `DocumentSet`
+                        it_navigation_path = VALUE #( )
+                        it_key_tab         = VALUE #( ( name = `Doctype` value = to_upper( p( `Doctype` ) ) )
+                                                  ( name = `Docid`   value = p( `Docid` ) )
+                                                  ( name = `Docseq`  value = p( `Docseq` ) ) ) ).
+            ls_res = result( iv_doctype = CONV #( to_upper( p( `Doctype` ) ) ) iv_docid = p( `Docid` )
+                             iv_message = 'Attachment removed.' ).
+
             " ---------------------------------------------------------------- read-only answers (GET)
           WHEN 'CheckBudget'.
             ls_chk-budgetid = p( `BudgetId` ).
