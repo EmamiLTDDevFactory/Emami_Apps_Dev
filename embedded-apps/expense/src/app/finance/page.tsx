@@ -130,8 +130,12 @@ export default function FinancePage() {
   // ("Pending at finance") that shouldn't be overridden.
   const isBPendingRelease = (claim: ExpenseClaim) => isBulkReleaseUser && claim.rawStatus === 'P';
   // The normal queue is H (direct post, no park step), with legacy P still possible for claims
-  // parked before this change.
-  const isBBulkEligible = (claim: ExpenseClaim) => isBulkReleaseUser && (claim.rawStatus === 'H' || claim.rawStatus === 'P');
+  // parked before this change. A GST (has a GSTIN/stcd3) claim in H still needs a tax code picked
+  // before posting - bulk release sends none, so those are excluded here and released one by one
+  // through handleRelease's modal instead. A GST claim in legacy P already has its tax stored, so
+  // it's still bulk-eligible.
+  const isBBulkEligible = (claim: ExpenseClaim) =>
+    isBulkReleaseUser && (claim.rawStatus === 'P' || (claim.rawStatus === 'H' && !claim.stcd3));
   const bulkReleaseClaims = financeClaims.filter((c) => isBBulkEligible(c));
   const allBulkSelected = bulkReleaseClaims.length > 0 && bulkReleaseClaims.every((c) => selectedClaimIds.includes(c.id));
 
@@ -263,12 +267,14 @@ export default function FinancePage() {
     setScreenMessage({ title: title || (type === 'error' ? 'Action Failed' : 'Success'), message, type });
   };
 
-  // 'B' (Top Level) never picks a tax code here — Finance already selected and sent it to SAP on
-  // their own earlier release call, so asking again at B's final posting step is redundant and
-  // was blocking B from posting. B always goes straight to the simple confirm below.
+  // The old park-then-release flow had a PARK user pick the tax code before parking, then a POST
+  // user post without being asked again - skipping the modal for role B relied on that already-
+  // chosen code existing. Every finance user is a POST user now and H -> S is the only step, so
+  // skipping it here would post a GST claim with no tax code at all. Only legacy P claims (parked
+  // under the old flow) already have the tax stored and can skip straight to the confirm below.
   const handleRelease = async (id: string) => {
     const claim = claims.find((c) => c.id === id);
-    if (claim && claim.stcd3 && currentUser?.role !== 'B') {
+    if (claim && claim.stcd3 && claim.rawStatus === 'H') {
       setReleaseConfirmClaimId(id);
       setTaxModalVisible(true);
       setTaxLoading(true);

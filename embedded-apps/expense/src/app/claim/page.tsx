@@ -273,13 +273,15 @@ function ClaimDetailInner() {
     setActionModalVisible(true);
   };
 
-  // Role B (top-level/Boss) must skip the tax-code modal just like Finance's own list already
-  // does — previously Claim Detail asked role B to pick a tax code again even though Finance's
-  // list correctly released GSTIN claims for role B without it. Authorized fix, same guard now
-  // used in both places.
+  // The old park-then-release flow had a PARK user pick the tax code before parking, then a POST
+  // user post without being asked again - skipping the modal for role B relied on that already-
+  // chosen code existing. Every finance user is a POST user now and H -> S is the only step, so
+  // skipping it here would post a GST claim with no tax code at all. Only a legacy P claim (parked
+  // under the old flow) already has the tax stored and can skip straight to the confirm below -
+  // same rule finance/page.tsx's handleRelease uses.
   const handleFinanceRelease = async () => {
     const hasGstin = header.Stcd3 || header.Lifnr;
-    if (hasGstin && currentUser?.role !== 'B') {
+    if (hasGstin && normalizedHeaderStatus === 'H') {
       setTaxModalVisible(true);
       setTaxLoading(true);
       setTaxDropdownOpen(true);
