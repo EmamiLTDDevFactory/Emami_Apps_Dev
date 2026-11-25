@@ -8,10 +8,10 @@ import { ErrorState, LoadingState } from '../ui';
 import GroupEditor, { EditorTarget } from './wf/GroupEditor';
 import LogPanel from './wf/LogPanel';
 import { ConfirmDialog, MessageBox, VhInput } from './wf/parts';
-import { CopyDialog, KeyPointsPanel, MassAgentPanel, WhereUsedPanel } from './wf/ToolsPanels';
+import { CopyDialog, MassAgentPanel, WhereUsedPanel } from './wf/ToolsPanels';
 
-type Top = 'groups' | 'keys' | 'user' | 'mass' | 'log';
-const TOPS: [Top, string][] = [['groups', 'Combinations'], ['keys', 'Key points'], ['user', 'Where is a user used'], ['mass', 'Mass agent change'], ['log', 'Change log']];
+type Top = 'groups' | 'user' | 'mass' | 'log';
+const TOPS: [Top, string][] = [['groups', 'Combinations'], ['user', 'Where is a user used'], ['mass', 'Mass agent change'], ['log', 'Change History']];
 
 /** Workflow maintenance of the flow engine: approval levels (Initiator, Reviewer, Approver) per application and generic key */
 export default function WorkflowAdminScreen() {
@@ -55,53 +55,48 @@ export default function WorkflowAdminScreen() {
 
   return (
     <div className="wf-page">
-      <div className="page-header">
-        <h1>Workflow maintenance</h1>
-        <p className="muted">Who reviews and approves a request, per application and generic key (material type, group, business vertical, plant, brand). Changes act on new requests at once and are written to the change log.</p>
-      </div>
-
       <section className="card wf-head">
-        <div className="wf-app">
-          <div className="field">
-            <label className="field-label" htmlFor="wf-app">Application</label>
-            <select id="wf-app" value={appId} onChange={(e) => chooseApp(e.target.value)}>
-              <option value="">Choose an application…</option>
-              {apps.map((a) => <option key={a.appId} value={a.appId}>{a.appId} - {a.text} ({a.groupCount})</option>)}
-            </select>
+        <form className="wf-form" onSubmit={(e) => { e.preventDefault(); search(appId, filter); }}>
+          <div className="wf-form-fields">
+            <div className="wf-frow">
+              <label htmlFor="wf-app"><span className="req" aria-hidden>* </span>Application Id</label>
+              <select id="wf-app" value={appId} onChange={(e) => chooseApp(e.target.value)}>
+                <option value="">Choose…</option>
+                {apps.map((a) => <option key={a.appId} value={a.appId}>{a.appId} - {a.text} ({a.groupCount})</option>)}
+              </select>
+            </div>
+            {fields.map((f) => <VhInput key={f.field} id={`wf-f-${f.field}`} label={f.label} kind={f.vh} appId={appId} value={filter[f.field]} onChange={(v) => setFilter({ ...filter, [f.field]: v })} placeholder="any, * allowed" className="wf-frow" />)}
           </div>
-          {cfg && <p className="muted wf-appinfo">{cfg.wfId ? <>Workflow template <strong>{cfg.wfId}</strong></> : <span className="wf-warn-text">No workflow template (key WF_ID): requests cannot start</span>}</p>}
-        </div>
-        <div className="tabs wf-top" role="tablist" aria-label="Maintenance">
-          {TOPS.map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={top === id} className={`tab ${top === id ? 'active' : ''}`} onClick={() => setTop(id)}>{label}</button>)}
-        </div>
+          <div className="wf-form-btns">
+            <button type="submit" className="btn btn-sm btn-primary" disabled={!appId || busy}><IconSearch size={14} /> Search</button>
+            <button type="button" className="btn btn-sm" disabled={!appId} onClick={() => guard(() => { setTarget({ kind: 'new', appId }); setDirty(false); setTop('groups'); })}><IconPlus size={14} /> New</button>
+            <button type="button" className="btn btn-sm" disabled={!appId || !filter.genType} title="Copy all combinations of the type in the filter" onClick={() => guard(() => setCopy({ key: { ...emptyKey(appId), genType: filter.genType }, mode: 'type' }))}><IconCopy size={14} /> Copy type</button>
+            <button type="button" className={`btn btn-sm ${top === 'mass' ? 'btn-primary' : ''}`} onClick={() => setTop(top === 'mass' ? 'groups' : 'mass')}>Mass Agent Change</button>
+            <span className="wf-form-sep" />
+            {TOPS.filter(([id]) => id !== 'groups' && id !== 'mass').map(([id, label]) => <button key={id} type="button" className={`btn btn-sm btn-ghost ${top === id ? 'on' : ''}`} onClick={() => setTop(top === id ? 'groups' : id)}>{label}</button>)}
+          </div>
+        </form>
+        {cfg && !cfg.wfId && <p className="wf-warn-text wf-appinfo">No workflow template (key WF_ID): requests cannot start</p>}
       </section>
 
       {top === 'groups' && (
-        <div className="wf-split">
-          <section className="card wf-list" aria-label="Combinations">
-            <div className="card-bar"><h2>Combinations</h2>
-              <div className="wf-actions">
-                <button type="button" className="btn btn-sm btn-primary" disabled={!appId} onClick={() => guard(() => { setTarget({ kind: 'new', appId }); setDirty(false); })}><IconPlus size={14} /> New</button>
-                <button type="button" className="btn btn-sm" disabled={!appId || !filter.genType} title="Copy all combinations of the type in the filter" onClick={() => guard(() => setCopy({ key: { ...emptyKey(appId), genType: filter.genType }, mode: 'type' }))}><IconCopy size={14} /> Copy type</button>
-              </div>
-            </div>
-            <form className="wf-filter wf-filter-compact" onSubmit={(e) => { e.preventDefault(); search(appId, filter); }}>
-              {fields.map((f) => <VhInput key={f.field} id={`wf-f-${f.field}`} label={f.label} kind={f.vh} appId={appId} value={filter[f.field]} onChange={(v) => setFilter({ ...filter, [f.field]: v })} placeholder="any, * allowed" />)}
-              <button type="submit" className="btn btn-primary" disabled={!appId || busy}><IconSearch size={14} /> Search</button>
-            </form>
+        <div className="wf-board">
+          <section className="card wf-list wf-pane" aria-label="General details">
+            <div className="wf-pane-bar"><h2>General Details</h2><span className="muted">{list ? `${list.length} found` : ''}</span></div>
             <MessageBox error={err} />
             {!appId && <div className="empty"><p>Choose an application to see its combinations.</p></div>}
             {busy && <LoadingState text="Reading the combinations from SAP…" />}
             {!busy && list && list.length === 0 && <div className="empty"><p>No combination found. Create one with New.</p></div>}
             {!busy && list && list.length > 0 && (
-              <div className="table-wrap">
-                <table className="table table-click wf-table">
-                  <thead><tr>{fields.map((f) => <th key={f.field}>{f.label}</th>)}<th>R / A</th><th>Agents</th><th><span className="wf-sr">Status</span></th></tr></thead>
+              <div className="wf-list-scroll">
+                <table className="wf-grid wf-list-grid">
+                  <thead><tr><th className="wf-c-sel" />{fields.map((f) => <th key={f.field}>{f.label}</th>)}<th title="Reviewer / Approver levels">R / A</th><th>Agents</th><th /></tr></thead>
                   <tbody>
                     {list.map((g) => {
                       const sel = target?.kind === 'existing' && sameKey(target.key, g);
                       return (
                         <tr key={keyText(g)} className={sel ? 'wf-sel' : ''} tabIndex={0} aria-selected={sel} onClick={() => open(g)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(g); } }}>
+                          <td className="wf-c-sel"><input type="radio" name="wf-grp" checked={sel} readOnly aria-label="Select" /></td>
                           {fields.map((f) => <td key={f.field}>{g[f.field] || <span className="muted">-</span>}</td>)}
                           <td className="num">{g.reviewerLevels} / {g.approverLevels}</td>
                           <td className="num">{g.countedAgents}</td>
@@ -122,16 +117,15 @@ export default function WorkflowAdminScreen() {
                 onDeleted={() => { setTarget(null); setDirty(false); refresh(); }}
                 onCopy={(k) => setCopy({ key: k, mode: 'single' })} onCancelNew={() => { setTarget(null); setDirty(false); }} />
             ) : (
-              <section className="card"><div className="empty"><p>{appId ? 'Select a combination, or create a new one.' : 'Choose an application first.'}</p></div></section>
+              <section className="card wf-pane wf-placeholder"><div className="empty"><p>{appId ? 'Select a combination, or create a new one.' : 'Choose an application first.'}</p></div></section>
             )}
           </div>
         </div>
       )}
 
-      {top === 'keys' && <section className="card"><div className="card-bar"><h2>Key points</h2></div><div className="tab-body"><KeyPointsPanel appId={appId} /></div></section>}
       {top === 'user' && <section className="card"><div className="card-bar"><h2>Where is a user used</h2></div><div className="tab-body"><WhereUsedPanel appId={appId} onOpen={(k) => { setAppId(k.appId); setFilter(emptyKey(k.appId)); search(k.appId, emptyKey(k.appId)); open(k); }} /></div></section>}
       {top === 'mass' && <section className="card"><div className="card-bar"><h2>Mass agent change</h2></div><div className="tab-body"><MassAgentPanel appId={appId} cfg={cfg} /></div></section>}
-      {top === 'log' && <section className="card"><div className="card-bar"><h2>Change log</h2></div><div className="tab-body">{appId ? <LogPanel key={appId} appId={appId} cfg={cfg} /> : <p className="muted">Choose an application first.</p>}</div></section>}
+      {top === 'log' && <section className="card"><div className="card-bar"><h2>Change History</h2></div><div className="tab-body">{appId ? <LogPanel key={appId} appId={appId} cfg={cfg} /> : <p className="muted">Choose an application first.</p>}</div></section>}
 
       {pending && (
         <ConfirmDialog title="Discard unsaved changes?" confirmText="Discard" danger onCancel={() => setPending(null)} onConfirm={() => { const fn = pending; setPending(null); setDirty(false); fn(); }}>

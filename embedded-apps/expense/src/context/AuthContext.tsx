@@ -13,6 +13,9 @@ interface AuthContextType {
   login: (employeeId: string, role: UserRole, name?: string, info?: any) => boolean;
   logout: () => void;
   setActiveRole: (role: UserRole | null) => void;
+  // QA-only: lets RoleSwitcher toggle these independently of a real SAP login, since they're now
+  // real state (not mutated on the PROFILES object) so toggling one actually re-renders.
+  setCapabilityFlags: (flags: { isManager?: boolean; isFinance?: boolean; isAdmin?: boolean }) => void;
   validEmployeeIds: string[];
 }
 
@@ -49,6 +52,10 @@ const PROFILES: Record<UserRole, EmployeeProfile> = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// SAP's LoginSet returns IsManager/IsFinance as either a real boolean or the legacy XFELD string
+// 'X' - same ambiguity ExptypeSet.IsMobile already needed this exact check for.
+const asFlag = (value: unknown): boolean => value === true || value === 'X';
+
 const normalizeRole = (role: unknown): UserRole | null => {
   if (typeof role !== 'string') return null;
   const trimmed = role.trim();
@@ -65,9 +72,21 @@ const normalizeRole = (role: unknown): UserRole | null => {
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [activeRole, setActiveRole] = useState<UserRole | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
+  // Independent capability flags from SAP's LoginSet (live 2026-11-25) - real state (not mutated
+  // on the PROFILES object) so one person can hold any combination, and toggling one via
+  // setCapabilityFlags (RoleSwitcher's QA aid) actually triggers a re-render.
+  const [isManager, setIsManager] = useState(false);
+  const [isFinance, setIsFinance] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
-  const currentUser = activeRole ? PROFILES[activeRole] : null;
+  const currentUser = activeRole ? { ...PROFILES[activeRole], isManager, isFinance, isAdmin } : null;
   const isAuthenticated = !!activeRole;
+
+  const setCapabilityFlags = (flags: { isManager?: boolean; isFinance?: boolean; isAdmin?: boolean }) => {
+    if (flags.isManager !== undefined) setIsManager(flags.isManager);
+    if (flags.isFinance !== undefined) setIsFinance(flags.isFinance);
+    if (flags.isAdmin !== undefined) setIsAdmin(flags.isAdmin);
+  };
 
   const validEmployeeIds = Object.values(PROFILES).map((p) => p.employeeId);
 
@@ -130,6 +149,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return;
         }
 
+        // A session cached before IsManager/IsFinance existed on SAP's response (2026-11-25) has
+        // neither key AT ALL in its saved `info` - not false, genuinely undefined - and would
+        // otherwise sit on stale capability flags for the rest of this browser tab's life (no tab
+        // ever re-checks after the first restore). Force one fresh SAP call to pick them up instead
+        // of trusting that specific cached session; same fallback path a missing/invalid session
+        // already uses.
+        const cachedInfo = parsedSession?.info;
+        const hubEmailForRefresh = getHubEmail();
+        if (cachedInfo && hubEmailForRefresh && (cachedInfo.IsManager === undefined || cachedInfo.IsFinance === undefined)) {
+          if (await tryHubEmailLogin()) return;
+        }
+
         PROFILES[role].employeeId = employeeId;
         if (name) {
           PROFILES[role].name = name;
@@ -149,7 +180,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         // Re-resolved on every restore rather than trusted from the persisted session - the
         // backend flag or the local test allowlist can change between sessions.
-        (PROFILES[role] as any).isAdmin = resolveIsAdmin(info, employeeId);
+        setIsAdmin(resolveIsAdmin(info, employeeId));
+        setIsManager(asFlag(info?.IsManager));
+        setIsFinance(asFlag(info?.IsFinance));
         setActiveRole(role);
       } catch (error) {
         console.error('Failed to restore user session:', error);
@@ -192,7 +225,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('Failed to map extra profile fields', e);
       }
 
-      (PROFILES[role] as any).isAdmin = resolveIsAdmin(info, employeeId);
+      setIsAdmin(resolveIsAdmin(info, employeeId));
+      setIsManager(asFlag(info?.IsManager));
+      setIsFinance(asFlag(info?.IsFinance));
 
       const sessionData = JSON.stringify({ role, employeeId, name, info });
       if (typeof window !== 'undefined' && window.sessionStorage) {
@@ -204,13 +239,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = () => {
     setActiveRole(null);
+    setIsManager(false);
+    setIsFinance(false);
+    setIsAdmin(false);
     if (typeof window !== 'undefined' && window.sessionStorage) {
       window.sessionStorage.removeItem('user_session');
     }
   };
 
   return (
-    <AuthContext.Provider value={{ activeRole, currentUser, isAuthenticated, isInitializing, login, logout, setActiveRole, validEmployeeIds }}>
+    <AuthContext.Provider value={{ activeRole, currentUser, isAuthenticated, isInitializing, login, logout, setActiveRole, setCapabilityFlags, validEmployeeIds }}>
       {children}
     </AuthContext.Provider>
   );

@@ -88,7 +88,8 @@ export function BarList({ rows, fmt, onPick, max: maxRows = 12, compareLabel, va
 }
 
 /** Monthly CY bars against PY bars (one axis, same unit). Months after the selected period are not drawn. */
-export function TrendBars({ months, fmt, height = 180 }: { months: { label: string; cy: number; py: number }[]; fmt: (v: number) => string; height?: number }) {
+/** Monthly CY vs PY bars. A month with dim = true (not in the selection) is drawn faded. */
+export function TrendBars({ months, fmt, height = 180 }: { months: { label: string; cy: number; py: number; dim?: boolean }[]; fmt: (v: number) => string; height?: number }) {
   const [hover, setHover] = useState<Hover>(null);
   const [box, setBox] = useState<HTMLDivElement | null>(null);
   const max = Math.max(1, ...months.flatMap((m) => [m.cy, m.py]));
@@ -104,18 +105,18 @@ export function TrendBars({ months, fmt, height = 180 }: { months: { label: stri
           <div className="absolute inset-x-0 border-t border-dashed border-line" style={{ top: (height - 20) / 2 }} />
           <div className="flex items-end gap-1 border-b border-line sm:gap-2" style={{ height: height - 20 }}>
             {months.map((m, i) => (
-              <div key={m.label} className={cx('flex h-full flex-1 items-end justify-center gap-[2px] rounded-t', hover?.i === i && 'bg-sunken')} onMouseMove={(e) => setHover({ i, ...at(e, box) })}>
+              <div key={m.label} className={cx('flex h-full flex-1 items-end justify-center gap-[2px] rounded-t', hover?.i === i && 'bg-sunken', m.dim && 'opacity-35')} onMouseMove={(e) => setHover({ i, ...at(e, box) })}>
                 <span className="w-[42%] max-w-[18px] rounded-t-[4px] bg-line" style={{ height: `${(Math.max(0, m.py) / max) * 100}%` }} />
                 <span className="w-[42%] max-w-[18px] rounded-t-[4px]" style={{ height: `${(Math.max(0, m.cy) / max) * 100}%`, background: SERIES[0] }} />
               </div>
             ))}
           </div>
           <div className="flex gap-1 pt-1 sm:gap-2">
-            {months.map((m) => <span key={m.label} className="flex-1 text-center text-[10px] text-faint">{m.label.slice(0, 3)}</span>)}
+            {months.map((m) => <span key={m.label} className={cx('flex-1 text-center text-[10px]', m.dim === false ? 'font-bold text-ink' : 'text-faint')}>{m.label.slice(0, 3)}</span>)}
           </div>
           {hover && months[hover.i] && (
             <Tip x={hover.x} y={hover.y}>
-              <div className="font-bold">{months[hover.i].label}</div>
+              <div className="font-bold">{months[hover.i].label}{months[hover.i].dim ? ' · not selected' : ''}</div>
               <div className="num">CY {fmt(months[hover.i].cy)}</div>
               <div className="num text-white/80">PY {fmt(months[hover.i].py)}</div>
             </Tip>

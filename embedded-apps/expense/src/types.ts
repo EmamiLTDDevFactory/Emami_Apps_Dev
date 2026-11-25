@@ -92,6 +92,11 @@ export interface EmployeeProfile {
   // Additive admin capability (SAP variable ZEXP_ADMIN), independent of role - see
   // lib/adminAccess.ts for how this is resolved.
   isAdmin?: boolean;
+  // Independent capability flags from SAP's LoginSet (IsManager/IsFinance, live 2026-11-25) -
+  // tabs/lists/actions gate on these directly now, not on `role`, so one person can hold any
+  // combination (e.g. manager AND finance). `role` is kept only as a display/profile label.
+  isManager?: boolean;
+  isFinance?: boolean;
 }
 
 export interface TaxCode {
@@ -123,8 +128,9 @@ export interface DoaChainRow {
   Active: boolean;
   ValidFrom: string;
   ValidTo: string;
-  // HoD flag - only allowed for DoaCtype='MBN' rows. When set, this approver is offered as a
-  // choosable HoD for non-sales mobile claims above the employee's eligibility cap.
+  // HoD flag - allowed on any DOA row for the cost centre, any DoaCtype (no longer tied to a
+  // separate MBN-only row). When set, this approver is offered as a choosable HoD for non-sales
+  // mobile claims above the employee's eligibility cap.
   Hod?: boolean;
   Aenam?: string; // logged-in admin's PERNR - UI must send this on every POST/PUT
   // Audit fields - all backend-filled, read-only. Do not send Ernam/Erdat/Erzet/Aedat/Aezet.
@@ -164,7 +170,6 @@ export type ConfigVarName =
   | 'ZEXP_ADMIN'
   | 'ZEXP_DOA_ADMIN'
   | 'ZEXP_FINANCE'
-  | 'ZFI_NONCTC_USER'
   | 'ZEXP_EXPTYPE_SET'
   | 'ZEXP_MOBILE_SET'
   | 'ZEXP_NON_CTC_GO_LIVE'
@@ -176,9 +181,9 @@ export interface ConfigVarRow {
   VarType?: string;
   Sign?: string;
   Opti?: string;
-  Low: string; // PERNR / GL set name / PERSK / date YYYYMMDD / absolute path, depending on Name
+  Low: string; // PERNR / GL set name / date YYYYMMDD / absolute path, depending on Name
   High?: string; // 'POST' | 'PARK' - ZEXP_FINANCE only
-  LowText?: string; // backend-resolved display text (employee name / set text / subgroup text)
+  LowText?: string; // backend-resolved display text (employee name / set text)
   Aenam?: string; // logged-in admin's PERNR - must be sent on every POST/PUT
   Remove?: boolean; // PUT-only - true removes the line; there is no DELETE
 }

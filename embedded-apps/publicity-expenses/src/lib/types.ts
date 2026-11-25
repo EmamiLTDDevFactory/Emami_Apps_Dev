@@ -44,30 +44,81 @@ export interface SummaryRow extends Amounts {
   IsBudget?: boolean;
 }
 
+/** One SKU of ZNET_SALE_MASTER (CDS ZI_ATLBTL_NETSALEMASTER; table field names in the comments). */
 export interface Sku {
+  /** ZSKUGRCODECRS; its first 9 characters are the SKU group key the posting line carries. */
+  SkuGroupCode?: string;
+  /** MATNR */
   Material: string;
-  SKUSize: string;
-  Product: string;
-  SkuGroupKey: string;
-  BaseUnit: string;
+  /** SKU */
+  SKUSize?: string;
+  /** MEINS */
+  BaseUnit?: string;
+  /** PRODUCT */
+  Product?: string;
+  /** PRD_TYP */
+  ProductType?: string;
+  /** PRD_RNG */
+  ProductRange?: string;
+  /** ITEM_CAT */
+  ItemCategory?: string;
+  /** BEZEI */
   Season?: string;
 }
 
-export interface DetailRow extends SummaryRow {
-  CostCenter: string;
-  ProfitCenter: string;
-  CostCenterType: string;
-  CostCenterName: string;
-  ControllingArea: string;
-  MappingRule: string;
-  LookupField: string;
-  DerivedCostCenterNo: string;
-  ProductHierarchy: string;
-  SalesBrand: string;
-  SkuGroupKey: string;
+/**
+ * One posting line of a drill-down (ZC_ATLBTL_EXP_DETAIL: G/L x cost centre x profit centre of a report row).
+ * CYYTDAmount / PYYTDAmount = total of the selected periods (equals the report figure); cy[i] / py[i] = the amount of
+ * period periods[i] alone. Empty text fields are left out by the server.
+ */
+export interface DrillLine {
+  CompanyCode: string;
+  ReportingKey: string;
+  GLAccount: string;
+  GLAccountName?: string;
+  Site?: string;
+  HeaderGroup?: string;
+  HeaderLabel?: string;
+  CostCenter?: string;
+  CostCenterName?: string;
+  CostCenterType?: string;
+  ProfitCenter?: string;
+  MappingRule?: string;
+  LookupField?: string;
+  DerivedCostCenterNo?: string;
+  ProductHierarchy?: string;
+  SalesBrand?: string;
+  /** Key of the line's SKU group in ZNET_SALE_MASTER (DrillResult.skuGroups). */
+  SkuGroupKey?: string;
+  ProductGroup?: string;
+  ItemCategory?: string;
+  ProductRange?: string;
+  ProductType?: string;
+  MISHeading?: string;
+  Product?: string;
+  CYYTDAmount: number;
+  PYYTDAmount: number;
+  CYPeriodAmount?: number;
+  PYPeriodAmount?: number;
+  cy: number[];
+  py: number[];
   to_NetSaleMaster?: Sku[];
   ExcludedBy?: number;
 }
+export interface DrillResult {
+  rows: DrillLine[];
+  excluded: DrillLine[];
+  periods: number[];
+  /** How SAP was read, e.g. "YTD P06 - YTD P03 + P08". */
+  reads: { text: string; terms: { period: number; field: 'ytd' | 'period'; sign: number }[] };
+  /** ZNET_SALE_MASTER rows by SKU group key, for the lines' SkuGroupKey (one cached read of the master on the server). */
+  skuGroups?: Record<string, Sku[]>;
+  /** Set when the SKU master could not be read (the lines are still complete). */
+  skuError?: string;
+  meta: Meta;
+}
+/** What a drill-down asks for: report rows (keys of a row or a sub-total), optionally one G/L, sites, header groups. */
+export interface DrillRequest { keys: string[]; gls?: string[]; sites?: string[]; groups?: string[] }
 
 export interface ExclusionMeta { rules: number; cy: number; py: number; cyP?: number; lines: number; byRule: { id: number; dimension: string; reason: string; cy: number; py: number; lines: number }[] }
 
@@ -77,8 +128,14 @@ export interface Meta {
   budgetVersions?: Record<string, { id: number; version: number; uploadedBy: string; uploadedAt: string; total: number }>;
   system: string;
   fy: string;
+  /** Latest selected period. */
   period: number;
-  company: string;
+  /** Selected periods (figures = these added up). */
+  periods: number[];
+  /** Selected company codes (empty = all). */
+  companies: string[];
+  /** Company codes with data in the latest selected period (summary only). */
+  companiesInData?: string[];
   exclusionsOn: boolean;
   /** Rows SAP (or the mock) returned for the period, before exclusions. */
   sourceRows?: number;
@@ -145,12 +202,15 @@ export interface Breakdown {
 
 export interface Filters {
   fy: string;
-  period: number;
-  company: string;
+  /** Selected fiscal periods 1..12, sorted (P01..Pn = YTD). Never empty. */
+  periods: number[];
+  /** Company codes; empty = all companies. */
+  companies: string[];
   site: string[]; // HO / UN
   groups: string[]; // HeaderGroup ids
   categories: string[]; // ItemCategory
   brands: string[]; // ProductRange (brand family)
+  gls: string[]; // GLAccount (as SAP sends it, 10 digits)
   /** false = show the report without the exclusion rules (for checking). */
   excl: boolean;
 }

@@ -5,6 +5,8 @@
    Structure (rows, product hierarchy, G/L accounts per report header) comes from the MIS layout (layout.json: labels
    only). Every amount is synthetic: a seeded random generator, so the same year / period always gives the same
    numbers and drill-down totals match the summary. Amounts are in INR (company code currency), like HSL in SAP.
+   Two company codes: 1000 for everything, and EM01 (a second, smaller company) on part of the brand rows, so the
+   company filter can be tried with more than one company.
 */
 const layout = require('./layout.json');
 const { NON_BRAND } = require('./config');
@@ -59,7 +61,7 @@ const ROWS = (() => {
     return out;
 })();
 
-/** One amount line per row x G/L x site with 12 CY and 12 PY monthly amounts. Built once per fiscal year. */
+/** One amount line per company x row x G/L x site with 12 CY and 12 PY monthly amounts. Built once per fiscal year. */
 const LINES = new Map();
 function lines(fy) {
     if (LINES.has(fy)) return LINES.get(fy);
@@ -89,6 +91,9 @@ function lines(fy) {
         for (const [g, share] of pick) merged.set(g.gl, { g, share: (merged.get(g.gl)?.share || 0) + share });
         const sea = season(row.Product || row.ProductGroup);
         const growth = 0.85 + r() * 0.45; // CY vs PY
+        // EM01: own random stream, so company 1000 keeps the same numbers it always had.
+        const rc = rng(`${fy}|${row.ReportingKey}|EM01`);
+        const em01 = row._brand && rc() < 0.2;
         for (const { g, share } of merged.values()) {
             const header = g.header;
             const hoShare = header === 'ATL' || header === 'MODELLING' || header === 'FILM PROD' || header === 'CREATIVE' ? (r() < 0.9 ? 1 : 0.85)
@@ -103,7 +108,11 @@ function lines(fy) {
                     cy.push(round2(v));
                     py.push(round2((v / growth) * (0.8 + r() * 0.4)));
                 }
-                out.push({ row, gl: g, site, cy, py });
+                out.push({ row, gl: g, site, company: '1000', cy, py });
+                if (em01 && rc() < 0.6) {
+                    const f = 0.15 + rc() * 0.35;
+                    out.push({ row, gl: g, site, company: 'EM01', cy: cy.map((v) => round2(v * f)), py: py.map((v) => round2(v * f * (0.7 + rc() * 0.6))) });
+                }
             }
         }
     }
@@ -131,7 +140,7 @@ const matches = (obj, where) => Object.entries(where || {}).every(([k, v]) => {
 function summary(fy, period, where) {
     const p = Math.min(12, Math.max(1, period));
     return lines(fy).map((l) => ({
-        CompanyCode: '1000', ...strip(l.row), GLAccount: l.gl.gl, Site: l.site, GLAccountName: l.gl.name,
+        CompanyCode: l.company, ...strip(l.row), GLAccount: l.gl.gl, Site: l.site, GLAccountName: l.gl.name,
         ReportHeader: l.gl.header, ReportHeaderSequence: l.gl.headerSeq, FSVItem: `ATLBTL${pad(l.gl.headerSeq, 2)}`, ...amounts(l, p),
     })).filter((r) => matches(r, where));
 }
@@ -141,19 +150,52 @@ const RULES_UN = [['R01', 'KOSTL'], ['R02', 'ZZUNIQUE_KEY_IMD']];
 const NB_RULE = { 'Misc - Unit non Brand': 'R10', 'Misc - HO non Brand': 'R09', 'IBD non Brand': 'R08', 'Not covered by mapping logic': 'R99', 'Brand - hierarchy not found': 'R07' };
 const SIZES = ['25 G', '50 G', '100 G', '50 ML', '100 ML', '200 ML', '400 ML'];
 
-/** ZC_ATLBTL_EXP_DETAIL rows: each summary line split over 1-3 cost centres; SKUs under to_NetSaleMaster. */
+/** Derived number of a reporting row (3 digits) and the 9-character SKU group key of its brand rows. */
+const numOf = (row) => pad(Number(row.SerialNo || 900 + Object.keys(NB_RULE).indexOf(row.ProductGroup)) % 1000);
+const skuKeyOf = (row) => (row._brand ? `${pad(Number(row.T1), 2)}${pad(Number(row.T3), 3)}${numOf(row)}`.slice(0, 9) : '');
+
+/**
+ * ZI_ATLBTL_NETSALEMASTER (ZNET_SALE_MASTER, the target of to_NetSaleMaster) as the live entity set answers: 1-4 SKUs
+ * per brand row, SkuGroupKey = the first 9 characters of SkuGroupCode (ZSKUGRCODECRS).
+ */
+let masterRows = null;
+function skuMaster() {
+    if (masterRows) return masterRows;
+    const out = [];
+    const seen = new Set();
+    for (const row of ROWS) {
+        const key = skuKeyOf(row);
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        const rs = rng(`sku|${key}`);
+        const n = 1 + Math.floor(rs() * 4);
+        for (let s = 0; s < n; s++) {
+            out.push({
+                SerialNo: row.SerialNo, ItemCategory: row.ItemCategory, T1: row.T1, ProductRange: row.ProductRange, T2: row.T2, ProductType: row.ProductType,
+                T3: row.T3, Product: row.Product, T4: `${row.T3}.${pad(s + 1, 2)}`, SKUSize: SIZES[Math.floor(rs() * SIZES.length)], Material: `400${numOf(row)}${s}`,
+                SkuGroupKey: key, BaseUnit: 'EA', SkuGroupCode: `${key}${pad(Math.floor(rs() * 9000) + 1000, 4)}`, Season: '', MISHeading: row.MISHeading, VisibleInMIS: row.VisibleInMIS,
+            });
+        }
+    }
+    masterRows = out;
+    return out;
+}
+
+/** ZC_ATLBTL_EXP_DETAIL rows: each summary line split over 1-3 cost centres; with expand, SKUs under to_NetSaleMaster. */
 function detail(fy, period, where, { expand = false } = {}) {
     const p = Math.min(12, Math.max(1, period));
     const out = [];
     for (const l of lines(fy)) {
-        const base = { CompanyCode: '1000', ...strip(l.row), GLAccount: l.gl.gl, Site: l.site };
+        const base = { CompanyCode: l.company, ...strip(l.row), GLAccount: l.gl.gl, Site: l.site };
         if (!matches(base, where)) continue;
-        const r = rng(`${fy}|${l.row.ReportingKey}|${l.gl.gl}|${l.site}`);
+        const em = l.company === 'EM01';
+        const seed = `${fy}|${l.row.ReportingKey}|${l.gl.gl}|${l.site}${em ? '|EM01' : ''}`;
+        const r = rng(seed);
         const n = 1 + Math.floor(r() * 3);
         const weights = Array.from({ length: n }, () => 0.3 + r());
         const total = weights.reduce((a, b) => a + b, 0);
         const a = amounts(l, p);
-        const num = pad(Number(l.row.SerialNo || 900 + Object.keys(NB_RULE).indexOf(l.row.ProductGroup)) % 1000);
+        const num = numOf(l.row);
         let left = { ...a };
         for (let k = 0; k < n; k++) {
             const f = weights[k] / total;
@@ -163,29 +205,22 @@ function detail(fy, period, where, { expand = false } = {}) {
                 left[key] = round2(left[key] - part[key]);
             }
             const [rule, lookup] = l.row._brand ? (l.site === 'HO' ? RULES_HO : RULES_UN)[Math.floor(r() * (l.site === 'HO' ? 3 : 2))] : [NB_RULE[l.row.ProductGroup] || 'R99', 'KOSTL'];
-            const cc = l.site === 'HO' ? `EH${num}${k ? k : ''}` : `UN${pad(1 + Math.floor(r() * 6), 2)}${num}`;
+            const cc = (l.site === 'HO' ? `${em ? 'EI' : 'EH'}${num}${k ? k : ''}` : `${em ? 'EU' : 'UN'}${pad(1 + Math.floor(r() * 6), 2)}${num}`);
             const row = {
-                ...base, ProfitCenter: l.site === 'HO' ? `EMHO${pad(1 + (k % 3), 2)}` : `EMUN${pad(1 + Math.floor(r() * 6), 2)}`,
+                ...base, ProfitCenter: l.site === 'HO' ? `${em ? 'EIHO' : 'EMHO'}${pad(1 + (k % 3), 2)}` : `${em ? 'EIUN' : 'EMUN'}${pad(1 + Math.floor(r() * 6), 2)}`,
                 CostCenter: cc, CostCenterType: l.row._brand ? 'B' : (r() < 0.5 ? 'M' : 'S'), ControllingArea: '1000', ChartOfAccounts: 'EMLC',
                 GLAccountName: l.gl.name, CostCenterName: l.row._brand ? `${l.row.Product.slice(0, 28)} - ${l.site}` : `${l.row.ProductGroup.slice(0, 28)}`,
-                CostCenterCompanyCode: '1000', CostCenterProfitCenter: '', FSVVersion: 'ZATL', FSVItem: `ATLBTL${pad(l.gl.headerSeq, 2)}`,
+                CostCenterCompanyCode: l.company, CostCenterProfitCenter: '', FSVVersion: 'ZATL', FSVItem: `ATLBTL${pad(l.gl.headerSeq, 2)}`,
                 ReportHeader: l.gl.header, ReportHeaderSequence: l.gl.headerSeq, MappingRule: rule, LookupField: lookup, DerivedCostCenterNo: num,
                 ProductHierarchy: l.row._brand ? `0${pad(Number(l.row.T1), 2)}${pad(Number(l.row.T3), 3)}${num}0` : '', SalesBrand: l.row._brand ? l.row.ProductType : '',
-                SkuGroupKey: l.row._brand ? `${pad(Number(l.row.T1), 2)}${pad(Number(l.row.T3), 3)}${num}`.slice(0, 9) : '',
+                SkuGroupKey: skuKeyOf(l.row),
                 ...a, ...part, CYvsPYVariance: round2(part.CYYTDAmount - part.PYYTDAmount), CYvsRBYTDDeviation: part.CYYTDAmount,
             };
-            if (expand) {
-                const ns = l.row._brand ? 1 + Math.floor(r() * 4) : 0;
-                row.to_NetSaleMaster = Array.from({ length: ns }, (_, s) => ({
-                    SerialNo: l.row.SerialNo, ItemCategory: l.row.ItemCategory, ProductRange: l.row.ProductRange, ProductType: l.row.ProductType,
-                    Product: l.row.Product, SKUSize: SIZES[Math.floor(r() * SIZES.length)], Material: `0000000000400${num}${s}`.slice(-18),
-                    SkuGroupKey: row.SkuGroupKey, BaseUnit: 'EA', MISHeading: l.row.MISHeading, VisibleInMIS: l.row.VisibleInMIS,
-                }));
-            }
+            if (expand) row.to_NetSaleMaster = row.SkuGroupKey ? skuMaster().filter((x) => x.SkuGroupKey === row.SkuGroupKey) : [];
             out.push(row);
         }
     }
     return out;
 }
 
-module.exports = { summary, detail, rng, hash, ROWS };
+module.exports = { summary, detail, skuMaster, rng, hash, ROWS };

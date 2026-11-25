@@ -323,11 +323,62 @@ function CreateClaimInner() {
     }
   };
 
+  // "/Date(ms)/" or plain ISO -> "YYYY-MM-DD". Mirrors the inline parsing already used below for
+  // claimDateStr/expenseDateStr, factored out here since rebuilding mobile month cards (PeriodFrom)
+  // needs the same thing.
+  const parseSapDateToIso = (value: any): string => {
+    if (!value) return '';
+    const str = String(value);
+    if (str.includes('Date(')) {
+      const ts = parseInt(str.replace(/\D/g, ''), 10);
+      return new Date(ts).toISOString().split('T')[0];
+    }
+    return str.split('T')[0];
+  };
+
+  // One CLAIMNAV line -> one Attachment, same shape/extension-recovery as the combined
+  // attachmentList below - factored out so a mobile line's single attachment can reuse it too.
+  const mapLineToAttachment = (item: any, key: string): Attachment | null => {
+    if (!item.Filename || !item.Value) return null;
+    const mimetype = item.Mimetype || 'application/pdf';
+    const name = item.Filename.includes('.')
+      ? item.Filename
+      : `${item.Filename}.${MIME_TO_EXTENSION[mimetype] || 'pdf'}`;
+    const sizeBytes = item.Value ? Math.floor((item.Value.length * 3) / 4) : 0;
+    return {
+      id: `att-${key}-${Date.now()}-${item.Filename.replace(/[^a-zA-Z0-9]/g, '')}`,
+      name,
+      uri: `data:${mimetype};base64,${item.Value}`,
+      type: mimetype,
+      size: sizeBytes,
+    };
+  };
+
   const mapSAPClaimToFormData = (sapClaim: any) => {
     if (!sapClaim) return null;
 
     const header = sapClaim;
     const lineItems = sapClaim.CLAIMNAV?.results || sapClaim.CLAIMNAV || [];
+
+    // Mobile Exp claims carry one CLAIMNAV line per month (PeriodFrom identifies them - a plain
+    // non-mobile claim's lines never have it); without this, a rejected mobile claim resubmitted
+    // the old way, loaded as one generic line with the header total and the first line's date,
+    // and its month cards were simply gone. BillAmt (not Amount, which the backend overwrites to
+    // the claim total on every line) is each month's own real amount.
+    const mobileLines = lineItems.filter((item: any) => item.PeriodFrom);
+    const mobileMonths: { monthKey: string; entry: MonthClaimEntry }[] | null = mobileLines.length > 0
+      ? mobileLines
+          .map((item: any, index: number) => ({
+            monthKey: parseSapDateToIso(item.PeriodFrom).slice(0, 7),
+            entry: {
+              ...BLANK_MONTH_ENTRY,
+              claimAmount: String(parseFloat(item.BillAmt) || 0),
+              invoiceNumber: item.ReceiptNo || null,
+              attachment: mapLineToAttachment(item, `mob-${index}`),
+            } as MonthClaimEntry,
+          }))
+          .filter((m: { monthKey: string; entry: MonthClaimEntry }) => m.monthKey)
+      : null;
 
     let claimDateStr = '';
     const dateToParse = header.ClaimDate || header.CreatedOn;
@@ -395,6 +446,7 @@ function CreateClaimInner() {
       amount: parseFloat(header.TotalAmount || 0),
       costCenter: header.CostCenter || COST_CENTERS[0],
       attachments: attachmentList,
+      mobileMonths,
     };
   };
 
@@ -443,6 +495,15 @@ function CreateClaimInner() {
         setSupportingDocuments(formData.attachments.slice(1));
         setOriginalExpenseDocumentSources({});
         setSupportingDocumentSources({});
+        // Mobile Exp: restore one month card per CLAIMNAV line that has PeriodFrom, then re-run
+        // the eligibility check for each - a rejected mobile claim previously lost its month cards
+        // entirely on resubmit, loading as a single generic line instead.
+        if (formData.mobileMonths && formData.mobileMonths.length > 0) {
+          const monthKeys = formData.mobileMonths.map((m) => m.monthKey);
+          setSelectedMonths(monthKeys);
+          setMonthClaims(Object.fromEntries(formData.mobileMonths.map((m) => [m.monthKey, m.entry])));
+          monthKeys.forEach((mk) => fetchEligibilityForMonth(mk));
+        }
       }
       return;
     }
@@ -701,10 +762,12 @@ function CreateClaimInner() {
 
       setMonthClaims((prev) => {
         const entry = prev[monthKey] || BLANK_MONTH_ENTRY;
-        // Default Claim Amount to the invoice amount, capped at the grade's Eligible Amount if one
-        // applies (null eligibleAmount = no cap) - only when the user hasn't already typed a value.
+        // Default Claim Amount to the actual invoice amount, uncapped - only when the user hasn't
+        // already typed a value. The Eligible Amount field (and the "higher than eligibility"
+        // warning below) still shows the grade's cap separately; this auto-fill no longer silently
+        // caps Claim Amount down to it.
         const claimAmount = (!entry.claimAmount && totalAmount && Number(totalAmount) > 0)
-          ? (entry.eligibleAmount != null ? Math.min(Number(totalAmount), entry.eligibleAmount) : Number(totalAmount)).toString()
+          ? Number(totalAmount).toString()
           : entry.claimAmount;
 
         let dateMismatchWarning: string | null = null;
@@ -1051,6 +1114,13 @@ function CreateClaimInner() {
       }
       if (needsHodChoice && hodApprovers.length >= 2 && !selectedHodApprId) {
         setFormError('Please select the HoD to send this claim to.');
+        return;
+      }
+      // No HoD maintained for this cost centre - the backend now blocks this claim outright
+      // (it used to silently fall back to the supervisor), so stop it here with a clear reason
+      // instead of letting the user submit into a guaranteed SAP rejection.
+      if (needsHodChoice && !hodLoading && hodApprovers.length === 0) {
+        setFormError('No HoD is maintained for your cost centre - contact Admin.');
         return;
       }
 
@@ -1514,7 +1584,7 @@ function CreateClaimInner() {
               {hodLoading ? (
                 <div className="flex items-center gap-2 text-xs text-inkSoft"><Spinner size={13} /> Checking HoD approvers…</div>
               ) : hodApprovers.length === 0 ? (
-                <p className="text-xs text-inkSoft">This will go to your supervisor for approval.</p>
+                <p className="text-xs font-semibold text-red">No HoD is maintained for your cost centre - contact Admin.</p>
               ) : hodApprovers.length === 1 ? (
                 <p className="text-sm text-ink">Will be sent to <span className="font-bold">{hodApprovers[0].apprName}</span> for approval.</p>
               ) : (
@@ -1616,7 +1686,7 @@ function CreateClaimInner() {
         <Button
           variant="primary"
           className="flex-1"
-          disabled={requiresManagerApprovedAttachment && managerApprovedAttachments.length === 0}
+          disabled={(requiresManagerApprovedAttachment && managerApprovedAttachments.length === 0) || (needsHodChoice && !hodLoading && hodApprovers.length === 0)}
           onClick={() => handleSubmit(false)}
         >
           <Send size={16} /> Submit Claim

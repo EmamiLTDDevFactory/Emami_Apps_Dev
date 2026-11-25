@@ -6,7 +6,7 @@
 import { useMemo, useState } from 'react';
 import { ArrowDownUp, Download, Layers, PieChart, Tags, TrendingUp } from 'lucide-react';
 import { useApp } from '@/lib/context';
-import { growth, pct, pctPlain, share, short, UNIT_LABEL, ytdLabel } from '@/lib/format';
+import { growth, pct, pctPlain, share, short, UNIT_LABEL } from '@/lib/format';
 import { categoryOf, pareto, rangeOf, rollup, typeOf } from '@/lib/model';
 import type { SummaryRow } from '@/lib/types';
 import { CLASS_COLOR, Pareto, StackedRows } from '../charts';
@@ -17,7 +17,7 @@ const KEY: Record<Level, (r: SummaryRow) => string> = { category: categoryOf, ra
 type SortKey = 'label' | 'cy' | 'py' | 'g' | 'sh' | 'shd' | 'atl' | 'u';
 
 export default function Brands() {
-  const { rows, fmt, go, filters, unit } = useApp();
+  const { rows, fmt, go, unit, sel } = useApp();
   const [level, setLevel] = useState<Level>('range');
   const [sort, setSort] = useState<{ k: SortKey; desc: boolean }>({ k: 'cy', desc: true });
   const branded = useMemo(() => rows.filter((r) => r.SerialNo), [rows]);
@@ -54,11 +54,11 @@ export default function Brands() {
     const XLSX = await import('xlsx');
     const div = unit === 'lakh' ? 1e5 : unit === 'crore' ? 1e7 : 1;
     const r2 = (v: number) => Math.round((v / div) * 100) / 100;
-    const out = [[level === 'category' ? 'Category' : level === 'range' ? 'Brand family' : 'Brand', `CY YTD (${UNIT_LABEL[unit]})`, `PY YTD (${UNIT_LABEL[unit]})`, 'Growth %', 'Share of spend %', 'Share change pp', 'ATL share %', `RB YTD (${UNIT_LABEL[unit]})`, 'Utilised %'],
+    const out = [[level === 'category' ? 'Category' : level === 'range' ? 'Brand family' : 'Brand', `CY ${sel.cy} (${UNIT_LABEL[unit]})`, `PY ${sel.py} (${UNIT_LABEL[unit]})`, 'Growth %', 'Share of spend %', 'Share change pp', 'ATL share %', `RB ${sel.cy} (${UNIT_LABEL[unit]})`, 'Utilised %'],
       ...sorted.map((r) => [r.label, r2(r.cy), r2(r.py), r.g === null ? '' : +r.g.toFixed(1), +r.sh.toFixed(2), +r.shd.toFixed(2), r.atl === null ? '' : +r.atl.toFixed(1), r2(r.rby), r.u === null ? '' : +r.u.toFixed(1)])];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(out), 'Brands');
-    XLSX.writeFile(wb, `ATL-BTL-brands-${ytdLabel(filters.fy, filters.period)}.xlsx`);
+    XLSX.writeFile(wb, `ATL-BTL-brands-${sel.cy.replace(/[^A-Za-z0-9'-]+/g, '-')}.xlsx`);
   }
 
   const Th = ({ k, children, right = true }: { k: SortKey; children: React.ReactNode; right?: boolean }) => (
@@ -76,13 +76,13 @@ export default function Brands() {
         <p className="text-2xs text-muted">{level === 'category' ? 'All rows incl. non-brand groups' : 'Brand rows only (non-brand groups are on the Cost centres screen)'}</p>
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Kpi icon={Tags} label={`Active ${levelName}`} value={String(active)} sub={`with spend in ${ytdLabel(filters.fy, filters.period)}`} />
+        <Kpi icon={Tags} label={`Active ${levelName}`} value={String(active)} sub={`with spend in ${sel.cy}`} />
         <Kpi icon={Layers} label="Spend concentration" value={`${data.p.n80 || '–'}`} sub={`${levelName} = 80 % of spend`} />
         <Kpi icon={PieChart} label="Top 5 share" value={pctPlain(share(top5, data.cyAll))} sub={`${short(top5)} of ${short(data.cyAll)}`} />
         <Kpi icon={TrendingUp} label="Spending more than PY" value={`${growing} / ${data.list.length}`} sub={`portfolio ${pct(growth(data.cyAll, data.pyAll))} YoY`} />
       </div>
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <Card title="Spend concentration (Pareto)" sub={`Top 20 ${levelName} · share of CY YTD spend and cumulative share`}>
+        <Card title="Spend concentration (Pareto)" sub={`Top 20 ${levelName} · share of CY ${sel.cy} spend and cumulative share`}>
           <Pareto rows={data.p.rows} fmt={fmt} onPick={pick} />
         </Card>
         <Card title="ATL : BTL mix by brand" sub="Top 12 by spend · share of each brand's ATL + BTL spend">
@@ -97,7 +97,7 @@ export default function Brands() {
           <table className="w-full text-left text-[12px]">
             <thead className="sticky top-0 bg-panel">
               <tr className="border-b border-line text-2xs uppercase tracking-wide text-muted">
-                <Th k="label" right={false}>Name</Th><Th k="cy">CY YTD</Th><Th k="py">PY YTD</Th><Th k="g">Growth</Th><Th k="sh">Share</Th><Th k="shd">Share Δ pp</Th><Th k="atl">ATL %</Th><Th k="u">RB used</Th>
+                <Th k="label" right={false}>Name</Th><Th k="cy">CY {sel.cy}</Th><Th k="py">PY</Th><Th k="g">Growth</Th><Th k="sh">Share</Th><Th k="shd">Share Δ pp</Th><Th k="atl">ATL %</Th><Th k="u">RB used</Th>
               </tr>
             </thead>
             <tbody className="divide-y divide-line">

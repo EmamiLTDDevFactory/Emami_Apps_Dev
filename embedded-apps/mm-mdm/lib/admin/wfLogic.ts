@@ -34,7 +34,7 @@ export function newLevel(g: WfGroup): WfLevel {
 
 export function newAgent(l: WfLevel): WfAgent {
   const next = l.agents.reduce((m, a) => Math.max(m, Number(a.role) || 0), 0) + 1;
-  return { role: String(Math.min(next, 99)).padStart(2, '0'), startDate: todayIso(), endDate: OPEN_END, agent: '', name: '', isAppr: true, levelText: '', mailId: '', active: true, userF: '', dept: '' };
+  return { role: String(Math.min(next, 99)).padStart(2, '0'), startDate: todayIso(), endDate: OPEN_END, agent: '', name: '', isAppr: true, levelText: '', mailId: '', email: '', active: true, userF: '', dept: '' };
 }
 
 /** Engine order: Initiator, reviewers, approvers; numeric level number inside */
@@ -92,3 +92,8 @@ export const visibleKeyFields = (cfg: WfCfg | undefined, used: WfKey[] = []): { 
 };
 
 export const fmtIso = (d: string) => (!d ? '' : d === OPEN_END ? 'open end' : d);
+
+/** Signatures used to mark what changed since the last load / save */
+export const levelSig = (l: WfLevel) => JSON.stringify([l.lvl, l.typeLvl, l.type, l.minAppr, l.levelText, l.pirType, l.active]);
+export const agentSig = (a: WfAgent) => JSON.stringify([a.role, a.startDate, a.endDate, a.agent, a.email || '', a.mailId, a.isAppr, a.levelText, a.active, a.userF, a.dept]);
+export const viewSig = (v: WfView) => JSON.stringify([v.agent, v.viewName, v.active, v.readOnly]);

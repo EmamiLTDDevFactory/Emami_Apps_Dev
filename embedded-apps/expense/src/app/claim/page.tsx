@@ -86,6 +86,7 @@ const getActionLevelLabel = (level?: string) => {
   if (normalized === 'EMPLOYEE') return 'Employee Action';
   if (normalized === 'FINANCE') return 'Finance Action';
   if (normalized === 'ADMIN') return 'Admin Action';
+  if (normalized === 'SYSTEM') return 'System Action';
   const levelMatch = normalized.match(/^L(\d+)$/);
   if (levelMatch) return `Level ${levelMatch[1]} Approval`;
   return normalized || 'Action';
@@ -98,6 +99,10 @@ const getEntryDisplayLabel = (entry: any) => {
   // without this check first it falls through to the plain "Submitted"/"Approved" status label
   // below and loses the fact that an admin change happened, not a normal workflow step.
   if (action === 'APPROVER CHANGED') return 'Approver Changed';
+  // The automated grade-vs-cap check mobile claims go through on submit/resubmit writes its own
+  // row (Status still N, the claim's real status) - without this it fell through to the plain
+  // status label below and showed as a second, duplicate-looking "Submitted" card.
+  if (action === 'MOBILE CHECK') return 'Mobile Eligibility Check';
   if (status === 'S') return 'Posted';
   if (status === 'P') return 'Awaiting Posting';
   if (status === 'H') return 'Pending at finance';
@@ -119,6 +124,7 @@ const STATUS_PALETTE: Record<string, { bg: string; border: string; text: string 
   submitted: { bg: '#DBEAFE', border: '#1D4ED8', text: '#1E3A8A' },
   rejected: { bg: '#FEE2E2', border: '#EF4444', text: '#B91C1C' },
   'approver changed': { bg: '#F3F4F6', border: '#6B7280', text: '#374151' },
+  'mobile eligibility check': { bg: '#EDE9FE', border: '#7C3AED', text: '#5B21B6' },
 };
 const getStatusPalette = (status: string) => STATUS_PALETTE[(status || '').trim().toLowerCase()] || { bg: '#FFFFFF', border: '#E2E8F0', text: '#111827' };
 
@@ -189,12 +195,13 @@ function ClaimDetailInner() {
 
   const normalizedHeaderStatus = (header.Status || '').toString().toUpperCase();
   const currentUserId = (currentUser?.employeeId || '').toString().replace(/\D/g, '').padStart(8, '0');
-  const isManagerRole = currentUser?.role === 'manager';
-  const isFinanceRole = currentUser?.role === 'finance' || currentUser?.role === 'B';
-  const isTopLevelPending = currentUser?.role === 'B' && normalizedHeaderStatus === 'P';
   const claimRaiserId = (header.EmpId || '').toString().replace(/\D/g, '').padStart(8, '0');
   const isOwnClaim = !!currentUserId && claimRaiserId === currentUserId;
 
+  // Independent capability flags from SAP's LoginSet (live 2026-11-25) - gate on these directly,
+  // not on currentUser.role (B/F overwrite M, so a manager who is also finance-POST used to lose
+  // manager actions entirely under the old single-role model).
+  //
   // Under the DOA chain, a level can have parallel approvers (rule O: any one closes it, rule A:
   // all must approve), and SAP only ever returns ONE CurrentApprover PERNR even then - so this
   // user can be a valid pending approver without being the single value header.CurrentApprover
@@ -202,11 +209,10 @@ function ClaimDetailInner() {
   // parallel approver. The backend itself now refuses an out-of-turn approve per the DOA
   // handover, so that's the real enforcement layer — this page's job is just to not offer the
   // buttons on a claim that's already closed (status outside N/A) or on the claimant's own claim.
-  const showManagerActions =
-    isManagerRole &&
-    !isOwnClaim &&
-    (normalizedHeaderStatus === 'N' || normalizedHeaderStatus === 'SUBMITTED' || normalizedHeaderStatus === 'A' || normalizedHeaderStatus === 'APPROVED');
-  const showFinanceActions = isFinanceRole && (normalizedHeaderStatus === 'A' || normalizedHeaderStatus === 'APPROVED' || normalizedHeaderStatus === 'H' || normalizedHeaderStatus === 'PENDING RELEASE' || isTopLevelPending);
+  const showManagerActions = !!currentUser?.isManager && !isOwnClaim && (normalizedHeaderStatus === 'N' || normalizedHeaderStatus === 'A');
+  // H is the live queue (direct post, no park step); P is legacy-only (claims parked before this
+  // change).
+  const showFinanceActions = !!currentUser?.isFinance && !isOwnClaim && (normalizedHeaderStatus === 'H' || normalizedHeaderStatus === 'P');
   // Admin can reject any open claim (N/A/H) regardless of whose it is or whether they're in the
   // approval chain - excludes S/P (an FI document already exists) and R (already rejected), per
   // the DOA handover's admin section. Also excludes the admin's own claim - the backend refuses
@@ -267,13 +273,15 @@ function ClaimDetailInner() {
     setActionModalVisible(true);
   };
 
-  // Role B (top-level/Boss) must skip the tax-code modal just like Finance's own list already
-  // does — previously Claim Detail asked role B to pick a tax code again even though Finance's
-  // list correctly released GSTIN claims for role B without it. Authorized fix, same guard now
-  // used in both places.
+  // The old park-then-release flow had a PARK user pick the tax code before parking, then a POST
+  // user post without being asked again - skipping the modal for role B relied on that already-
+  // chosen code existing. Every finance user is a POST user now and H -> S is the only step, so
+  // skipping it here would post a GST claim with no tax code at all. Only a legacy P claim (parked
+  // under the old flow) already has the tax stored and can skip straight to the confirm below -
+  // same rule finance/page.tsx's handleRelease uses.
   const handleFinanceRelease = async () => {
     const hasGstin = header.Stcd3 || header.Lifnr;
-    if (hasGstin && currentUser?.role !== 'B') {
+    if (hasGstin && normalizedHeaderStatus === 'H') {
       setTaxModalVisible(true);
       setTaxLoading(true);
       setTaxDropdownOpen(true);
@@ -376,11 +384,30 @@ function ClaimDetailInner() {
   lines.forEach((ln: any) => {
     const type = ln.ZglName || ln.ExpenseType || 'Other';
     const desc = ln.Description || '';
-    const existing = groupedLines.find((g) => g.type === type && g.desc === desc);
     // Both fields are required, not just one - ln.Value also doubles as the amount fallback
     // below, so an OR here falsely flagged ordinary no-attachment lines as having one (see
     // create.tsx's resubmit-load and ClaimContext.tsx's claim mapping, which already require both).
     const attachment = (ln.Filename && ln.Value) ? { Filename: ln.Filename, Value: ln.Value, Mimetype: ln.Mimetype, ClaimId: ln.ClaimId, ItemNo: ln.ItemNo } : null;
+
+    // Mobile Exp: one CLAIMNAV line per month, identified by PeriodFrom. These never merge with
+    // each other even when type/description match (every month's line shares the same expense
+    // type) - each is its own card. The backend writes the claim TOTAL into every line's Amount,
+    // so a 3-month claim would show that total three times if Amount were used here; BillAmt is
+    // each month's own real amount.
+    if (ln.PeriodFrom) {
+      groupedLines.push({
+        type, desc,
+        amount: parseFloat(ln.BillAmt || 0),
+        status: ln.Status, rejReason: ln.RejReason,
+        attachments: attachment ? [attachment] : [],
+        date: ln.ExpenseDate || null,
+        periodFrom: ln.PeriodFrom, periodTo: ln.PeriodTo || null,
+        receiptNo: ln.ReceiptNo || null,
+      });
+      return;
+    }
+
+    const existing = groupedLines.find((g) => !g.periodFrom && g.type === type && g.desc === desc);
     if (existing) {
       if (attachment) existing.attachments.push(attachment);
       existing.amount += parseFloat(ln.Amount || ln.Value || 0);
@@ -505,6 +532,11 @@ function ClaimDetailInner() {
           <div key={idx} className="rounded-lg border p-3" style={{ backgroundColor: palette.bg, borderColor: palette.border }}>
             <p className="font-bold text-ink">{ln.type}</p>
             <p className="mt-2 text-sm text-inkSoft">{ln.desc}</p>
+            {ln.periodFrom && (
+              <p className="mt-1 text-xs font-semibold text-ink">Period: {formatDate(ln.periodFrom)}{ln.periodTo ? ` to ${formatDate(ln.periodTo)}` : ''}</p>
+            )}
+            {ln.periodFrom && <p className="mt-1 text-sm font-extrabold text-ink">₹{formatCurrency(ln.amount)}</p>}
+            {ln.receiptNo && <p className="mt-1 text-xs text-inkFaint">Invoice No: {ln.receiptNo}</p>}
             {ln.date && <p className="mt-1 text-xs text-inkFaint">Date: {formatDate(ln.date)}</p>}
             {canEdit && ln.rejReason && <p className="mt-1 text-sm font-semibold text-red">{ln.rejReason}</p>}
             {ln.attachments?.length > 0 && (

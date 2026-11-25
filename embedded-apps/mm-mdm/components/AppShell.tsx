@@ -59,11 +59,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </Link>
         </div>
 
-        <div className="nav-scroll">
+        <div className="nav-home">
           <Link href="/" className={`nav-item ${pathname === '/' ? 'active' : ''}`} onClick={() => setNavOpen(false)}>
             <span className="nav-icon"><IconHome /></span>
-            <span className="nav-label">Overview</span>
+            <span className="nav-label">Home</span>
           </Link>
+        </div>
+
+        <div className="nav-scroll">
           <div className="nav-group">Master data objects</div>
           <Link href={SETUP_PATH} className={`nav-item ${pathname.startsWith(SETUP_PATH) ? 'active' : ''}`} onClick={() => setNavOpen(false)}>
             <span className="nav-icon"><IconTree /></span>

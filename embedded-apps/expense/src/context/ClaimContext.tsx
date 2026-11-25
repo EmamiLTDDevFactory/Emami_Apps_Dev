@@ -68,7 +68,7 @@ interface ClaimContextType {
   updateMobCapRow: (row: MobCapRow, adminPernr: string) => Promise<MobCapRow>;
   // Configuration Maintenance Actions — CRUD against the new ConfigVarSet/ConfigLogSet entities,
   // replacing the former STVARV-maintained variables (ZEXP_ADMIN, ZEXP_DOA_ADMIN, ZEXP_FINANCE,
-  // ZFI_NONCTC_USER, ZEXP_EXPTYPE_SET, ZEXP_MOBILE_SET, ZEXP_NON_CTC_GO_LIVE, ZFI_EXPENCE_CLAIM).
+  // ZEXP_EXPTYPE_SET, ZEXP_MOBILE_SET, ZEXP_NON_CTC_GO_LIVE, ZFI_EXPENCE_CLAIM).
   fetchConfigVars: (adminPernr: string, name?: ConfigVarName) => Promise<ConfigVarRow[]>;
   addConfigVar: (row: { Name: ConfigVarName; Low: string; High?: string }, adminPernr: string) => Promise<ConfigVarRow>;
   updateConfigVar: (row: ConfigVarRow, adminPernr: string) => Promise<ConfigVarRow>;
@@ -1351,10 +1351,15 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // bare number fails SAP's gateway parser the same way an unformatted MaxAmt does on MobCapSet
   // (CX_SXML_PARSE_ERROR). The composite-key URL already uses .toFixed(2) on the raw row value -
   // this keeps the body payload's own precision consistent with that.
+  // ValidFrom/ValidTo must go as SAP's /Date(ms)/ literal on write, same gotcha toODataDate already
+  // works around for MobCapSet below - a plain 'YYYY-MM-DD' string fails gateway conversion
+  // (CX_SY_CONVERSION_NO_DATE_TIME "Conversion error for property 'ValidFrom'").
   const buildDoaChainPayload = (row: DoaChainRow, adminPernr: string) => ({
     ...row,
     AmtFrom: row.AmtFrom.toFixed(2),
     AmtTo: row.AmtTo.toFixed(2),
+    ValidFrom: toODataDate(row.ValidFrom),
+    ValidTo: toODataDate(row.ValidTo),
     Aenam: adminPernr,
   });
 
@@ -1560,8 +1565,11 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             if (employeeNumeric === userNumericF) return false;
           }
 
-          const financeStatuses = currentUser?.role === 'B' ? ['H', 'P'] : ['H'];
-          if (!financeStatuses.includes(c.rawStatus || '')) return false;
+          // H is the live queue (direct post, no park step); P is legacy-only (claims parked
+          // before this change). No role check - whether someone may open the Finance screen at
+          // all is decided by the isFinance flag gating the tab/route, not by what this filter
+          // returns once they're there.
+          if (c.rawStatus !== 'H' && c.rawStatus !== 'P') return false;
         }
 
         // Search by employee name or claim ID or cost center

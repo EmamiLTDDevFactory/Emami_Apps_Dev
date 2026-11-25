@@ -3,17 +3,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AdminApiError } from '@/lib/admin/adminApi';
 import { WfCfg, WfGroup, WfKey, WfMeta, WfMsg, wfApi } from '@/lib/admin/wfApi';
-import { emptyGroup, keyText, newLevel, recount, snapshot, visibleKeyFields } from '@/lib/admin/wfLogic';
+import { agentSig, emptyGroup, keyText, levelSig, newLevel, recount, snapshot, viewSig, visibleKeyFields } from '@/lib/admin/wfLogic';
 import { IconCopy, IconPlus, IconRefresh, IconSave, IconTrash, IconUndo } from '../../icons';
 import { ErrorState, LoadingState } from '../../ui';
-import LevelCard from './LevelCard';
+import { AgentTable, LevelTable } from './LevelGrid';
 import LogPanel from './LogPanel';
 import PreviewPanel, { FlowStrip } from './PreviewPanel';
 import ViewsPanel from './ViewsPanel';
 import { ConfirmDialog, MessageBox, OkBox, VhInput } from './parts';
 
 export type EditorTarget = { kind: 'existing'; key: WfKey } | { kind: 'new'; appId: string };
-type Tab = 'levels' | 'views' | 'routing' | 'log';
+type Tab = 'routing' | 'log';
 
 /** One combination (application + generic fields): flow strip, levels with agents, tabs per level, routing check and history */
 export default function GroupEditor({ target, cfg, meta, onDirty, onSaved, onDeleted, onCopy, onCancelNew }: {
@@ -26,11 +26,12 @@ export default function GroupEditor({ target, cfg, meta, onDirty, onSaved, onDel
   const [loadError, setLoadError] = useState('');
   const [group, setGroup] = useState<WfGroup>(() => emptyGroup(appId));
   const [base, setBase] = useState(() => snapshot(emptyGroup(appId)));
+  const [baseGroup, setBaseGroup] = useState<WfGroup>(() => emptyGroup(appId));
   const [version, setVersion] = useState('');
   const [issues, setIssues] = useState<WfMsg[]>([]);
   const [open, setOpen] = useState(0);
   const [live, setLive] = useState<WfMsg[]>([]);
-  const [tab, setTab] = useState<Tab>('levels');
+  const [tab, setTab] = useState<Tab | ''>('');
   const [scope, setScope] = useState('L0');
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState<unknown>(null);
@@ -54,7 +55,7 @@ export default function GroupEditor({ target, cfg, meta, onDirty, onSaved, onDel
   const keyOf = (g: WfGroup): WfKey => ({ appId: g.appId, genType: g.genType, genField: g.genField, genField2: g.genField2, genField3: g.genField3, genField4: g.genField4 });
   const adopt = useCallback((g: WfGroup, ver: string, msgs: WfMsg[] = []) => {
     const first = g.levels.find((l) => l.typeLvl) || g.levels[0];
-    setGroup(g); setBase(snapshot(g)); setVersion(ver); setIssues(msgs); setLive([]);
+    setGroup(g); setBase(snapshot(g)); setBaseGroup(g); setVersion(ver); setIssues(msgs); setLive([]);
     setScope((s) => (s === 'L0' || g.levels.some((l) => l.lvl === s) ? s : first?.lvl || 'L0'));
   }, []);
 
@@ -111,17 +112,16 @@ export default function GroupEditor({ target, cfg, meta, onDirty, onSaved, onDel
   }
 
   function goto(target: string) {
-    if (target === 'L0') { setTab('views'); setScope('L0'); return; }
+    if (target === 'L0') { setScope('L0'); return; }
     const lvl = target.split('#')[0];
-    setTab('levels');
+    setScope(lvl);
     setTimeout(() => document.getElementById(`wf-level-${lvl}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
   }
 
   function addLevel() {
     const l = newLevel(group);
     update({ ...group, levels: [...group.levels, l] });
-    setTab('levels');
-    setTimeout(() => document.getElementById(`wf-level-${l.lvl}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
+    setScope(l.lvl);
   }
 
   if (state === 'loading') return <section className="card"><LoadingState text={`Loading ${keyId} from SAP…`} /></section>;
@@ -130,27 +130,38 @@ export default function GroupEditor({ target, cfg, meta, onDirty, onSaved, onDel
   const fields = visibleKeyFields(cfg, [group]);
   const agentsN = group.levels.reduce((n, l) => n + l.agents.length, 0);
   const errN = messages.filter((m) => m.severity === 'E').length;
+  const changes = (() => {
+    if (!dirty) return null;
+    const bl = new Map(baseGroup.levels.map((l) => [l.lvl, l]));
+    let lv = 0, ag = 0, vw = 0;
+    const cmp = (cur: string[], old: string[]) => { const o = new Set(old); const c = new Set(cur); return cur.filter((x) => !o.has(x)).length + old.filter((x) => !c.has(x)).length; };
+    for (const l of group.levels) { const b = bl.get(l.lvl); if (!b || levelSig(b) !== levelSig(l)) lv++; ag += cmp(l.agents.map(agentSig), b ? b.agents.map(agentSig) : []); vw += cmp(l.views.map(viewSig), b ? b.views.map(viewSig) : []); }
+    for (const b of baseGroup.levels) if (!group.levels.some((l) => l.lvl === b.lvl)) { lv++; ag += b.agents.length; vw += b.views.length; }
+    vw += cmp(group.l0Views.map(viewSig), baseGroup.l0Views.map(viewSig));
+    const keyChg = isNew ? 0 : 0;
+    return { lv, ag, vw, total: lv + ag + vw + keyChg };
+  })();
   const canSave = dirty && !saving && (group.genType !== '' || group.genField !== '' || group.genField2 !== '' || group.genField3 !== '' || group.genField4 !== '' || !isNew || cfg?.family !== 'MATERIAL');
 
   return (
-    <section className="card wf-editor" ref={ref} aria-label={isNew ? 'New combination' : keyText(group)}>
-      <div className="card-bar wf-editor-bar">
-        <div>
-          <h2>{isNew ? 'New combination' : keyText(group) || 'Combination'}</h2>
-          <p className="muted">{cfg?.text || appId}{cfg?.wfId ? ` · workflow template ${cfg.wfId}` : ''}{open > 0 ? ` · ${open} request${open === 1 ? '' : 's'} running` : ''}</p>
+    <div className="wf-editor" ref={ref} aria-label={isNew ? 'New combination' : keyText(group)}>
+      <div className="wf-editor-bar">
+        <div className="wf-editor-title">
+          <strong>{isNew ? 'New combination' : keyText(group) || 'Combination'}</strong>
+          <span className="muted">{cfg?.text || appId}{cfg?.wfId ? ` · template ${cfg.wfId}` : ''}{open > 0 ? ` · ${open} request${open === 1 ? '' : 's'} running` : ''}</span>
         </div>
         <div className="wf-actions">
-          {dirty && <span className="badge badge-warn" role="status">Unsaved changes</span>}
+          {dirty && <span className="badge badge-warn wf-unsaved" role="status">● Unsaved changes{changes && changes.total > 0 ? `: ${[changes.lv && `${changes.lv} level`, changes.ag && `${changes.ag} agent`, changes.vw && `${changes.vw} view`].filter(Boolean).join(', ')}` : ''}</span>}
           {!isNew && <button type="button" className="btn btn-sm" onClick={() => onCopy(keyOf(group))} disabled={dirty} title={dirty ? 'Save or discard first' : ''}><IconCopy size={14} /> Copy</button>}
           {!isNew && <button type="button" className="btn btn-sm btn-danger-ghost" onClick={() => setConfirm({ kind: 'delete' })}><IconTrash size={14} /> Delete</button>}
           {!isNew && <button type="button" className="btn btn-sm" onClick={load} disabled={saving}><IconRefresh size={14} /> Reload</button>}
           {dirty && !isNew && <button type="button" className="btn btn-sm" onClick={load} disabled={saving}><IconUndo size={14} /> Discard</button>}
           {isNew && <button type="button" className="btn btn-sm" onClick={onCancelNew} disabled={saving}>Cancel</button>}
-          <button type="button" className="btn btn-primary" onClick={save} disabled={!canSave}><IconSave size={14} /> {saving ? 'Saving…' : 'Save'}</button>
+          <button type="button" className="btn btn-sm btn-primary" onClick={save} disabled={!canSave}><IconSave size={14} /> {saving ? 'Saving…' : 'Save'}</button>
         </div>
       </div>
 
-      <div className="wf-editor-body">
+      <div className="wf-editor-msgs">
         {isNew && (
           <div className="wf-newkey">
             <p className="muted">Choose the values this definition applies to. A request uses a definition only when its values match exactly (a blank field matches only a blank field).</p>
@@ -165,38 +176,33 @@ export default function GroupEditor({ target, cfg, meta, onDirty, onSaved, onDel
         <MessageBox error={saveErr} />
         <MessageBox error={delErr} />
         {ok && <OkBox>{ok}</OkBox>}
-
-        <FlowStrip group={group} />
-
         {!dirty && issues.length > 0 && (
           <details className="wf-issues"><summary>{issues.filter((m) => m.severity === 'E').length} problem(s), {issues.filter((m) => m.severity !== 'E').length} hint(s) in the saved definition</summary><MessageBox messages={issues} onPick={goto} /></details>
         )}
         {dirty && messages.length > 0 && (
           <details className="wf-issues" open={errN > 0}><summary>{errN} error(s) to fix before saving, {messages.length - errN} hint(s)</summary><MessageBox messages={messages} onPick={goto} /></details>
         )}
+      </div>
 
-        <div className="tabs wf-tabs" role="tablist" aria-label="Combination">
-          {([['levels', `Levels and agents (${group.levels.length} / ${agentsN})`], ['views', 'Tabs per step'], ['routing', 'Routing preview'], ...(saved ? [['log', 'History']] : [])] as [Tab, string][]).map(([id, label]) => (
-            <button key={id} type="button" role="tab" aria-selected={tab === id} className={`tab ${tab === id ? 'active' : ''}`} onClick={() => setTab(id)}>{label}</button>
-          ))}
-        </div>
+      <div className="wf-mid">
+        <LevelTable base={baseGroup} levels={group.levels} cfg={cfg} flagged={flagged} scope={scope} setScope={setScope} pirTypes={meta.pirTypes}
+          onChange={setLevel} onAdd={addLevel} onRemove={(lvl) => setConfirm({ kind: 'level', lvl })} />
+        <AgentTable base={baseGroup} level={group.levels.find((l) => l.lvl === scope)} appId={appId} levelTexts={meta.levelTexts} departments={meta.departments} cfg={cfg} flagged={flagged}
+          onChange={(nl) => setLevel(group.levels.findIndex((l) => l.lvl === scope), nl)} />
+      </div>
+      <section className="card wf-pane wf-right" aria-label="View visibility">
+        <div className="wf-pane-bar"><h2>View Visibility<span className="wf-pane-sub"> · {scope === 'L0' ? 'Initiator L0' : scope}</span></h2></div>
+        <div className="wf-pane-body"><ViewsPanel base={baseGroup} group={group} cfg={cfg} onChange={update} scope={scope} setScope={setScope} /></div>
+      </section>
 
-        <div className="wf-tabbody" role="tabpanel">
-          {tab === 'levels' && (
-            <>
-              <p className="muted wf-lead">The request starts with the <strong>Initiator</strong>, then goes through the <strong>Reviewer</strong> levels and ends at the <strong>Approver</strong> levels. Within a level, agents who <em>approve</em> get a work item; the others are only informed by mail.</p>
-              {group.levels.length === 0 && <div className="empty"><p>No level yet. Without an Approver level SAP stops every request of this combination with "Please maintain Approver role".</p></div>}
-              {group.levels.map((l, i) => (
-                <LevelCard key={`${l.lvl}-${i}`} level={l} cfg={cfg} appId={appId} levelTexts={meta.levelTexts} departments={meta.departments} pirTypes={meta.pirTypes}
-                  flagged={flagged} onChange={(nl) => setLevel(i, nl)} onRemove={() => setConfirm({ kind: 'level', lvl: l.lvl })} />
-              ))}
-              <button type="button" className="btn" onClick={addLevel}><IconPlus size={14} /> Add level</button>
-            </>
-          )}
-          {tab === 'views' && <ViewsPanel group={group} cfg={cfg} onChange={update} scope={scope} setScope={setScope} />}
-          {tab === 'routing' && <PreviewPanel group={group} cfg={cfg} saved={saved} dirty={dirty} />}
-          {tab === 'log' && saved && <LogPanel appId={appId} cfg={cfg} fixedKey={keyOf(group)} auto />}
+      <div className="wf-more">
+        <FlowStrip group={group} />
+        <div className="wf-more-tabs" role="tablist" aria-label="More">
+          <button type="button" role="tab" aria-selected={tab === 'routing'} className={`btn btn-sm ${tab === 'routing' ? 'btn-primary' : ''}`} onClick={() => setTab(tab === 'routing' ? '' : 'routing')}>Routing preview</button>
+          {saved && <button type="button" role="tab" aria-selected={tab === 'log'} className={`btn btn-sm ${tab === 'log' ? 'btn-primary' : ''}`} onClick={() => setTab(tab === 'log' ? '' : 'log')}>Change History</button>}
         </div>
+        {tab === 'routing' && <PreviewPanel group={group} cfg={cfg} saved={saved} dirty={dirty} />}
+        {tab === 'log' && saved && <LogPanel appId={appId} cfg={cfg} fixedKey={keyOf(group)} auto />}
       </div>
 
       {confirm?.kind === 'level' && (
@@ -218,6 +224,6 @@ export default function GroupEditor({ target, cfg, meta, onDirty, onSaved, onDel
           <p>{confirm.text}</p>
         </ConfirmDialog>
       )}
-    </section>
+    </div>
   );
 }

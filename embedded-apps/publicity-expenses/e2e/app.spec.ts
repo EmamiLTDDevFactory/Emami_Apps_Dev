@@ -27,7 +27,7 @@ test('every screen loads without errors and the page never scrolls sideways', as
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   await signIn(page);
   const mobile = info.project.name === 'mobile-360';
-  for (const [view, text] of [['overview', 'Total A&P spend'], ['report', 'Details of advertisement expenses'], ['brands', 'Spend concentration'], ['media', 'ATL media mix'], ['budget', 'Over-running brands'], ['costcentres', 'G/L = report + excluded'], ['settings', 'Exclusion rules']] as const) {
+  for (const [view, text] of [['overview', 'Total A&P spend'], ['report', 'MIS layout'], ['brands', 'Spend concentration'], ['media', 'ATL media mix'], ['budget', 'Over-running brands'], ['costcentres', 'G/L = report + excluded'], ['settings', 'Exclusion rules']] as const) {
     await open(page, view, mobile, view);
     await expect(page.getByText(text).first()).toBeVisible({ timeout: 30_000 });
     await page.waitForTimeout(600); // charts settle (bar widths animate)
@@ -57,6 +57,15 @@ test('MIS report: G/L columns open, a figure drills down and the drill-down adds
   await group.dispatchEvent('click');
   await expect(group).toHaveAttribute('aria-expanded', 'true', { timeout: 30_000 });
   expect(await cols()).toBeGreaterThan(before + 5);
+  // A G/L column figure (one G/L x site of a row) drills down to the posting lines of that G/L, adding up to it.
+  const glFig = grid.locator('tbody td[data-col="gl"] button[data-drill="row"]').first();
+  const glShown = (await glFig.innerText()).trim();
+  await glFig.evaluate((el) => { el.scrollIntoView({ block: 'center', inline: 'center' }); (el as HTMLElement).click(); });
+  const glDrawer = page.locator('[role=dialog]');
+  await expect(glDrawer.getByTestId('drill-total-cy')).toHaveText(glShown, { timeout: 30_000 });
+  await expect(glDrawer.getByText(/^G\/L \d+$/).first()).toBeVisible();
+  await glDrawer.getByRole('button', { name: 'Close' }).click();
+  await expect(glDrawer).toHaveCount(0);
   await group.dispatchEvent('click');
   await expect(group).toHaveAttribute('aria-expanded', 'false', { timeout: 30_000 });
   expect(await cols()).toBe(before);
@@ -74,10 +83,15 @@ test('MIS report: G/L columns open, a figure drills down and the drill-down adds
   const shown = (await fig.innerText()).trim();
   await fig.evaluate((el) => { el.scrollIntoView({ block: 'center', inline: 'center' }); (el as HTMLElement).click(); });
   const drawer = page.locator('[role=dialog]');
-  await expect(drawer.getByText('Drill-down')).toBeVisible();
-  const totalRow = drawer.locator('tbody tr').last();
-  await expect(totalRow).toContainText('Total');
-  await expect(totalRow.locator('td').nth(1)).toHaveText(shown);
+  await expect(drawer.getByText('Drill-down').first()).toBeVisible();
+  await expect(drawer.getByTestId('drill-total-cy')).toHaveText(shown);
+  await expect(drawer.getByTestId('drill-check')).toBeVisible();
+  // SKUs come with the lines: the ZNET_SALE_MASTER columns at the end, and a line opens to its SKUs.
+  await expect(drawer.getByTestId('drill-table').locator('thead')).toContainText('ZSKUGRCODECRS');
+  const showSkus = drawer.getByRole('button', { name: 'Show SKUs' }).first();
+  await expect(showSkus).toBeVisible();
+  await showSkus.click();
+  await expect(drawer.getByText(/SKUs? of SKU group/).first()).toBeVisible();
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/${info.project.name === 'mobile-360' ? 'm' : 'd'}-drilldown.png` });
 });
 

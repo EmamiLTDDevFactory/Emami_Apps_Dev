@@ -6,7 +6,7 @@ import { ArrowLeft, ChevronLeft, ChevronRight, Copy, Info, Plus, Power, PowerOff
 import { useAuth } from '../../context/AuthContext';
 import { useClaim } from '../../context/ClaimContext';
 import { DoaChainRow } from '../../types';
-import { Banner, Button, Card, Checkbox, cx, DateField, EmptyState, Field, Input, LoadingBlock, PageHeader, Select } from '../../components/ui';
+import { Banner, Button, Card, Checkbox, cx, DateField, EmptyState, Field, Input, LoadingBlock, MessageModal, type MessageModalState, PageHeader, Select } from '../../components/ui';
 
 // SM30-style flat maintenance grid for ZEXP_DOA_CHAIN (DoaChainSet) - replaces the earlier
 // slab-by-slab card editor per the rebuild spec. One row = one approver in one amount slab of one
@@ -64,7 +64,6 @@ function validateRow(row: GridRow): string | null {
   if (row.ValidTo && row.ValidFrom && row.ValidTo < row.ValidFrom) return 'Valid To cannot be before Valid From';
   if (row.ApprRule !== 'O' && row.ApprRule !== 'A') return 'Approver rule must be O (any one) or A (all)';
   if (!row.ApprEmail.trim()) return 'Approver e-mail or PERNR is mandatory';
-  if (row.Hod && row.DoaCtype !== 'MBN') return "HoD flag is only allowed for mobile non-sales rows (type MBN)";
   return null;
 }
 
@@ -132,6 +131,7 @@ export default function DoaChainPage() {
   const [importError, setImportError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [page, setPage] = useState(1);
+  const [messageModal, setMessageModal] = useState<MessageModalState>(null);
 
   if (!currentUser?.isAdmin) {
     return (
@@ -154,7 +154,7 @@ export default function DoaChainPage() {
         kostl: kostlFilter.trim() || undefined,
       });
       // Hod/Active must always be explicit booleans on save, never missing - coerce right on load
-      // in case an older row predates the Hod field or SAP returns it blank for a non-MBN row.
+      // in case an older row predates the Hod field or SAP returns it blank.
       // SAP's OData gateway serializes Edm.Decimal fields as JSON strings (e.g. "50001.00"), not
       // real numbers - without this coercion, AmtFrom/AmtTo stay strings for any row the admin
       // doesn't manually retype, and row.AmtFrom.toFixed(2) throws on save (silently caught,
@@ -243,10 +243,22 @@ export default function DoaChainPage() {
     // claims at this level to the new approver and e-mails them - not reversible from here, so
     // confirm once before the whole batch goes out.
     const approverChanged = toSave.some((r) => !r._isNew && (originalsRef.current[r._cid]?.ApprEmail || '').trim().toLowerCase() !== r.ApprEmail.trim().toLowerCase());
-    if (approverChanged && !window.confirm('Pending claims waiting for the old approver at this level will move to the new approver, who gets a mail. Continue?')) {
+    if (approverChanged) {
+      setMessageModal({
+        title: 'Confirm approver change',
+        message: 'Pending claims waiting for the old approver at this level will move to the new approver, who gets a mail. Continue?',
+        type: 'info',
+        confirmLabel: 'Continue',
+        cancelLabel: 'Cancel',
+        onConfirm: () => { setMessageModal(null); performSaveAll(toSave); },
+      });
       return;
     }
 
+    await performSaveAll(toSave);
+  };
+
+  const performSaveAll = async (toSave: GridRow[]) => {
     setSavingAll(true);
     for (const row of toSave) {
       setRows((prev) => prev.map((r) => (r._cid === row._cid ? { ...r, _saving: true } : r)));
@@ -509,7 +521,7 @@ export default function DoaChainPage() {
                     <tr key={row._cid} className={row._isNew || row._dirty ? 'bg-amberBg/40' : 'border-b border-line'}>
                       <td className="p-1 align-top">
                         {row._isNew ? (
-                          <Select value={row.DoaCtype} onChange={(v) => updateField(row._cid, { DoaCtype: v, Hod: v === 'MBN' ? row.Hod : false })} options={DOA_CTYPE_OPTIONS.map((o) => ({ value: o.value, label: o.value }))} className="!h-7 !w-full !min-w-0 !py-0.5 !px-1 text-2xs" />
+                          <Select value={row.DoaCtype} onChange={(v) => updateField(row._cid, { DoaCtype: v })} options={DOA_CTYPE_OPTIONS.map((o) => ({ value: o.value, label: o.value }))} className="!h-7 !w-full !min-w-0 !py-0.5 !px-1 text-2xs" />
                         ) : row.DoaCtype}
                       </td>
                       <td className="p-1 align-top">
@@ -544,9 +556,7 @@ export default function DoaChainPage() {
                         <Select value={row.ApprRule} onChange={(v) => updateField(row._cid, { ApprRule: v as 'O' | 'A' })} options={[{ value: 'O', label: 'O' }, { value: 'A', label: 'A' }]} className="!h-7 !w-full !min-w-0 !py-0.5 !px-1.5 text-2xs" />
                       </td>
                       <td className="p-1 align-top">
-                        {row.DoaCtype === 'MBN' ? (
-                          <Checkbox checked={!!row.Hod} onChange={(v) => updateField(row._cid, { Hod: v })} />
-                        ) : '—'}
+                        <Checkbox checked={!!row.Hod} onChange={(v) => updateField(row._cid, { Hod: v })} />
                       </td>
                       <td className="p-1 align-top">
                         <Checkbox checked={row.Active} onChange={() => handleToggleActive(row._cid)} />
@@ -590,7 +600,7 @@ export default function DoaChainPage() {
                   <div className="grid grid-cols-2 gap-2">
                     <Field label="Type">
                       {row._isNew ? (
-                        <Select value={row.DoaCtype} onChange={(v) => updateField(row._cid, { DoaCtype: v, Hod: v === 'MBN' ? row.Hod : false })} options={DOA_CTYPE_OPTIONS.map((o) => ({ value: o.value, label: o.value }))} />
+                        <Select value={row.DoaCtype} onChange={(v) => updateField(row._cid, { DoaCtype: v })} options={DOA_CTYPE_OPTIONS.map((o) => ({ value: o.value, label: o.value }))} />
                       ) : <p className="text-sm font-semibold text-ink">{row.DoaCtype}</p>}
                     </Field>
                     <Field label="Cost Centre">
@@ -630,9 +640,7 @@ export default function DoaChainPage() {
                       <Select value={row.ApprRule} onChange={(v) => updateField(row._cid, { ApprRule: v as 'O' | 'A' })} options={[{ value: 'O', label: 'O — any one' }, { value: 'A', label: 'A — all' }]} />
                     </Field>
                     <Field label="HoD">
-                      {row.DoaCtype === 'MBN' ? (
-                        <div className="pt-2"><Checkbox checked={!!row.Hod} onChange={(v) => updateField(row._cid, { Hod: v })} /></div>
-                      ) : <p className="pt-2 text-sm text-inkFaint">—</p>}
+                      <div className="pt-2"><Checkbox checked={!!row.Hod} onChange={(v) => updateField(row._cid, { Hod: v })} /></div>
                     </Field>
                     <Field label="Active">
                       <div className="pt-2"><Checkbox checked={row.Active} onChange={() => handleToggleActive(row._cid)} /></div>
@@ -681,6 +689,8 @@ export default function DoaChainPage() {
           )}
         </>
       )}
+
+      <MessageModal state={messageModal} onClose={() => setMessageModal(null)} />
     </div>
   );
 }

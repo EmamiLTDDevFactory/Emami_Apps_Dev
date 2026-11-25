@@ -11,6 +11,8 @@ export type WfKeyField = 'genType' | 'genField' | 'genField2' | 'genField3' | 'g
 export interface WfAgent {
   role: string; startDate: string; endDate: string; agent: string; name: string; isAppr: boolean; levelText: string; mailId: string;
   active: boolean; userF: string; dept: string;
+  /** e-mail of the agent (reviewer levels): SAP resolves it to the SAP user on save */
+  email?: string;
   /** computed by SAP */
   counted?: boolean; expired?: boolean; receives?: 'workitem' | 'notification' | 'none' | string; locked?: boolean;
 }

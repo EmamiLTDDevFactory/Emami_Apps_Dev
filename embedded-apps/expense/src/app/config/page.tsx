@@ -6,7 +6,7 @@ import { ArrowLeft, Plus, RefreshCw, Save, ScrollText, ShieldAlert, Trash2 } fro
 import { useAuth } from '../../context/AuthContext';
 import { useClaim } from '../../context/ClaimContext';
 import { ConfigLogRow, ConfigVarName, ConfigVarRow } from '../../types';
-import { Banner, Button, Card, CardTitle, EmptyState, Field, IconButton, Input, LoadingBlock, PageHeader, Segmented, Select } from '../../components/ui';
+import { Banner, Button, Card, CardTitle, EmptyState, Field, IconButton, Input, LoadingBlock, MessageModal, type MessageModalState, PageHeader, Segmented, Select } from '../../components/ui';
 
 // Admin maintenance for the settings formerly kept in STVARV, now ConfigVarSet/ConfigLogSet (see
 // UI_CHANGES_REQUIRED section J). Each variable is a short list of lines (or, for the two
@@ -27,7 +27,6 @@ const VAR_CONFIGS: VarConfig[] = [
   { name: 'ZEXP_ADMIN', label: 'Admins', lowLabel: 'Employee ID (PERNR)', lowPlaceholder: 'e.g. 90001020', hasHigh: false, singleLine: false },
   { name: 'ZEXP_DOA_ADMIN', label: 'DOA Admins', lowLabel: 'Employee ID (PERNR)', lowPlaceholder: 'e.g. 90001020', hasHigh: false, singleLine: false },
   { name: 'ZEXP_FINANCE', label: 'Finance Users', lowLabel: 'Employee ID (PERNR)', lowPlaceholder: 'e.g. 90001020', hasHigh: true, highOptions: [{ value: 'POST', label: 'POST' }, { value: 'PARK', label: 'PARK' }], singleLine: false },
-  { name: 'ZFI_NONCTC_USER', label: 'Employee Subgroups (skip approval)', lowLabel: 'Subgroup (PERSK)', lowPlaceholder: 'e.g. 27', hasHigh: false, singleLine: false },
   { name: 'ZEXP_EXPTYPE_SET', label: 'Expense Type Sets', lowLabel: 'GL Set Name', lowPlaceholder: 'e.g. EMA_CAREXP', hasHigh: false, singleLine: false },
   { name: 'ZEXP_MOBILE_SET', label: 'Mobile Expense Sets', lowLabel: 'GL Set Name', lowPlaceholder: 'e.g. EMA_MOBILE', hasHigh: false, singleLine: false },
   { name: 'ZEXP_NON_CTC_GO_LIVE', label: 'Go-Live Date', lowLabel: 'Date (YYYYMMDD)', lowPlaceholder: 'e.g. 20261101', hasHigh: false, singleLine: true },
@@ -44,7 +43,7 @@ type EditableRow = ConfigVarRow & { _draftLow: string; _draftHigh: string; _savi
 function validateLow(cfg: VarConfig, value: string): string | null {
   const v = value.trim();
   if (!v) return 'This field is required';
-  if ((cfg.name === 'ZEXP_ADMIN' || cfg.name === 'ZEXP_DOA_ADMIN' || cfg.name === 'ZEXP_FINANCE' || cfg.name === 'ZFI_NONCTC_USER') && !/^\d+$/.test(v)) {
+  if ((cfg.name === 'ZEXP_ADMIN' || cfg.name === 'ZEXP_DOA_ADMIN' || cfg.name === 'ZEXP_FINANCE') && !/^\d+$/.test(v)) {
     return 'Enter a numeric value';
   }
   if (cfg.name === 'ZEXP_NON_CTC_GO_LIVE' && !/^\d{8}$/.test(v)) return 'Enter the date as YYYYMMDD';
@@ -88,6 +87,7 @@ export default function ConfigPage() {
   const [logError, setLogError] = useState<string | null>(null);
   const [logFilter, setLogFilter] = useState('');
   const [logLoaded, setLogLoaded] = useState(false);
+  const [messageModal, setMessageModal] = useState<MessageModalState>(null);
 
   if (!currentUser?.isAdmin) {
     return (
@@ -142,16 +142,27 @@ export default function ConfigPage() {
     }
   };
 
-  const handleRemoveRow = async (row: EditableRow) => {
-    if (!config) return;
-    if (!window.confirm(`Remove this ${config.label.toLowerCase()} line${row.LowText ? ` (${row.LowText})` : ''}?`)) return;
+  const performRemoveRow = async (row: EditableRow) => {
     setRows((prev) => prev.map((r) => (r.Numb === row.Numb ? { ...r, _saving: true, _error: null } : r)));
     try {
-      await removeConfigVar(row, adminPernr);
+      const { _draftLow, _draftHigh, _saving, _error, ...plain } = row;
+      await removeConfigVar(plain, adminPernr);
       await handleLoad();
     } catch (e: any) {
       setRows((prev) => prev.map((r) => (r.Numb === row.Numb ? { ...r, _saving: false, _error: e?.message || 'Failed to remove' } : r)));
     }
+  };
+
+  const handleRemoveRow = (row: EditableRow) => {
+    if (!config) return;
+    setMessageModal({
+      title: 'Remove line',
+      message: `Remove this ${config.label.toLowerCase()} line${row.LowText ? ` (${row.LowText})` : ''}?`,
+      type: 'error',
+      confirmLabel: 'Remove',
+      cancelLabel: 'Cancel',
+      onConfirm: () => { setMessageModal(null); performRemoveRow(row); },
+    });
   };
 
   const handleAdd = async () => {
@@ -242,8 +253,13 @@ export default function ConfigPage() {
             )}
             {sectionRows.map((row) => (
               <div key={row.Numb} className="rounded-lg border border-border p-3">
-                <div className="grid grid-cols-1 items-start gap-2 sm:grid-cols-[1fr_auto_auto_auto] sm:items-center">
-                  <Field label={config.lowLabel} error={row._error || undefined}>
+                {/* Fixed widths (not auto/flex-1-everywhere) on every column after the field so
+                    the field's own right edge lands in the same place on every row, regardless of
+                    how long that row's own Resolved text or whether Role even applies - each row
+                    is its own independent layout box, so anything size-by-content varies row to
+                    row otherwise (confirmed live: GL Set Name's width visibly drifted per row). */}
+                <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+                  <Field label={config.lowLabel} error={row._error || undefined} className="min-w-0 flex-1">
                     <Input
                       value={row._draftLow}
                       onChange={(e) => setRows((prev) => prev.map((r) => (r.Numb === row.Numb ? { ...r, _draftLow: e.target.value, _error: null } : r)))}
@@ -251,7 +267,7 @@ export default function ConfigPage() {
                     />
                   </Field>
                   {config.hasHigh && (
-                    <Field label="Role">
+                    <Field label="Role" className="shrink-0 sm:w-28">
                       <Select
                         value={row._draftHigh}
                         onChange={(v) => setRows((prev) => prev.map((r) => (r.Numb === row.Numb ? { ...r, _draftHigh: v, _error: null } : r)))}
@@ -259,13 +275,15 @@ export default function ConfigPage() {
                       />
                     </Field>
                   )}
-                  {row.LowText && (
-                    <div className="min-w-0 sm:px-2">
-                      <p className="text-2xs font-semibold text-inkFaint">Resolved</p>
-                      <p className="truncate text-sm font-semibold text-ink" title={row.LowText}>{row.LowText}</p>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-1 justify-self-end">
+                  <div className="min-w-0 shrink-0 sm:w-40 sm:px-2">
+                    {row.LowText && (
+                      <>
+                        <p className="text-2xs font-semibold text-inkFaint">Resolved</p>
+                        <p className="truncate text-sm font-semibold text-ink" title={row.LowText}>{row.LowText}</p>
+                      </>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1 self-end sm:self-center">
                     <IconButton icon={Save} label="Save" onClick={() => handleSaveRow(row)} disabled={row._saving} />
                     {!config.singleLine && (
                       <IconButton
@@ -289,19 +307,22 @@ export default function ConfigPage() {
                 </Button>
               ) : (
                 <div className="rounded-lg border border-dashed border-border p-3">
-                  <div className="grid grid-cols-1 items-start gap-2 sm:grid-cols-[1fr_auto_auto]">
-                    <Field label={config.lowLabel} error={addError || undefined}>
+                  {/* Fields first, action row below - Add/Cancel sitting beside a taller label+
+                      input column (the previous layout) put them level with the label instead of
+                      the input, which read as misaligned. Stacking removes the ambiguity entirely. */}
+                  <div className="flex flex-col items-stretch gap-2 sm:flex-row">
+                    <Field label={config.lowLabel} error={addError || undefined} className="min-w-0 flex-1">
                       <Input value={newRow.low} onChange={(e) => setNewRow({ ...newRow, low: e.target.value })} placeholder={config.lowPlaceholder} />
                     </Field>
                     {config.hasHigh && (
-                      <Field label="Role">
+                      <Field label="Role" className="shrink-0 sm:w-28">
                         <Select value={newRow.high} onChange={(v) => setNewRow({ ...newRow, high: v })} options={[{ value: '', label: 'Select…' }, ...(config.highOptions || [])]} />
                       </Field>
                     )}
-                    <div className="flex items-center gap-2 justify-self-end">
-                      <Button variant="primary" size="sm" loading={adding} onClick={handleAdd}>Add</Button>
-                      <Button variant="secondary" size="sm" onClick={() => { setNewRow(null); setAddError(null); }}>Cancel</Button>
-                    </div>
+                  </div>
+                  <div className="mt-2 flex items-center justify-end gap-2">
+                    <Button variant="primary" size="sm" loading={adding} onClick={handleAdd}>Add</Button>
+                    <Button variant="secondary" size="sm" onClick={() => { setNewRow(null); setAddError(null); }}>Cancel</Button>
                   </div>
                 </div>
               )}
@@ -344,6 +365,8 @@ export default function ConfigPage() {
           )}
         </Card>
       )}
+
+      <MessageModal state={messageModal} onClose={() => setMessageModal(null)} />
     </div>
   );
 }

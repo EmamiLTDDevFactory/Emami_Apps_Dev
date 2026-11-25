@@ -54,6 +54,8 @@ CLASS zcl_mm_mdm_adm_wf DEFINITION PUBLIC FINAL CREATE PUBLIC.
              active     TYPE abap_bool,
              user_f     TYPE string,
              dept       TYPE string,
+             "reviewer levels are maintained by e-mail id: resolved to the SAP user on save, shown from the SAP user on load
+             email      TYPE string,
              "output only
              counted    TYPE abap_bool,
              expired    TYPE abap_bool,
@@ -228,6 +230,7 @@ CLASS zcl_mm_mdm_adm_wf DEFINITION PUBLIC FINAL CREATE PUBLIC.
     CLASS-METHODS type_lvl_rank IMPORTING iv_type TYPE clike RETURNING VALUE(rv_rank) TYPE i.
     CLASS-METHODS role_label IMPORTING iv_type TYPE clike RETURNING VALUE(rv_text) TYPE string.
     CLASS-METHODS sap_user IMPORTING iv_actor TYPE string RETURNING VALUE(rv_user) TYPE syuname.
+    CLASS-METHODS user_by_mail IMPORTING iv_mail TYPE string RETURNING VALUE(rv_user) TYPE syuname.
     CLASS-METHODS gkey_to_dkey IMPORTING is_key TYPE ty_gkey RETURNING VALUE(rs_key) TYPE ty_dkey.
     CLASS-METHODS dkey_to_gkey IMPORTING is_key TYPE ty_dkey RETURNING VALUE(rs_key) TYPE ty_gkey.
     CLASS-METHODS req_key RETURNING VALUE(rs_key) TYPE ty_gkey.
@@ -455,6 +458,37 @@ CLASS zcl_mm_mdm_adm_wf IMPLEMENTATION.
 
   METHOD role_label.
     rv_text = SWITCH #( iv_type WHEN 'I' THEN 'Initiator' WHEN 'R' THEN 'Reviewer' WHEN 'A' THEN 'Approver' ELSE 'Not defined' ).
+  ENDMETHOD.
+
+  METHOD user_by_mail.
+    "SAP user of an e-mail address (case-insensitive): an unlocked, valid user is preferred when several users share the address
+    DATA lv_up TYPE string.
+    DATA lv_srch TYPE adr6-smtp_srch.
+    lv_up = to_upper( condense( iv_mail ) ).
+    IF lv_up IS INITIAL.
+      RETURN.
+    ENDIF.
+    lv_srch = lv_up.     "SMTP_SRCH holds the first 20 letters in upper case: narrows the read, the exact compare follows
+    SELECT u~bname AS bname, a~smtp_addr AS smtp_addr, l~uflag AS uflag, l~gltgb AS gltgb
+      FROM usr21 AS u INNER JOIN adr6 AS a ON a~addrnumber = u~addrnumber AND a~persnumber = u~persnumber
+      LEFT OUTER JOIN usr02 AS l ON l~bname = u~bname
+      WHERE a~smtp_srch = @lv_srch
+      INTO TABLE @DATA(lt_u).
+    LOOP AT lt_u ASSIGNING FIELD-SYMBOL(<x>).
+      IF to_upper( condense( CONV string( <x>-smtp_addr ) ) ) <> lv_up.
+        DELETE lt_u.
+      ENDIF.
+    ENDLOOP.
+    SORT lt_u BY bname.
+    DELETE ADJACENT DUPLICATES FROM lt_u COMPARING bname.
+    LOOP AT lt_u ASSIGNING FIELD-SYMBOL(<u>) WHERE uflag = 0 AND ( gltgb IS INITIAL OR gltgb >= sy-datum ).
+      rv_user = <u>-bname.
+      RETURN.
+    ENDLOOP.
+    READ TABLE lt_u INDEX 1 ASSIGNING <u>.
+    IF sy-subrc = 0.
+      rv_user = <u>-bname.
+    ENDIF.
   ENDMETHOD.
 
   METHOD sap_user.
@@ -873,6 +907,9 @@ CLASS zcl_mm_mdm_adm_wf IMPLEMENTATION.
                                WHEN <a>-active = abap_true AND <a>-is_appr = abap_false AND ( <a>-agent IS NOT INITIAL OR <a>-mail_id IS NOT INITIAL )
                                     AND ( <a>-end_date IS INITIAL OR <a>-end_date >= gv_today ) THEN 'notification'
                                ELSE 'none' ).
+        IF <a>-email IS INITIAL.
+          <a>-email = <a>-mail_id.
+        ENDIF.
         IF <a>-agent IS NOT INITIAL.
           READ TABLE lt_users ASSIGNING FIELD-SYMBOL(<u>) WITH KEY bname = to_upper( <a>-agent ).
           IF sy-subrc = 0.
@@ -880,6 +917,9 @@ CLASS zcl_mm_mdm_adm_wf IMPLEMENTATION.
               <a>-name = <u>-name.
             ENDIF.
             <a>-locked = <u>-locked.
+            IF <u>-email IS NOT INITIAL.
+              <a>-email = <u>-email.
+            ENDIF.
           ENDIF.
         ENDIF.
       ENDLOOP.
@@ -940,6 +980,17 @@ CLASS zcl_mm_mdm_adm_wf IMPLEMENTATION.
         ENDIF.
         IF <a>-start_date IS INITIAL.
           <a>-start_date = gv_today.
+        ENDIF.
+        <a>-email = condense( <a>-email ).
+        IF <a>-agent IS INITIAL AND <a>-email IS NOT INITIAL.
+          "e-mail id entered (reviewer levels): the SAP user behind it is the agent; no SAP user = a notification-only mail id
+          DATA(lv_ubm) = user_by_mail( <a>-email ).
+          IF lv_ubm IS NOT INITIAL.
+            <a>-agent = lv_ubm.
+            CLEAR <a>-mail_id.
+          ELSE.
+            <a>-mail_id = <a>-email.
+          ENDIF.
         ENDIF.
         IF <a>-is_appr = abap_true.
           CLEAR <a>-mail_id.     "an approver is a SAP user; a mail id is only for notification recipients
@@ -1245,7 +1296,11 @@ CLASS zcl_mm_mdm_adm_wf IMPLEMENTATION.
         ENDIF.
         IF <a>-is_appr = abap_true.
           IF <a>-agent IS INITIAL.
-            add_msg( EXPORTING iv_sev = 'E' iv_code = 'AGENT_REQ' iv_text = |{ lv_pre }Enter Agent| iv_target = lv_tg CHANGING ct_msgs = ct_msgs ).
+            add_msg( EXPORTING iv_sev = 'E' iv_code = 'AGENT_REQ'
+              iv_text = COND #( WHEN <a>-email IS NOT INITIAL
+                                THEN |{ lv_pre }No SAP user is registered for e-mail { <a>-email }: a work item needs a SAP user (untick Reviews to inform this e-mail by mail only)|
+                                ELSE |{ lv_pre }Enter Email ID| )
+              iv_target = lv_tg CHANGING ct_msgs = ct_msgs ).
           ENDIF.
         ELSE.
           IF <a>-agent IS INITIAL AND <a>-mail_id IS INITIAL.
@@ -2650,12 +2705,39 @@ CLASS zcl_mm_mdm_adm_wf IMPLEMENTATION.
             <i>-extra = |{ <dt>-email }{ COND string( WHEN <dt>-locked = abap_true THEN ' [locked or expired]' ) }|.
           ENDIF.
         ENDLOOP.
+      WHEN 'EMAIL'.
+        "e-mail addresses of SAP users (default address), matched on e-mail, name or user id; the SAP user is shown as extra
+        SELECT DISTINCT u~bname AS bname, a~smtp_addr AS smtp_addr, p~name_text AS name_text
+          FROM usr21 AS u INNER JOIN adr6 AS a ON a~persnumber = u~persnumber AND a~addrnumber = u~addrnumber
+          LEFT OUTER JOIN adrp AS p ON p~persnumber = u~persnumber
+          WHERE a~smtp_addr <> ''
+          INTO TABLE @DATA(lt_em).
+        SORT lt_em BY smtp_addr bname.
+        DELETE ADJACENT DUPLICATES FROM lt_em COMPARING smtp_addr.
+        DATA lt_enames TYPE ty_strs.
+        LOOP AT lt_em ASSIGNING FIELD-SYMBOL(<em>).
+          IF lv_q IS INITIAL OR to_upper( CONV string( <em>-smtp_addr ) ) CS lv_q OR to_upper( CONV string( <em>-name_text ) ) CS lv_q OR to_upper( CONV string( <em>-bname ) ) CS lv_q.
+            APPEND VALUE #( key = condense( CONV string( <em>-smtp_addr ) ) text = condense( CONV string( <em>-name_text ) ) extra = |SAP user { condense( CONV string( <em>-bname ) ) }| ) TO lt_items.
+            APPEND condense( CONV string( <em>-bname ) ) TO lt_enames.
+            IF lines( lt_items ) >= lv_limit.
+              EXIT.
+            ENDIF.
+          ENDIF.
+        ENDLOOP.
+        DATA(lt_edet) = load_users( lt_enames ).
+        LOOP AT lt_items ASSIGNING <i>.
+          DATA(lv_eu) = condense( replace( val = <i>-extra sub = 'SAP user ' with = '' ) ).
+          READ TABLE lt_edet ASSIGNING <dt> WITH KEY bname = lv_eu.
+          IF sy-subrc = 0 AND <dt>-locked = abap_true.
+            <i>-extra = |{ <i>-extra } [locked or expired]|.
+          ENDIF.
+        ENDLOOP.
       WHEN OTHERS.
         rv_json = fail( iv_text = |Value help { gs_req-kind } is not known| iv_code = 'UNKNOWN_KIND' ).
         RETURN.
     ENDCASE.
 
-    IF lv_kind <> 'USER'.
+    IF lv_kind <> 'USER' AND lv_kind <> 'EMAIL'.
       LOOP AT lt_items ASSIGNING <i>.
         <i>-key  = condense( <i>-key ).
         <i>-text = condense( <i>-text ).

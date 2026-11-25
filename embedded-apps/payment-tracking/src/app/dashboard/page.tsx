@@ -75,6 +75,11 @@ export default function ProvisionDashboard() {
     [filteredRows]
   );
 
+  const companyCodeBreakdown = useMemo(
+    () => breakdownBy(filteredRows, (r) => r.companyCode || '(unassigned)', (r) => r.companyCode || 'Unassigned', () => ''),
+    [filteredRows]
+  );
+
   // Excel: the KPIs, every breakdown in full (the screen shows the top 8) and the line items, all under the current
   // Period and filters.
   const breakdownSheet = (name: string, keyLabel: string, data: Breakdown[]): Sheet => ({
@@ -91,6 +96,7 @@ export default function ProvisionDashboard() {
     breakdownSheet('By cost center', 'Cost center', breakdownBy(filteredRows, (r) => r.costCenter || '(unassigned)', (r) => r.costCenter || 'Unassigned', (r) => r.costCenterText)),
     breakdownSheet('By vendor', 'Vendor', breakdownBy(filteredRows, (r) => r.vendor || '(unassigned)', (r) => r.vendor || 'Unassigned', (r) => r.vendorName)),
     breakdownSheet('By country', 'Country', countryBreakdown),
+    breakdownSheet('By company code', 'Company code', companyCodeBreakdown),
     lineItemSheet(filteredRows),
   ];
 
@@ -256,6 +262,20 @@ export default function ProvisionDashboard() {
                   title: `Country: ${d.label}`,
                   subtitle: `${d.count} line item(s), ${formatValue(d.value)} pending.`,
                   rows: filteredRows.filter((r) => (r.country || '(unassigned)') === d.key),
+                })}
+              />
+            </Card>
+
+            <Card ledger>
+              <CardTitle title="Pending bill value by company code" />
+              <p className="-mt-1.5 mb-2 text-xs text-inkSoft">Every company code (Bukrs) with open provisions. Tap a bar for its line items.</p>
+              <HorizontalBarBreakdown
+                data={companyCodeBreakdown}
+                emptyMessage="No open provisions to break down yet."
+                onSelect={(d) => setActiveKpi({
+                  title: `Company Code: ${d.label}`,
+                  subtitle: `${d.count} line item(s), ${formatValue(d.value)} pending.`,
+                  rows: filteredRows.filter((r) => (r.companyCode || '(unassigned)') === d.key),
                 })}
               />
             </Card>

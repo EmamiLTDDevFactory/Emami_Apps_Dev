@@ -55,6 +55,12 @@ export default function FinancePage() {
   const { filterClaims, releasePayment, fetchTaxes, calculateTax, rejectClaimFinance, claims, fetchClaims, fetchHistorySet, historyEntries, claimSummaryCache, fetchClaimSummaries } = useClaim();
   const { currentUser } = useAuth();
 
+  // A typed URL shouldn't open this screen for someone without the Finance capability - the
+  // backend refuses the actions anyway, but bouncing here avoids showing an empty/broken screen.
+  useEffect(() => {
+    if (!currentUser?.isFinance) router.push('/');
+  }, [currentUser?.isFinance, router]);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [screenMessage, setScreenMessage] = useState<{ title: string; message: string; type: 'success' | 'error' } | null>(null);
   const [selectedClaimIds, setSelectedClaimIds] = useState<string[]>([]);
@@ -100,7 +106,9 @@ export default function FinancePage() {
   const financeNumeric = normalizeId(currentUser?.employeeId);
   const financeHistoryEntries = historyEntries || [];
 
-  const financeStatusesForCount = currentUser?.role === 'B' ? ['H', 'P'] : ['H'];
+  // H is the live queue (direct post, no park step); P is legacy-only. Always both now - isFinance
+  // gates whether this screen is reachable at all, not which statuses count once someone's here.
+  const financeStatusesForCount = ['H', 'P'];
   const financeApprovedCount = financeHistoryEntries.filter((e: any) => (e.Action || '').toUpperCase() === 'APPROVE').length;
   const financePendingCount = claims.filter((c) => financeStatusesForCount.includes(c.rawStatus || '') && normalizeId(c.employeeId) !== financeNumeric).length;
   const financeRejectedCount = financeHistoryEntries.filter((e: any) => (e.Action || '').toUpperCase() === 'REJECT').length;
@@ -114,9 +122,21 @@ export default function FinancePage() {
   ];
 
   const financeClaims = filterClaims('finance', searchQuery);
-  const isBulkReleaseUser = currentUser?.role === 'B';
+  // isFinance (not role === 'B') gates bulk release now - independent capability flag from SAP's
+  // LoginSet, since one person can hold any combination of manager/finance/admin.
+  const isBulkReleaseUser = !!currentUser?.isFinance;
+  // Legacy-only - a claim parked (P) before direct H->S posting existed. Still drives the
+  // "Pending Release" display label specifically, since H has its own correct label already
+  // ("Pending at finance") that shouldn't be overridden.
   const isBPendingRelease = (claim: ExpenseClaim) => isBulkReleaseUser && claim.rawStatus === 'P';
-  const bulkReleaseClaims = financeClaims.filter((c) => c.status === 'Pending Release' || isBPendingRelease(c));
+  // The normal queue is H (direct post, no park step), with legacy P still possible for claims
+  // parked before this change. A GST (has a GSTIN/stcd3) claim in H still needs a tax code picked
+  // before posting - bulk release sends none, so those are excluded here and released one by one
+  // through handleRelease's modal instead. A GST claim in legacy P already has its tax stored, so
+  // it's still bulk-eligible.
+  const isBBulkEligible = (claim: ExpenseClaim) =>
+    isBulkReleaseUser && (claim.rawStatus === 'P' || (claim.rawStatus === 'H' && !claim.stcd3));
+  const bulkReleaseClaims = financeClaims.filter((c) => isBBulkEligible(c));
   const allBulkSelected = bulkReleaseClaims.length > 0 && bulkReleaseClaims.every((c) => selectedClaimIds.includes(c.id));
 
   // Purely informational Expense/Tax split shown directly on each GST pending card, so Finance
@@ -247,12 +267,14 @@ export default function FinancePage() {
     setScreenMessage({ title: title || (type === 'error' ? 'Action Failed' : 'Success'), message, type });
   };
 
-  // 'B' (Top Level) never picks a tax code here — Finance already selected and sent it to SAP on
-  // their own earlier release call, so asking again at B's final posting step is redundant and
-  // was blocking B from posting. B always goes straight to the simple confirm below.
+  // The old park-then-release flow had a PARK user pick the tax code before parking, then a POST
+  // user post without being asked again - skipping the modal for role B relied on that already-
+  // chosen code existing. Every finance user is a POST user now and H -> S is the only step, so
+  // skipping it here would post a GST claim with no tax code at all. Only legacy P claims (parked
+  // under the old flow) already have the tax stored and can skip straight to the confirm below.
   const handleRelease = async (id: string) => {
     const claim = claims.find((c) => c.id === id);
-    if (claim && claim.stcd3 && currentUser?.role !== 'B') {
+    if (claim && claim.stcd3 && claim.rawStatus === 'H') {
       setReleaseConfirmClaimId(id);
       setTaxModalVisible(true);
       setTaxLoading(true);
@@ -528,7 +550,7 @@ export default function FinancePage() {
         <div className="flex flex-col gap-3">
           {financeClaims.map((claim) => (
             <div key={claim.id} className="card flex items-stretch gap-0 overflow-hidden !p-0">
-              {isBulkReleaseUser && (claim.status === 'Pending Release' || isBPendingRelease(claim)) && (
+              {isBulkReleaseUser && isBBulkEligible(claim) && (
                 <button type="button" onClick={() => toggleClaimSelection(claim.id)} className="flex items-center justify-center border-r border-line bg-appBg px-4">
                   {selectedClaimIds.includes(claim.id) ? <CheckSquare size={20} className="text-brand" /> : <Square size={20} className="text-inkFaint" />}
                 </button>

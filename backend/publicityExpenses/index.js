@@ -3,16 +3,23 @@
    ZC_ATLBTL_EXP_SUMMARY / ZC_ATLBTL_EXP_DETAIL. Mounted at /api/me/publicity-expenses (rides the existing nginx /api/me
    rule). SAP is only read.
 
+   Selection on every data route: fy + periods (any set, "8", "1-8" or "4-6,9"; see selection.js) + companies (comma
+   list, empty = all). Figures are the selected periods added up, CY against the same periods of PY; P01..Pn = YTD.
+   The older form period=n still works and means YTD up to n. Rules in force for the latest selected period apply.
+
    Everyone with the app (Manage Access role User or Admin):
      GET  /me                                  { email, role, admin }
      GET  /config                              header groups (overrides applied), classes, media buckets, dimensions
-     GET  /summary   ?fy&period[&company][&exclusions=off]   summary rows (exclusions + budget applied) + meta
-     GET  /detail    ?fy&period&key[&gl][&site][&company][&exclusions=off]   one report cell: cost centres + SKUs
-     GET  /trend     ?fy&period[&company][&exclusions=off]   CY / PY per period 1..period, by header group
-     GET  /breakdown ?fy&period[&company][&exclusions=off]   detail totals by site, profit centre, type, rule, cost centre
+     GET  /summary   ?fy&periods[&companies][&exclusions=off]   summary rows (exclusions + budget applied) + meta
+     POST /detail    { fy, periods, companies, keys[], gls[], sites[], groups[], exclusions }   drill-down of any
+                     report figure (one row or a sub-total): posting lines (G/L x cost centre) with the amount of every
+                     selected period, and skuGroups = the ZNET_SALE_MASTER rows of their SKU groups (one cached read of
+                     the master). GET with key / gl / site, or skus: true, also puts the SKUs on each line (older clients).
+     GET  /trend     ?fy&periods[&companies][&exclusions=off]   CY / PY per period 1..latest selected, by header group
+     GET  /breakdown ?fy&periods[&companies][&exclusions=off]   detail totals by site, profit centre, type, rule, cost centre
    Admin only (role Admin):
-     GET    /exclusions ?fy&period                   rules + what each removes in the selected period
-     GET    /exclusions/candidates ?dimension&fy&period[&company]   values found in the CDS results, with names and amounts
+     GET    /exclusions ?fy&periods                  rules + what each removes in the selection
+     GET    /exclusions/candidates ?dimension&fy&periods[&companies]   values found in the CDS results, with names and amounts
      POST   /exclusions/preview                       impact of a rule before saving
      POST   /exclusions  PUT /exclusions/:id  DELETE /exclusions/:id
      POST   /exclusions/bulk                          Excel upload of rules ({ rows, dryRun })
@@ -25,8 +32,13 @@
      GET    /settings/mapping ?fy&period  PUT /settings/mapping
      GET    /audit
    Exclusions apply to every screen and every user (the meta says what was excluded); ?exclusions=off shows the report
-   without them, for checking. Raw SAP answers are cached 10 minutes per query (?refresh=1 skips the cache); rules,
-   budget and mapping are read on every request, so a change shows at once.
+   without them, for checking. Raw SAP answers are cached 10 minutes per fiscal year / period, all companies in one
+   read (the company filter is applied here, so switching companies does not read SAP again; ?refresh=1 skips the
+   cache); rules, budget and mapping are read on every request, so a change shows at once.
+
+   Protection (guard.js): security headers on every answer, per-IP flood ceiling, per-user rate limits and in-flight cap
+   (429 + Retry-After), at most 6 SAP reads at once for the whole app (queue, 503 when full), compressed JSON, SAP's own
+   error text kept in the server log.
 */
 const express = require('express');
 const jwt = require('jsonwebtoken');
@@ -37,10 +49,13 @@ const mock = require('./mock');
 const { headerGroup, medium, publicConfig, isUnmapped, validateMapping } = require('./config');
 const { applyMockBudget, envBudgetSource, validateUpload, applyUploadedBudget } = require('./budget');
 const R = require('./rules');
+const S = require('./selection');
+const G = require('./guard');
 const { getStore } = require('./store');
 
 const APP_ID = 'publicity-expenses';
 const TTL = 10 * 60 * 1000;
+const MASTER_TTL = 60 * 60 * 1000; // ZNET_SALE_MASTER: master data, read at most once an hour (Refresh reads it again)
 const router = express.Router();
 
 function source() {
@@ -89,23 +104,42 @@ function requireAdmin(req, res, next) {
 
 class BadInput extends Error { constructor(m) { super(m); this.status = 400; } }
 const KEY_RE = /^[A-Za-z0-9 _\-/&.()]{1,30}$/;
+const GROUP_RE = /^[A-Za-z0-9 _\-/&.()]{1,60}$/;
+const MAX_KEYS = 5000;
+const MAX_LINES = 25000;
+/** A query value or a JSON array -> trimmed, non-empty strings ("a,b" works too). */
+const list = (v) => (Array.isArray(v) ? v : String(v ?? '').split(',')).map((s) => String(s ?? '').trim()).filter(Boolean);
+const uniq = (xs) => [...new Set(xs)];
+/** G/L account without leading zeros: SAP sends 507926, the mock (and older data) 0000507926 - compared in this form. */
+const glNo = (g) => String(g ?? '').trim().replace(/^0+(?=\d)/, '');
 
+/** Selection from a query string or a JSON body. cell = also the drill-down filters (keys, G/L, sites, header groups). */
 function params(q, { cell = false } = {}) {
     const fy = String(q.fy || '');
     if (!/^20\d{2}$/.test(fy)) throw new BadInput('Fiscal year must be a year like 2026.');
-    const period = Number(q.period);
-    if (!Number.isInteger(period) || period < 1 || period > 12) throw new BadInput('Period must be 1 to 12.');
-    const company = String(q.company || '').trim().toUpperCase();
-    if (company && !/^[A-Z0-9]{4}$/.test(company)) throw new BadInput('Company code must be 4 letters or digits.');
-    const out = { fy, period, company, refresh: q.refresh === '1', exclusions: q.exclusions !== 'off' };
+    let periods;
+    if (q.periods !== undefined && q.periods !== '') {
+        try { periods = S.parsePeriods(q.periods); } catch (e) { throw new BadInput(e.message); }
+    } else {
+        // Older clients send period=n, meaning YTD up to n.
+        const period = Number(q.period);
+        if (!Number.isInteger(period) || period < 1 || period > 12) throw new BadInput('Period must be 1 to 12.');
+        periods = Array.from({ length: period }, (_, i) => i + 1);
+    }
+    if (!periods.length) throw new BadInput('Pick at least one period.');
+    const companies = uniq(list(q.companies ?? q.company).map((c) => c.toUpperCase())).sort();
+    if (companies.length > 50 || companies.some((c) => !/^[A-Z0-9]{4}$/.test(c))) throw new BadInput('Company codes must be 4 letters or digits.');
+    const out = { fy, periods, period: periods[periods.length - 1], companies, refresh: String(q.refresh ?? '') === '1', exclusions: q.exclusions !== 'off' };
     if (cell) {
-        const gl = String(q.gl || '').trim();
-        const key = String(q.key || '').trim();
-        const site = String(q.site || '').trim().toUpperCase();
-        if (gl && !/^\d{1,10}$/.test(gl)) throw new BadInput('G/L account must be digits.');
-        if (!KEY_RE.test(key)) throw new BadInput('Reporting key is missing or not valid.');
-        if (site && site !== 'HO' && site !== 'UN') throw new BadInput('Site must be HO or UN.');
-        Object.assign(out, { gl: gl ? gl.padStart(10, '0') : '', key, site });
+        const keys = uniq(list(q.keys ?? q.key));
+        if (keys.length > MAX_KEYS || keys.some((k) => !KEY_RE.test(k))) throw new BadInput('Reporting key is missing or not valid.');
+        const gls = uniq(list(q.gls ?? q.gl));
+        if (gls.length > 2000 || gls.some((g) => !/^\d{1,10}$/.test(g))) throw new BadInput('G/L account must be digits.');
+        const sites = uniq(list(q.sites ?? q.site).map((s) => s.toUpperCase()));
+        if (sites.some((s) => s !== 'HO' && s !== 'UN')) throw new BadInput('Site must be HO or UN.');
+        const groups = uniq(list(q.groups));
+        if (groups.length > 100 || groups.some((g) => !GROUP_RE.test(g))) throw new BadInput('Report header group is not valid.');
+        Object.assign(out, { keys, gls: uniq(gls.map(glNo)), sites, groups });
     }
     return out;
 }
@@ -113,37 +147,89 @@ function params(q, { cell = false } = {}) {
 // ---------------------------------------------------------------- raw SAP / mock data (cached)
 
 const cache = new Map();
-function cached(key, refresh, load) {
+function cached(key, refresh, load, ttl = TTL) {
     const hit = cache.get(key);
-    if (!refresh && hit && Date.now() - hit.at < TTL) return hit.promise;
+    if (!refresh && hit && Date.now() - hit.at < ttl) return hit.promise;
     const promise = load();
     cache.set(key, { at: Date.now(), promise });
     promise.catch(() => cache.delete(key));
-    if (cache.size > 120) cache.delete(cache.keys().next().value);
+    if (cache.size > 400) cache.delete(cache.keys().next().value);
     return promise;
 }
 
-function rawSummary({ fy, period, company, refresh }) {
+const byCompany = (rows, companies) => (companies?.length ? rows.filter((r) => companies.includes(r.CompanyCode)) : rows);
+
+/** Summary rows of ONE fiscal period as SAP returns them (YTD + period amounts); all companies read once, filtered here. */
+function rawSummary({ fy, period, companies, refresh }) {
     const src = source();
-    return cached(`s|${src}|${fy}|${period}|${company}`, refresh, async () => {
-        const where = company ? { CompanyCode: company } : {};
-        return src === 'sap' ? sap.fetchSummary(fy, period, where) : mock.summary(fy, period, where);
-    });
+    return cached(`s|${src}|${fy}|${period}`, refresh, async () => (src === 'sap' ? G.sapSlot(() => sap.fetchSummary(fy, period, {})) : mock.summary(fy, period, {})))
+        .then((rows) => byCompany(rows, companies));
 }
 
-function rawDetail({ fy, period, company, refresh }, where = {}, opts = {}) {
+/**
+ * Detail rows of ONE fiscal period. `where` (report rows, sites) goes to SAP in direct mode when it is short; through
+ * the gateway, or for long lists, the whole period is read once (cached) and filtered here. The G/L list is always
+ * filtered here, without leading zeros on either side (SAP sends 507926; a padded 0000507926 never matched it).
+ * Company filter always here. SKUs come from the SKU master (skuGroups), never per line.
+ */
+function rawDetail({ fy, period, companies, refresh }, where = {}) {
     const src = source();
-    const w = { ...(company ? { CompanyCode: company } : {}), ...where };
-    if (src === 'sap' && sap.isGateway() && Object.keys(where).length) {
-        // Gateway: one read of the whole period (cached), filtered here; SKUs only for the lines of this cell.
-        return cached(`d|${src}|${fy}|${period}|${JSON.stringify(w)}|${opts.expand ? 1 : 0}`, refresh, async () => {
-            const all = await rawDetail({ fy, period, company, refresh }, {}, {});
-            const rows = all.filter((r) => sap.matches(r, w));
-            return opts.expand ? sap.expandSkus(rows) : rows;
-        });
+    const ck = `d|${src}|${fy}|${period}|${JSON.stringify(where)}`;
+    const { GLAccount: glList, ...rest } = where;
+    const gls = glList?.length ? new Set(glList.map(glNo)) : null;
+    const keep = (r) => !gls || gls.has(glNo(r.GLAccount));
+    const long = Object.values(rest).some((v) => Array.isArray(v) && v.length > 25);
+    let promise;
+    if (src === 'sap' && Object.keys(where).length && (sap.isGateway() || long || !Object.keys(rest).length)) {
+        promise = cached(ck, refresh, async () => (await rawDetail({ fy, period, refresh }, {})).filter((r) => sap.matches(r, rest) && keep(r)));
+    } else {
+        promise = cached(ck, refresh, async () => (await (src === 'sap' ? G.sapSlot(() => sap.fetchDetail(fy, period, rest)) : mock.detail(fy, period, rest))).filter(keep));
     }
-    return cached(`d|${src}|${fy}|${period}|${JSON.stringify(w)}|${opts.expand ? 1 : 0}`, refresh, async () =>
-        (src === 'sap' ? sap.fetchDetail(fy, period, w, opts) : mock.detail(fy, period, w, opts)));
+    return promise.then((rows) => byCompany(rows, companies));
+}
+
+/** What a drill-down shows of a SKU (ZNET_SALE_MASTER row). SkuGroupCode = ZSKUGRCODECRS. */
+const SKU_FIELDS = ['SkuGroupCode', 'Material', 'SKUSize', 'BaseUnit', 'Product', 'ProductType', 'ProductRange', 'ItemCategory', 'Season'];
+/**
+ * ZNET_SALE_MASTER by SKU group key (first 9 characters of ZSKUGRCODECRS): one read of the whole master (~1,600 rows),
+ * cached an hour. The drill-down joins its lines on SkuGroupKey - the association to_NetSaleMaster, without one SAP
+ * call per line.
+ */
+function skuGroupsAll(refresh) {
+    const src = source();
+    return cached(`m|${src}`, refresh, async () => {
+        const rows = src === 'sap' ? await G.sapSlot(() => sap.fetchSkuMaster()) : mock.skuMaster();
+        const m = new Map();
+        for (const r of rows) {
+            const k = String(r.SkuGroupKey || String(r.SkuGroupCode || '').slice(0, 9)).trim();
+            if (!k) continue;
+            const o = {};
+            for (const f of SKU_FIELDS) if (r[f] !== undefined && r[f] !== null && r[f] !== '') o[f] = typeof r[f] === 'string' ? r[f].trim() : r[f];
+            (m.get(k) || m.set(k, []).get(k)).push(o);
+        }
+        for (const list of m.values()) list.sort((a, b) => String(a.SkuGroupCode ?? '').localeCompare(String(b.SkuGroupCode ?? '')) || String(a.Material ?? '').localeCompare(String(b.Material ?? '')));
+        return m;
+    }, MASTER_TTL);
+}
+
+/** Read each needed period at most 3 at a time. */
+async function readPeriods(periods, load) {
+    const got = await mapLimit(periods, 3, async (q) => [q, await load(q)]);
+    return new Map(got);
+}
+
+/** Summary rows of the selection (see selection.js): the selected periods added up, in as few SAP reads as possible. */
+async function selectionSummary(p) {
+    const terms = S.termsOf(p.periods, { ytdOnly: envBudgetSource() === 'sap' });
+    const reads = await readPeriods(uniq(terms.map((t) => t.period)), (q) => rawSummary({ ...p, period: q }));
+    return S.combine(terms.map((t) => ({ term: t, rows: reads.get(t.period) })), S.summaryKey, p.period);
+}
+
+/** Detail rows of the selection, added up per posting line. */
+async function selectionDetail(p, where = {}) {
+    const terms = S.termsOf(p.periods);
+    const reads = await readPeriods(uniq(terms.map((t) => t.period)), (q) => rawDetail({ ...p, period: q }, where));
+    return S.combine(terms.map((t) => ({ term: t, rows: reads.get(t.period) })), S.lineKey, p.period);
 }
 
 // ---------------------------------------------------------------- settings in force
@@ -179,18 +265,18 @@ function enrich(rows, mapping) {
 const r2 = (x) => Math.round(x * 100) / 100;
 
 /**
- * The report rows of one period: SAP rows, exclusions (rules in force at asOf, default the period itself), budget.
- * Returns { rows, excluded, rules (in force), budget: { source, versions } }.
+ * The report rows of the selection: SAP rows, exclusions (rules in force at asOf, default the latest selected period),
+ * budget. Returns { rows, excluded, rules (in force), budget: { source, versions } }.
  */
 async function reportRows(p, { asOf, mapping, rules, budget = true } = {}) {
     mapping = mapping || await mappingNow();
-    const rows0 = enrich(await rawSummary(p), mapping);
+    const rows0 = enrich(await selectionSummary(p), mapping);
     let rows = rows0; let excluded = null; let inForce = [];
     if (p.exclusions) {
         const all = rules || await rulesNow();
         inForce = R.activeRules(all, asOf?.fy ?? p.fy, asOf?.period ?? p.period);
         if (inForce.length) {
-            const detail = inForce.some((r) => r.level === 'detail') ? await rawDetail(p) : null;
+            const detail = inForce.some((r) => r.level === 'detail') ? await selectionDetail(p) : null;
             const out = R.applyToSummary(rows0, inForce, detail);
             rows = out.rows; excluded = out.excluded;
         }
@@ -199,9 +285,11 @@ async function reportRows(p, { asOf, mapping, rules, budget = true } = {}) {
     if (budget) {
         const active = await activeBudget(p.fy);
         if (Object.keys(active).length) {
-            rows = applyUploadedBudget(rows, active, p.period, mapping);
+            rows = applyUploadedBudget(rows, active, p.periods, mapping);
+            // Budget-only rows of other companies leave with the company filter (a line without company stays).
+            if (p.companies.length) rows = rows.filter((r) => !r.IsBudget || !r.CompanyCode || p.companies.includes(r.CompanyCode));
             b = { source: 'upload', versions: Object.fromEntries(Object.entries(active).map(([k, v]) => [k, { id: v.version.id, version: v.version.version, uploadedBy: v.version.uploadedBy, uploadedAt: v.version.uploadedAt, total: v.version.total }])) };
-        } else if (b.source === 'mock') applyMockBudget(rows, p.fy, p.period);
+        } else if (b.source === 'mock') applyMockBudget(rows, p.fy, p.periods);
     }
     return { rows, excluded, rules: inForce, budget: b, mapping, rawCount: rows0.length };
 }
@@ -236,54 +324,126 @@ async function mapLimit(items, limit, fn) {
 
 // ---------------------------------------------------------------- routes
 
+// Order: headers on every answer -> flood ceiling per IP -> session + Manage Access -> per-user limits (see guard.js).
+router.use(G.securityHeaders);
+router.use(G.ipLimit);
 router.use(requireUser);
+router.use(G.inFlight);
+router.use(...G.userLimits);
+
+/** What the browser is told about a failure: our own messages as they are; SAP's own error text only in the server log. */
+function publicError(e, status) {
+    if (status === 500) return 'Something went wrong while reading the expenses.';
+    if (e instanceof sap.SapError && /^SAP refused/.test(e.message)) return 'SAP refused the request. Please try again later; if it persists, contact IT.';
+    if (e instanceof sap.SapError && /^SAP error/.test(e.message)) return 'SAP returned an error. Please try again; if it persists, contact IT (the details are in the server log).';
+    return e.message;
+}
 
 const handle = (name, fn) => async (req, res) => {
     const t0 = Date.now();
     try {
         const body = await fn(req);
         console.log(`[publicity-expenses] ${req.email} ${name} ${body.rows ? body.rows.length : ''} ${Date.now() - t0}ms`);
-        res.set('Cache-Control', 'no-store').json({ success: true, ...body });
+        await G.sendJson(req, res, 200, { success: true, ...body });
     } catch (e) {
         const status = e.status || 500;
         if (status >= 500) console.error(`[publicity-expenses] ${name}`, e.message);
-        res.status(status).json({ success: false, error: status === 500 ? 'Something went wrong while reading the expenses.' : e.message });
+        if (status === 503 && e instanceof G.Busy) res.set('Retry-After', '30');
+        await G.sendJson(req, res, status, { success: false, error: publicError(e, status) }).catch(() => {});
     }
 };
 const audit = (req, action, detail) => store().audit.add(req.email, action, detail);
 
-const meta = (p, extra = {}) => ({ source: source(), system: source() === 'sap' ? sap.systemLabel() : 'Mock data', fy: p.fy, period: p.period, company: p.company, exclusionsOn: p.exclusions, fetchedAt: new Date().toISOString(), ...extra });
+const meta = (p, extra = {}) => ({
+    source: source(), system: source() === 'sap' ? sap.systemLabel() : 'Mock data', fy: p.fy, period: p.period, periods: p.periods,
+    companies: p.companies, exclusionsOn: p.exclusions, fetchedAt: new Date().toISOString(), ...extra,
+});
 
-router.get('/health', handle('health', async () => ({ ok: true, source: source(), budget: envBudgetSource(), system: source() === 'sap' ? sap.systemLabel() : 'Mock data' })));
+router.get('/health', handle('health', async () => ({ ok: true, source: source(), budget: envBudgetSource(), system: source() === 'sap' ? sap.systemLabel() : 'Mock data', sapReads: G.sapStats() })));
 router.get('/me', handle('me', async (req) => ({ email: req.email, role: req.role, admin: req.role === 'Admin' })));
 router.get('/config', handle('config', async () => ({ config: { ...publicConfig(await mappingNow()), dimensions: Object.entries(R.DIMENSIONS).map(([id, d]) => ({ id, label: d.label, level: d.level })) } })));
 
 router.get('/summary', handle('summary', async (req) => {
     const p = params(req.query);
     const out = await reportRows(p);
-    return { rows: out.rows, meta: meta(p, { sourceRows: out.rawCount, budget: out.budget.source, budgetVersions: out.budget.versions, exclusions: exclusionMeta(out.excluded, out.rules) }) };
+    const latest = await rawSummary({ fy: p.fy, period: p.period }); // cached by now
+    // Company codes with data in the latest selected period (all companies), for the company filter.
+    const companiesInData = uniq(latest.map((r) => r.CompanyCode).filter(Boolean)).sort();
+    return { rows: out.rows.map(summaryRow), meta: meta(p, { sourceRows: out.rawCount, companiesInData, budget: out.budget.source, budgetVersions: out.budget.versions, exclusions: exclusionMeta(out.excluded, out.rules) }) };
 }));
 
-router.get('/detail', handle('detail', async (req) => {
-    const p = params(req.query, { cell: true });
+/** What the report needs of a summary row (the CDS sends ~40 more technical fields; they never reach the browser). */
+const SUMMARY_FIELDS = ['CompanyCode', 'ReportingKey', 'GLAccount', 'Site', 'GLAccountName', 'ReportHeader', 'ReportHeaderSequence', 'FSVItem', 'ProductGroup', 'SerialNo',
+    'ItemCategory', 'T1', 'ProductRange', 'T2', 'ProductType', 'T3', 'Product', 'MISHeading', 'VisibleInMIS', 'Currency', 'HeaderGroup', 'HeaderLabel', 'SpendClass',
+    'InMIS', 'Medium', 'Unmapped', 'IsBudget', ...sap.AMOUNTS];
+const summaryRow = (r) => { const o = {}; for (const f of SUMMARY_FIELDS) if (r[f] !== undefined) o[f] = r[f]; return o; };
+
+/** What a drill-down line sends to the browser: the posting-line fields, the selection totals, one amount per selected period. */
+const DRILL_FIELDS = ['CompanyCode', 'ReportingKey', 'GLAccount', 'GLAccountName', 'Site', 'HeaderGroup', 'HeaderLabel', 'CostCenter', 'CostCenterName', 'CostCenterType',
+    'ProfitCenter', 'MappingRule', 'LookupField', 'DerivedCostCenterNo', 'ProductHierarchy', 'SalesBrand', 'SkuGroupKey', 'ProductGroup', 'ItemCategory', 'ProductRange', 'ProductType',
+    'MISHeading', 'Product', 'CYYTDAmount', 'PYYTDAmount', 'CYPeriodAmount', 'PYPeriodAmount', 'cy', 'py', 'to_NetSaleMaster', 'ExcludedBy'];
+const drillRow = (r) => { const o = {}; for (const f of DRILL_FIELDS) if (r[f] !== undefined && r[f] !== '') o[f] = r[f]; return o; };
+
+/*
+   Drill-down of any report figure: one report row (key) or a sub-total (keys of its rows), optionally one G/L, sites,
+   header groups. Lines = G/L x cost centre x profit centre with the selection total (read like the summary, so it equals
+   the report figure) and the amount of each selected period (cy[i] / py[i] for periods[i]) - the basis to check against
+   SAP (FAGLB03 / KSB1). The SKUs of every line (ZNET_SALE_MASTER: ZSKUGRCODECRS, product, type, range, category) come
+   once per SKU group in skuGroups { SkuGroupKey: [...] } from the cached master - no SAP call per line, any drill-down.
+   Older clients asking skus: true (or GET) also get them on each line (to_NetSaleMaster). If the master cannot be read,
+   the lines still come, with skuError.
+*/
+async function drill(req) {
+    const src = req.method === 'POST' ? (req.body || {}) : req.query;
+    const p = params(src, { cell: true });
     const mapping = await mappingNow();
-    const where = { ReportingKey: p.key, ...(p.gl ? { GLAccount: p.gl } : {}), ...(p.site ? { Site: p.site } : {}) };
-    let rows = enrich(await rawDetail(p, where, { expand: true }), mapping);
+    const where = { ...(p.keys.length ? { ReportingKey: p.keys } : {}), ...(p.gls.length ? { GLAccount: p.gls } : {}), ...(p.sites.length ? { Site: p.sites } : {}) };
+    const terms = S.termsOf(p.periods);
+    const perLine = req.method === 'GET' || src.skus === true || src.skus === 'true';
+    const masterP = skuGroupsAll(p.refresh).then((m) => ({ m }), (e) => {
+        console.error('[publicity-expenses] SKU master', e.message);
+        return { error: e instanceof G.Busy ? e.message : 'The SKU master (ZNET_SALE_MASTER) could not be read just now - the posting lines are complete; try again for the SKU columns.' };
+    });
+    const reads = await readPeriods(uniq([...p.periods, ...terms.map((t) => t.period)]).sort((a, b) => a - b), (q) => rawDetail({ ...p, period: q }, where));
+    const combined = S.combine(terms.map((t) => ({ term: t, rows: reads.get(t.period) })), S.lineKey, p.period);
+    const index = new Map(combined.map((r) => [S.lineKey(r), Object.assign(r, { cy: p.periods.map(() => 0), py: p.periods.map(() => 0) })]));
+    p.periods.forEach((q, i) => {
+        for (const d of reads.get(q)) {
+            let o = index.get(S.lineKey(d));
+            if (!o) { o = { ...d, CYYTDAmount: 0, PYYTDAmount: 0, cy: p.periods.map(() => 0), py: p.periods.map(() => 0) }; index.set(S.lineKey(d), o); combined.push(o); }
+            o.cy[i] = r2(o.cy[i] + (Number(d.CYPeriodAmount) || 0)); o.py[i] = r2(o.py[i] + (Number(d.PYPeriodAmount) || 0));
+        }
+    });
+    let rows = enrich(combined, mapping);
+    if (p.groups.length) rows = rows.filter((r) => p.groups.includes(r.HeaderGroup));
     let excluded = [];
     if (p.exclusions) {
         const inForce = R.activeRules(await rulesNow(), p.fy, p.period);
         if (inForce.length) ({ rows, excluded } = R.applyToDetail(rows, inForce));
     }
-    return { rows: rows.map(sap.publicRow), excluded: excluded.map(sap.publicRow), meta: meta(p) };
-}));
+    // Lines that are zero in every selected period and both totals carry nothing to check.
+    const live = (r) => Math.abs(r.CYYTDAmount) >= 0.005 || Math.abs(r.PYYTDAmount) >= 0.005 || r.cy.some((v) => Math.abs(v) >= 0.005) || r.py.some((v) => Math.abs(v) >= 0.005);
+    rows = rows.filter(live); excluded = excluded.filter(live);
+    if (rows.length > MAX_LINES) throw new BadInput(`${rows.length} posting lines - too many to show at once. Drill into a smaller part of the report or pick fewer periods.`);
+    const master = await masterP;
+    const skuGroups = {};
+    if (master.m) for (const r of [...rows, ...excluded]) if (r.SkuGroupKey && master.m.has(r.SkuGroupKey)) skuGroups[r.SkuGroupKey] = master.m.get(r.SkuGroupKey);
+    const out = (r) => { const o = drillRow(r); if (perLine && master.m) o.to_NetSaleMaster = (r.SkuGroupKey && master.m.get(r.SkuGroupKey)) || []; return o; };
+    return {
+        rows: rows.map(out), excluded: excluded.map(out), skuGroups, ...(master.error ? { skuError: master.error } : {}),
+        periods: p.periods, reads: { terms, text: S.describe(terms) }, meta: meta(p),
+    };
+}
+router.get('/detail', handle('detail', drill));
+router.post('/detail', handle('detail', drill));
 
 router.get('/trend', handle('trend', async (req) => {
     const p = params(req.query);
     const [mapping, rules] = await Promise.all([mappingNow(), rulesNow()]);
     const periods = Array.from({ length: p.period }, (_, i) => i + 1);
     const months = await mapLimit(periods, 3, async (period) => {
-        // Rules in force for the selected period apply to every month, so the months add up to the YTD shown.
-        const { rows } = await reportRows({ ...p, period }, { asOf: p, mapping, rules, budget: false });
+        // Rules in force for the latest selected period apply to every month, so the months add up to the figures shown.
+        const { rows } = await reportRows({ ...p, periods: [period], period }, { asOf: p, mapping, rules, budget: false });
         const byGroup = {};
         let cy = 0; let py = 0;
         for (const r of rows) {
@@ -294,13 +454,13 @@ router.get('/trend', handle('trend', async (req) => {
         for (const g of Object.values(byGroup)) { g.cy = r2(g.cy); g.py = r2(g.py); }
         return { period, cy: r2(cy), py: r2(py), byGroup };
     });
-    return { months, meta: meta(p) };
+    return { months, periods: p.periods, meta: meta(p) };
 }));
 
 router.get('/breakdown', handle('breakdown', async (req) => {
     const p = params(req.query);
     const mapping = await mappingNow();
-    const [detail0, summary0] = await Promise.all([rawDetail(p), rawSummary(p)]);
+    const [detail0, summary0] = await Promise.all([selectionDetail(p), selectionSummary(p)]);
     let rows = enrich(detail0, mapping);
     const glTotal = r2(summary0.reduce((s, r) => s + r.CYYTDAmount, 0));
     let excludedRows = [];
@@ -331,7 +491,7 @@ router.get('/breakdown', handle('breakdown', async (req) => {
 async function candidates(p, dimension) {
     const d = R.DIMENSIONS[dimension];
     if (!d) throw new BadInput('Unknown dimension.');
-    const rows = d.level === 'summary' ? await rawSummary(p) : await rawDetail(p);
+    const rows = d.level === 'summary' ? await selectionSummary(p) : await selectionDetail(p);
     const m = new Map();
     for (const r of rows) {
         const v = String(r[d.field] ?? '').trim();
@@ -358,12 +518,12 @@ async function candidates(p, dimension) {
 /** What one rule would remove from the selected period on its own (ignores other rules), with the biggest lines. */
 async function impactAlone(p, rule) {
     const [compiled] = R.activeRules([{ ...rule, id: rule.id || 0, active: true, fromFy: 2000, fromPeriod: 1, toFy: null, toPeriod: null }], p.fy, p.period);
-    const summary = await rawSummary(p);
     if (compiled.level === 'summary') {
+        const summary = await selectionSummary(p);
         const hit = summary.filter((r) => compiled.match(r[compiled.field]));
         return { cy: r2(hit.reduce((s, r) => s + r.CYYTDAmount, 0)), py: r2(hit.reduce((s, r) => s + r.PYYTDAmount, 0)), lines: hit.length, matched: new Set(hit.map((r) => R.norm(r[compiled.field]))).size };
     }
-    const detail = await rawDetail(p);
+    const detail = await selectionDetail(p);
     const hit = detail.filter((r) => compiled.match(r[compiled.field]));
     return { cy: r2(hit.reduce((s, r) => s + r.CYYTDAmount, 0)), py: r2(hit.reduce((s, r) => s + r.PYYTDAmount, 0)), lines: hit.length, matched: new Set(hit.map((r) => R.norm(r[compiled.field]))).size };
 }
@@ -372,7 +532,7 @@ router.get('/exclusions', requireAdmin, handle('exclusions', async (req) => {
     const p = params(req.query);
     const rules = await rulesNow();
     const { excluded, rules: inForce } = await reportRows({ ...p, exclusions: true }, { rules, budget: false });
-    const summaryTotal = r2((await rawSummary(p)).reduce((s, r) => s + r.CYYTDAmount, 0));
+    const summaryTotal = r2((await selectionSummary(p)).reduce((s, r) => s + r.CYYTDAmount, 0));
     const inForceIds = new Set(inForce.map((r) => r.id));
     const list = await Promise.all(rules.map(async (r) => ({
         ...r,
@@ -458,7 +618,7 @@ router.get('/budget/template', requireAdmin, handle('budget-template', async (re
     const p = params(req.query);
     const kind = String(req.query.kind || 'RB').toUpperCase() === 'OB' ? 'OB' : 'RB';
     const mapping = await mappingNow();
-    const rows = enrich(await rawSummary(p), mapping);
+    const rows = enrich(await selectionSummary(p), mapping);
     const active = await store().budget.active(Number(p.fy));
     const current = new Map((active[kind]?.lines || []).map((l) => [`${l.reportingKey}|${l.headerGroup}|${l.site}`, l]));
     const m = new Map();
@@ -490,7 +650,7 @@ router.post('/budget/upload', requireAdmin, handle('budget-upload', async (req) 
     // Reporting keys known in SAP for the year (period 12 = every row that has postings in the year so far or last year).
     const known = new Map();
     if (Number.isInteger(fy)) {
-        for (const r of await rawSummary({ fy: String(fy), period: 12, company: '' }).catch(() => [])) {
+        for (const r of await rawSummary({ fy: String(fy), period: 12 }).catch(() => [])) {
             if (!known.has(r.ReportingKey)) known.set(r.ReportingKey, { key: r.ReportingKey, companyCode: r.CompanyCode });
             if (!known.has(r.ReportingKey.toUpperCase())) known.set(r.ReportingKey.toUpperCase(), { key: r.ReportingKey, companyCode: r.CompanyCode });
         }
@@ -536,7 +696,7 @@ router.post('/budget/deactivate', requireAdmin, handle('budget-deactivate', asyn
 router.get('/settings/mapping', requireAdmin, handle('mapping', async (req) => {
     const p = params(req.query);
     const mapping = await mappingNow();
-    const raw = await rawSummary(p);
+    const raw = await selectionSummary(p);
     const headers = new Map(); const gls = new Map();
     for (const r of raw) {
         const g = headerGroup(r.ReportHeader, mapping);
@@ -567,4 +727,4 @@ router.get('/audit', requireAdmin, handle('audit', async () => ({ entries: await
 router.use((req, res) => res.status(404).json({ success: false, error: 'Not found.' }));
 
 module.exports = router;
-module.exports._test = { params, enrich, totalBy, source, reportRows };
+module.exports._test = { params, enrich, totalBy, source, reportRows, selectionSummary, selectionDetail };

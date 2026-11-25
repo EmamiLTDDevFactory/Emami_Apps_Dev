@@ -21,15 +21,21 @@ type GridRow = MobCapRow & {
   _saving: boolean;
 };
 
+// `label` (code + description) is used for the top filter dropdown; `fullName` (description only,
+// no code prefix) is what the per-row category select shows - the admin edits rows by category
+// name, not by memorising the NS/SC/SH/SM/SE/SG codes.
 const MCAT_OPTIONS = [
-  { value: 'NS', label: 'NS — Non-sales' },
-  { value: 'SC', label: 'SC — Sales CCD' },
-  { value: 'SH', label: 'SH — Sales HCD' },
-  { value: 'SM', label: 'SM — Sales MT' },
-  { value: 'SE', label: 'SE — Sales Ecom' },
-  { value: 'SG', label: 'SG — Sales GT' },
+  { value: 'NS', label: 'NS — Non-sales', fullName: 'Non Sales' },
+  { value: 'SC', label: 'SC — Sales CCD', fullName: 'Sales CCD' },
+  { value: 'SH', label: 'SH — Sales HCD', fullName: 'Sales HCD' },
+  { value: 'SM', label: 'SM — Sales MT', fullName: 'Sales MT' },
+  { value: 'SE', label: 'SE — Sales Ecom', fullName: 'Sales ECOM' },
+  { value: 'SG', label: 'SG — Sales GT', fullName: 'Sales GT' },
 ];
 const MCAT_FILTER_OPTIONS = [{ value: '', label: 'All categories' }, ...MCAT_OPTIONS];
+// Already-saved rows show the full name too (not just the editable dropdown) - the raw code alone
+// isn't meaningful to read at a glance in a table full of them.
+const mcatFullName = (value: string) => MCAT_OPTIONS.find((o) => o.value === value)?.fullName || value;
 
 const TRFGR_OPTIONS = ['E1', 'E2', 'M1', 'M2', 'M3', 'M4', 'M5'].map((v) => ({ value: v, label: v }));
 
@@ -383,10 +389,10 @@ export default function MobCapPage() {
                             <Select
                               value={row.Mcat}
                               onChange={(v) => updateField(row._cid, { Mcat: v, Kostl: v === 'NS' ? '' : row.Kostl })}
-                              options={MCAT_OPTIONS.map((o) => ({ value: o.value, label: o.value }))}
+                              options={MCAT_OPTIONS.map((o) => ({ value: o.value, label: o.fullName }))}
                               className="!h-7 !w-full !min-w-0 !py-0.5 !px-1 text-2xs"
                             />
-                          ) : row.Mcat}
+                          ) : mcatFullName(row.Mcat)}
                         </td>
                         <td className="p-1 align-top">
                           {row._isNew ? (
@@ -463,9 +469,9 @@ export default function MobCapPage() {
                         <Select
                           value={row.Mcat}
                           onChange={(v) => updateField(row._cid, { Mcat: v, Kostl: v === 'NS' ? '' : row.Kostl })}
-                          options={MCAT_OPTIONS.map((o) => ({ value: o.value, label: o.value }))}
+                          options={MCAT_OPTIONS.map((o) => ({ value: o.value, label: o.fullName }))}
                         />
-                      ) : <p className="text-sm font-semibold text-ink">{row.Mcat}</p>}
+                      ) : <p className="text-sm font-semibold text-ink">{mcatFullName(row.Mcat)}</p>}
                     </Field>
                     <Field label="Cost Centre">
                       {row._isNew ? (
