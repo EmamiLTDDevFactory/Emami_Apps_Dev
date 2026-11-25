@@ -104,6 +104,8 @@ const MAX_LINES = 25000;
 /** A query value or a JSON array -> trimmed, non-empty strings ("a,b" works too). */
 const list = (v) => (Array.isArray(v) ? v : String(v ?? '').split(',')).map((s) => String(s ?? '').trim()).filter(Boolean);
 const uniq = (xs) => [...new Set(xs)];
+/** G/L account without leading zeros: SAP sends 507926, the mock (and older data) 0000507926 - compared in this form. */
+const glNo = (g) => String(g ?? '').trim().replace(/^0+(?=\d)/, '');
 
 /** Selection from a query string or a JSON body. cell = also the drill-down filters (keys, G/L, sites, header groups). */
 function params(q, { cell = false } = {}) {
@@ -131,7 +133,7 @@ function params(q, { cell = false } = {}) {
         if (sites.some((s) => s !== 'HO' && s !== 'UN')) throw new BadInput('Site must be HO or UN.');
         const groups = uniq(list(q.groups));
         if (groups.length > 100 || groups.some((g) => !GROUP_RE.test(g))) throw new BadInput('Report header group is not valid.');
-        Object.assign(out, { keys, gls: gls.map((g) => g.padStart(10, '0')), sites, groups });
+        Object.assign(out, { keys, gls: uniq(gls.map(glNo)), sites, groups });
     }
     return out;
 }
@@ -159,23 +161,27 @@ function rawSummary({ fy, period, companies, refresh }) {
 }
 
 /**
- * Detail rows of ONE fiscal period. `where` (report rows, G/L, sites) goes to SAP in direct mode when it is short; through
- * the gateway, or for long lists, the whole period is read once (cached) and filtered here. SKUs (expand) only for the
- * lines asked for. Company filter always here.
+ * Detail rows of ONE fiscal period. `where` (report rows, sites) goes to SAP in direct mode when it is short; through
+ * the gateway, or for long lists, the whole period is read once (cached) and filtered here. The G/L list is always
+ * filtered here, without leading zeros on either side (SAP sends 507926; a padded 0000507926 never matched it). SKUs
+ * (expand) only for the lines asked for. Company filter always here.
  */
 function rawDetail({ fy, period, companies, refresh }, where = {}, opts = {}) {
     const src = source();
     const ck = `d|${src}|${fy}|${period}|${JSON.stringify(where)}|${opts.expand ? 1 : 0}`;
-    const long = Object.values(where).some((v) => Array.isArray(v) && v.length > 25);
+    const { GLAccount: glList, ...rest } = where;
+    const gls = glList?.length ? new Set(glList.map(glNo)) : null;
+    const keep = (r) => !gls || gls.has(glNo(r.GLAccount));
+    const long = Object.values(rest).some((v) => Array.isArray(v) && v.length > 25);
     let promise;
-    if (src === 'sap' && Object.keys(where).length && (sap.isGateway() || long)) {
+    if (src === 'sap' && Object.keys(where).length && (sap.isGateway() || long || !Object.keys(rest).length)) {
         promise = cached(ck, refresh, async () => {
             const all = await rawDetail({ fy, period, refresh }, {}, {});
-            const rows = all.filter((r) => sap.matches(r, where));
+            const rows = all.filter((r) => sap.matches(r, rest) && keep(r));
             return opts.expand && sap.isGateway() ? sap.expandSkus(rows) : rows;
         });
     } else {
-        promise = cached(ck, refresh, async () => (src === 'sap' ? sap.fetchDetail(fy, period, where, opts) : mock.detail(fy, period, where, opts)));
+        promise = cached(ck, refresh, async () => (await (src === 'sap' ? sap.fetchDetail(fy, period, rest, opts) : mock.detail(fy, period, rest, opts))).filter(keep));
     }
     return promise.then((rows) => byCompany(rows, companies));
 }
