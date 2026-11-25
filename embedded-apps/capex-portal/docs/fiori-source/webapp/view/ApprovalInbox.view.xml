@@ -1,0 +1,254 @@
+<mvc:View
+    controllerName="zcapexportal.controller.ApprovalInbox"
+    xmlns="sap.m"
+    xmlns:mvc="sap.ui.core.mvc"
+    xmlns:core="sap.ui.core"
+    xmlns:l="sap.ui.layout"
+    height="100%">
+
+    <Page id="pageApprovalInbox" showHeader="false" class="zcpxApp">
+        <content>
+            <VBox class="zcpxScreen">
+
+                <VBox class="zcpxHero zcpxSection">
+                    <HBox justifyContent="SpaceBetween" alignItems="Start" wrap="Wrap">
+                        <VBox>
+                            <Text text="{i18n>approvalInboxTitle}" class="zcpxHeroTitle"/>
+                            <Text text="{app>/user/name} · {app>/user/role}" class="zcpxHeroSub"/>
+                        </VBox>
+                        <VBox alignItems="End">
+                            <Text text="{i18n>pendingWithMe}" class="zcpxHeroSub"/>
+                            <Text text="{inbox>/summary/count}" class="zcpxHeroTitle"/>
+                            <Text text="{path: 'inbox>/summary/value', formatter: '.formatter.money'}" class="zcpxHeroSub"/>
+                        </VBox>
+                    </HBox>
+                </VBox>
+
+                <!-- SLA summary - clicking a tile filters the inbox table below using
+                     the same cbSla combo the filter bar already has (data is already on
+                     this same screen, so filter-in-place, not a page jump - see
+                     Dashboard.controller.js#_wireKpiTiles's sibling note on when each
+                     pattern applies). -->
+                <l:Grid class="zcpxSection" defaultSpan="XL4 L4 M4 S12" hSpacing="1" vSpacing="1">
+                    <VBox id="tileSlaOnTrack" class="zcpxKpi zcpxKpi--success sapMPointer">
+                        <Text text="{i18n>slaOnTrack}" class="zcpxKpiLabel"/>
+                        <Text text="{inbox>/summary/onTrack}" class="zcpxKpiValue"/>
+                        <Text text="Within 3 days" class="zcpxKpiFoot"/>
+                    </VBox>
+                    <VBox id="tileSlaAtRisk" class="zcpxKpi zcpxKpi--warning sapMPointer">
+                        <Text text="{i18n>slaAtRisk}" class="zcpxKpiLabel"/>
+                        <Text text="{inbox>/summary/atRisk}" class="zcpxKpiValue"/>
+                        <Text text="4-5 days pending" class="zcpxKpiFoot"/>
+                    </VBox>
+                    <VBox id="tileSlaBreached" class="zcpxKpi zcpxKpi--error sapMPointer">
+                        <Text text="{i18n>slaBreached}" class="zcpxKpiLabel"/>
+                        <Text text="{inbox>/summary/breached}" class="zcpxKpiValue"/>
+                        <Text text="Over 5 days — escalated" class="zcpxKpiFoot"/>
+                    </VBox>
+                </l:Grid>
+
+                <!-- Filters -->
+                <VBox class="zcpxCard zcpxCardPad zcpxSection">
+                    <HBox wrap="Wrap" alignItems="End">
+                        <VBox class="sapUiTinyMarginEnd sapUiTinyMarginBottom" width="14rem">
+                            <Label text="{i18n>search1}"/>
+                            <SearchField id="sfInbox" placeholder="Document number or title" search=".onFilter" liveChange=".onFilter"/>
+                        </VBox>
+                        <VBox class="sapUiTinyMarginEnd sapUiTinyMarginBottom" width="10rem">
+                            <Label text="SLA"/>
+                            <ComboBox id="cbSla" change=".onFilter" placeholder="All">
+                                <core:Item key="BREACH" text="Breached"/>
+                                <core:Item key="RISK" text="At Risk"/>
+                                <core:Item key="OK" text="On Track"/>
+                            </ComboBox>
+                        </VBox>
+                        <VBox class="sapUiTinyMarginEnd sapUiTinyMarginBottom" width="10rem">
+                            <Label text="{i18n>priority}"/>
+                            <ComboBox id="cbPriority" change=".onFilter" placeholder="All">
+                                <core:Item key="High" text="High"/>
+                                <core:Item key="Medium" text="Medium"/>
+                                <core:Item key="Low" text="Low"/>
+                            </ComboBox>
+                        </VBox>
+                        <Button text="Clear" icon="sap-icon://clear-filter" press=".onClearFilter" class="sapUiTinyMarginBottom"/>
+                    </HBox>
+                </VBox>
+
+                <!-- CPE approvals -->
+                <VBox class="zcpxCard zcpxSection">
+                    <Table
+                        id="tblInboxCpe"
+                        items="{inbox>/items}"
+                        growing="true"
+                        growingThreshold="20"
+                        mode="MultiSelect"
+                        selectionChange=".onInboxSelectionChange"
+                        noDataText="No CPEs are waiting for your approval."
+                        sticky="ColumnHeaders">
+
+                        <headerToolbar>
+                            <OverflowToolbar>
+                                <Title text="CPE Approvals" level="H3"/>
+                                <ToolbarSpacer/>
+                                <Button
+                                    text="Approve Selected"
+                                    icon="sap-icon://accept"
+                                    type="Emphasized"
+                                    press=".onBulkApprove"/>
+                                <Button icon="sap-icon://refresh" tooltip="{i18n>refresh}" press=".onRefresh" type="Transparent"/>
+                            </OverflowToolbar>
+                        </headerToolbar>
+
+                        <columns>
+                            <Column width="10rem"><Text text="{i18n>cpeId}"/></Column>
+                            <Column minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>cpeTitle}"/></Column>
+                            <Column minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>plant}"/></Column>
+                            <Column hAlign="End" minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>cpeAmount}"/></Column>
+                            <Column minScreenWidth="Desktop" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>submittedBy}"/></Column>
+                            <Column minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="Currently With"/></Column>
+                            <Column hAlign="End" width="8rem"><Text text="SLA"/></Column>
+                            <Column hAlign="End" width="6rem" minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text=""/></Column>
+                        </columns>
+
+                        <items>
+                            <ColumnListItem
+                                type="Navigation"
+                                press=".onRowPress">
+                                <cells>
+                                    <VBox>
+                                        <ObjectIdentifier
+                                            title="{inbox>docId}"
+                                            text="{path: 'inbox>submittedOn', formatter: '.formatter.date'}"/>
+                                        <ObjectStatus
+                                            text="Already Actioned"
+                                            icon="sap-icon://sys-cancel"
+                                            visible="{parts: ['inbox>docId', 'inbox>docType'], formatter: '.formatIsStale'}"/>
+                                    </VBox>
+                                    <VBox>
+                                        <Text text="{inbox>title}"/>
+                                        <ObjectStatus
+                                            text="{inbox>priority} priority"
+                                            state="{path: 'inbox>priority', formatter: '.formatPriorityState'}"/>
+                                    </VBox>
+                                    <Text text="{inbox>plantName}"/>
+                                    <ObjectNumber
+                                        number="{path: 'inbox>amount', formatter: '.formatter.inLakhs'}"
+                                        emphasized="true"/>
+                                    <Text text="{inbox>submittedBy}"/>
+                                    <ObjectStatus
+                                        text="{inbox>currentLevel}"
+                                        state="{path: 'inbox>currentLevel', formatter: '.formatCurrentLevelState'}"/>
+                                    <ObjectStatus
+                                        text="{path: 'inbox>daysPending', formatter: '.formatter.slaText'}"
+                                        state="{path: 'inbox>daysPending', formatter: '.formatter.slaState'}"
+                                        icon="{= ${inbox>daysPending} > 5 ? 'sap-icon://alert' : '' }"/>
+                                    <Button
+                                        text="Review"
+                                        type="Emphasized"
+                                        press=".onReview"/>
+                                </cells>
+                            </ColumnListItem>
+                        </items>
+                    </Table>
+                </VBox>
+
+                <!-- Budget approvals - kept as its own table rather than mixed into
+                     the CPE one above, since the two document types don't share a
+                     single backend bulk-action function and the user found a merged
+                     list confusing even with a type chip (CAPEX_SESSION_LOG.md Open
+                     Issue #100). Same "inbox>/items" data as the CPE table above,
+                     just filtered to the other docType - see onFilter. Bulk-select
+                     here doesn't call a BulkApprove-style batch function (none exists
+                     for Budget per $metadata) - onBulkApproveBudget instead loops the
+                     same single-document ApproveDocument call BudgetApprovalDetail
+                     already uses, one Budget at a time (CAPEX_SESSION_LOG.md Open
+                     Issue #109). -->
+                <VBox class="zcpxCard zcpxSection">
+                    <Table
+                        id="tblInboxBudget"
+                        items="{inbox>/items}"
+                        growing="true"
+                        growingThreshold="20"
+                        mode="MultiSelect"
+                        selectionChange=".onInboxSelectionChange"
+                        noDataText="No Budgets are waiting for your approval."
+                        sticky="ColumnHeaders">
+
+                        <headerToolbar>
+                            <OverflowToolbar>
+                                <Title text="Budget Approvals" level="H3"/>
+                                <ToolbarSpacer/>
+                                <Button
+                                    text="Approve Selected"
+                                    icon="sap-icon://accept"
+                                    type="Emphasized"
+                                    press=".onBulkApproveBudget"/>
+                                <Button icon="sap-icon://refresh" tooltip="{i18n>refresh}" press=".onRefresh" type="Transparent"/>
+                            </OverflowToolbar>
+                        </headerToolbar>
+
+                        <columns>
+                            <Column width="10rem"><Text text="{i18n>budgetId}"/></Column>
+                            <Column minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>budgetTitle}"/></Column>
+                            <Column minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>plant}"/></Column>
+                            <Column hAlign="End" minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>budgetAmount}"/></Column>
+                            <Column minScreenWidth="Desktop" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>submittedBy}"/></Column>
+                            <Column minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="Currently With"/></Column>
+                            <Column hAlign="End" width="8rem"><Text text="SLA"/></Column>
+                            <Column hAlign="Center" width="3rem"><Text text=""/></Column>
+                            <Column hAlign="End" width="6rem" minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text=""/></Column>
+                        </columns>
+
+                        <items>
+                            <ColumnListItem
+                                type="Navigation"
+                                press=".onRowPress">
+                                <cells>
+                                    <VBox>
+                                        <ObjectIdentifier
+                                            title="{inbox>docId}"
+                                            text="{path: 'inbox>submittedOn', formatter: '.formatter.date'}"/>
+                                        <ObjectStatus
+                                            text="Already Actioned"
+                                            icon="sap-icon://sys-cancel"
+                                            visible="{parts: ['inbox>docId', 'inbox>docType'], formatter: '.formatIsStale'}"/>
+                                    </VBox>
+                                    <VBox>
+                                        <Text text="{inbox>title}"/>
+                                        <ObjectStatus
+                                            text="{inbox>priority} priority"
+                                            state="{path: 'inbox>priority', formatter: '.formatPriorityState'}"/>
+                                    </VBox>
+                                    <Text text="{inbox>plantName}"/>
+                                    <ObjectNumber
+                                        number="{path: 'inbox>amount', formatter: '.formatter.inLakhs'}"
+                                        emphasized="true"/>
+                                    <Text text="{inbox>submittedBy}"/>
+                                    <ObjectStatus
+                                        text="{inbox>currentLevel}"
+                                        state="{path: 'inbox>currentLevel', formatter: '.formatCurrentLevelState'}"/>
+                                    <ObjectStatus
+                                        text="{path: 'inbox>daysPending', formatter: '.formatter.slaText'}"
+                                        state="{path: 'inbox>daysPending', formatter: '.formatter.slaState'}"
+                                        icon="{= ${inbox>daysPending} > 5 ? 'sap-icon://alert' : '' }"/>
+                                    <Button
+                                        icon="sap-icon://list"
+                                        type="Transparent"
+                                        tooltip="{i18n>viewLineItems}"
+                                        visible="{path: 'inbox>docId', formatter: '.formatHasLineItems'}"
+                                        press=".onShowLineItems"/>
+                                    <Button
+                                        text="Review"
+                                        type="Emphasized"
+                                        press=".onReview"/>
+                                </cells>
+                            </ColumnListItem>
+                        </items>
+                    </Table>
+                </VBox>
+
+            </VBox>
+        </content>
+    </Page>
+
+</mvc:View>

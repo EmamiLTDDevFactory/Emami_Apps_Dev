@@ -83,8 +83,12 @@ try {
 apiRouter.use('/me/notifications', require('./notifications').router);
 // Daily cost watch (Costing Cockpit): rides the existing nginx /api/me rule; see costWatch.js.
 apiRouter.use('/me/cost-watch', require('./costWatch'));
+// Costing Cockpit AI proxy (Groq / Groq, key on the server); rides /api/me. See cockpitAi.js.
+apiRouter.use('/me/cockpit-ai', require('./cockpitAi'));
 // Cascade Pricing -> SAP ZMM_CASCADE_SRV (server side; the app is static). Rides /api/me; see cascadePricing.js.
 apiRouter.use('/me/cascade-pricing', require('./cascadePricing'));
+// CAPEX Portal (Fiori ZCAPEX_PORTAL -> Emami Apps) -> SAP ZCAPEX_PORTAL_SRV; identity travels as zcpxmail/zcpxkey. Rides /api/me; see capex.js.
+apiRouter.use('/me/capex', require('./capex'));
 // Material master requests -> SAP ZMM_MDM_SRV (server side; the app is static). Rides /api/me; see mmMdm.js.
 apiRouter.use('/me/mm-mdm', require('./mmMdm'));
 // MDM admin screens (rules, workflow maintenance, worklist, dashboard) -> SAP AdminCallSet. See mmMdmAdmin.js.
@@ -180,6 +184,7 @@ async function requireAccessManager(req, res, next) {
  * 'User' role. Costing Cockpit (bom-cost-explorer) adds Planner: may upload and edit production plans
  * (Admin may too; SAP's own authority check still applies). */
 const VALID_ROLES_BY_APP = { 'audit-capa': ['CQA', 'Depot', 'View'], 'payment-tracking': ['User', 'Admin', 'Finance', 'Super Admin'], 'fm-po-deviation': ['User'], 'bom-cost-explorer': ['User', 'Admin', 'Planner'], 'samadhan': ['Agent', 'Supervisor', 'Admin'] };
+const { APP_TILES, normalizeTiles } = require('./appTiles');
 const DEFAULT_VALID_ROLES = ['User', 'Admin'];
 function validRolesForApp(appId) {
     return VALID_ROLES_BY_APP[appId] || DEFAULT_VALID_ROLES;
@@ -235,7 +240,7 @@ apiRouter.get('/access/users', requireAccessManagerOrInternal, async (req, res) 
                    au.last_name,
                    u.mobile AS profile_mobile,
                    COALESCE(
-                       json_agg(json_build_object('appId', a.app_id, 'role', a.role, 'depot', a.depot)) FILTER (WHERE a.app_id IS NOT NULL),
+                       json_agg(json_build_object('appId', a.app_id, 'role', a.role, 'depot', a.depot, 'tiles', a.tiles)) FILTER (WHERE a.app_id IS NOT NULL),
                        '[]'
                    ) AS apps
             FROM emami_apps.authorized_users au
@@ -587,6 +592,9 @@ apiRouter.get('/admin/app/:appId/users', requireAccessManager, async (req, res) 
  * this backend. An email with no row here (shouldn't happen for anyone who made it past login, but
  * defends against a stale/deleted account) comes back as the least-privileged Viewer with no apps.
  */
+/** Screens each app's grant can be limited to (appTiles.js) — drives the Manage Access picker. Any signed-in caller. */
+apiRouter.get('/access/app-tiles', (req, res) => res.json({ success: true, apps: APP_TILES }));
+
 apiRouter.get('/access/me', async (req, res) => {
     const email = String(req.query?.email || '').trim().toLowerCase();
     if (!email) {
@@ -596,7 +604,7 @@ apiRouter.get('/access/me', async (req, res) => {
         const { rows } = await pool.query(
             `SELECT au.access_level,
                     COALESCE(
-                        json_agg(json_build_object('appId', a.app_id, 'role', a.role)) FILTER (WHERE a.app_id IS NOT NULL),
+                        json_agg(json_build_object('appId', a.app_id, 'role', a.role, 'tiles', a.tiles)) FILTER (WHERE a.app_id IS NOT NULL),
                         '[]'
                     ) AS apps
              FROM emami_apps.authorized_users au
@@ -851,17 +859,23 @@ apiRouter.post('/access/users/:email/apps/:appId', requireAccessManager, async (
     if (!validRoles.includes(role)) {
         return res.status(400).json({ success: false, error: `Role must be one of: ${validRoles.join(', ')}.` });
     }
+    // Optional screen scope: a list limits, null clears, and leaving the field out keeps what is saved (bulk role changes
+    // never send it) as long as the role itself is unchanged.
+    const tilesSent = req.body && Object.prototype.hasOwnProperty.call(req.body, 'tiles');
+    const scope = tilesSent ? normalizeTiles(appId, req.body.tiles) : { ok: true, tiles: null };
+    if (!scope.ok) return res.status(400).json({ success: false, error: scope.error });
     const email = req.params.email.toLowerCase();
     try {
         const { rows: [before] } = await pool.query(
-            'SELECT role FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = $2',
+            'SELECT role, tiles FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = $2',
             [email, appId]
         );
+        if (!tilesSent) scope.tiles = before && before.role === role ? before.tiles || null : null;
         await pool.query(
-            `INSERT INTO emami_apps.authorized_user_apps (email, app_id, role, depot)
-             VALUES ($1, $2, $3, $4)
-             ON CONFLICT (email, app_id) DO UPDATE SET role = EXCLUDED.role, depot = EXCLUDED.depot`,
-            [email, appId, role, depot]
+            `INSERT INTO emami_apps.authorized_user_apps (email, app_id, role, depot, tiles)
+             VALUES ($1, $2, $3, $4, $5)
+             ON CONFLICT (email, app_id) DO UPDATE SET role = EXCLUDED.role, depot = EXCLUDED.depot, tiles = EXCLUDED.tiles`,
+            [email, appId, role, depot, scope.tiles]
         );
         // Audit & CAPA maintains its own separate Postgres-backed role table, historically only
         // ever updated by hand — push this grant through so it takes effect immediately. See
@@ -871,17 +885,14 @@ apiRouter.post('/access/users/:email/apps/:appId', requireAccessManager, async (
                 console.error('[access] Could not sync Audit & CAPA role for', email, ':', err.message);
             });
         }
-        if (before?.role !== role) {
-            recordAccessChange({
-                targetEmail: email,
-                changedBy: actingEmail,
-                changeType: 'APP_ROLE',
-                appId,
-                oldValue: before?.role || null,
-                newValue: role,
-            });
+        // One history row for a role and/or screen-scope change; the scope rides along in the value text.
+        const label = (r, t) => (r ? (Array.isArray(t) ? `${r} (limited to: ${t.join(', ')})` : r) : null);
+        const oldLabel = label(before?.role, before?.tiles);
+        const newLabel = label(role, scope.tiles);
+        if (oldLabel !== newLabel) {
+            recordAccessChange({ targetEmail: email, changedBy: actingEmail, changeType: 'APP_ROLE', appId, oldValue: oldLabel, newValue: newLabel });
         }
-        res.json({ success: true, role, depot });
+        res.json({ success: true, role, depot, tiles: scope.tiles });
     } catch (err) {
         if (err.code === '23503') {
             return res.status(404).json({ success: false, error: 'That user is not authorized.' });
@@ -945,6 +956,9 @@ apiRouter.get('/access/history', requireAccessManager, async (req, res) => {
 apiRouter.use(require('./appStages').appStagesRouter(requireAccessManager));
 // CCB roles (Change Control) are assigned from the Admin Center: GET/PUT /access/users/:email/ccb-roles.
 apiRouter.use(require('./changeControl').ccbRolesAdminRouter(requireAccessManager));
+// Access Requests: self-service tickets for app/role authorization (signed-in users, and people who cannot sign in at all, from the
+// login page). A Super Admin approves or rejects each app-role line and an approval grants it automatically. See accessRequests.js.
+apiRouter.use(require('./accessRequests').accessRequestsRouter({ requireAccessManager, validRolesForApp, defaultGrantedApps: DEFAULT_GRANTED_APPS }));
 
 apiRouter.get('/health', (req, res) => res.json({ success: true }));
 

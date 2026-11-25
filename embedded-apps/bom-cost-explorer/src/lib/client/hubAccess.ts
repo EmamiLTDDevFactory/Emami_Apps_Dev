@@ -13,7 +13,7 @@ function accessApiBase(): string {
   return `https://audit-capa-api.emamiapps.in${host.includes('dev') || host === 'localhost' ? '/dev-api/api' : '/api'}`;
 }
 
-type AccessMe = { apps?: { appId: string; role: string }[] };
+type AccessMe = { apps?: { appId: string; role: string; tiles?: string[] | null }[] };
 
 /**
  * This app's Manage Access role only ('Admin', 'Planner', 'User', '' = none); the Emami Apps access level does not
@@ -54,5 +54,20 @@ export async function fetchAppRole(email: string): Promise<string> {
     return effectiveRole(await fetchAccess(email));
   } catch {
     return '';
+  }
+}
+
+/**
+ * The screens Manage Access limits this person to in this app (null = no limit: every screen their role gets). Only
+ * narrows. Fails open on a lookup error so a network blip does not lock people out; the screens still need their role,
+ * and the server-side routes check the limit themselves.
+ */
+export async function fetchAppTiles(email: string): Promise<string[] | null> {
+  if (process.env.NEXT_PUBLIC_MOCK_SAP === 'true') return null; // local development
+  try {
+    const t = (await fetchAccess(email)).apps?.find((a) => a.appId === APP_ID)?.tiles;
+    return Array.isArray(t) ? t : null;
+  } catch {
+    return null;
   }
 }

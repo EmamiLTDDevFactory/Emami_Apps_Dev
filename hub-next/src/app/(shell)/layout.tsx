@@ -10,6 +10,7 @@ import Sidebar from '../../components/Sidebar';
 import Header from '../../components/Header';
 import InstallPrompt from '../../components/InstallPrompt';
 import AssistantPanel from '../../components/assistant/AssistantPanel';
+import SigningInScreen from '../../components/SigningInScreen';
 
 function ShellChrome({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -59,7 +60,7 @@ function ShellChrome({ children }: { children: React.ReactNode }) {
 
 export default function ShellLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { ready, isLoggedIn } = useAuth();
+  const { ready, isLoggedIn, verifyingAuth } = useAuth();
 
   useEffect(() => {
     if (ready && !isLoggedIn) router.replace('/login');
@@ -67,7 +68,9 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
 
   // Avoids flashing the shell (or a blank page) for the instant between `ready` becoming true and
   // the redirect above actually landing on /login.
-  if (!isLoggedIn) return null;
+  // Microsoft SSO / magic-link callbacks land here (/?ssoToken=), so show the loader while the
+  // token is verified or the saved session is restored instead of a blank page.
+  if (!isLoggedIn) return !ready || verifyingAuth ? <SigningInScreen /> : null;
 
   return (
     <SearchProvider>

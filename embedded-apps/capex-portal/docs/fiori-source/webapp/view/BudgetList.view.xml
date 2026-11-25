@@ -1,0 +1,148 @@
+<mvc:View
+    controllerName="zcapexportal.controller.BudgetList"
+    xmlns="sap.m"
+    xmlns:mvc="sap.ui.core.mvc"
+    xmlns:core="sap.ui.core"
+    height="100%">
+
+    <Page id="pageBudgetList" showHeader="false" class="zcpxApp">
+        <content>
+            <VBox class="zcpxScreen">
+
+                <!-- Hero -->
+                <HBox class="zcpxHero zcpxSection" justifyContent="SpaceBetween" alignItems="Center" wrap="Wrap">
+                    <VBox>
+                        <Text text="{i18n>budgetListTitle}" class="zcpxHeroTitle"/>
+                        <Text text="{app>/fiscalYear}" class="zcpxHeroSub"/>
+                    </VBox>
+                    <Button
+                        text="{i18n>navBudgetCreate}"
+                        icon="sap-icon://add"
+                        type="Emphasized"
+                        press=".onCreate"/>
+                </HBox>
+
+                <!-- Filter bar -->
+                <VBox class="zcpxCard zcpxCardPad zcpxSection">
+                    <HBox wrap="Wrap" alignItems="End">
+                        <VBox class="sapUiTinyMarginEnd sapUiTinyMarginBottom" width="14rem">
+                            <Label text="{i18n>search1}"/>
+                            <SearchField
+                                id="sfBudget"
+                                placeholder="ID, title or unit"
+                                search=".onFilter"
+                                liveChange=".onFilter"/>
+                        </VBox>
+                        <VBox class="sapUiTinyMarginEnd sapUiTinyMarginBottom" width="9rem">
+                            <Label text="{i18n>fiscalYear}"/>
+                            <ComboBox id="cbFY" items="{app>/fiscalYears}" change=".onFYFilterChange" placeholder="{i18n>allYears}">
+                                <core:Item key="{app>key}" text="{app>text}"/>
+                            </ComboBox>
+                        </VBox>
+                        <VBox class="sapUiTinyMarginEnd sapUiTinyMarginBottom" width="11rem">
+                            <Label text="{i18n>plant}"/>
+                            <ComboBox id="cbPlant" items="{budget>/plants}" change=".onFilter" placeholder="All">
+                                <core:Item key="{budget>key}" text="{budget>text}"/>
+                            </ComboBox>
+                        </VBox>
+                        <VBox class="sapUiTinyMarginEnd sapUiTinyMarginBottom" width="11rem">
+                            <Label text="{i18n>capexType}"/>
+                            <ComboBox id="cbType" items="{budget>/capexTypes}" change=".onFilter" placeholder="All">
+                                <core:Item key="{budget>key}" text="{budget>text}"/>
+                            </ComboBox>
+                        </VBox>
+                        <VBox class="sapUiTinyMarginEnd sapUiTinyMarginBottom" width="10rem">
+                            <Label text="{i18n>status}"/>
+                            <ComboBox id="cbStatus" change=".onFilter" placeholder="All">
+                                <core:Item key="DRAFT" text="Draft"/>
+                                <core:Item key="IN_APPROVAL" text="In Approval"/>
+                                <core:Item key="APPROVED" text="Approved"/>
+                                <core:Item key="REJECTED" text="Rejected"/>
+                            </ComboBox>
+                        </VBox>
+                        <Button
+                            text="Clear"
+                            icon="sap-icon://clear-filter"
+                            press=".onClearFilter"
+                            class="sapUiTinyMarginBottom"/>
+                    </HBox>
+                </VBox>
+
+                <!-- Table -->
+                <VBox class="zcpxCard zcpxSection">
+                    <Table
+                        id="tblBudget"
+                        items="{budget>/list}"
+                        growing="true"
+                        growingThreshold="15"
+                        growingScrollToLoad="false"
+                        noDataText="{i18n>noData}"
+                        sticky="ColumnHeaders">
+
+                        <headerToolbar>
+                            <OverflowToolbar>
+                                <Title text="{i18n>budgetListTitle}" level="H3"/>
+                                <Label id="lblCount" text=""/>
+                                <ToolbarSpacer/>
+                                <Button icon="sap-icon://excel-attachment" tooltip="{i18n>export}" press=".onExport" type="Transparent"/>
+                                <Button icon="sap-icon://refresh" tooltip="{i18n>refresh}" press=".onRefresh" type="Transparent"/>
+                            </OverflowToolbar>
+                        </headerToolbar>
+
+                        <columns>
+                            <Column width="9rem"><Text text="{i18n>budgetId}"/></Column>
+                            <Column minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>budgetTitle}"/></Column>
+                            <Column minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>plant}"/></Column>
+                            <Column minScreenWidth="Desktop" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>category}"/></Column>
+                            <Column hAlign="End" minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>budgetApproved}"/></Column>
+                            <Column hAlign="End" minScreenWidth="Desktop" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>budgetCommitted}"/></Column>
+                            <Column hAlign="End" minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>budgetAvailable}"/></Column>
+                            <Column minScreenWidth="Desktop" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>internalOrder}"/></Column>
+                            <Column hAlign="End" width="9rem"><Text text="{i18n>status}"/></Column>
+                            <Column hAlign="Center" width="3rem"><Text text=""/></Column>
+                        </columns>
+
+                        <items>
+                            <ColumnListItem type="Navigation" press=".onRowPress">
+                                <cells>
+                                    <ObjectIdentifier
+                                        title="{budget>budgetId}"
+                                        text="{budget>fiscalYear}"/>
+                                    <VBox>
+                                        <Text text="{budget>title}"/>
+                                        <ObjectStatus
+                                            text="{i18n>commonPool}"
+                                            state="Information"
+                                            icon="sap-icon://pool"
+                                            visible="{budget>isCommonPool}"/>
+                                    </VBox>
+                                    <Text text="{budget>plantName}"/>
+                                    <Text text="{budget>category}"/>
+                                    <Text text="{path: 'budget>approved', formatter: '.formatter.inLakhs'}" class="zcpxNum"/>
+                                    <Text text="{path: 'budget>committed', formatter: '.formatter.inLakhs'}" class="zcpxNum"/>
+                                    <ObjectNumber
+                                        number="{parts: ['budget>approved','budget>committed','budget>spent'], formatter: '.formatAvailable'}"
+                                        state="{parts: ['budget>approved','budget>committed','budget>spent'], formatter: '.formatAvailState'}"
+                                        emphasized="true"/>
+                                    <Text text="{path: 'budget>internalOrder', formatter: '.formatter.orDash'}"/>
+                                    <ObjectStatus
+                                        text="{path: 'budget>status', formatter: '.formatter.statusText'}"
+                                        state="{path: 'budget>status', formatter: '.formatter.statusState'}"
+                                        icon="{path: 'budget>status', formatter: '.formatter.statusIcon'}"/>
+                                    <Button
+                                        icon="sap-icon://list"
+                                        type="Transparent"
+                                        tooltip="{i18n>viewLineItems}"
+                                        visible="{= !!(${budget>items} &amp;&amp; ${budget>items}.length) }"
+                                        press=".onShowLineItems"/>
+                                </cells>
+                            </ColumnListItem>
+                        </items>
+                    </Table>
+                </VBox>
+
+            </VBox>
+        </content>
+    </Page>
+
+</mvc:View>

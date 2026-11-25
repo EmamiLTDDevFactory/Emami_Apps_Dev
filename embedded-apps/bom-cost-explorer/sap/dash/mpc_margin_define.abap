@@ -14,7 +14,7 @@
     lo_p->set_updatable( abap_false ).
     lo_p->set_sortable( abap_false ).
     lo_p->set_nullable( abap_false ).
-    lo_p->set_filterable( abap_false ).
+    lo_p->set_filterable( abap_true ).
     dash_str( io_et = lo_et iv_name = 'Bwtar' iv_field = 'BWTAR' iv_len = 10 iv_key = abap_true ).
     dash_str( io_et = lo_et iv_name = 'Kunag' iv_field = 'KUNAG' iv_len = 10 iv_key = abap_true ).
     dash_str( io_et = lo_et iv_name = 'Maktx' iv_field = 'MAKTX' iv_len = 40 ).

@@ -184,7 +184,7 @@ export default function HomePage() {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${tileMin}px, 1fr))`, gap: tileGap, marginBottom: 24 }}>
-        {CATEGORIES.map((c) => {
+        {CATEGORIES.filter((c) => c === 'All' || APPS.some((a) => a.cat === c && unlockedAppIds.has(a.id))).map((c) => {
           const Icon = CATEGORY_ICONS[c] || Grid3x3;
           const accent = catColor(c);
           const categoryApps = c === 'All' ? [] : APPS.filter((a) => a.cat === c);

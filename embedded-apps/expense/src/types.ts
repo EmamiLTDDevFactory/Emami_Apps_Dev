@@ -92,6 +92,11 @@ export interface EmployeeProfile {
   // Additive admin capability (SAP variable ZEXP_ADMIN), independent of role - see
   // lib/adminAccess.ts for how this is resolved.
   isAdmin?: boolean;
+  // Independent capability flags from SAP's LoginSet (IsManager/IsFinance, live 2026-11-25) -
+  // tabs/lists/actions gate on these directly now, not on `role`, so one person can hold any
+  // combination (e.g. manager AND finance). `role` is kept only as a display/profile label.
+  isManager?: boolean;
+  isFinance?: boolean;
 }
 
 export interface TaxCode {
@@ -127,4 +132,75 @@ export interface DoaChainRow {
   // choosable HoD for non-sales mobile claims above the employee's eligibility cap.
   Hod?: boolean;
   Aenam?: string; // logged-in admin's PERNR - UI must send this on every POST/PUT
+  // Audit fields - all backend-filled, read-only. Do not send Ernam/Erdat/Erzet/Aedat/Aezet.
+  Ernam?: string;
+  Erdat?: string;
+  Erzet?: string;
+  Aedat?: string;
+  Aezet?: string;
+}
+
+// Mobile Expense cap maintenance (MobCapSet, live on dev 2026-11-24) - replaces the earlier
+// MobBusSet idea; the sales channel now comes from the employee's cost centre, not an HR mapping.
+export interface MobCapRow {
+  Mcat: string; // category: 'NS' (non-sales) | 'SC' | 'SH' | 'SM' | 'SE' | 'SG' (sales channels)
+  Kostl: string; // cost centre - must be blank for NS, mandatory for every sales category
+  Trfgr: string; // grade: E1, E2 (executive), M1..M5 (managerial)
+  Trfst: string; // level: 'A', 'B', or blank = any level
+  MaxAmt: number; // cap amount; ignored/cleared when NoCap is set
+  NoCap: boolean; // "on actuals" - no cap enforced, claim always goes on the actual amount
+  Active: boolean;
+  ValidFrom: string;
+  ValidTo: string;
+  Remark: string;
+  Aenam?: string; // logged-in admin's PERNR - UI must send this on every POST/PUT
+  // Audit fields - all backend-filled, read-only. Do not send Ernam/Erdat/Erzet/Aedat/Aezet.
+  Ernam?: string;
+  Erdat?: string;
+  Erzet?: string;
+  Aedat?: string;
+  Aezet?: string;
+}
+
+// Admin configuration maintenance (ConfigVarSet/ConfigLogSet, live on dev 2026-11-24) - replaces
+// the former STVARV variables. Each variable is a list of lines (Numb = line number, backend-
+// assigned on create); High is only meaningful for ZEXP_FINANCE ('POST' | 'PARK').
+export type ConfigVarName =
+  | 'ZEXP_ADMIN'
+  | 'ZEXP_DOA_ADMIN'
+  | 'ZEXP_FINANCE'
+  | 'ZFI_NONCTC_USER'
+  | 'ZEXP_EXPTYPE_SET'
+  | 'ZEXP_MOBILE_SET'
+  | 'ZEXP_NON_CTC_GO_LIVE'
+  | 'ZFI_EXPENCE_CLAIM';
+
+export interface ConfigVarRow {
+  Name: string; // one of ConfigVarName
+  Numb: string; // line number - backend-assigned; '0000' for the two single-line variables
+  VarType?: string;
+  Sign?: string;
+  Opti?: string;
+  Low: string; // PERNR / GL set name / PERSK / date YYYYMMDD / absolute path, depending on Name
+  High?: string; // 'POST' | 'PARK' - ZEXP_FINANCE only
+  LowText?: string; // backend-resolved display text (employee name / set text / subgroup text)
+  Aenam?: string; // logged-in admin's PERNR - must be sent on every POST/PUT
+  Remove?: boolean; // PUT-only - true removes the line; there is no DELETE
+}
+
+export interface ConfigLogRow {
+  LogDate: string;
+  LogTime: string;
+  Seqno: string;
+  Varname: string;
+  Numb: string;
+  Action: string; // ADD | CHANGE | REMOVE
+  OldLow?: string;
+  OldHigh?: string;
+  NewLow?: string;
+  NewHigh?: string;
+  ChangedBy?: string;
+  ChangedName?: string;
+  Remark?: string;
+  Aenam?: string;
 }

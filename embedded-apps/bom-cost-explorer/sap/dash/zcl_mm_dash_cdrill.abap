@@ -12,8 +12,8 @@ CLASS zcl_mm_dash_cdrill DEFINITION PUBLIC FINAL CREATE PUBLIC.
     "  5. Per batch: component quantity and value / produced quantity of its orders (level 0 quantity); average over batches weighted by SOLD quantity
     "  Category: VERP / PKGN = PM (P), ROH with material group 106 = perfume (F), other ROH = RM (R), anything else = O.
     "  Rows: S = summary of the material (cost per piece by category), B = one per sold batch, C = one per component (average over the batches).
-    "  A batch without a process order is flagged NBC (no budget / trading goods); at most mc_max_orders orders are costed, the rest is flagged PARTIAL.
-    CONSTANTS mc_max_orders TYPE i VALUE 150.
+    "  A batch without a process order is flagged NBC (no budget / trading goods); every batch with a process order is costed (mc_max_orders is only a safety cap).
+    CONSTANTS mc_max_orders TYPE i VALUE 100000.   "no practical limit (was 150)
     CONSTANTS mc_chunk      TYPE i VALUE 25.
     METHODS constructor IMPORTING is_par   TYPE zif_mm_wac_types=>ty_par
                                   iv_matnr TYPE matnr

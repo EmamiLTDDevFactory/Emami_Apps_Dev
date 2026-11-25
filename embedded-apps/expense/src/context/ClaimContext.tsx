@@ -2,10 +2,21 @@
 
 import axios from 'axios';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { SAP_BASE_URL } from '../config/api';
-import { AreaCode, Attachment, ClaimKPIs, ClaimStatus, DoaChainRow, ExpenseClaim, MobileMonthItem, SAPError, TaxCode } from '../types';
+import { API_BASE_URL, SAP_BASE_URL } from '../config/api';
+import { AreaCode, Attachment, ClaimKPIs, ClaimStatus, ConfigLogRow, ConfigVarName, ConfigVarRow, DoaChainRow, ExpenseClaim, MobCapRow, MobileMonthItem, SAPError, TaxCode } from '../types';
 import { getClaimCreatedTimestamp } from '../utils/claim-date';
+import { getHubToken } from '../lib/hubEmailLogin';
 import { useAuth } from './AuthContext';
+
+// Authenticated calls to THIS app's own backend (embedded-apps/expense/server) instead of SAP
+// directly - used only for the claims/admin routes that backend now gates behind a verified hub
+// session (see server/src/middleware/hubAuth.js). Everything else in this file still calls SAP
+// directly, same as before; this is a deliberate, incremental move, not a full rewrite.
+const expenseApiClient = axios.create({ validateStatus: () => true });
+const hubAuthHeaders = () => {
+  const token = getHubToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
 
 interface ClaimContextType {
   claims: ExpenseClaim[];
@@ -26,7 +37,7 @@ interface ClaimContextType {
   // CapFound is blank (no cap row found for this grade) - both mean "don't enforce a cap or show a
   // warning", per the backend's EligibilitySet contract.
   fetchEligibility: (empId: string, monthKey: string) => Promise<{ eligibleAmount: number | null; grade?: string; category?: string } | null>;
-  // Non-CTC: Mobile Exp, non-sales (Category='B') above the eligibility cap - lists the HoD(s)
+  // Non-CTC: Mobile Exp, non-sales (Category='NS') above the eligibility cap - lists the HoD(s)
   // flagged in the DOA chain (MBN, slab = claim amount) for the employee's cost centre. Empty
   // array (not an error) when there's nothing to choose - the backend falls back to the
   // supervisor flow in that case.
@@ -45,13 +56,24 @@ interface ClaimContextType {
   rejectClaimFinance: (id: string, remarks: string) => Promise<{ success: boolean; error?: string }>;
   // Admin Actions (ZEXP_ADMIN) — search any claim, reject any open claim. See lib/adminAccess.ts
   // for how isAdmin is resolved.
-  adminSearchClaims: (adminLoginId: string, criteria: { claimId?: string }) => Promise<ExpenseClaim[]>;
+  adminSearchClaims: (adminLoginId: string, criteria: { claimId?: string; empId?: string; empName?: string; status?: string; costCenter?: string }) => Promise<ExpenseClaim[]>;
   adminRejectClaim: (claimId: string, adminLoginId: string, reason: string) => Promise<{ Status?: string; Message?: string }>;
   // DOA Chain Maintenance Actions — CRUD against the new DoaChainSet entity.
-  fetchDoaChain: (doaCtype: string, kostl: string) => Promise<DoaChainRow[]>;
+  fetchDoaChain: (filters?: { doaCtype?: string; kostl?: string; expgrp?: string; amtFrom?: number; active?: boolean }) => Promise<DoaChainRow[]>;
   createDoaChainRow: (row: DoaChainRow, adminPernr: string) => Promise<DoaChainRow>;
   updateDoaChainRow: (row: DoaChainRow, adminPernr: string) => Promise<DoaChainRow>;
-  deactivateDoaChainRow: (row: DoaChainRow, adminPernr: string, validTo: string) => Promise<DoaChainRow>;
+  // Mobile Expense Cap Maintenance Actions — CRUD against the new MobCapSet entity.
+  fetchMobCaps: (filters?: { mcat?: string; kostl?: string; trfgr?: string; trfst?: string; active?: boolean }) => Promise<MobCapRow[]>;
+  createMobCapRow: (row: MobCapRow, adminPernr: string) => Promise<MobCapRow>;
+  updateMobCapRow: (row: MobCapRow, adminPernr: string) => Promise<MobCapRow>;
+  // Configuration Maintenance Actions — CRUD against the new ConfigVarSet/ConfigLogSet entities,
+  // replacing the former STVARV-maintained variables (ZEXP_ADMIN, ZEXP_DOA_ADMIN, ZEXP_FINANCE,
+  // ZFI_NONCTC_USER, ZEXP_EXPTYPE_SET, ZEXP_MOBILE_SET, ZEXP_NON_CTC_GO_LIVE, ZFI_EXPENCE_CLAIM).
+  fetchConfigVars: (adminPernr: string, name?: ConfigVarName) => Promise<ConfigVarRow[]>;
+  addConfigVar: (row: { Name: ConfigVarName; Low: string; High?: string }, adminPernr: string) => Promise<ConfigVarRow>;
+  updateConfigVar: (row: ConfigVarRow, adminPernr: string) => Promise<ConfigVarRow>;
+  removeConfigVar: (row: ConfigVarRow, adminPernr: string) => Promise<void>;
+  fetchConfigLog: (adminPernr: string, varname?: ConfigVarName) => Promise<ConfigLogRow[]>;
   // Error Management Actions
   retrySAPPosting: (errorId: string) => void;
   // Getters & Filters
@@ -338,7 +360,11 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       if (sapTypes.length > 0) {
         const mappedTypes = sapTypes.map((item: any) => ({
-          id: item.ZslNo || item.ExpenseType || '00001',
+          // ExptypeSet is now GL-set-driven (STVARV ZEXP_EXPTYPE_SET) - ZslNo is a running number
+          // that can change whenever the set is edited, so it's never a stable key. Saknr (GL
+          // account) is the stable identifier, both for list-item identity and as the actual
+          // ExpenseType value sent on claim submission below (see selectedSapType.id usage).
+          id: item.Saknr || item.ExpenseType || '00001',
           name: item.ZglName || item.Description || item.Exptype || 'Unknown Type',
           saknr: item.Saknr || '',
           // ExptypeSet.Flag = 'X' means this expense type doesn't require a supporting-document
@@ -348,6 +374,10 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           // expense type additionally needs a separate Manager Approved Attachment - currently
           // only true for the "1st Telephone Claim" ExptypeSet record.
           requiresManagerApprovedAttachment: !item.Flag,
+          // New field: true for the ~22 mobile/telephone/internet GL accounts on dev - drives the
+          // multi-month claim flow in create/page.tsx. Defensively accepts either a real JSON
+          // boolean or SAP's XFELD-style 'X' string, same as other boolean-ish OData fields here.
+          isMobile: item.IsMobile === true || item.IsMobile === 'X',
         }));
         setExpenseTypes(mappedTypes);
       }
@@ -361,19 +391,37 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // Don't fetch until the user is actually loaded from AuthContext
       if (!currentUser?.employeeId) return;
 
-      // Extract numeric PERNR from currentUser
-      // ClaimHeaderSet is open for direct anonymous GET (confirmed with Basis).
-      const loginIdForSAP = currentUser.employeeId.replace(/\D/g, '').padStart(8, '0');
-      const filter = encodeURIComponent(`LoginId eq '${loginIdForSAP}'`);
-      const response = await sapClient.get(`${SAP_BASE_URL}/ClaimHeaderSet?$filter=${filter}&$expand=CLAIMNAV&$format=json`);
-      if (response.status < 200 || response.status >= 300) return;
-
-      const sapClaims = extractSapResults(response.data);
-      const mappedClaims: ExpenseClaim[] = sapClaims.map((sap: any) => mapSapClaimToExpenseClaim(sap, expenseTypes));
-      // Replace the existing claims with the latest fetched set (clear when SAP returns empty)
-      setClaims(mappedClaims);
+      // Goes through this app's own backend now, not SAP directly - the server resolves the real
+      // LoginId server-side from the verified hub session, so this can't be asked to return a
+      // different employee's claims just by changing what's in currentUser client-side.
+      const response = await expenseApiClient.get(`${API_BASE_URL}/api/expense/claims`, {
+        headers: hubAuthHeaders(),
+      });
+      if (response.status >= 200 && response.status < 300) {
+        const sapClaims = extractSapResults(response.data);
+        const mappedClaims: ExpenseClaim[] = sapClaims.map((sap: any) => mapSapClaimToExpenseClaim(sap, expenseTypes));
+        // Replace the existing claims with the latest fetched set (clear when SAP returns empty)
+        setClaims(mappedClaims);
+        return;
+      }
+      // TEMPORARY fallback (2026-11-24): some real sessions are hitting the backend's hub-token
+      // check with a 401 ("jwt malformed") that hasn't been root-caused yet - this silently left
+      // the whole claims list empty with no error shown, which is strictly worse than the old
+      // behaviour. Only fall back on an auth failure (401/403), and only to the exact same direct
+      // SAP call this route replaced, so a working token still gets the hardened path - remove
+      // once the real-token issue is found and fixed.
+      if (response.status === 401 || response.status === 403) {
+        console.warn('[fetchClaims] authenticated route rejected the session, falling back to direct SAP read:', response.data);
+        const loginIdForSAP = currentUser.employeeId.replace(/\D/g, '').padStart(8, '0');
+        const filter = encodeURIComponent(`LoginId eq '${loginIdForSAP}'`);
+        const fallback = await sapClient.get(`${SAP_BASE_URL}/ClaimHeaderSet?$filter=${filter}&$expand=CLAIMNAV&$format=json`);
+        if (fallback.status < 200 || fallback.status >= 300) return;
+        const sapClaims = extractSapResults(fallback.data);
+        const mappedClaims: ExpenseClaim[] = sapClaims.map((sap: any) => mapSapClaimToExpenseClaim(sap, expenseTypes));
+        setClaims(mappedClaims);
+      }
     } catch (err) {
-      console.error('Failed to fetch SAP claims:', err);
+      console.error('Failed to fetch claims:', err);
     }
   };
 
@@ -554,13 +602,11 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // 2. Build the exact Deep Entity payload SAP expects
     const empIdNumeric = claimData.employeeId.replace(/\D/g, '').padStart(8, '0');
 
-    // SAP has no separate document-type field for the Manager Approved Attachment or Finance
-    // Document - they travel alongside the regular supporting documents as just another CLAIMNAV
-    // line/attachment, at Amount 0.000, same convention every claim already uses for its secondary
-    // attachment(s).
+    // SAP has no separate document-type field for the Manager Approved Attachment - it travels
+    // alongside the regular supporting documents as just another CLAIMNAV line/attachment, at
+    // Amount 0.000, same convention every claim already uses for its secondary attachment(s).
     const extraZeroAmountAttachments: Attachment[] = [
       ...((claimData as any).managerApprovedAttachments || []),
-      ...((claimData as any).financeDocument || []),
     ];
 
     let allAttachments: Attachment[];
@@ -571,7 +617,10 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         claimNavItems.push({
           ClaimId: existingClaimId ? existingClaimId : '',
           ItemNo: (idx + 1).toString().padStart(6, '0'),
-          ExpenseType: selectedSapType ? selectedSapType.id : claimData.expenseType,
+          // Sent blank per backend instruction - ExpenseType's field facet rejects the GL account
+          // number now in selectedSapType.id (e.g. '509412'), and ZslNo is no longer a stable value
+          // to send either. Saknr (sent separately below) is the field SAP actually keys off now.
+          ExpenseType: '',
           ZglName: selectedSapType ? selectedSapType.name : claimData.expenseType,
           Saknr: selectedSapType ? selectedSapType.saknr : '',
           ExpenseDate: toODataDate(item.expenseDate),
@@ -586,7 +635,10 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         claimNavItems.push({
           ClaimId: existingClaimId ? existingClaimId : '',
           ItemNo: (mobileMonthItems!.length + idx + 1).toString().padStart(6, '0'),
-          ExpenseType: selectedSapType ? selectedSapType.id : claimData.expenseType,
+          // Sent blank per backend instruction - ExpenseType's field facet rejects the GL account
+          // number now in selectedSapType.id (e.g. '509412'), and ZslNo is no longer a stable value
+          // to send either. Saknr (sent separately below) is the field SAP actually keys off now.
+          ExpenseType: '',
           ZglName: selectedSapType ? selectedSapType.name : claimData.expenseType,
           Saknr: selectedSapType ? selectedSapType.saknr : '',
           ExpenseDate: toODataDate(mobileMonthItems![0].expenseDate),
@@ -604,7 +656,10 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         claimNavItems.push({
           ClaimId: existingClaimId ? existingClaimId : '',
           ItemNo: i === 0 ? (claimData.itemNo || '000001') : (i + 1).toString().padStart(6, '0'),
-          ExpenseType: selectedSapType ? selectedSapType.id : claimData.expenseType,
+          // Sent blank per backend instruction - ExpenseType's field facet rejects the GL account
+          // number now in selectedSapType.id (e.g. '509412'), and ZslNo is no longer a stable value
+          // to send either. Saknr (sent separately below) is the field SAP actually keys off now.
+          ExpenseType: '',
           ZglName: selectedSapType ? selectedSapType.name : claimData.expenseType,
           Saknr: selectedSapType ? selectedSapType.saknr : '',
           ExpenseDate: toODataDate(claimData.expenseDate),
@@ -640,11 +695,9 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       CLAIMNAV: claimNavItems,
     };
 
-    // Non-CTC: Mobile Exp - approval note is a real header field now (max 255), not a CLAIMNAV
-    // Description stopgap. PeriodFrom/PeriodTo are deliberately NOT sent - optional, and the
+    // Non-CTC: Mobile Exp - PeriodFrom/PeriodTo are deliberately NOT sent - optional, and the
     // backend derives them from the month cards' own ExpenseDate values when omitted.
     if (isMobilePayload) {
-      sapPayload.ApprNote = ((claimData as any).approvalNotes || '').slice(0, 255);
       // Chosen HoD for a non-sales claim above the eligibility cap, when 2+ candidates exist.
       // Omitted entirely when there's nothing to choose (sales employee, or 0/1 HoD candidates) -
       // the backend errors "Please select the HoD ..." only when a choice was actually required.
@@ -801,11 +854,14 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const data = response.data?.d || response.data;
       if (!data) return null;
 
-      // NoCap/CapFound are 'X'/blank strings, not booleans. CapFound blank means no cap row was
-      // found for this grade at all (e.g. a grade not in the cap table) - treated the same as an
-      // explicit NoCap='X': no limit, no "above eligibility" warning.
-      const noCap = data.NoCap === 'X';
-      const capFound = data.CapFound === 'X';
+      // NoCap/CapFound were originally 'X'/blank strings; SAP's gateway now returns them as real
+      // Edm.Boolean values instead (confirmed live 2026-11-24: {"NoCap": false, "CapFound": true}),
+      // same ambiguity ExptypeSet.IsMobile above already handles - check both forms so this keeps
+      // working regardless of which one a given SEGW build sends. CapFound false/blank means no cap
+      // row was found for this grade at all (e.g. a grade not in the cap table) - treated the same
+      // as an explicit NoCap='X': no limit, no "above eligibility" warning.
+      const noCap = data.NoCap === true || data.NoCap === 'X';
+      const capFound = data.CapFound === true || data.CapFound === 'X';
       const eligibleAmount = (!capFound || noCap) ? null : (parseFloat(data.EligibleAmount) || 0);
 
       return { eligibleAmount, grade: data.Grade, category: data.Category };
@@ -815,7 +871,7 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  // Non-CTC: Mobile Exp - HoD choice list for non-sales (Category='B') claims above the cap.
+  // Non-CTC: Mobile Exp - HoD choice list for non-sales (Category='NS') claims above the cap.
   // Amount is the OData decimal literal format the backend example gives (e.g. "Amount eq 1200m").
   const fetchHodApprovers = async (empId: string, amount: number): Promise<{ apprId: string; apprName: string; apprEmail: string }[]> => {
     try {
@@ -1118,12 +1174,11 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       TotalAmount: (claim.amount ?? 0).toFixed(3),
       Currency: 'INR',
       CostCenter: claim.costCenter || '',
-      // Sent Status is unconfirmed against the new one-step H->S finance flow - the handover doc
-      // only describes new behavior, not a new request payload, and this value is very likely
-      // overridden server-side the same way approveClaim's sent Status:'A' already is. Verify
-      // once the new posting logic is actually live; the result handling below reads the real
-      // returned Status either way, so this is safe regardless of what SAP does with it.
-      Status: 'P',
+      // Per the DOA handover: there's no park step anymore (H -> posted/S directly), so this no
+      // longer asserts 'P' - sending the claim's own current status is a neutral passthrough, not
+      // a claimed transition. SAP decides the real outcome server-side regardless (same as
+      // approveClaim's sent Status:'A'); the result handling below reads the real returned Status.
+      Status: claim.rawStatus || 'H',
       ApprovalRequired: 'A',
     };
 
@@ -1231,45 +1286,59 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  // Admin search — Zview='ADMIN' restricts the GET to rows this admin PERNR is allowed to see.
-  // Only ClaimId, LoginId, Zview are filterable server-side today; EmpId/EmpName/Status/
-  // CostCenter need a backend metadata change first (open prerequisite) — the admin page itself
-  // discloses this and only wires up the ClaimId criterion for now.
-  const adminSearchClaims = async (adminLoginId: string, criteria: { claimId?: string }): Promise<ExpenseClaim[]> => {
-    const parts = [`Zview eq 'ADMIN'`, `LoginId eq '${adminLoginId}'`];
-    if (criteria.claimId) parts.push(`ClaimId eq '${criteria.claimId}'`);
-    const filter = encodeURIComponent(parts.join(' and '));
-    const response = await sapClient.get(`${SAP_BASE_URL}/ClaimHeaderSet?$filter=${filter}&$expand=CLAIMNAV&$format=json`);
+  // Admin search/reject now go through this app's own backend (embedded-apps/expense/server),
+  // not SAP directly - the server independently verifies the caller is a real, currently-admin
+  // hub user (resolved server-side from SAP's own LoginSet, not trusted from the client) before it
+  // will relay anything to SAP's Zview='ADMIN' path. adminLoginId is kept as a parameter only so
+  // existing callers don't need to change - the server ignores it and uses its own verified
+  // identity instead. EmpId is sent exactly as typed — the backend pads it with ALPHA itself.
+  // EmpName is an exact match server-side (OData eq, not a contains/wildcard search).
+  const adminSearchClaims = async (
+    adminLoginId: string,
+    criteria: { claimId?: string; empId?: string; empName?: string; status?: string; costCenter?: string }
+  ): Promise<ExpenseClaim[]> => {
+    const params = new URLSearchParams();
+    if (criteria.claimId) params.set('claimId', criteria.claimId);
+    if (criteria.empId) params.set('empId', criteria.empId);
+    if (criteria.status) params.set('status', criteria.status);
+    if (criteria.costCenter) params.set('costCenter', criteria.costCenter);
+    if (criteria.empName) params.set('empName', criteria.empName);
+    const response = await expenseApiClient.get(`${API_BASE_URL}/api/expense/admin/claims?${params.toString()}`, {
+      headers: hubAuthHeaders(),
+    });
     if (response.status < 200 || response.status >= 300) {
-      const errData = response.data;
-      const errMsg = errData?.error?.message?.value || errData?.error || errData?.d?.Message || errData?.Message || 'Admin claim search failed';
+      const errMsg = response.data?.error?.message?.value || response.data?.error || 'Admin claim search failed';
       throw new Error(errMsg);
     }
     const sapClaims = extractSapResults(response.data);
     return sapClaims.map((sap: any) => mapSapClaimToExpenseClaim(sap, expenseTypes));
   };
 
-  // Admin reject — same ApprovalRequired='R' shape as rejectClaim/rejectClaimFinance, plus the
-  // Zview flag that tells SAP this is the admin path (works on any open claim, any employee,
-  // including those who've left). Routes through the same ClaimHeaderSet POST helper since it's
-  // the same entity every other write here uses.
+  // Admin reject — see adminSearchClaims above for why this now goes through our own backend.
   const adminRejectClaim = async (claimId: string, adminLoginId: string, reason: string) => {
-    const putData = {
-      ClaimId: claimId,
-      LoginId: adminLoginId,
-      Zview: 'ADMIN',
-      ApprovalRequired: 'R',
-      RejReason: reason,
-    };
-    return postClaimHeaderUpdate(putData, 'Admin reject failed');
+    const response = await expenseApiClient.post(
+      `${API_BASE_URL}/api/expense/admin/claims/${encodeURIComponent(claimId)}/reject`,
+      { reason },
+      { headers: hubAuthHeaders() }
+    );
+    if (response.status < 200 || response.status >= 300) {
+      const errMsg = response.data?.error?.message?.value || response.data?.error || 'Admin reject failed';
+      throw new Error(errMsg);
+    }
+    return response.data;
   };
 
-  // DOA Chain Maintenance — new DoaChainSet entity. Likely can't be written/filtered yet (SEGW
-  // Creatable/Updatable/Filterable flags are off, transport EDSK9B0EN3 must land before
-  // EDSK9B0EMX) — these calls are wired up ready for when that lands; expect failures until then.
-  const fetchDoaChain = async (doaCtype: string, kostl: string): Promise<DoaChainRow[]> => {
-    const filter = encodeURIComponent(`DoaCtype eq '${doaCtype}' and Kostl eq '${kostl.toUpperCase()}'`);
-    const response = await sapClient.get(`${SAP_BASE_URL}/DoaChainSet?$filter=${filter}&$format=json`);
+  // DOA Chain Maintenance (SM30-style grid) — new DoaChainSet entity. All filters are optional;
+  // no filter at all returns every row, per the SM30 rebuild spec.
+  const fetchDoaChain = async (filters?: { doaCtype?: string; kostl?: string; expgrp?: string; amtFrom?: number; active?: boolean }): Promise<DoaChainRow[]> => {
+    const parts: string[] = [];
+    if (filters?.doaCtype) parts.push(`DoaCtype eq '${filters.doaCtype}'`);
+    if (filters?.kostl) parts.push(`Kostl eq '${filters.kostl.toUpperCase()}'`);
+    if (filters?.expgrp !== undefined) parts.push(`Expgrp eq '${filters.expgrp}'`);
+    if (filters?.amtFrom !== undefined) parts.push(`AmtFrom eq ${filters.amtFrom}M`);
+    if (filters?.active !== undefined) parts.push(`Active eq ${filters.active}`);
+    const filterQuery = parts.length ? `$filter=${encodeURIComponent(parts.join(' and '))}&` : '';
+    const response = await sapClient.get(`${SAP_BASE_URL}/DoaChainSet?${filterQuery}$format=json`);
     if (response.status < 200 || response.status >= 300) {
       const errData = response.data;
       const errMsg = errData?.error?.message?.value || errData?.error || errData?.d?.Message || errData?.Message || 'Failed to fetch DOA chain';
@@ -1278,8 +1347,19 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return extractSapResults(response.data) as DoaChainRow[];
   };
 
+  // AmtFrom/AmtTo (Edm.Decimal) must go as fixed-decimal STRINGS, not raw JSON numbers - sending a
+  // bare number fails SAP's gateway parser the same way an unformatted MaxAmt does on MobCapSet
+  // (CX_SXML_PARSE_ERROR). The composite-key URL already uses .toFixed(2) on the raw row value -
+  // this keeps the body payload's own precision consistent with that.
+  const buildDoaChainPayload = (row: DoaChainRow, adminPernr: string) => ({
+    ...row,
+    AmtFrom: row.AmtFrom.toFixed(2),
+    AmtTo: row.AmtTo.toFixed(2),
+    Aenam: adminPernr,
+  });
+
   const createDoaChainRow = async (row: DoaChainRow, adminPernr: string): Promise<DoaChainRow> => {
-    const postData = { ...row, Aenam: adminPernr };
+    const postData = buildDoaChainPayload(row, adminPernr);
     const response = await sapClient.post(`${SAP_BASE_URL}/DoaChainSet`, postData, {
       headers: { 'Content-Type': 'application/json' },
     });
@@ -1290,7 +1370,7 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // rejects PUT-with-key-predicates the same way it does for ClaimHeaderSet (see
   // postClaimHeaderUpdate's comment), fall back to POST.
   const updateDoaChainRow = async (row: DoaChainRow, adminPernr: string): Promise<DoaChainRow> => {
-    const putData = { ...row, Aenam: adminPernr };
+    const putData = buildDoaChainPayload(row, adminPernr);
     const keyUrl = `DoaChainSet(DoaCtype='${row.DoaCtype}',Kostl='${row.Kostl}',Expgrp='${row.Expgrp}',AmtFrom=${row.AmtFrom.toFixed(2)}M,Seqno='${row.Seqno}')`;
     let response = await sapClient.put(`${SAP_BASE_URL}/${keyUrl}`, putData, {
       headers: { 'Content-Type': 'application/json' },
@@ -1303,10 +1383,120 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return handleSapWriteResponse(response, 'Failed to update DOA chain row');
   };
 
-  // There is no real delete — "removing" an approver row means marking it inactive with a
-  // ValidTo date, per spec.
-  const deactivateDoaChainRow = async (row: DoaChainRow, adminPernr: string, validTo: string): Promise<DoaChainRow> =>
-    updateDoaChainRow({ ...row, Active: false, ValidTo: validTo }, adminPernr);
+  // Mobile Expense Cap Maintenance (SM30-style grid) — new MobCapSet entity, live on dev
+  // 2026-11-24. Same optional-filters/no-filter-returns-everything pattern as DoaChainSet.
+  const fetchMobCaps = async (filters?: { mcat?: string; kostl?: string; trfgr?: string; trfst?: string; active?: boolean }): Promise<MobCapRow[]> => {
+    const parts: string[] = [];
+    if (filters?.mcat) parts.push(`Mcat eq '${filters.mcat}'`);
+    if (filters?.kostl) parts.push(`Kostl eq '${filters.kostl.toUpperCase()}'`);
+    if (filters?.trfgr) parts.push(`Trfgr eq '${filters.trfgr}'`);
+    if (filters?.trfst !== undefined) parts.push(`Trfst eq '${filters.trfst}'`);
+    if (filters?.active !== undefined) parts.push(`Active eq ${filters.active}`);
+    const filterQuery = parts.length ? `$filter=${encodeURIComponent(parts.join(' and '))}&` : '';
+    const response = await sapClient.get(`${SAP_BASE_URL}/MobCapSet?${filterQuery}$format=json`);
+    if (response.status < 200 || response.status >= 300) {
+      const errData = response.data;
+      const errMsg = errData?.error?.message?.value || errData?.error || errData?.d?.Message || errData?.Message || 'Failed to fetch mobile caps';
+      throw new Error(errMsg);
+    }
+    return extractSapResults(response.data) as MobCapRow[];
+  };
+
+  // ValidFrom/ValidTo must go as SAP's /Date(ms)/ literal on write - a plain 'YYYY-MM-DD' string
+  // silently lands as null, same gotcha toODataDate above already works around for claim fields.
+  // MaxAmt (Edm.Decimal) must go as a fixed-decimal STRING, not a raw JSON number - sending a bare
+  // number fails SAP's gateway parser (CX_SXML_PARSE_ERROR "Failed to read property 'MaxAmt'"),
+  // same reason TotalAmount above is always sent via .toFixed(3), never a raw number.
+  const buildMobCapPayload = (row: MobCapRow, adminPernr: string) => ({
+    ...row,
+    MaxAmt: row.MaxAmt.toFixed(3),
+    ValidFrom: toODataDate(row.ValidFrom),
+    ValidTo: toODataDate(row.ValidTo),
+    Aenam: adminPernr,
+  });
+
+  const createMobCapRow = async (row: MobCapRow, adminPernr: string): Promise<MobCapRow> => {
+    const postData = buildMobCapPayload(row, adminPernr);
+    const response = await sapClient.post(`${SAP_BASE_URL}/MobCapSet`, postData, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    return handleSapWriteResponse(response, 'Failed to create mobile cap row') as MobCapRow;
+  };
+
+  // PUT must resend every field (whole-row replace, including Active); key fields can't change.
+  // Falls back to POST if the gateway rejects PUT-with-key-predicates, same as DoaChainSet.
+  const updateMobCapRow = async (row: MobCapRow, adminPernr: string): Promise<MobCapRow> => {
+    const putData = buildMobCapPayload(row, adminPernr);
+    const keyUrl = `MobCapSet(Mcat='${row.Mcat}',Kostl='${row.Kostl}',Trfgr='${row.Trfgr}',Trfst='${row.Trfst}')`;
+    let response = await sapClient.put(`${SAP_BASE_URL}/${keyUrl}`, putData, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (response.status === 405) {
+      response = await sapClient.post(`${SAP_BASE_URL}/MobCapSet`, putData, {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    return handleSapWriteResponse(response, 'Failed to update mobile cap row');
+  };
+
+  // Configuration Maintenance (ConfigVarSet/ConfigLogSet, live on dev 2026-11-24) — replaces the
+  // former STVARV variables. Aenam (the logged-in admin's PERNR) is mandatory on every call, same
+  // identity mechanism as DoaChainSet/MobCapSet above; the backend returns "Not authorised to
+  // maintain the configuration" / "... view the configuration log." for a non-admin.
+  const fetchConfigVars = async (adminPernr: string, name?: ConfigVarName): Promise<ConfigVarRow[]> => {
+    const parts = [`Aenam eq '${adminPernr}'`];
+    if (name) parts.push(`Name eq '${name}'`);
+    const filterQuery = `$filter=${encodeURIComponent(parts.join(' and '))}&`;
+    const response = await sapClient.get(`${SAP_BASE_URL}/ConfigVarSet?${filterQuery}$format=json`);
+    if (response.status < 200 || response.status >= 300) {
+      const errData = response.data;
+      const errMsg = errData?.error?.message?.value || errData?.error || errData?.d?.Message || errData?.Message || 'Failed to fetch configuration';
+      throw new Error(errMsg);
+    }
+    return extractSapResults(response.data) as ConfigVarRow[];
+  };
+
+  // Numb is backend-assigned on create — never sent.
+  const addConfigVar = async (row: { Name: ConfigVarName; Low: string; High?: string }, adminPernr: string): Promise<ConfigVarRow> => {
+    const postData = { ...row, Aenam: adminPernr };
+    const response = await sapClient.post(`${SAP_BASE_URL}/ConfigVarSet`, postData, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    return handleSapWriteResponse(response, 'Failed to add configuration line') as ConfigVarRow;
+  };
+
+  const updateConfigVar = async (row: ConfigVarRow, adminPernr: string): Promise<ConfigVarRow> => {
+    const putData = { ...row, Aenam: adminPernr };
+    const keyUrl = `ConfigVarSet(Name='${row.Name}',Numb='${row.Numb}')`;
+    const response = await sapClient.put(`${SAP_BASE_URL}/${keyUrl}`, putData, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    return handleSapWriteResponse(response, 'Failed to update configuration line');
+  };
+
+  // There is no DELETE — a line is removed by PUTting it with Remove:true, which the backend
+  // answers with 204 No Content (handleSapWriteResponse's 2xx check already tolerates that).
+  const removeConfigVar = async (row: ConfigVarRow, adminPernr: string): Promise<void> => {
+    const putData = { ...row, Remove: true, Aenam: adminPernr };
+    const keyUrl = `ConfigVarSet(Name='${row.Name}',Numb='${row.Numb}')`;
+    const response = await sapClient.put(`${SAP_BASE_URL}/${keyUrl}`, putData, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    handleSapWriteResponse(response, 'Failed to remove configuration line');
+  };
+
+  const fetchConfigLog = async (adminPernr: string, varname?: ConfigVarName): Promise<ConfigLogRow[]> => {
+    const parts = [`Aenam eq '${adminPernr}'`];
+    if (varname) parts.push(`Varname eq '${varname}'`);
+    const filterQuery = `$filter=${encodeURIComponent(parts.join(' and '))}&`;
+    const response = await sapClient.get(`${SAP_BASE_URL}/ConfigLogSet?${filterQuery}$format=json`);
+    if (response.status < 200 || response.status >= 300) {
+      const errData = response.data;
+      const errMsg = errData?.error?.message?.value || errData?.error || errData?.d?.Message || errData?.Message || 'Failed to fetch configuration log';
+      throw new Error(errMsg);
+    }
+    return extractSapResults(response.data) as ConfigLogRow[];
+  };
 
   // BR-018, BR-019: Retry SAP Posting — local-only, backs the debug-only errors screen.
   const retrySAPPosting = (errorId: string) => {
@@ -1347,11 +1537,19 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           // Under the DOA chain, a level can have parallel approvers (rule O: any one closes it,
           // rule A: all must approve) and SAP only ever returns ONE CurrentApprover PERNR even
           // then - so this user can be a valid pending approver for a claim without being the
-          // single value c.currentApprover happens to hold. fetchClaims() already scopes `claims`
-          // to `LoginId eq <me>` server-side, i.e. SAP has already decided this claim is waiting
-          // on this user at their level; re-checking currentApprover here would wrongly drop
-          // exactly the parallel-approver case the DOA chain introduces. Status is still the
-          // right local check: only N/A claims are still open at some approval level.
+          // single value c.currentApprover happens to hold. fetchClaims() scopes `claims` to
+          // `LoginId eq <me>` server-side, but that filter returns every claim this PERNR is
+          // associated with in ANY capacity - including their OWN submitted claims still open at
+          // someone else's approval level, not only ones actually waiting on this user (confirmed
+          // live 2026-11-24: a test account's own open claims, routed to a different approver
+          // PERNR, still came back from this fetch and were wrongly shown as pending the viewer's
+          // own approval). Re-checking currentApprover would wrongly drop the real parallel-
+          // approver case (see above), but excluding the viewer's own claims is always safe -
+          // nobody approves their own expense claim, same guard the finance branch below already
+          // applies.
+          const employeeNumericM = c.employeeId?.replace(/\D/g, '').padStart(8, '0') || '';
+          const userNumericM = currentUser?.employeeId?.replace(/\D/g, '').padStart(8, '0') || '';
+          if (currentUser && employeeNumericM === userNumericM) return false;
           if (c.rawStatus !== 'N' && c.rawStatus !== 'A') return false;
         } else if (roleFilter === 'finance') {
           const userNumericF = currentUser?.employeeId?.replace(/\D/g, '').padStart(8, '0') || '';
@@ -1362,8 +1560,11 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             if (employeeNumeric === userNumericF) return false;
           }
 
-          const financeStatuses = currentUser?.role === 'B' ? ['H', 'P'] : ['H'];
-          if (!financeStatuses.includes(c.rawStatus || '')) return false;
+          // H is the live queue (direct post, no park step); P is legacy-only (claims parked
+          // before this change). No role check - whether someone may open the Finance screen at
+          // all is decided by the isFinance flag gating the tab/route, not by what this filter
+          // returns once they're there.
+          if (c.rawStatus !== 'H' && c.rawStatus !== 'P') return false;
         }
 
         // Search by employee name or claim ID or cost center
@@ -1384,7 +1585,7 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         // Filter by status - 'Pending Pay' is a synthetic combined status (not a real SAP status)
         // matching the Dashboard KPI card of the same name, covering both claims sitting at
-        // Finance review and claims already Parked awaiting payment release.
+        // Finance review and claims already awaiting posting.
         if (status && status !== 'All') {
           if (status === 'Pending Pay') {
             if (c.status !== 'Pending at finance' && c.status !== 'Pending Release') return false;
@@ -1442,7 +1643,14 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         fetchDoaChain,
         createDoaChainRow,
         updateDoaChainRow,
-        deactivateDoaChainRow,
+        fetchMobCaps,
+        createMobCapRow,
+        updateMobCapRow,
+        fetchConfigVars,
+        addConfigVar,
+        updateConfigVar,
+        removeConfigVar,
+        fetchConfigLog,
         retrySAPPosting,
         getClaimById,
         filterClaims,

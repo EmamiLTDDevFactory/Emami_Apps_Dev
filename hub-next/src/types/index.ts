@@ -49,6 +49,8 @@ export interface UserAppGrant {
   /** Only meaningful for Audit & CAPA's 'Depot' role — which depot that person belongs to (see
    * embedded-apps/audit-capa/src/data/depots.js). Unused by every other app/role. */
   depot?: string | null;
+  /** Optional limit to some screens of the app (null/absent = every screen the role gets). See backend/appTiles.js. */
+  tiles?: string[] | null;
 }
 
 /** Hub-wide role (emami_apps.authorized_users.access_level) — distinct from AppRole above, which
@@ -92,6 +94,11 @@ export interface AccessChangeEntry {
   oldValue: string | null;
   newValue: string | null;
   occurredAt: string;
+  /** Set when the change was granted through an Access Request incident (INC-2026-00001): its id, number and the
+   * requester's reason / approver note. */
+  incidentId?: number | null;
+  incidentRef?: string | null;
+  incidentNote?: string | null;
 }
 
 /** What GET /access/me returns for the currently signed-in user — their own hub-wide role plus

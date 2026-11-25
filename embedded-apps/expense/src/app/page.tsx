@@ -2,7 +2,6 @@
 
 import { useRouter } from 'next/navigation';
 import { BarChart3, CheckCircle2, Clock, FileStack, IndianRupee, PlusCircle, RefreshCcw, XCircle } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
 import { useClaim } from '../context/ClaimContext';
 import { ExpenseClaim } from '../types';
 import { formatClaimDisplayDate, getClaimCreatedTimestamp } from '../utils/claim-date';
@@ -33,7 +32,6 @@ const ACCENT_BORDER: Record<string, string> = {
 export default function RootPage() {
   const router = useRouter();
   const { kpis, claims, fetchClaims } = useClaim();
-  const { activeRole } = useAuth();
 
   const recentClaims = [...claims]
     .sort((a, b) => getClaimCreatedTimestamp(b) - getClaimCreatedTimestamp(a))
@@ -87,11 +85,9 @@ export default function RootPage() {
       <div className="flex items-center justify-between">
         <h2 className="text-base font-bold text-ink">Recent Claims Activity</h2>
         <div className="flex items-center gap-3">
-          {activeRole === 'employee' && (
-            <button type="button" onClick={() => router.push('/my-claims/')} className="text-sm font-bold text-brand">
-              View All
-            </button>
-          )}
+          <button type="button" onClick={() => router.push('/my-claims/')} className="text-sm font-bold text-brand">
+            View All
+          </button>
           <button
             type="button"
             onClick={() => fetchClaims()}

@@ -35,13 +35,6 @@ const EXCEL_MIME_TYPES = ['application/vnd.ms-excel', 'application/vnd.openxmlfo
 // the GST flow (Region/HSN fields) for a value that isn't actually a real GSTIN.
 const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 
-// Non-CTC: Mobile Exp — the multi-month claim flow only turns on for this exact SAP expense
-// type (confirmed against SAP's live ExptypeSet, ZslNo 00073). "1st Telephone Claim" is kept as
-// an alias since it may be the same type surfaced differently for an employee's first claim
-// (SAP returns it per-LoginId, not as a static catalog row — unverified against a real
-// employee login, so both names are honored here rather than guessing which one is shown).
-const MOBILE_EXPENSE_TYPE_NAMES = new Set(['TELE & COMM-TELEPHONE CHARGES-MOBILE PHONE', '1st Telephone Claim']);
-
 // "2026-08" -> "August 2026". Used for month keys throughout the multi-month flow below.
 const formatMonthLabel = (monthKey: string) => {
   const [y, m] = monthKey.split('-').map(Number);
@@ -73,9 +66,10 @@ type MonthClaimEntry = {
   // True once the EligibilitySet call has returned (success or fail) for this month - lets the UI
   // show "No Cap" instead of the "Auto-fetched..." placeholder once a real answer has come back.
   eligibilityChecked: boolean;
-  // Eligibility's Category field - 'B' = non-sales (HoD pick-list routing above the cap), 'C1'-'C4'
-  // = sales (straight to L1 supervisor, no choice). Same value expected on every month card for one
-  // employee, since it's a property of the employee, not the month.
+  // Eligibility's Category field - 'NS' = non-sales (HoD pick-list routing above the cap),
+  // 'SC'/'SH'/'SM'/'SE'/'SG' = sales channels (straight to L1 supervisor, no choice). Same value
+  // expected on every month card for one employee, since it's a property of the employee's cost
+  // centre, not the month.
   category: string | null;
   // Set once OCR reads the invoice's own printed date off this card's document and it doesn't
   // fall inside this card's month — e.g. an August invoice dropped into the July card. Informational
@@ -238,9 +232,6 @@ function CreateClaimInner() {
   const [monthClaims, setMonthClaims] = useState<Record<string, MonthClaimEntry>>({});
   const [monthPickingKey, setMonthPickingKey] = useState<string | null>(null);
   const [monthExtractingKey, setMonthExtractingKey] = useState<string | null>(null);
-  const [financeDocument, setFinanceDocument] = useState<Attachment[]>([]);
-  const [pickingFinanceDocument, setPickingFinanceDocument] = useState(false);
-  const [approvalNotes, setApprovalNotes] = useState('');
   // Non-CTC: Mobile Exp, non-sales (Category='B') above the eligibility cap - HoD choice list.
   const [hodApprovers, setHodApprovers] = useState<{ apprId: string; apprName: string; apprEmail: string }[]>([]);
   const [selectedHodApprId, setSelectedHodApprId] = useState('');
@@ -304,8 +295,6 @@ function CreateClaimInner() {
     setExistingClaimId('');
     setSelectedMonths(['']);
     setMonthClaims({});
-    setFinanceDocument([]);
-    setApprovalNotes('');
     setHodApprovers([]);
     setSelectedHodApprId('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -334,11 +323,62 @@ function CreateClaimInner() {
     }
   };
 
+  // "/Date(ms)/" or plain ISO -> "YYYY-MM-DD". Mirrors the inline parsing already used below for
+  // claimDateStr/expenseDateStr, factored out here since rebuilding mobile month cards (PeriodFrom)
+  // needs the same thing.
+  const parseSapDateToIso = (value: any): string => {
+    if (!value) return '';
+    const str = String(value);
+    if (str.includes('Date(')) {
+      const ts = parseInt(str.replace(/\D/g, ''), 10);
+      return new Date(ts).toISOString().split('T')[0];
+    }
+    return str.split('T')[0];
+  };
+
+  // One CLAIMNAV line -> one Attachment, same shape/extension-recovery as the combined
+  // attachmentList below - factored out so a mobile line's single attachment can reuse it too.
+  const mapLineToAttachment = (item: any, key: string): Attachment | null => {
+    if (!item.Filename || !item.Value) return null;
+    const mimetype = item.Mimetype || 'application/pdf';
+    const name = item.Filename.includes('.')
+      ? item.Filename
+      : `${item.Filename}.${MIME_TO_EXTENSION[mimetype] || 'pdf'}`;
+    const sizeBytes = item.Value ? Math.floor((item.Value.length * 3) / 4) : 0;
+    return {
+      id: `att-${key}-${Date.now()}-${item.Filename.replace(/[^a-zA-Z0-9]/g, '')}`,
+      name,
+      uri: `data:${mimetype};base64,${item.Value}`,
+      type: mimetype,
+      size: sizeBytes,
+    };
+  };
+
   const mapSAPClaimToFormData = (sapClaim: any) => {
     if (!sapClaim) return null;
 
     const header = sapClaim;
     const lineItems = sapClaim.CLAIMNAV?.results || sapClaim.CLAIMNAV || [];
+
+    // Mobile Exp claims carry one CLAIMNAV line per month (PeriodFrom identifies them - a plain
+    // non-mobile claim's lines never have it); without this, a rejected mobile claim resubmitted
+    // the old way, loaded as one generic line with the header total and the first line's date,
+    // and its month cards were simply gone. BillAmt (not Amount, which the backend overwrites to
+    // the claim total on every line) is each month's own real amount.
+    const mobileLines = lineItems.filter((item: any) => item.PeriodFrom);
+    const mobileMonths: { monthKey: string; entry: MonthClaimEntry }[] | null = mobileLines.length > 0
+      ? mobileLines
+          .map((item: any, index: number) => ({
+            monthKey: parseSapDateToIso(item.PeriodFrom).slice(0, 7),
+            entry: {
+              ...BLANK_MONTH_ENTRY,
+              claimAmount: String(parseFloat(item.BillAmt) || 0),
+              invoiceNumber: item.ReceiptNo || null,
+              attachment: mapLineToAttachment(item, `mob-${index}`),
+            } as MonthClaimEntry,
+          }))
+          .filter((m: { monthKey: string; entry: MonthClaimEntry }) => m.monthKey)
+      : null;
 
     let claimDateStr = '';
     const dateToParse = header.ClaimDate || header.CreatedOn;
@@ -406,6 +446,7 @@ function CreateClaimInner() {
       amount: parseFloat(header.TotalAmount || 0),
       costCenter: header.CostCenter || COST_CENTERS[0],
       attachments: attachmentList,
+      mobileMonths,
     };
   };
 
@@ -454,6 +495,15 @@ function CreateClaimInner() {
         setSupportingDocuments(formData.attachments.slice(1));
         setOriginalExpenseDocumentSources({});
         setSupportingDocumentSources({});
+        // Mobile Exp: restore one month card per CLAIMNAV line that has PeriodFrom, then re-run
+        // the eligibility check for each - a rejected mobile claim previously lost its month cards
+        // entirely on resubmit, loading as a single generic line instead.
+        if (formData.mobileMonths && formData.mobileMonths.length > 0) {
+          const monthKeys = formData.mobileMonths.map((m) => m.monthKey);
+          setSelectedMonths(monthKeys);
+          setMonthClaims(Object.fromEntries(formData.mobileMonths.map((m) => [m.monthKey, m.entry])));
+          monthKeys.forEach((mk) => fetchEligibilityForMonth(mk));
+        }
       }
       return;
     }
@@ -551,8 +601,11 @@ function CreateClaimInner() {
   const requiresManagerApprovedAttachment = expenseTypes.find((et: any) => et.name === expenseType)?.requiresManagerApprovedAttachment === true;
 
   // Non-CTC: Mobile Exp — turns on the multi-month flow below in place of the single
-  // date/amount/document fields. Every other expense type is completely unaffected.
-  const isMobileExpense = MOBILE_EXPENSE_TYPE_NAMES.has(expenseType);
+  // date/amount/document fields. Every other expense type is completely unaffected. Driven by
+  // ExptypeSet's own IsMobile flag now (GL-set-driven, ~22 types on dev) rather than matching
+  // specific expense-type names, which stopped being a stable signal once the dropdown moved to
+  // SAP GL sets.
+  const isMobileExpense = !!expenseTypes.find((et) => et.name === expenseType)?.isMobile;
 
   // Non-CTC: Mobile Exp — the local `claims` list only holds claims currently assigned to this
   // user (LoginId is cleared once a claim moves past them, e.g. once approved/posted), so an
@@ -575,16 +628,17 @@ function CreateClaimInner() {
   // Months already claimed for this expense type - from claims the app has already fetched (no
   // extra call) merged with the SAP-wide check above.
   const claimedMonthKeys = useMemo(() => {
+    const mobileTypeNames = new Set(expenseTypes.filter((et) => et.isMobile).map((et) => et.name));
     const set = new Set<string>();
     claims.forEach((c: any) => {
-      if (MOBILE_EXPENSE_TYPE_NAMES.has(c.expenseType) && c.expenseDate) {
+      if (mobileTypeNames.has(c.expenseType) && c.expenseDate) {
         set.add(String(c.expenseDate).slice(0, 7));
       }
     });
     sapClaimedMonthKeys.forEach((mk) => set.add(mk));
     return set;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [claims, sapClaimedMonthKeys]);
+  }, [claims, sapClaimedMonthKeys, expenseTypes]);
 
   // The months actually picked across all slots, in slot order - what every card/total below
   // renders from. Empty slots (not yet picked) are filtered out.
@@ -643,14 +697,6 @@ function CreateClaimInner() {
     [pickedMonths, monthClaims],
   );
 
-  // Non-CTC: Mobile Exp - Category is a property of the employee (sales vs non-sales), not the
-  // month, but it only arrives via the per-month Eligibility call - any month card that's already
-  // resolved it carries the same value.
-  const employeeCategory = useMemo(
-    () => pickedMonths.map((mk) => getMonthEntry(mk).category).find(Boolean) || null,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [pickedMonths, monthClaims],
-  );
   const anyMonthAboveEligibility = useMemo(
     () => pickedMonths.some((mk) => {
       const entry = getMonthEntry(mk);
@@ -659,8 +705,18 @@ function CreateClaimInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [pickedMonths, monthClaims],
   );
-  const needsHodChoice = isMobileExpense && anyMonthAboveEligibility && employeeCategory === 'B';
-  const needsL1Notice = isMobileExpense && anyMonthAboveEligibility && !!employeeCategory && employeeCategory !== 'B';
+  // Non-CTC: Mobile Exp - Category is a property of the employee's cost centre (non-sales vs which
+  // sales channel), not the month, but it only arrives via the per-month Eligibility call - any
+  // month card that's already resolved it carries the same value.
+  const employeeCategory = useMemo(
+    () => pickedMonths.map((mk) => getMonthEntry(mk).category).find(Boolean) || null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pickedMonths, monthClaims],
+  );
+  // NS (non-sales) above the cap goes through the HoD pick list; any sales category (SC/SH/SM/
+  // SE/SG) above the cap goes straight to the employee's L1 supervisor instead, no choice offered.
+  const needsHodChoice = isMobileExpense && anyMonthAboveEligibility && employeeCategory === 'NS';
+  const needsL1Notice = isMobileExpense && anyMonthAboveEligibility && !!employeeCategory && employeeCategory !== 'NS';
 
   // Re-fetches whenever the total claim amount changes, per the backend's "Amount = header
   // TotalAmount" / "re-fetch when the total amount changes" instructions.
@@ -762,36 +818,6 @@ function CreateClaimInner() {
   const setMonthClaimAmount = (monthKey: string, value: string) => {
     setMonthClaims((prev) => ({ ...prev, [monthKey]: { ...getMonthEntry(monthKey), claimAmount: value } }));
   };
-
-  const pickFinanceDocument = async () => {
-    if (financeDocument.length >= 1) {
-      setFormError('Remove the current Finance Document before adding another.');
-      return;
-    }
-    setPickingFinanceDocument(true);
-    try {
-      setFormError('');
-      const result = await getDocumentAsync({ multiple: false });
-      if (result.canceled) return;
-      const asset = result.assets[0];
-      if (!asset || !asset.uri) return;
-
-      const mimeType = getMimeTypeForFile(asset.name, asset.mimeType);
-      if (!isAttachmentAllowed(asset.name, mimeType)) {
-        setFormError(`Unsupported attachment type. Allowed file types: ${ALLOWED_ATTACHMENT_LABEL}.`);
-        return;
-      }
-
-      const newAtt: Attachment = { id: `fin-doc-${Date.now()}`, name: asset.name || 'document', uri: asset.uri, size: asset.size || 0, type: mimeType };
-      setFinanceDocument([newAtt]);
-    } catch {
-      setFormError('Unable to add attachment. Please try again with a supported file.');
-    } finally {
-      setPickingFinanceDocument(false);
-    }
-  };
-
-  const removeFinanceDocument = () => setFinanceDocument([]);
 
   // Reads GSTIN / HSN / total amount off the first Supporting Document the user uploads, via a
   // backend endpoint that calls Claude's document understanding (not live yet - the backend
@@ -1088,6 +1114,13 @@ function CreateClaimInner() {
         setFormError('Please select the HoD to send this claim to.');
         return;
       }
+      // No HoD maintained for this cost centre - the backend now blocks this claim outright
+      // (it used to silently fall back to the supervisor), so stop it here with a clear reason
+      // instead of letting the user submit into a guaranteed SAP rejection.
+      if (needsHodChoice && !hodLoading && hodApprovers.length === 0) {
+        setFormError('No HoD is maintained for your cost centre - contact Admin.');
+        return;
+      }
 
       setAmountError('');
       setFormError('');
@@ -1117,8 +1150,6 @@ function CreateClaimInner() {
         // Mobile's documents travel per-month via mobileMonthItems, not this combined list.
         attachments: [],
         managerApprovedAttachments,
-        financeDocument,
-        approvalNotes: approvalNotes || undefined,
         // Chosen HoD (non-sales, 2+ candidates) or the single auto-selected one - undefined when
         // there's nothing to choose (sales employee, or 0/1 HoD candidates).
         selAppr: selectedHodApprId || undefined,
@@ -1542,15 +1573,16 @@ function CreateClaimInner() {
             </Card>
           )}
 
-          {/* Non-CTC: Mobile Exp - HoD choice (non-sales, Category='B') or an L1-approver notice
-              (sales, Category C1-C4), only once the claim total is above the eligibility cap. */}
+          {/* Non-CTC: Mobile Exp - HoD choice (non-sales, Category='NS') or an L1-approver notice
+              (sales, Category SC/SH/SM/SE/SG), only once the claim total is above the eligibility
+              cap. */}
           {needsHodChoice && (
             <Card className="mb-3">
               <h2 className="mb-2 text-sm font-bold text-ink">Approval Routing</h2>
               {hodLoading ? (
                 <div className="flex items-center gap-2 text-xs text-inkSoft"><Spinner size={13} /> Checking HoD approvers…</div>
               ) : hodApprovers.length === 0 ? (
-                <p className="text-xs text-inkSoft">This will go to your supervisor for approval.</p>
+                <p className="text-xs font-semibold text-red">No HoD is maintained for your cost centre - contact Admin.</p>
               ) : hodApprovers.length === 1 ? (
                 <p className="text-sm text-ink">Will be sent to <span className="font-bold">{hodApprovers[0].apprName}</span> for approval.</p>
               ) : (
@@ -1570,43 +1602,6 @@ function CreateClaimInner() {
               <p className="text-sm text-ink">Will go to your L1 approver.</p>
             </Card>
           )}
-
-          {/* Finance Document + Approval Notes - both manual-entry, per the requirement sheet. */}
-          <Card className="mb-3">
-            <h2 className="text-sm font-bold text-ink">Finance Document</h2>
-            <p className="mb-3 text-xs text-inkSoft">Manual input — attach any supporting finance document for this claim</p>
-
-            {financeDocument.length > 0 ? (
-              <div className="mb-2 flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-2">
-                <FileText size={20} className="shrink-0 text-brand" />
-                <span className="min-w-0 flex-1 truncate text-sm text-ink">{financeDocument[0].name}</span>
-                <button type="button" onClick={() => handlePreviewAttachment(financeDocument[0])} aria-label="View document" className="rounded p-1.5 text-brand hover:bg-cream">
-                  <Eye size={18} />
-                </button>
-                <button type="button" onClick={removeFinanceDocument} aria-label="Remove document" className="rounded p-1.5 text-red hover:bg-redBg">
-                  <Trash2 size={18} />
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={pickFinanceDocument}
-                disabled={pickingFinanceDocument}
-                className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-brand/40 bg-cream/40 py-3 text-sm font-semibold text-brand hover:bg-cream disabled:opacity-60"
-              >
-                <CloudUpload size={18} /> Add Finance Document
-              </button>
-            )}
-            {pickingFinanceDocument && (
-              <div className="mt-2 flex items-center gap-2 text-xs text-inkSoft"><Spinner size={13} /> Processing document…</div>
-            )}
-
-            <div className="mt-4">
-              <Field label="Approval Notes">
-                <TextArea value={approvalNotes} onChange={(e) => setApprovalNotes(e.target.value)} placeholder="Manual input — any note relevant to approval" />
-              </Field>
-            </div>
-          </Card>
         </>
       )}
 
@@ -1689,7 +1684,7 @@ function CreateClaimInner() {
         <Button
           variant="primary"
           className="flex-1"
-          disabled={requiresManagerApprovedAttachment && managerApprovedAttachments.length === 0}
+          disabled={(requiresManagerApprovedAttachment && managerApprovedAttachments.length === 0) || (needsHodChoice && !hodLoading && hodApprovers.length === 0)}
           onClick={() => handleSubmit(false)}
         >
           <Send size={16} /> Submit Claim

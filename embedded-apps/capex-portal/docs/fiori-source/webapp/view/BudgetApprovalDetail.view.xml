@@ -1,0 +1,249 @@
+<mvc:View
+    controllerName="zcapexportal.controller.BudgetApprovalDetail"
+    xmlns="sap.m"
+    xmlns:mvc="sap.ui.core.mvc"
+    xmlns:core="sap.ui.core"
+    xmlns:l="sap.ui.layout"
+    height="100%">
+
+    <Page
+        id="pageBudgetApprovalDetail"
+        title="{i18n>budgetApprovalTitle}"
+        showNavButton="true"
+        navButtonPress=".onBack"
+        class="zcpxApp">
+
+        <content>
+            <VBox class="zcpxScreen">
+
+                <!-- ==========================================================
+                     1. HEADER — what am I approving, and for how much
+                     ========================================================== -->
+                <VBox class="zcpxHero zcpxSection">
+                    <HBox justifyContent="SpaceBetween" alignItems="Start" wrap="Wrap">
+                        <VBox>
+                            <Text text="{detail>/budgetId}" class="zcpxHeroTitle"/>
+                            <Text text="{detail>/title}" class="zcpxHeroSub"/>
+                            <Text
+                                text="{detail>/plantName} · {detail>/capexType} · raised by {detail>/submittedBy}"
+                                class="zcpxHeroSub sapUiTinyMarginTop"/>
+                        </VBox>
+                        <VBox alignItems="End">
+                            <Text text="{i18n>cpeAmount}" class="zcpxHeroSub"/>
+                            <Text text="{path: 'detail>/approved', formatter: '.formatter.inLakhs'}" class="zcpxHeroTitle"/>
+                            <ObjectStatus
+                                text="{path: 'detail>/status', formatter: '.formatter.statusText'}"
+                                state="{path: 'detail>/status', formatter: '.formatter.statusState'}"
+                                inverted="true"
+                                class="sapUiTinyMarginTop"/>
+                        </VBox>
+                    </HBox>
+                </VBox>
+
+                <!-- ==========================================================
+                     2. DOA POSITION — where this budget is in the chain
+                     ========================================================== -->
+                <VBox class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <core:Icon src="sap-icon://approvals" class="sapUiTinyMarginEnd"/>
+                        <Text text="{i18n>approvalChain}" class="zcpxCardTitle"/>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+                        <l:Grid defaultSpan="XL4 L4 M6 S12" hSpacing="1" vSpacing="1">
+                            <VBox class="zcpxKpi zcpxKpi--brand">
+                                <Text text="Current Level" class="zcpxKpiLabel"/>
+                                <Text text="{path: 'detail>/currentLevel', formatter: '.formatter.orDash'}" class="zcpxKpiValue"/>
+                            </VBox>
+                            <VBox class="zcpxKpi">
+                                <Text text="DOA Chain" class="zcpxKpiLabel"/>
+                                <Text text="{path: 'detail>/doaId', formatter: '.formatter.orDash'}" class="zcpxKpiValue"/>
+                            </VBox>
+                            <VBox class="zcpxKpi">
+                                <Text text="Submitted On" class="zcpxKpiLabel"/>
+                                <Text text="{path: 'detail>/submittedOn', formatter: '.formatter.date'}" class="zcpxKpiValue"/>
+                            </VBox>
+                        </l:Grid>
+
+                        <VBox class="zcpxTimeline sapUiSmallMarginTop" items="{detail>/chain}">
+                            <VBox class="zcpxTlItem">
+                                <customData>
+                                    <core:CustomData key="tone" value="{path: 'detail>status', formatter: '.formatter.timelineTone'}" writeToDom="true"/>
+                                </customData>
+                                <HBox justifyContent="SpaceBetween" wrap="Wrap">
+                                    <VBox>
+                                        <Text text="{detail>role}" class="zcpxTlRole"/>
+                                        <Text text="{detail>approver}" class="zcpxTlMeta"/>
+                                    </VBox>
+                                    <VBox alignItems="End">
+                                        <ObjectStatus
+                                            text="{path: 'detail>status', formatter: '.formatter.statusText'}"
+                                            state="{path: 'detail>status', formatter: '.formatter.statusState'}"/>
+                                        <Text
+                                            text="{path: 'detail>actedOn', formatter: '.formatter.dateTime'}"
+                                            class="zcpxTlMeta"
+                                            visible="{= !!${detail>actedOn} }"/>
+                                    </VBox>
+                                </HBox>
+                                <Text text="{detail>comment}" class="zcpxTlNote" visible="{= !!${detail>comment} }"/>
+                            </VBox>
+                        </VBox>
+                    </VBox>
+                </VBox>
+
+                <!-- ==========================================================
+                     3. JUSTIFICATION
+                     ========================================================== -->
+                <VBox class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <core:Icon src="sap-icon://document-text" class="sapUiTinyMarginEnd"/>
+                        <Text text="{i18n>justification}" class="zcpxCardTitle"/>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+                        <Text text="{path: 'detail>/justification', formatter: '.formatter.orDash'}"/>
+                    </VBox>
+                </VBox>
+
+                <!-- ==========================================================
+                     4. BUDGET LINE ITEMS - what is actually being approved,
+                     same table BudgetDetail.view.xml shows outside of
+                     approval (user report: approvers had only the DOA chain
+                     and justification text to go on, no line-item/financial
+                     breakdown). Hidden entirely for an old-style budget with
+                     no items, same convention as BudgetDetail.
+                     ========================================================== -->
+                <VBox class="zcpxCard zcpxSection" visible="{= !!${detail>/items}.length }">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <core:Icon src="sap-icon://list" class="sapUiTinyMarginEnd"/>
+                        <Text text="{i18n>budgetItems}" class="zcpxCardTitle"/>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+                        <Table items="{detail>/items}" class="sapUiSizeCompact">
+                            <columns>
+                                <Column><Text text="{i18n>itemNo}"/></Column>
+                                <Column><Text text="{i18n>itemTitlePlaceholder}"/></Column>
+                                <Column hAlign="End"><Text text="{i18n>budgetAmount}"/></Column>
+                                <Column minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>itemRemarksPlaceholder}"/></Column>
+                            </columns>
+                            <items>
+                                <ColumnListItem>
+                                    <cells>
+                                        <Text text="{detail>itemNo}"/>
+                                        <Text text="{detail>title}"/>
+                                        <Text text="{path: 'detail>amount', formatter: '.formatter.inLakhs'}" class="zcpxNum"/>
+                                        <Text text="{path: 'detail>remarks', formatter: '.formatter.orDash'}"/>
+                                    </cells>
+                                </ColumnListItem>
+                            </items>
+                        </Table>
+                        <Text
+                            text="{path: 'detail>/items', formatter: '.formatItemsTotal'}"
+                            class="zcpxHintText sapUiTinyMarginTop"/>
+                    </VBox>
+                </VBox>
+
+                <!-- ==========================================================
+                     5. FINANCIAL METRICS - IRR/NPV/Payback and the
+                     discounted cash-flow schedule, same content as
+                     BudgetDetail.view.xml's Financials tab.
+                     ========================================================== -->
+                <VBox class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <core:Icon src="sap-icon://line-chart" class="sapUiTinyMarginEnd"/>
+                        <Text text="{i18n>financialMetrics}" class="zcpxCardTitle"/>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+                        <MessageStrip
+                            text="{i18n>metricsDisabledHint}"
+                            type="Information"
+                            showIcon="true"
+                            visible="{= !${detail>/metricsEnabled} }"/>
+
+                        <VBox visible="{detail>/metricsEnabled}">
+                            <l:Grid defaultSpan="XL4 L4 M4 S12" hSpacing="1" vSpacing="1">
+                                <VBox class="zcpxMetric">
+                                    <Text text="{i18n>irr}" class="zcpxMetricLabel"/>
+                                    <Text text="{path: 'detail>/irr', formatter: '.formatIrr'}" class="zcpxMetricValue"/>
+                                    <Text text="{parts: ['detail>/hurdleRate'], formatter: '.formatHurdleFoot'}" class="zcpxHintText"/>
+                                </VBox>
+                                <VBox class="zcpxMetric">
+                                    <Text text="{i18n>npv}" class="zcpxMetricLabel"/>
+                                    <Text text="{path: 'detail>/npv', formatter: '.formatNpv'}" class="zcpxMetricValue"/>
+                                </VBox>
+                                <VBox class="zcpxMetric">
+                                    <Text text="{i18n>payback}" class="zcpxMetricLabel"/>
+                                    <Text text="{path: 'detail>/payback', formatter: '.formatPayback'}" class="zcpxMetricValue"/>
+                                </VBox>
+                            </l:Grid>
+
+                            <Text text="{i18n>cashFlows}" class="zcpxSectionLabel sapUiMediumMarginTop"/>
+                            <Table items="{detail>/cashFlowRows}" class="sapUiSizeCompact">
+                                <columns>
+                                    <Column><Text text="Year"/></Column>
+                                    <Column hAlign="End"><Text text="Net Inflow"/></Column>
+                                    <Column hAlign="End" minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="Discounted"/></Column>
+                                    <Column hAlign="End" minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="Cumulative"/></Column>
+                                </columns>
+                                <items>
+                                    <ColumnListItem>
+                                        <cells>
+                                            <Text text="{detail>year}"/>
+                                            <Text text="{path: 'detail>flow', formatter: '.formatter.inLakhs'}" class="zcpxNum"/>
+                                            <Text text="{path: 'detail>discounted', formatter: '.formatter.inLakhs'}" class="zcpxNum"/>
+                                            <ObjectNumber
+                                                number="{path: 'detail>cumulative', formatter: '.formatter.inLakhs'}"
+                                                state="{= ${detail>cumulative} >= 0 ? 'Success' : 'Error' }"/>
+                                        </cells>
+                                    </ColumnListItem>
+                                </items>
+                            </Table>
+                        </VBox>
+                    </VBox>
+                </VBox>
+
+                <!-- ==========================================================
+                     6. DECISION
+                     ========================================================== -->
+                <VBox class="zcpxCard zcpxSection" visible="{detail>/canAct}">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <core:Icon src="sap-icon://decision" class="sapUiTinyMarginEnd"/>
+                        <Text text="Your Decision" class="zcpxCardTitle"/>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+                        <Label text="{i18n>commentLabel}"/>
+                        <TextArea
+                            id="taComment"
+                            value="{detail>/comment}"
+                            rows="3" width="100%" growing="true" growingMaxLines="6" maxLength="1000"
+                            placeholder="Optional for approval. Mandatory when rejecting."/>
+                    </VBox>
+                </VBox>
+
+                <MessageStrip
+                    class="zcpxSection"
+                    text="{parts: ['detail>/currentLevel'], formatter: '.formatNotYoursMsg'}"
+                    type="Information"
+                    showIcon="true"
+                    visible="{= !${detail>/canAct} }"/>
+
+            </VBox>
+        </content>
+
+        <footer>
+            <OverflowToolbar id="tbActions" visible="{detail>/canAct}">
+                <ToolbarSpacer/>
+                <Button
+                    text="{i18n>reject}"
+                    icon="sap-icon://decline"
+                    type="Reject"
+                    press=".onReject"/>
+                <Button
+                    text="{i18n>approve}"
+                    icon="sap-icon://accept"
+                    type="Accept"
+                    press=".onApprove"/>
+            </OverflowToolbar>
+        </footer>
+
+    </Page>
+
+</mvc:View>

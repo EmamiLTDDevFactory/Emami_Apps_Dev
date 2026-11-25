@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import Anthropic from '@anthropic-ai/sdk';
+import claimsRouter from './routes/claims.js';
 import sharp from 'sharp';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync, readFileSync, unlinkSync } from 'node:fs';
@@ -251,8 +252,18 @@ app.post('/api/expense/extract-document', async (req, res) => {
   }
 });
 
+app.use('/api/expense', claimsRouter);
+
 app.get('/api/expense/health', (req, res) => {
   res.json({ ok: true, extractionConfigured: !!anthropic });
+});
+
+// Catches next(err) calls from the routes above (e.g. a network failure reaching SAP) - without
+// this, Express's default handler returns an HTML error page, which the frontend's JSON-only error
+// handling can't parse.
+app.use((err, req, res, next) => {
+  console.error('[expense-server] unhandled error:', err?.message || err);
+  res.status(500).json({ error: 'Unexpected server error.' });
 });
 
 app.listen(PORT, () => {

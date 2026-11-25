@@ -5,14 +5,19 @@
  * the margin is computed here only over the lines that have an actual cost. The budget-to-actual margin bridge (price, volume, mix, cost) comes from SAP
  * (DashPvmSet, from the sales budget ZSALES_BUD_TGT); alert bands per SKU category come from ZMIS_ALERT_THR.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Card, Empty, Spinner, Stat, cx, inputBase, inputCls } from '../ui';
 import { ErrorBox, errorText } from '../budget-mgmt/shared';
 import { fetchPvm, fetchSales, fetchThresholds } from '@/lib/dash/service';
-import { brandSales, gmBands, pvmSteps, salesTotals, salesViews, skuSales, type GmBands, type PvmStep, type SalesView as Row } from '@/lib/dash/logic';
+import { brandSales, gmBands, productSales, pvmSteps, salesTotals, salesViews, skuSales, type GmBands, type PvmStep, type SalesView as Row } from '@/lib/dash/logic';
 import type { PvmRow, SalesRow, ThreshRow } from '@/lib/dash/types';
 import { ls } from '@/lib/client/storage';
 import { useHierNames } from '@/lib/client/useHierNames';
+import { MaterialHierarchyPicker, MaterialPicker } from '../Pickers';
+import AiNarrateSlot from '../ai/AiNarrateSlot';
+import { salesSpec } from '@/lib/ai/builders/screens';
+import SalesInvoices, { type InvoiceTarget } from './SalesInvoices';
+import type { SalesExtra } from '@/lib/dash/service';
 import { BAND, NeedsSap, fyStart, lakh, money, pct, tdCls, thCls, today } from './parts';
 
 const ALERT: Record<string, string> = { good: 'Green', amber: 'Amber', red: 'Red', none: '-' };
@@ -21,6 +26,12 @@ const PILL: Record<string, string> = { good: 'bg-good/15 text-good', amber: 'bg-
 export default function SalesView() {
   const hn = useHierNames();
   const [plants, setPlants] = useState('');
+  const [mats, setMats] = useState<string[]>([]);
+  const [vkorg, setVkorg] = useState('');
+  const [vtweg, setVtweg] = useState('');
+  const [vbeln, setVbeln] = useState('');
+  const [inv, setInv] = useState<InvoiceTarget | null>(null);
+  const [product, setProduct] = useState('');
   const [from, setFrom] = useState(fyStart(today()));
   const [to, setTo] = useState(today());
   const [rows, setRows] = useState<SalesRow[] | null>(null);
@@ -42,39 +53,62 @@ export default function SalesView() {
     try {
       const list = plants.split(/[\s,;]+/).filter(Boolean);
       const [r, pv, th] = await Promise.all([
-        fetchSales(list, from, to, c.signal),
-        fetchPvm(list, from, to, c.signal).then((x) => ({ rows: x.rows, err: '' })).catch((e) => ({ rows: null as PvmRow[] | null, err: c.signal.aborted ? '' : errorText(e) })),
+        fetchSales(list, from, to, c.signal, { matnr: mats, vkorg: vkorg.split(/[\s,;]+/).filter(Boolean), vtweg: vtweg.split(/[\s,;]+/).filter(Boolean), vbeln: vbeln.split(/[\s,;]+/).filter(Boolean) }),
+        (list.length ? fetchPvm(list, from, to, c.signal) : Promise.reject(new Error('The price-volume-mix bridge needs plants: enter plants to see it.'))).then((x) => ({ rows: x.rows, err: '' })).catch((e) => ({ rows: null as PvmRow[] | null, err: c.signal.aborted ? '' : errorText(e) })),
         fetchThresholds(c.signal).then((x) => x.rows).catch(() => [] as ThreshRow[]),   // no bands: the defaults apply
       ]);
       setPvm(pv.rows); setPvmErr(pv.err); setThr(th);
-      setRows(r.rows); setRan({ plants: list.join(', ').toUpperCase(), from, to }); setBrand(''); setChannel('');
+      setRows(r.rows); setRan({ plants: list.join(', ').toUpperCase(), from, to }); setBrand(''); setChannel(''); setProduct('');
       ls.set('bce:dash-plants', plants);
     } catch (e) { if (!c.signal.aborted) { setRows(null); setError(errorText(e)); } }
     if (!c.signal.aborted) setBusy(false);
   }
 
+  const selExtra = (): SalesExtra => ({ matnr: mats, vkorg: vkorg.split(/[\s,;]+/).filter(Boolean), vtweg: vtweg.split(/[\s,;]+/).filter(Boolean), vbeln: vbeln.split(/[\s,;]+/).filter(Boolean) });
+  const openInvoices = (title: string, extra: SalesExtra) => setInv({ title, plants: plants.split(/[\s,;]+/).filter(Boolean), from, to, extra });
+  const canList = mats.length > 0 || vkorg.trim() !== '' || vbeln.trim() !== '';
+
   const bands: GmBands = useMemo(() => gmBands(thr), [thr]);
   const all = useMemo(() => (rows ? salesViews(rows, bands) : []), [rows, bands]);
   const steps = useMemo(() => (pvm ? pvmSteps(pvm) : []), [pvm]);
   const brands = useMemo(() => brandSales(all), [all]);
+  const products = useMemo(() => productSales(all), [all]);
   const skus = useMemo(() => skuSales(all).sort((a, b) => b.nsv.comparedTo(a.nsv)), [all]);
   const tot = useMemo(() => salesTotals(brands), [brands]);
   const channels = useMemo(() => Array.from(new Set(skus.map((s) => s.channel))).sort(), [skus]);
-  const shownSkus = useMemo(() => skus.filter((s) => (!brand || s.brand === brand) && (!channel || s.channel === channel)), [skus, brand, channel]);
+  const shownSkus = useMemo(() => skus.filter((s) => (!brand || s.brand === brand) && (!product || s.prodha === product) && (!channel || s.channel === channel)), [skus, brand, product, channel]);
 
   return (
     <>
       <div className="flex flex-wrap items-end gap-2">
-        <label className="flex flex-col gap-1 text-xs font-semibold">Plants
-          <input className={cx(inputCls, 'w-56 uppercase')} placeholder="EM02, UN13" value={plants} onChange={(e) => setPlants(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void run()} />
+        <div className="w-full">
+          <span className="text-xs font-semibold">Materials (Brand, Product, SKU) - optional</span>
+          <div className="max-w-3xl">
+            <MaterialPicker id="sales-mats" values={mats} onChange={setMats} max={50} />
+            <MaterialHierarchyPicker values={mats} onChange={setMats} max={50} />
+          </div>
+          <p className="mt-1 text-2xs text-muted">Type a material, or pick by Brand → Product → SKU → Material (up to 50). Empty = every finished good.</p>
+        </div>
+        <label className="flex flex-col gap-1 text-xs font-semibold">Plants (blank = all)
+          <input className={cx(inputCls, 'w-64 uppercase')} placeholder="All plants (blank) or EM02, UN13" value={plants} onChange={(e) => setPlants(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void run()} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold">Sales org
+          <input className={cx(inputCls, 'w-28 uppercase')} placeholder="EM01" value={vkorg} onChange={(e) => setVkorg(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void run()} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold">Channel
+          <input className={cx(inputCls, 'w-24 uppercase')} placeholder="10, 20" value={vtweg} onChange={(e) => setVtweg(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void run()} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold">Invoice no.
+          <input className={cx(inputCls, 'w-36')} placeholder="90046171" inputMode="numeric" value={vbeln} onChange={(e) => setVbeln(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void run()} />
         </label>
         <label className="flex flex-col gap-1 text-xs font-semibold">From<input type="date" className={cx(inputCls, 'w-40')} value={from} onChange={(e) => setFrom(e.target.value)} /></label>
         <label className="flex flex-col gap-1 text-xs font-semibold">To<input type="date" className={cx(inputCls, 'w-40')} value={to} onChange={(e) => setTo(e.target.value)} /></label>
-        <Button variant="primary" disabled={busy || !plants.trim() || !from || !to} onClick={() => void run()}>{busy ? <><Spinner className="h-4 w-4" /> Running</> : 'Run'}</Button>
+        <Button variant="primary" disabled={busy || !from || !to} onClick={() => void run()}>{busy ? <><Spinner className="h-4 w-4" /> Running</> : 'Run'}</Button>
         {busy && <Button onClick={() => { ctl.current?.abort(); setBusy(false); }}>Stop</Button>}
+        <Button disabled={!canList || !from || !to} title={canList ? 'List the invoices of this selection' : 'Choose materials, a sales organisation or an invoice number first'} onClick={() => openInvoices('selection', selExtra())}>Invoices</Button>
       </div>
       {error && <ErrorBox>{error}</ErrorBox>}
-      {!rows && !busy && !error && <Card><Empty title="Choose the plants and the period, then press Run">Invoiced sales of finished goods against SAP's actual cost of the same period.</Empty></Card>}
+      {!rows && !busy && !error && <Card><Empty title="Choose the period (plants optional), then press Run">Invoiced sales of finished goods against SAP's actual cost of the same period.</Empty></Card>}
       {rows && !all.length && <Card><Empty title="No invoiced sales found">SAP returned no finished-good billing for these plants and dates.</Empty></Card>}
       {rows && all.length > 0 && (
         <>
@@ -85,10 +119,11 @@ export default function SalesView() {
             <Stat label="Gross margin" value={`₹${lakh(tot.gm, 0)} L (${pct(tot.gmPct)})`} tone={tot.gmPct === null ? undefined : tot.gmPct.lt(18) ? 'bad' : tot.gmPct.lt(22) ? 'warn' : 'good'} sub="NSV - COGM, SKUs with a cost" title="Margin basis: NSV of the SKUs that have an actual cost" />
           </div>
           <p className="text-xs text-muted">
-            Plants {ran?.plants} · {ran?.from} to {ran?.to} · finished goods (FERT), INR invoices; invoices and debit memos add, cancellations and credit memos subtract.
+            Plants {ran?.plants || 'all'} · {ran?.from} to {ran?.to} · finished goods (FERT), INR invoices; invoices and debit memos add, cancellations and credit memos subtract.
             COGM = SAP's actual cost per piece of the same period x sold quantity. GM % bands per SKU category come from SAP ({thr.length ? `${thr.length} band rows` : 'none set: red below 18 %, amber below 22 %'}).
           </p>
-          <BrandTable rows={brands} tot={tot} bn={hn.brand} />
+          <AiNarrateSlot label="Explain the sales view with AI" build={() => (ran ? salesSpec({ brands, tot, plants: ran.plants, period: `${ran.from} to ${ran.to}`, bn: hn.brand }) : null)} />
+          <BrandTable rows={brands} products={products} tot={tot} bn={hn.brand} pn={hn.product} onProduct={(b, p) => { setBrand(b); setProduct(p); }} />
           <Card className="p-3">
             <div className="mb-2 flex flex-wrap items-center gap-2">
               <h3 className="text-sm font-extrabold">Net realization vs COGM by SKU and channel</h3>
@@ -99,31 +134,46 @@ export default function SalesView() {
                 <option value="">All channels</option>{channels.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
-            <SkuTable rows={shownSkus} bn={hn.brand} />
+            {product && <p className="mb-2 text-xs text-muted">Product filter: {hn.product(product) || product} <button type="button" className="ml-1 font-semibold text-accent hover:underline" onClick={() => setProduct('')}>clear</button></p>}
+            <SkuTable rows={shownSkus} bn={hn.brand} pn={hn.product} onOpen={(r) => openInvoices(`${r.matnr.replace(/^0+/, '')} ${r.maktx} · ${r.channel}`, { ...selExtra(), matnr: [r.matnr.replace(/^0+/, '')], vtweg: [r.vtweg], vkorg: r.vkorg ? [r.vkorg] : selExtra().vkorg })} />
           </Card>
         </>
       )}
+      <SalesInvoices target={inv} onClose={() => setInv(null)} />
       {rows && <PvmBridge steps={steps} pvm={pvm} err={pvmErr} />}
     </>
   );
 }
 
-function BrandTable({ rows, tot, bn }: { rows: Row[]; tot: ReturnType<typeof salesTotals>; bn: (c: string) => string }) {
+function BrandTable({ rows, products, tot, bn, pn, onProduct }: { rows: Row[]; products: Row[]; tot: ReturnType<typeof salesTotals>; bn: (c: string) => string; pn: (c: string) => string; onProduct: (brand: string, prodha: string) => void }) {
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  const toggle = (b: string) => setOpen((x) => { const n = new Set(x); if (n.has(b)) n.delete(b); else n.add(b); return n; });
+  const cells = (b: Row) => (<>
+    <td className={tdCls}>{money(b.soldQty, 0)}</td><td className={tdCls}>{lakh(b.gsv)}</td><td className={tdCls}>{lakh(b.deductions)}</td><td className={tdCls}>{lakh(b.nsv)}</td>
+    <td className={tdCls}>{lakh(b.cogm)}</td><td className={tdCls}>{lakh(b.gm)}</td><td className={cx(tdCls, 'font-bold', BAND[b.band])}>{pct(b.gmPct)}</td></>);
   return (
     <div className="overflow-x-auto rounded-2xl border border-line bg-panel shadow-card">
       <table className="w-full min-w-[960px] border-collapse">
         <thead><tr>
-          <th className={cx(thCls, '!text-left')}>Brand</th><th className={thCls}>Sold qty (pc)</th><th className={thCls}>GSV (L)</th><th className={thCls}>Deductions (L)</th><th className={thCls}>NSV (L)</th>
+          <th className={cx(thCls, '!text-left')}>Brand / product</th><th className={thCls}>Sold qty (pc)</th><th className={thCls}>GSV (L)</th><th className={thCls}>Deductions (L)</th><th className={thCls}>NSV (L)</th>
           <th className={thCls}>COGM (L)</th><th className={thCls}>Gross margin (L)</th><th className={thCls}>GM %</th><th className={cx(thCls, '!text-left')}>Note</th>
         </tr></thead>
         <tbody>
           {rows.map((b) => (
-            <tr key={b.brand || '-'} className="border-t border-line/60">
-              <td className="px-2.5 py-1.5 text-left text-xs font-bold">{bn(b.brand) || '(none)'}</td>
-              <td className={tdCls}>{money(b.soldQty, 0)}</td><td className={tdCls}>{lakh(b.gsv)}</td><td className={tdCls}>{lakh(b.deductions)}</td><td className={tdCls}>{lakh(b.nsv)}</td>
-              <td className={tdCls}>{lakh(b.cogm)}</td><td className={tdCls}>{lakh(b.gm)}</td><td className={cx(tdCls, 'font-bold', BAND[b.band])}>{pct(b.gmPct)}</td>
-              <td className="px-2.5 py-1.5 text-left text-2xs text-muted">{b.msg}</td>
-            </tr>
+            <Fragment key={b.brand || '-'}>
+              <tr className="cursor-pointer border-t border-line/60 hover:bg-sunken" onClick={() => toggle(b.brand)} aria-expanded={open.has(b.brand)}>
+                <td className="px-2.5 py-1.5 text-left text-xs font-bold"><span className="mr-1 inline-block w-3 text-faint">{open.has(b.brand) ? '▾' : '▸'}</span>{bn(b.brand) || '(none)'}</td>
+                {cells(b)}
+                <td className="px-2.5 py-1.5 text-left text-2xs text-muted">{b.msg}</td>
+              </tr>
+              {open.has(b.brand) && products.filter((p) => p.brand === b.brand).map((p) => (
+                <tr key={`${b.brand}|${p.prodha}`} className="cursor-pointer border-t border-line/40 bg-sunken/40 hover:bg-sunken" onClick={() => onProduct(b.brand, p.prodha)} title="Show this product's SKU lines below">
+                  <td className="py-1.5 pl-8 pr-2.5 text-left text-xs">{pn(p.prodha) || p.prodha || '(no product)'}</td>
+                  {cells(p)}
+                  <td className="px-2.5 py-1.5 text-left text-2xs text-muted">{p.msg}</td>
+                </tr>
+              ))}
+            </Fragment>
           ))}
         </tbody>
         <tfoot><tr className="border-t border-line font-extrabold">
@@ -135,20 +185,20 @@ function BrandTable({ rows, tot, bn }: { rows: Row[]; tot: ReturnType<typeof sal
   );
 }
 
-function SkuTable({ rows, bn }: { rows: Row[]; bn: (c: string) => string }) {
+function SkuTable({ rows, bn, pn, onOpen }: { rows: Row[]; bn: (c: string) => string; pn: (c: string) => string; onOpen: (r: Row) => void }) {
   if (!rows.length) return <p className="text-sm text-muted">No SKU lines for this choice.</p>;
   return (
     <div className="max-h-[60vh] overflow-auto rounded-xl border border-line">
-      <table className="w-full min-w-[980px] border-collapse">
+      <table className="w-full min-w-[1180px] border-collapse">
         <thead className="sticky top-0"><tr>
-          <th className={cx(thCls, '!text-left')}>SKU</th><th className={cx(thCls, '!text-left')}>Brand</th><th className={cx(thCls, '!text-left')}>Channel</th><th className={thCls}>Sold qty (pc)</th>
+          <th className={cx(thCls, '!text-left')}>SKU</th><th className={cx(thCls, '!text-left')}>Brand</th><th className={cx(thCls, '!text-left')}>Product</th><th className={cx(thCls, '!text-left')}>Sales org</th><th className={cx(thCls, '!text-left')}>Channel</th><th className={thCls}>Sold qty (pc)</th>
           <th className={thCls}>Net realization / pc</th><th className={thCls}>COGM / pc</th><th className={thCls}>GM / pc</th><th className={thCls}>GM %</th><th className={thCls}>Alert</th>
         </tr></thead>
         <tbody>
           {rows.map((s) => (
-            <tr key={`${s.matnr}|${s.vtweg}`} className="border-t border-line/60">
+            <tr key={`${s.matnr}|${s.vtweg}|${s.vkorg}`} className="cursor-pointer border-t border-line/60 hover:bg-sunken" onClick={() => onOpen(s)} title="Open the invoices of this line">
               <td className="px-2.5 py-1.5 text-left text-xs"><span className="font-bold">{s.matnr.replace(/^0+/, '')}</span> <span className="text-muted" title={s.maktx}>{s.maktx}</span></td>
-              <td className="px-2.5 py-1.5 text-left text-xs">{bn(s.brand) || '(none)'}</td><td className="px-2.5 py-1.5 text-left text-xs">{s.channel}</td>
+              <td className="px-2.5 py-1.5 text-left text-xs">{bn(s.brand) || '(none)'}</td><td className="px-2.5 py-1.5 text-left text-xs">{pn(s.prodha) || s.prodha}</td><td className="px-2.5 py-1.5 text-left text-xs">{s.vkorg}</td><td className="px-2.5 py-1.5 text-left text-xs">{s.channel}</td>
               <td className={tdCls}>{money(s.soldQty, 0)}</td><td className={tdCls}>{money(s.netRealPc)}</td><td className={tdCls}>{money(s.cogmPc)}</td><td className={tdCls}>{money(s.gmPc)}</td>
               <td className={cx(tdCls, 'font-bold', BAND[s.band])}>{pct(s.gmPct)}</td>
               <td className={tdCls}><span className={cx('rounded-full px-2 py-0.5 text-2xs font-bold', PILL[s.band])}>{ALERT[s.band]}</span></td>

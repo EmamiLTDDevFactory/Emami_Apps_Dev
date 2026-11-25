@@ -9,6 +9,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { AlertTriangle, BellRing, FileSpreadsheet, Play, Square } from 'lucide-react';
 import PlanFrame from '../plan/PlanFrame';
+import AiNarrateSlot from '../ai/AiNarrateSlot';
+import { freightSpec } from '@/lib/ai/builders/screens';
 import { MaterialPicker, PlantPicker } from '../Pickers';
 import type { PlantsState } from '../FilterPanel';
 import { Button, Card, Empty, Field, Pill, Segmented, Stat, cx, inputCls } from '../ui';
@@ -21,8 +23,10 @@ import { fmtMs, fmtNum, fmtPct, fmtSigned } from '@/lib/format';
 import { toDay } from '@/lib/wac/dates';
 import {
   DEFAULT_RULE, FREIGHT_TYPES, applyBasis, breachesLine, hasPostings, filterPurchOrgs, materialWeighted, materialWeightedSheet, sortMaterials, groupPoLines, postings, postingsSheet, FREIGHT_TYPE_LABEL, RULE_OPTIONS, ALL_DATES, analyseFreight, analysisTotals, breaches, freightAnalysisSheet, linesOutsideRange, poLines, poLinesSheet, ruleText, sortAnalysis, sortPoLines,
+  partiesOf, partiesText, plantCompare, plantCompareSheet,
   type Basis, type FreightType, type Rule, type RuleKind,
 } from '@/lib/freight/analysis';
+import { loadStore, relativeOffsets, removeVariant, saveStore, setDefaultVariant, upsertVariant, variantDates, type FreightVariant, type VariantStore, EMPTY_STORE } from '@/lib/freight/variants';
 import type { PoLineKey } from '@/lib/freight/poBreakup';
 import { DEFAULT_FREIGHT_DAYS, parsePurchOrgs, defaultInclFrt, freightDaysValue, fetchFreightAnalysis, selectionProblem, type AnalysisData, type AnalysisInput } from '@/lib/freight/analysisFetch';
 
@@ -34,7 +38,7 @@ const inr = (v: Parameters<typeof fmtNum>[0]) => fmtNum(v, 4, 'INR');
 const daysAgo = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return toDay(d); };
 
 type Show = 'all' | 'alerts';
-type View = 'component' | 'po' | 'posting' | 'material';
+type View = 'component' | 'po' | 'posting' | 'material' | 'plant';
 
 // Literal check, so the build replaces it and drops every branch below when the flag is off (no new code or text in the bundle).
 const FREIGHT_ALL_ITEMS = process.env.NEXT_PUBLIC_FREIGHT_ALL_ITEMS === 'true';
@@ -62,6 +66,19 @@ export default function FreightAnalysis() {
   const [ran, setRan] = useState<AnalysisInput | null>(null);
   const [step, setStep] = useState('');
   const [rule, setRule] = useState<Rule>(DEFAULT_RULE);
+  // screen variants (saved selections), kept in this browser
+  const [store, setStore] = useState<VariantStore>(EMPTY_STORE);
+  const [variantName, setVariantName] = useState('');
+  const applyVariant = useCallback((v: FreightVariant) => {
+    const d = variantDates(v);
+    setMaterials(v.materials); setPlantCodes(v.plants); setTypes(v.types as FreightType[]); setFrom(d.from); setTo(d.to); setFreightDays(v.freightDays);
+    setInclTouched(true); setInclPicked(v.inclFrt); setLatestOnly(v.latestOnly); setPurchOrgText(v.purchOrgs); setRule(v.rule); setVariantName(v.name);
+  }, []);
+  useEffect(() => {
+    const st = loadStore(); setStore(st);
+    const d = st.variants.find((x) => x.name === st.defaultName);
+    if (d) applyVariant(d);
+  }, [applyVariant]);
 
   const loadPlants = useCallback(() => {
     setPlantsLoading(true);
@@ -126,6 +143,15 @@ export default function FreightAnalysis() {
             </div>
           </div>
         </div>
+        <VariantBar store={store} name={variantName} setName={setVariantName}
+          onApply={(n) => { const v = store.variants.find((x) => x.name === n); if (v) applyVariant(v); else setVariantName(''); }}
+          onSave={(name, relative) => {
+            const off = relativeOffsets(from, to);
+            const v: FreightVariant = { name, materials, plants: plantCodes, types, from, to, relative, fromDaysAgo: off.fromDaysAgo, toDaysAgo: off.toDaysAgo, freightDays, inclFrt, latestOnly, purchOrgs: purchOrgText, rule, savedAt: new Date().toISOString() };
+            const n = upsertVariant(store, v); setStore(n); saveStore(n); setVariantName(name.trim());
+          }}
+          onDelete={(n) => { const x = removeVariant(store, n); setStore(x); saveStore(x); setVariantName(''); }}
+          onDefault={(n) => { const x = setDefaultVariant(store, store.defaultName === n ? '' : n); setStore(x); saveStore(x); }} />
         {touched && missing && <p role="alert" className="text-xs font-semibold text-bad">{missing}</p>}
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" onClick={start} disabled={runner.status === 'running'}><Play size={14} /> Execute</Button>
@@ -208,6 +234,8 @@ function Results({ data, ran, rule, latestOnly, stale }: { data: AnalysisData; r
     const list = allPo.filter((r) => (!plant || r.plant === plant) && (show === 'all' || breachesLine(r, rule)) && (!t || `${r.material} ${r.text} ${r.po}`.toLowerCase().includes(t)));
     return sortPoLines(list, rule);
   }, [allPo, plant, show, q, rule]);
+  const parties = useMemo(() => partiesOf(allPo), [allPo]);
+  const plantRows = useMemo(() => plantCompare(allPo, rule), [allPo, rule]);
   const hidden = useMemo(() => linesOutsideRange(data.components, freightRows, ran.range), [data.components, freightRows, ran.range]);
   const poFlagged = useMemo(() => allPo.filter((r) => breachesLine(r, rule)).length, [allPo, rule]);
   // Material wise: the weighted average freight per unit of each material over every plant and PO line (net of debit and credit)
@@ -221,16 +249,16 @@ function Results({ data, ran, rule, latestOnly, stale }: { data: AnalysisData; r
   const openPos = (r: { plant: string; material: string }) => { setPlant(r.plant); setQ(r.material); setShow('all'); setView('po'); };
 
   const doExport = async (fmt: 'xlsx' | 'csv') => {
-    const sheet = view === 'material' ? materialWeightedSheet(matRows, rule) : view === 'posting' ? postingsSheet(postingRows) : view === 'po' ? poLinesSheet(poRows, rule) : freightAnalysisSheet(rows, rule);
+    const sheet = view === 'plant' ? plantCompareSheet(plantRows) : view === 'material' ? materialWeightedSheet(matRows, rule, parties.byMaterial) : view === 'posting' ? postingsSheet(postingRows) : view === 'po' ? poLinesSheet(poRows, rule) : freightAnalysisSheet(rows, rule, parties.byComponent);
     const basisText = !(FREIGHT_ALL_ITEMS && enhanced) ? [] : [['Basis', basisOk ? (basis === 'all' ? 'All line items' : 'Max date per PO line') : 'All postings (no IsMaxDate)'], ['Postings', String(allPostings.length)], ['PO lines', String(allPo.length)], ['Components', String(totals.rows)]];
     await exportTable({
-      fmt, name: view === 'material' ? 'Freight analysis material wise' : view === 'posting' ? 'Freight analysis by posting' : view === 'po' ? 'Freight analysis PO wise' : 'Freight analysis', cols: sheet.cols, count: sheet.count,
+      fmt, name: view === 'plant' ? 'Freight analysis plant wise' : view === 'material' ? 'Freight analysis material wise' : view === 'posting' ? 'Freight analysis by posting' : view === 'po' ? 'Freight analysis PO wise' : 'Freight analysis', cols: sheet.cols, count: sheet.count,
       extraParams: [
-        ['Report', view === 'material' ? 'Material wise weighted average freight per unit (net of debit and credit), INR' : view === 'posting' ? 'One row per posting of the components, INR' : view === 'po' ? 'Purchase order wise freight lines of the components, INR per unit' : 'Component standard vs actual freight, plant wise, INR per unit'],
+        ['Report', view === 'plant' ? 'Plant wise freight: standard (GRN) vs actual, INR, net of debit and credit' : view === 'material' ? 'Material wise weighted average freight per unit (net of debit and credit), INR' : view === 'posting' ? 'One row per posting of the components, INR' : view === 'po' ? 'Purchase order wise freight lines of the components, INR per unit' : 'Component standard vs actual freight, plant wise, INR per unit'],
         ...(basisText as [string, string][]),
         ['Materials', ran.materials.length ? ran.materials.join(', ') : 'all components of the chosen plants'], ['Purchase organisation', ran.purchOrgs?.length ? ran.purchOrgs.join(', ') : 'all'], ['Amounts', 'net of debit (S) and credit (H)'], ['Plants', plant || (ran.plants.length ? ran.plants.join(', ') : 'all plants you can use')], ['Material types', ran.types.join(', ')],
         ['PO date range', allDates ? `all dates SAP returned (${hidden.earliest} to ${hidden.latest})` : `${ran.range.from} to ${ran.range.to}`], ['Latest only', (FREIGHT_ALL_ITEMS ? latestOnly : ran.latestOnly) ? 'yes' : 'no'], ['Alert rule', ruleText(rule)],
-        ['Rows', String(view === 'material' ? matRows.length : view === 'posting' ? postingRows.length : view === 'po' ? poRows.length : rows.length)], ...(view === 'posting' ? [] : [['Rows in alert', String(view === 'material' ? matFlagged : view === 'po' ? poFlagged : totals.flagged)] as [string, string]]),
+        ['Rows', String(view === 'plant' ? plantRows.length : view === 'material' ? matRows.length : view === 'posting' ? postingRows.length : view === 'po' ? poRows.length : rows.length)], ...(view === 'posting' ? [] : [['Rows in alert', String(view === 'material' ? matFlagged : view === 'po' ? poFlagged : totals.flagged)] as [string, string]]),
       ],
       messages: data.messages,
     });
@@ -269,24 +297,49 @@ function Results({ data, ran, rule, latestOnly, stale }: { data: AnalysisData; r
         <Stat label="No actual freight" value={totals.noActual} sub="no actual PO delivery in the range" />
       </div>
       <div className="flex flex-wrap items-center gap-2">
-<div className={FREIGHT_ALL_ITEMS && enhanced ? 'w-[48rem]' : 'w-[34rem]'}><Segmented<View> size="sm" label="View" value={view} onChange={setView} options={[{ value: 'component', label: 'By component' }, { value: 'po', label: `By purchase order (${allPo.length})` }, { value: 'material' as View, label: `Material wise (${allMat.length})` }, ...(FREIGHT_ALL_ITEMS && enhanced ? [{ value: 'posting' as View, label: `By posting (${allPostings.length})` }] : [])]} /></div>
+<div className={FREIGHT_ALL_ITEMS && enhanced ? 'w-[56rem]' : 'w-[42rem]'}><Segmented<View> size="sm" label="View" value={view} onChange={setView} options={[{ value: 'component', label: 'By component' }, { value: 'po', label: `By purchase order (${allPo.length})` }, { value: 'material' as View, label: `Material wise (${allMat.length})` }, { value: 'plant' as View, label: `Plant wise (${plantRows.length})` }, ...(FREIGHT_ALL_ITEMS && enhanced ? [{ value: 'posting' as View, label: `By posting (${allPostings.length})` }] : [])]} /></div>
         {FREIGHT_ALL_ITEMS && enhanced && basisOk && <div className="w-80"><Segmented<Basis> size="sm" label="Basis" value={basis} onChange={setBasis} options={[{ value: 'all', label: 'All line items' }, { value: 'maxdate', label: 'Max date per PO line' }]} /></div>}
-        {view !== 'posting' && <div className="w-56"><Segmented<Show> size="sm" label="Show" value={show} onChange={setShow} options={[{ value: 'all', label: 'All' }, { value: 'alerts', label: 'Alerts only' }]} /></div>}
+        {view !== 'posting' && view !== 'plant' && <div className="w-56"><Segmented<Show> size="sm" label="Show" value={show} onChange={setShow} options={[{ value: 'all', label: 'All' }, { value: 'alerts', label: 'Alerts only' }]} /></div>}
         <select aria-label="Plant" className={cx(inputCls, 'w-44')} value={plant} onChange={(e) => setPlant(e.target.value)}>
           <option value="">All plants ({plantList.length})</option>
           {plantList.map((p) => <option key={p} value={p}>{p}</option>)}
         </select>
         <input aria-label="Search components" className={cx(inputCls, 'w-64')} placeholder={view === 'po' ? 'Search component, description or PO number…' : view === 'material' ? 'Search material code or description…' : 'Search component code or description…'} value={q} onChange={(e) => setQ(e.target.value)} />
-        <Button size="sm" onClick={() => doExport('xlsx')} disabled={view === 'material' ? !matRows.length : view === 'posting' ? !postingRows.length : view === 'po' ? !poRows.length : !rows.length}><FileSpreadsheet size={14} /> Excel</Button>
-        <Button size="sm" variant="ghost" onClick={() => doExport('csv')} disabled={view === 'material' ? !matRows.length : view === 'posting' ? !postingRows.length : view === 'po' ? !poRows.length : !rows.length}>CSV</Button>
+        <Button size="sm" onClick={() => doExport('xlsx')} disabled={view === 'plant' ? !plantRows.length : view === 'material' ? !matRows.length : view === 'posting' ? !postingRows.length : view === 'po' ? !poRows.length : !rows.length}><FileSpreadsheet size={14} /> Excel</Button>
+        <Button size="sm" variant="ghost" onClick={() => doExport('csv')} disabled={view === 'plant' ? !plantRows.length : view === 'material' ? !matRows.length : view === 'posting' ? !postingRows.length : view === 'po' ? !poRows.length : !rows.length}>CSV</Button>
         <span className="ml-auto text-xs text-faint">Alerts first, then the biggest gap.</span>
       </div>
-      {view === 'material' ? (
+      <AiNarrateSlot label="Explain the freight with AI" build={() => freightSpec({ totals, materials: allMat, plants: plantRows, rule: ruleText(rule), period: allDates ? `all dates (${hidden.earliest} to ${hidden.latest})` : `${ran.range.from} to ${ran.range.to}` })} />
+      {view === 'plant' ? (
+      <div className="overflow-x-auto rounded-2xl border border-line bg-panel shadow-card">
+        <table className="w-full text-sm">
+          <caption className="sr-only">Plant wise freight: standard (GRN) against actual, INR, net of debit and credit</caption>
+          <thead className="bg-sunken/60">
+            <tr><th className={th}>Plant</th><th className={thN}>Materials</th><th className={thN}>PO lines</th><th className={thN} title="Standard freight of every line, INR">Std Freight (INR)</th><th className={thN} title="Actual freight of every line, INR">Actual freight (INR)</th><th className={thN} title="Lines that have both a standard and an actual side">Lines with both</th><th className={thN}>Std Freight (both)</th><th className={thN}>Actual (both)</th><th className={thN}>Variance (INR)</th><th className={thN}>Variance %</th><th className={thN}>Lines in alert</th></tr>
+          </thead>
+          <tbody>
+            {plantRows.map((r) => {
+              const tone = r.variance.gt('0.000001') ? 'text-bad' : r.variance.lt('-0.000001') ? 'text-good' : 'text-muted';
+              return (
+                <tr key={r.plant} className="cursor-pointer border-t border-line/60 hover:bg-sunken/40" onClick={() => { setPlant(r.plant); setView('component'); }} title="Open the components of this plant">
+                  <td className={cx(td, 'font-mono font-bold')}>{r.plant}</td><td className={tdN}>{r.materials}</td><td className={tdN}>{r.poLines}</td>
+                  <td className={tdN}>{fmtNum(r.standardAmount, 2, 'INR')}</td><td className={tdN}>{fmtNum(r.actualAmount, 2, 'INR')}</td><td className={tdN}>{r.bothLines}</td>
+                  <td className={tdN}>{fmtNum(r.bothStandard, 2, 'INR')}</td><td className={tdN}>{fmtNum(r.bothActual, 2, 'INR')}</td>
+                  <td className={cx(tdN, 'font-bold', tone)}>{r.bothLines ? fmtSigned(r.variance, 2) : '—'}</td><td className={cx(tdN, tone)}>{r.variancePct ? fmtPct(r.variancePct) : '—'}</td>
+                  <td className={tdN}>{r.flagged ? <Pill tone="bad">{r.flagged}</Pill> : 0}</td>
+                </tr>
+              );
+            })}
+            {!plantRows.length && <tr><td colSpan={11} className="px-3 py-6 text-center text-muted">No PO freight lines in the range.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      ) : view === 'material' ? (
       <div className="overflow-x-auto rounded-2xl border border-line bg-panel shadow-card">
         <table className="w-full text-sm">
           <caption className="sr-only">Material wise weighted average freight per unit, INR, net of debit and credit</caption>
           <thead className="bg-sunken/60">
-            <tr><th className={th}>Material</th><th className={th}>Type</th><th className={th}>Plants</th><th className={thN}>PO lines</th><th className={thN}>Actual qty</th><th className={thN} title="Debit minus credit, INR">Net actual amount (INR)</th><th className={thN} title="Net amount / delivered quantity">Weighted avg actual / unit</th><th className={thN}>Std qty</th><th className={thN} title="Debit minus credit, INR">Net std amount (INR)</th><th className={thN} title="Net amount / delivered quantity">Weighted avg standard / unit</th><th className={thN}>Variance</th><th className={thN}>Var %</th><th className={th}>Last PO</th><th className={th}>Alert</th></tr>
+            <tr><th className={th}>Material</th><th className={th}>Type</th><th className={th}>Plants</th><th className={th}>Supplier / vendor</th><th className={th}>Source / origin</th><th className={thN}>PO lines</th><th className={thN}>Actual qty</th><th className={thN} title="Debit minus credit, INR">Net actual amount (INR)</th><th className={thN} title="Net amount / delivered quantity">Weighted avg actual / unit</th><th className={thN}>Std qty</th><th className={thN} title="Debit minus credit, INR">Net std amount (INR)</th><th className={thN} title="Net amount / delivered quantity">Weighted avg standard / unit</th><th className={thN}>Variance</th><th className={thN}>Var %</th><th className={th}>Last PO</th><th className={th}>Alert</th></tr>
           </thead>
           <tbody>
             {matRows.map((r) => {
@@ -297,6 +350,8 @@ function Results({ data, ran, rule, latestOnly, stale }: { data: AnalysisData; r
                   <td className={td}><span className="font-mono font-bold text-accent">{r.material}</span> <span className="text-muted">{r.text}</span></td>
                   <td className={td}>{r.mtart}</td>
                   <td className={cx(td, 'font-mono')}>{r.plants.join(', ') || '—'}</td>
+                  <td className={td} title={(parties.byMaterial.get(r.material)?.vendors ?? []).join('; ')}>{partiesText(parties.byMaterial.get(r.material)?.vendors ?? []) || '—'}</td>
+                  <td className={td} title={(parties.byMaterial.get(r.material)?.sources ?? []).join('; ')}>{partiesText(parties.byMaterial.get(r.material)?.sources ?? []) || '—'}</td>
                   <td className={tdN}>{r.poLines}</td>
                   <td className={tdN}>{r.actualQty.gt(0) ? <>{fmtNum(r.actualQty, 3)} <span className="text-2xs text-muted">{r.unit}</span></> : <span className="text-faint">—</span>}</td>
                   <td className={tdN}>{r.actualQty.gt(0) ? fmtNum(r.actualAmount, 2, 'INR') : '—'}</td>
@@ -311,7 +366,7 @@ function Results({ data, ran, rule, latestOnly, stale }: { data: AnalysisData; r
                 </tr>
               );
             })}
-            {!matRows.length && <tr><td colSpan={14} className="px-3 py-6 text-center text-muted">{allMat.length ? 'Nothing matches the filter.' : 'No material to show.'}</td></tr>}
+            {!matRows.length && <tr><td colSpan={16} className="px-3 py-6 text-center text-muted">{allMat.length ? 'Nothing matches the filter.' : 'No material to show.'}</td></tr>}
           </tbody>
         </table>
       </div>
@@ -351,7 +406,7 @@ function Results({ data, ran, rule, latestOnly, stale }: { data: AnalysisData; r
         <table className="w-full text-sm">
           <caption className="sr-only">Purchase order wise freight lines: standard and actual freight per unit, INR</caption>
           <thead className="bg-sunken/60">
-            <tr><th className={th}>Plant</th><th className={th}>Component</th><th className={th}>Purchase order</th><th className={th}>Line</th><th className={th}>PO date</th><th className={th}>Condition</th><th className={th}>Vendor</th><th className={th}>GST partner</th><th className={th}>Place of supply</th><th className={th}>Transporter</th><th className={th} title="S = debit, H = credit">Shkzg</th><th className={th}>Acc. document</th><th className={th}>Reference</th><th className={th}>Co. code</th><th className={th}>Purch. org</th><th className={th}>FG material</th><th className={thN}>Std qty</th><th className={thN} title="Absolute condition value, debit (S) minus credit (H), INR">Net std value (INR)</th><th className={thN}>Actual qty</th><th className={thN} title="Absolute condition value, debit (S) minus credit (H), INR">Net actual value (INR)</th><th className={thN} title="Actual - Standard, INR. The alert rule is tested on this.">Variance (INR)</th><th className={thN}>Var %</th><th className={thN}>Std / unit</th><th className={thN}>Actual / unit</th><th className={thN}>Var / unit</th><th className={th}>SAP used</th><th className={th}>Status</th>{FREIGHT_ALL_ITEMS && enhanced && <th className={th}>Breakup</th>}</tr>
+            <tr><th className={th}>Plant</th><th className={th}>Component</th><th className={th}>Purchase order</th><th className={th}>Line</th><th className={th}>PO date</th><th className={th}>Condition</th><th className={th}>Vendor</th><th className={th}>GST partner</th><th className={th}>Source / origin location</th><th className={th}>Transporter</th><th className={th} title="S = debit, H = credit">Shkzg</th><th className={th}>Acc. document</th><th className={th}>Reference</th><th className={th}>Co. code</th><th className={th}>Purch. org</th><th className={th}>FG material</th><th className={thN}>Std qty</th><th className={thN} title="Absolute condition value, debit (S) minus credit (H), INR">Net std value (INR)</th><th className={thN}>Actual qty</th><th className={thN} title="Absolute condition value, debit (S) minus credit (H), INR">Net actual value (INR)</th><th className={thN} title="Actual - Standard, INR. The alert rule is tested on this.">Variance (INR)</th><th className={thN}>Var %</th><th className={thN}>Std / unit</th><th className={thN}>Actual / unit</th><th className={thN}>Var / unit</th><th className={th}>SAP used</th><th className={th}>Status</th>{FREIGHT_ALL_ITEMS && enhanced && <th className={th}>Breakup</th>}</tr>
           </thead>
           <tbody>
             {poRows.map((r) => {
@@ -399,7 +454,7 @@ function Results({ data, ran, rule, latestOnly, stale }: { data: AnalysisData; r
       <div className="overflow-x-auto rounded-2xl border border-line bg-panel shadow-card">
         <table className="w-full text-sm">
           <thead className="bg-sunken/60">
-            <tr><th className={th}>Plant</th><th className={th}>Component</th><th className={th}>Type</th><th className={thN}>Standard / unit</th><th className={thN}>Actual / unit</th><th className={thN}>Variance</th><th className={thN}>%</th><th className={thN}>PO lines</th><th className={th}>Last PO</th><th className={th}>Alert</th></tr>
+            <tr><th className={th}>Plant</th><th className={th}>Component</th><th className={th}>Type</th><th className={th}>Supplier / vendor</th><th className={th}>Source / origin</th><th className={thN}>Standard / unit</th><th className={thN}>Actual / unit</th><th className={thN}>Variance</th><th className={thN}>%</th><th className={thN}>PO lines</th><th className={th}>Last PO</th><th className={th}>Alert</th></tr>
           </thead>
           <tbody>
             {rows.map((r) => {
@@ -410,6 +465,8 @@ function Results({ data, ran, rule, latestOnly, stale }: { data: AnalysisData; r
                   <td className={cx(td, 'font-mono')}>{r.plant}</td>
                   <td className={td}><span className="font-mono font-bold text-accent">{r.material}</span> <span className="text-muted">{r.text}</span></td>
                   <td className={td}>{r.mtart}</td>
+                  <td className={td} title={(parties.byComponent.get(`${r.plant}|${r.material}`)?.vendors ?? []).join('; ')}>{partiesText(parties.byComponent.get(`${r.plant}|${r.material}`)?.vendors ?? []) || '—'}</td>
+                  <td className={td} title={(parties.byComponent.get(`${r.plant}|${r.material}`)?.sources ?? []).join('; ')}>{partiesText(parties.byComponent.get(`${r.plant}|${r.material}`)?.sources ?? []) || '—'}</td>
                   <td className={tdN}>{r.standard ? inr(r.standard) : '—'}</td>
                   <td className={tdN}>{r.actual ? inr(r.actual) : <span className="text-faint" title="No actual PO delivery in the date range">—</span>}</td>
                   <td className={cx(tdN, 'font-bold', tone)}>{r.variance ? fmtSigned(r.variance, 4) : '—'}</td>
@@ -420,13 +477,38 @@ function Results({ data, ran, rule, latestOnly, stale }: { data: AnalysisData; r
                 </tr>
               );
             })}
-            {!rows.length && <tr><td colSpan={10} className="px-3 py-6 text-center text-muted">Nothing matches the filter.</td></tr>}
+            {!rows.length && <tr><td colSpan={12} className="px-3 py-6 text-center text-muted">Nothing matches the filter.</td></tr>}
           </tbody>
         </table>
       </div>
       )}
       {FREIGHT_ALL_ITEMS && PoBreakupDrawer && enhanced && <PoBreakupDrawer rows={scoped} target={openLine} text={openLine ? textOf(openLine.material) : ''} onClose={closeLine} />}
       <p className="text-xs text-muted">INR per base unit, weighted by delivered quantity over the PO lines dated {allDates ? `${hidden.earliest} to ${hidden.latest} (all lines SAP returned)` : `${ran.range.from} to ${ran.range.to}`}; delivery costs are taken as local currency and converted at SAP&apos;s FxInr. A component with no actual delivery in the range has no actual figure and is not flagged. Lines SAP excludes are left out.</p>
+    </div>
+  );
+}
+
+
+function VariantBar({ store, name, setName, onApply, onSave, onDelete, onDefault }: {
+  store: VariantStore; name: string; setName: (n: string) => void; onApply: (name: string) => void; onSave: (name: string, relative: boolean) => void; onDelete: (name: string) => void; onDefault: (name: string) => void;
+}) {
+  const [relative, setRelative] = useState(true);
+  const exists = store.variants.some((v) => v.name === name);
+  return (
+    <div className="flex flex-wrap items-end gap-2 rounded-xl border border-line bg-sunken/40 p-2.5">
+      <Field label="Screen variant" className="w-56" hint="saved selections of this browser">
+        {(id) => (
+          <select id={id} className={inputCls} value={exists ? name : ''} onChange={(e) => onApply(e.target.value)}>
+            <option value="">— none —</option>
+            {store.variants.map((v) => <option key={v.name} value={v.name}>{v.name}{store.defaultName === v.name ? ' (default)' : ''}</option>)}
+          </select>
+        )}
+      </Field>
+      <Field label="Variant name" className="w-56">{(id) => <input id={id} className={inputCls} value={name} placeholder="e.g. Daily PM freight UN13" onChange={(e) => setName(e.target.value)} />}</Field>
+      <label className="flex items-center gap-1.5 pb-2 text-xs" title="Save the dates as 'N days back from today' so the variant always means the same window"><input type="checkbox" checked={relative} onChange={(e) => setRelative(e.target.checked)} /> Dates relative to today</label>
+      <Button type="button" size="sm" disabled={!name.trim()} onClick={() => onSave(name, relative)}>{exists ? 'Update variant' : 'Save variant'}</Button>
+      <Button type="button" size="sm" variant="ghost" disabled={!exists} onClick={() => onDefault(name)}>{store.defaultName === name ? 'Remove default' : 'Make default'}</Button>
+      <Button type="button" size="sm" variant="ghost" disabled={!exists} onClick={() => onDelete(name)}>Delete</Button>
     </div>
   );
 }

@@ -1,0 +1,186 @@
+<mvc:View
+    controllerName="zcapexportal.controller.App"
+    xmlns="sap.m"
+    xmlns:mvc="sap.ui.core.mvc"
+    xmlns:tnt="sap.tnt"
+    xmlns:core="sap.ui.core"
+    displayBlock="true"
+    height="100%">
+
+    <tnt:ToolPage
+        id="toolPage"
+        class="zcpxApp"
+        sideExpanded="{app>/sideExpanded}">
+
+        <!-- ============================================================
+             HEADER
+             ============================================================ -->
+        <tnt:header>
+            <tnt:ToolHeader class="zcpxHeader">
+                <Button
+                    id="btnMenu"
+                    icon="sap-icon://menu2"
+                    type="Transparent"
+                    tooltip="{i18n>toggleNav}"
+                    press=".onToggleNav">
+                    <layoutData>
+                        <OverflowToolbarLayoutData priority="NeverOverflow"/>
+                    </layoutData>
+                </Button>
+
+                <Image
+                    src="images/emami-icon-mark.jpg"
+                    class="zcpxBrandMark"
+                    visible="{= !${device>/system/phone} }">
+                    <layoutData>
+                        <OverflowToolbarLayoutData priority="NeverOverflow"/>
+                    </layoutData>
+                </Image>
+
+                <VBox justifyContent="Center" class="sapUiTinyMarginBegin">
+                    <Text text="{i18n>appTitle}" class="zcpxBrandTitle"/>
+                    <Text text="{i18n>appSubtitle}" class="zcpxBrandSub"/>
+                    <layoutData>
+                        <OverflowToolbarLayoutData priority="NeverOverflow"/>
+                    </layoutData>
+                </VBox>
+
+                <ToolbarSpacer/>
+
+                <!-- Financial year selector - options come from
+                     app>/fiscalYears (seeded in MockData, replaced with the
+                     real live years once Budget/CPE data loads - see
+                     Component.js#_recalcFiscalYears). Selecting one actually
+                     refilters the Dashboard/Budget List/CPE List - see
+                     onFYChange. -->
+                <Select
+                    id="selFY"
+                    items="{app>/fiscalYears}"
+                    selectedKey="{app>/fiscalYear}"
+                    change=".onFYChange"
+                    visible="{= !${device>/system/phone} }"
+                    width="8rem"
+                    tooltip="{i18n>fiscalYear}">
+                    <core:Item key="{app>key}" text="{app>text}"/>
+                    <layoutData>
+                        <OverflowToolbarLayoutData priority="High"/>
+                    </layoutData>
+                </Select>
+
+                <Button
+                    icon="sap-icon://search"
+                    type="Transparent"
+                    tooltip="{i18n>search}"
+                    press=".onOpenSearch"/>
+
+                <Button
+                    id="btnNotif"
+                    icon="sap-icon://bell"
+                    type="Transparent"
+                    tooltip="{i18n>notifications}"
+                    press=".onOpenNotifications"/>
+
+                <Button
+                    text="{path: 'app>/user/name', formatter: '.formatter.initials'}"
+                    type="Transparent"
+                    press=".onOpenUserMenu"
+                    tooltip="{app>/user/name}"
+                    class="zcpxAvatar zcpxAvatarXS sapUiTinyMarginBegin sapUiTinyMarginEnd"/>
+            </tnt:ToolHeader>
+        </tnt:header>
+
+        <!-- ============================================================
+             SIDE NAVIGATION
+             ============================================================ -->
+        <tnt:sideContent>
+            <tnt:SideNavigation
+                id="sideNav"
+                class="zcpxSideNav"
+                expanded="{app>/sideExpanded}"
+                selectedKey="{app>/selectedNav}"
+                itemSelect=".onNavItemSelect">
+
+                <tnt:NavigationList>
+                    <tnt:NavigationListItem
+                        text="{i18n>navDashboard}"
+                        icon="sap-icon://business-objects-experience"
+                        key="dashboard"/>
+
+                    <tnt:NavigationListItem
+                        text="{i18n>navBudget}"
+                        icon="sap-icon://money-bills"
+                        key="budgetList"
+                        expanded="false">
+                        <tnt:NavigationListItem text="{i18n>navBudgetList}"   key="budgetList"/>
+                        <tnt:NavigationListItem text="{i18n>navBudgetCreate}" key="budgetCreate"/>
+                    </tnt:NavigationListItem>
+
+                    <tnt:NavigationListItem
+                        text="{i18n>navCPE}"
+                        icon="sap-icon://request"
+                        key="cpeList"
+                        expanded="false">
+                        <tnt:NavigationListItem text="{i18n>navCPEList}"   key="cpeList"/>
+                        <tnt:NavigationListItem text="{i18n>navCPECreate}" key="cpeCreate"/>
+                    </tnt:NavigationListItem>
+
+                    <tnt:NavigationListItem
+                        text="{i18n>navApprovals}"
+                        icon="sap-icon://approvals"
+                        key="approvalInbox"/>
+
+                    <tnt:NavigationListItem
+                        text="{i18n>navProcurement}"
+                        icon="sap-icon://shipping-status"
+                        key="poList"
+                        expanded="false">
+                        <tnt:NavigationListItem text="{i18n>navPO}"  key="poList"/>
+                        <tnt:NavigationListItem text="{i18n>navGRN}" key="grnList"/>
+                    </tnt:NavigationListItem>
+
+                    <tnt:NavigationListItem
+                        text="{i18n>navAssets}"
+                        icon="sap-icon://building"
+                        key="icList"
+                        expanded="false">
+                        <tnt:NavigationListItem text="{i18n>navIC}"   key="icList"/>
+                        <tnt:NavigationListItem text="{i18n>navCapx}" key="capitalization"/>
+                    </tnt:NavigationListItem>
+
+                    <tnt:NavigationListItem
+                        text="{i18n>navQuota}"
+                        icon="sap-icon://sales-quote"
+                        key="unitQuota"/>
+
+                    <tnt:NavigationListItem
+                        text="{i18n>navReports}"
+                        icon="sap-icon://bar-chart"
+                        key="reports"/>
+                </tnt:NavigationList>
+
+                <tnt:fixedItem>
+                    <tnt:NavigationList>
+                        <tnt:NavigationListItem
+                            text="{i18n>navAudit}"
+                            icon="sap-icon://history"
+                            key="auditTrail"/>
+                        <tnt:NavigationListItem
+                            text="{i18n>navDOA}"
+                            icon="sap-icon://org-chart"
+                            key="doaMatrix"
+                            visible="{app>/user/isAdmin}"/>
+                    </tnt:NavigationList>
+                </tnt:fixedItem>
+            </tnt:SideNavigation>
+        </tnt:sideContent>
+
+        <!-- ============================================================
+             CONTENT
+             ============================================================ -->
+        <tnt:mainContents>
+            <NavContainer id="appNavContainer" autoFocus="false"/>
+        </tnt:mainContents>
+
+    </tnt:ToolPage>
+
+</mvc:View>

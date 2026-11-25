@@ -97,6 +97,10 @@ export interface PaymentTrackingRow {
   sesValue: string; // SesVal — accepted SES value
   sesCurrency: string; // SesCur — currency key SesVal is denominated in
   country: string; // Land1 — vendor/plant country key, e.g. 'IN', 'AE'
+  /** Bukrs / Werks — company code and plant. Not live on ZProvisionTrackSet yet (see the header
+   * comment), so '' until SAP exposes them; the Dashboard's Company Code / Plant filters read these. */
+  companyCode: string;
+  plant: string;
   grFlag: boolean; // GrFlag — GR/MIGO posted
   sesFlag: boolean; // SesFlag — a service entry sheet exists
   sesRevFlag: boolean; // SesRevFlag — a service entry sheet was reversed
@@ -148,6 +152,8 @@ function toPaymentTrackingRow(raw: Record<string, any>, index: number): PaymentT
     sesValue: str(raw.SesVal),
     sesCurrency: str(raw.SesCur),
     country: str(raw.Land1),
+    companyCode: str(raw.Bukrs),
+    plant: str(raw.Werks),
     grFlag: bool(raw.GrFlag),
     sesFlag: bool(raw.SesFlag),
     sesRevFlag: bool(raw.SesRevFlag),

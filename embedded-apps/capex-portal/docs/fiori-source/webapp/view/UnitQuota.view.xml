@@ -1,0 +1,172 @@
+<mvc:View
+    controllerName="zcapexportal.controller.UnitQuota"
+    xmlns="sap.m"
+    xmlns:mvc="sap.ui.core.mvc"
+    xmlns:core="sap.ui.core"
+    xmlns:l="sap.ui.layout"
+    xmlns:f="sap.ui.layout.form"
+    height="100%">
+
+    <Page id="pageUnitQuota" showHeader="false" class="zcpxApp">
+        <content>
+            <VBox class="zcpxScreen">
+
+                <VBox class="zcpxHero zcpxSection">
+                    <Text text="{i18n>quotaTitle}" class="zcpxHeroTitle"/>
+                    <Text id="txtQuotaSubtitle" text="" class="zcpxHeroSub"/>
+                </VBox>
+
+                <!-- Rule cards - clicking either jumps to "Quota Consumption by
+                     Unit" below, since that table is the only place these fixed
+                     caps actually become actionable (which units are near/over
+                     them) - there's no subset of rows a flat policy constant
+                     could filter or navigate to on its own. -->
+                <l:Grid class="zcpxSection zcpxQuotaCaps" defaultSpan="XL6 L6 M6 S12" hSpacing="1" vSpacing="1">
+                    <VBox id="tileQuotaYearCap" class="zcpxKpi zcpxKpi--brand sapMPointer">
+                        <Text text="{i18n>quotaYearCap}" class="zcpxKpiLabel"/>
+                        <Text text="{path: 'config>/quota/yearCap', formatter: '.formatter.rupees'}" class="zcpxKpiValue"/>
+                        <Text text="Per unit, per financial year" class="zcpxKpiFoot"/>
+                    </VBox>
+                    <VBox id="tileQuotaSingleCap" class="zcpxKpi zcpxKpi--warning sapMPointer">
+                        <Text text="{i18n>quotaSingleCap}" class="zcpxKpiLabel"/>
+                        <Text text="{path: 'config>/quota/singleCap', formatter: '.formatter.rupees'}" class="zcpxKpiValue"/>
+                        <Text text="Maximum for any single capex item" class="zcpxKpiFoot"/>
+                    </VBox>
+                </l:Grid>
+
+                <!-- Consumption by unit -->
+                <VBox id="cardQuotaConsumption" class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <core:Icon src="sap-icon://sales-quote" class="sapUiTinyMarginEnd"/>
+                        <Text text="Quota Consumption by Unit" class="zcpxCardTitle"/>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+                        <VBox items="{config>/quota/byUnit}">
+                            <VBox class="sapUiSmallMarginBottom">
+                                <HBox justifyContent="SpaceBetween" alignItems="Baseline" wrap="Wrap">
+                                    <VBox>
+                                        <Text text="{config>plantName}" class="zcpxTlRole"/>
+                                        <Text text="{config>count} items this year" class="zcpxTlMeta"/>
+                                    </VBox>
+                                    <VBox alignItems="End">
+                                        <Text
+                                            text="{parts: ['config>used','config>remaining'], formatter: '.formatUsedOf'}"
+                                            class="zcpxNum"/>
+                                        <Text
+                                            text="{path: 'config>remaining', formatter: '.formatter.rupees'} remaining"
+                                            class="zcpxTlMeta"/>
+                                    </VBox>
+                                </HBox>
+                                <ProgressIndicator
+                                    percentValue="{parts: ['config>used','config>remaining'], formatter: '.formatQuotaPct'}"
+                                    showValue="false"
+                                    height="0.625rem"
+                                    state="{parts: ['config>used','config>remaining'], formatter: '.formatQuotaState'}"
+                                    class="sapUiTinyMarginTop"/>
+                            </VBox>
+                        </VBox>
+                    </VBox>
+                </VBox>
+
+                <!-- New quota capex -->
+                <VBox class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <core:Icon src="sap-icon://add" class="sapUiTinyMarginEnd"/>
+                        <Text text="{i18n>quotaCreate}" class="zcpxCardTitle"/>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+                        <f:SimpleForm
+                            layout="ResponsiveGridLayout"
+                            editable="true"
+                            labelSpanXL="4" labelSpanL="4" labelSpanM="4" labelSpanS="12"
+                            adjustLabelSpan="false"
+                            columnsXL="2" columnsL="2" columnsM="1">
+                            <f:content>
+                                <Label text="{i18n>plant}" required="true"/>
+                                <ComboBox
+                                    id="cbQuotaPlant"
+                                    selectedKey="{config>/quota/draft/plant}"
+                                    items="{budget>/plants}"
+                                    selectionChange=".onQuotaCheck">
+                                    <core:Item key="{budget>key}" text="{budget>text}"/>
+                                </ComboBox>
+
+                                <Label text="Description" required="true"/>
+                                <Input
+                                    id="inpQuotaTitle"
+                                    value="{config>/quota/draft/title}"
+                                    placeholder="e.g. Pallet Trolleys (4 nos)"/>
+
+                                <Label text="Amount" required="true"/>
+                                <Input
+                                    id="inpQuotaAmount"
+                                    value="{path: 'config>/quota/draft/amount', type: 'sap.ui.model.type.Float', formatOptions: {maxFractionDigits: 0, groupingEnabled: false}}"
+                                    description="₹"
+                                    valueLiveUpdate="true"
+                                    liveChange=".onQuotaCheck"/>
+                            </f:content>
+                        </f:SimpleForm>
+
+                        <Label text="{i18n>justification}" class="sapUiSmallMarginTop"/>
+                        <TextArea
+                            value="{config>/quota/draft/justification}"
+                            rows="2" width="100%" growing="true" growingMaxLines="5" maxLength="500"
+                            placeholder="Brief reason for the purchase."/>
+
+                        <MessageStrip
+                            id="msQuota"
+                            class="sapUiSmallMarginTop"
+                            text=""
+                            type="Information"
+                            showIcon="true"
+                            visible="false"/>
+
+                        <HBox class="sapUiSmallMarginTop" justifyContent="End">
+                            <Button
+                                id="btnQuotaSubmit"
+                                text="{i18n>submit}"
+                                icon="sap-icon://accept"
+                                type="Emphasized"
+                                press=".onQuotaSubmit"/>
+                        </HBox>
+                    </VBox>
+                </VBox>
+
+                <!-- Existing items -->
+                <VBox class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <core:Icon src="sap-icon://list" class="sapUiTinyMarginEnd"/>
+                        <Text text="{i18n>quotaItems}" class="zcpxCardTitle"/>
+                    </HBox>
+                    <Table items="{config>/quota/items}" noDataText="{i18n>noData}" growing="true" growingThreshold="15">
+                        <columns>
+                            <Column width="9rem"><Text text="ID"/></Column>
+                            <Column minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="Description"/></Column>
+                            <Column minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>plant}"/></Column>
+                            <Column hAlign="End"><Text text="Amount"/></Column>
+                            <Column minScreenWidth="Desktop" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>createdBy}"/></Column>
+                            <Column hAlign="End" width="8.5rem"><Text text="{i18n>status}"/></Column>
+                        </columns>
+                        <items>
+                            <ColumnListItem type="Navigation" press=".onQuotaItemPress">
+                                <cells>
+                                    <ObjectIdentifier title="{config>id}" text="{path: 'config>createdOn', formatter: '.formatter.date'}"/>
+                                    <Text text="{config>title}"/>
+                                    <Text text="{config>plant}"/>
+                                    <ObjectNumber number="{path: 'config>amount', formatter: '.formatter.rupees'}" emphasized="true"/>
+                                    <Text text="{config>createdByName}"/>
+                                    <ObjectStatus
+                                        text="{path: 'config>status', formatter: '.formatter.statusText'}"
+                                        state="{path: 'config>status', formatter: '.formatter.statusState'}"
+                                        icon="{path: 'config>status', formatter: '.formatter.statusIcon'}"/>
+                                </cells>
+                            </ColumnListItem>
+                        </items>
+                    </Table>
+                </VBox>
+
+            </VBox>
+        </content>
+    </Page>
+
+</mvc:View>

@@ -474,7 +474,7 @@ export function sortAnalysis(rows: FreightAnalysisRow[], rule: Rule): FreightAna
   return [...rows].sort((a, b) => Number(breaches(b, rule)) - Number(breaches(a, rule)) || mag(b).cmp(mag(a)) || a.plant.localeCompare(b.plant) || a.material.localeCompare(b.material));
 }
 
-export function freightAnalysisSheet(rows: FreightAnalysisRow[], rule: Rule): { cols: XCol[]; count: number } {
+export function freightAnalysisSheet(rows: FreightAnalysisRow[], rule: Rule, parties?: Map<string, Parties>): { cols: XCol[]; count: number } {
   return {
     count: rows.length,
     cols: [
@@ -488,6 +488,8 @@ export function freightAnalysisSheet(rows: FreightAnalysisRow[], rule: Rule): { 
       { header: 'Variance (INR / unit)', dp: 4, curr: 'INR', width: 16, get: (i) => n(rows[i].variance) },
       { header: 'Variance %', dp: 2, width: 12, get: (i) => n(rows[i].variancePct, 4) },
       { header: 'Actual quantity', dp: 3, width: 14, get: (i) => n(rows[i].actualQty, 3) },
+      { header: 'Supplier / vendor name', width: 40, get: (i) => (parties?.get(`${rows[i].plant}|${rows[i].material}`)?.vendors ?? []).join('; ') },
+      { header: 'Source / origin location', width: 30, get: (i) => (parties?.get(`${rows[i].plant}|${rows[i].material}`)?.sources ?? []).join('; ') },
       { header: 'PO lines', dp: 0, width: 9, get: (i) => rows[i].pos },
       { header: 'Last PO date', width: 12, get: (i) => rows[i].lastPo },
       { header: `Alert (${ruleText(rule)})`, width: 28, get: (i) => (breaches(rows[i], rule) ? 'ALERT' : rows[i].actual ? 'ok' : 'no actual freight') },
@@ -510,7 +512,7 @@ export function poLinesSheet(rows: PoLine[], rule: Rule): { cols: XCol[]; count:
       { header: 'Vendor', width: 12, get: (i) => rows[i].vendor },
       { header: 'Vendor name', width: 30, get: (i) => rows[i].vendorName },
       { header: 'GST partner', width: 18, get: (i) => rows[i].gstPartner },
-      { header: 'Place of supply', width: 14, get: (i) => rows[i].placeOfSupply },
+      { header: 'Source / origin location (place of supply)', width: 22, get: (i) => rows[i].placeOfSupply },
       { header: 'Transporter', width: 12, get: (i) => rows[i].transportMode },
       { header: 'Shkzg (S debit / H credit)', width: 14, get: (i) => rows[i].shkzg },
       { header: 'Accounting document', width: 16, get: (i) => rows[i].accDoc },
@@ -520,8 +522,8 @@ export function poLinesSheet(rows: PoLine[], rule: Rule): { cols: XCol[]; count:
       { header: 'FG material', width: 14, get: (i) => rows[i].fgMaterial },
       { header: 'Unit', width: 6, get: (i) => rows[i].unit },
       { header: 'Source used by SAP', width: 12, get: (i) => rows[i].src },
-      { header: 'Standard delivered quantity', dp: 3, width: 16, get: (i) => n(rows[i].standardQty, 3) },
-      { header: 'Net standard condition value (INR)', dp: 2, curr: 'INR', width: 20, get: (i) => n(rows[i].standardAmount, 2) },
+      { header: 'GRN QTY', dp: 3, width: 16, get: (i) => n(rows[i].standardQty, 3) },
+      { header: 'Std Freight', dp: 2, curr: 'INR', width: 20, get: (i) => n(rows[i].standardAmount, 2) },
       { header: 'Actual delivered quantity', dp: 3, width: 16, get: (i) => n(rows[i].actualQty, 3) },
       { header: 'Net actual condition value (INR)', dp: 2, curr: 'INR', width: 20, get: (i) => n(rows[i].actualAmount, 2) },
       { header: 'Variance amount (Actual - Standard, INR)', dp: 2, curr: 'INR', width: 22, get: (i) => n(rows[i].amountVariance, 2) },
@@ -541,7 +543,7 @@ export function sortMaterials(rows: MaterialWeighted[], rule: Rule): MaterialWei
   return [...rows].sort((a, b) => Number(breaches(b, rule)) - Number(breaches(a, rule)) || mag(b).cmp(mag(a)) || a.material.localeCompare(b.material));
 }
 
-export function materialWeightedSheet(rows: MaterialWeighted[], rule: Rule): { cols: XCol[]; count: number } {
+export function materialWeightedSheet(rows: MaterialWeighted[], rule: Rule, parties?: Map<string, Parties>): { cols: XCol[]; count: number } {
   return {
     count: rows.length,
     cols: [
@@ -551,16 +553,84 @@ export function materialWeightedSheet(rows: MaterialWeighted[], rule: Rule): { c
       { header: 'Unit', width: 6, get: (i) => rows[i].unit },
       { header: 'Plants', width: 18, get: (i) => rows[i].plants.join(', ') },
       { header: 'PO lines', dp: 0, width: 9, get: (i) => rows[i].poLines },
+      { header: 'Supplier / vendor name', width: 40, get: (i) => (parties?.get(rows[i].material)?.vendors ?? []).join('; ') },
+      { header: 'Source / origin location', width: 30, get: (i) => (parties?.get(rows[i].material)?.sources ?? []).join('; ') },
       { header: 'Delivered quantity (actual)', dp: 3, width: 16, get: (i) => n(rows[i].actualQty, 3) },
       { header: 'Net actual freight amount (INR)', dp: 2, curr: 'INR', width: 18, get: (i) => n(rows[i].actualAmount, 2) },
       { header: 'Weighted avg actual freight / unit (INR)', dp: 4, curr: 'INR', width: 20, get: (i) => n(rows[i].actual) },
-      { header: 'Delivered quantity (standard)', dp: 3, width: 16, get: (i) => n(rows[i].standardQty, 3) },
-      { header: 'Net standard freight amount (INR)', dp: 2, curr: 'INR', width: 18, get: (i) => n(rows[i].standardAmount, 2) },
+      { header: 'GRN QTY', dp: 3, width: 16, get: (i) => n(rows[i].standardQty, 3) },
+      { header: 'Std Freight', dp: 2, curr: 'INR', width: 18, get: (i) => n(rows[i].standardAmount, 2) },
       { header: 'Weighted avg standard freight / unit (INR)', dp: 4, curr: 'INR', width: 20, get: (i) => n(rows[i].standard) },
       { header: 'Variance (INR / unit)', dp: 4, curr: 'INR', width: 16, get: (i) => n(rows[i].variance) },
       { header: 'Variance %', dp: 2, width: 12, get: (i) => n(rows[i].variancePct, 4) },
       { header: 'Last PO date', width: 12, get: (i) => rows[i].lastPo },
       { header: `Alert (${ruleText(rule)})`, width: 28, get: (i) => (breaches(rows[i], rule) ? 'ALERT' : rows[i].actual ? 'ok' : 'no actual freight') },
+    ],
+  };
+}
+
+
+/* ---------- supplier and source / origin location (from the goods receipt / PO line), plant wise comparison ---------- */
+
+export interface Parties { vendors: string[]; sources: string[] }
+const uniqSorted = (a: string[]) => Array.from(new Set(a.filter(Boolean))).sort();
+/** Supplier / vendor names and source (origin) locations of the PO lines, per plant|material and per material (key without plant = material). */
+export function partiesOf(lines: PoLine[]): { byComponent: Map<string, Parties>; byMaterial: Map<string, Parties> } {
+  const comp = new Map<string, { v: string[]; s: string[] }>(), mat = new Map<string, { v: string[]; s: string[] }>();
+  for (const l of lines) {
+    const name = [l.vendorName || '', l.vendor ? `(${l.vendor})` : ''].filter(Boolean).join(' ');
+    for (const [m, k] of [[comp, `${l.plant}|${l.material}`], [mat, l.material]] as const) {
+      const x = m.get(k) ?? { v: [], s: [] };
+      x.v.push(name); x.s.push(l.placeOfSupply);
+      m.set(k, x);
+    }
+  }
+  const fin = (m: Map<string, { v: string[]; s: string[] }>) => new Map(Array.from(m.entries()).map(([k, x]) => [k, { vendors: uniqSorted(x.v), sources: uniqSorted(x.s) }]));
+  return { byComponent: fin(comp), byMaterial: fin(mat) };
+}
+export const partiesText = (a: string[], max = 3) => (a.length <= max ? a.join('; ') : `${a.slice(0, max).join('; ')} (+${a.length - max})`);
+
+export interface PlantCompare {
+  plant: string; materials: number; poLines: number;
+  /** all freight of the plant's lines in the range, INR, net of debit and credit */
+  actualAmount: Decimal; standardAmount: Decimal;
+  /** lines that have both an actual and a standard side: the like-for-like comparison */
+  bothLines: number; bothActual: Decimal; bothStandard: Decimal;
+  variance: Decimal; variancePct: Decimal | null;
+  /** lines that breach the rule */
+  flagged: number;
+}
+/** Plant wise actual vs standard freight (INR): totals of every line, and the variance on the lines that have both sides. */
+export function plantCompare(lines: PoLine[], rule: Rule): PlantCompare[] {
+  const m = new Map<string, PlantCompare & { mats: Set<string> }>();
+  for (const l of lines) {
+    const x = m.get(l.plant) ?? { plant: l.plant, materials: 0, poLines: 0, actualAmount: ZERO, standardAmount: ZERO, bothLines: 0, bothActual: ZERO, bothStandard: ZERO, variance: ZERO, variancePct: null, flagged: 0, mats: new Set<string>() };
+    x.mats.add(l.material); x.poLines += 1;
+    x.actualAmount = x.actualAmount.plus(l.actualAmount); x.standardAmount = x.standardAmount.plus(l.standardAmount);
+    if (l.actualQty.gt(0) && l.standardQty.gt(0)) { x.bothLines += 1; x.bothActual = x.bothActual.plus(l.actualAmount); x.bothStandard = x.bothStandard.plus(l.standardAmount); }
+    if (breachesLine(l, rule)) x.flagged += 1;
+    m.set(l.plant, x);
+  }
+  return Array.from(m.values()).map((x) => {
+    const v = x.bothActual.minus(x.bothStandard);
+    return { ...x, materials: x.mats.size, variance: v, variancePct: x.bothStandard.isZero() ? null : v.div(x.bothStandard).times(100) };
+  }).sort((a, b) => a.plant.localeCompare(b.plant));
+}
+export function plantCompareSheet(rows: PlantCompare[]): { cols: XCol[]; count: number } {
+  return {
+    count: rows.length,
+    cols: [
+      { header: 'Plant', width: 8, get: (i) => rows[i].plant },
+      { header: 'Materials', dp: 0, width: 10, get: (i) => rows[i].materials },
+      { header: 'PO lines', dp: 0, width: 9, get: (i) => rows[i].poLines },
+      { header: 'Std Freight', dp: 2, curr: 'INR', width: 18, get: (i) => n(rows[i].standardAmount, 2) },
+      { header: 'Actual freight (INR)', dp: 2, curr: 'INR', width: 18, get: (i) => n(rows[i].actualAmount, 2) },
+      { header: 'Lines with both sides', dp: 0, width: 12, get: (i) => rows[i].bothLines },
+      { header: 'Std Freight (both sides)', dp: 2, curr: 'INR', width: 20, get: (i) => n(rows[i].bothStandard, 2) },
+      { header: 'Actual freight (both sides, INR)', dp: 2, curr: 'INR', width: 22, get: (i) => n(rows[i].bothActual, 2) },
+      { header: 'Variance (Actual - Std, INR)', dp: 2, curr: 'INR', width: 20, get: (i) => n(rows[i].variance, 2) },
+      { header: 'Variance %', dp: 2, width: 12, get: (i) => n(rows[i].variancePct, 4) },
+      { header: 'Lines in alert', dp: 0, width: 12, get: (i) => rows[i].flagged },
     ],
   };
 }

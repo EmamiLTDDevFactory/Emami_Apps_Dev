@@ -24,14 +24,16 @@ export class FactBook {
 
   /** Adds a fact (same label + value + unit returns the existing id) and returns its id. */
   add(label: string, value: Decimal | string | number, o: FactOptions): string {
-    const unit = o.unit ?? '';
-    const dp = o.dp ?? (unit === '%' ? 2 : unit === 'count' || unit === 'pcs' ? 0 : 2);
-    const v = D(value as string);
+    // unit 'lakh': the caller gives rupees lakh; the fact keeps the value in RUPEES (so "90.0 lakh" is read by the numbers rule as 9,000,000) and shows "90.0 lakh"
+    const lakh = o.unit === 'lakh';
+    const unit = lakh ? 'INR' : o.unit ?? '';
+    const dp = o.dp ?? (unit === '%' ? 2 : unit === 'count' || unit === 'pcs' ? 0 : lakh ? 1 : 2);
+    const v = lakh ? D(value as string).times(100000) : D(value as string);
     const key = `${label}|${v.toString()}|${unit}`;
     const hit = this.byKey.get(key);
     if (hit) return hit;
     const id = `F${this.facts.length + 1}`;
-    const display = unit === '%' ? `${v.toFixed(dp)}%` : fmtNum(v, dp, unit.startsWith('INR') ? 'INR' : 'X');
+    const display = lakh ? `${v.div(100000).toFixed(dp)} lakh` : unit === '%' ? `${v.toFixed(dp)}%` : fmtNum(v, dp, unit.startsWith('INR') ? 'INR' : 'X');
     this.facts.push({ id, label, value: v.toString(), display, unit, source: o.source, dp });
     this.byKey.set(key, id);
     return id;

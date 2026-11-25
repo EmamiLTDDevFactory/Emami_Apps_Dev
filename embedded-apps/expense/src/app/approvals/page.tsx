@@ -2,10 +2,9 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, CheckCircle2, CheckSquare, ChevronDown, ChevronUp, Clock, Download, FileText, IndianRupee, Search, Square, Users, X, XCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, ChevronDown, ChevronUp, Clock, Download, FileText, Search, Users, X, XCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useClaim } from '../../context/ClaimContext';
-import { ExpenseClaim } from '../../types';
 import { getCategoryStyle } from '../../utils/category-style';
 import { formatClaimDisplayDate } from '../../utils/claim-date';
 import { formatCurrency } from '../../utils/currency';
@@ -48,11 +47,16 @@ const getActionTimestamp = (entry: any): number => {
 
 export default function ApprovalsPage() {
   const router = useRouter();
-  const { filterClaims, approveClaim, rejectClaim, requestClarification, releasePayment, rejectClaimFinance, fetchClaims, fetchHistorySet, historyEntries, claimSummaryCache, fetchClaimSummaries } = useClaim();
+  const { filterClaims, approveClaim, rejectClaim, requestClarification, fetchClaims, fetchHistorySet, historyEntries, claimSummaryCache, fetchClaimSummaries } = useClaim();
   const { currentUser } = useAuth();
 
+  // A typed URL shouldn't open this screen for someone without the Approvals capability - the
+  // backend refuses the actions anyway, but bouncing here avoids showing an empty/broken screen.
+  useEffect(() => {
+    if (!currentUser?.isManager) router.push('/');
+  }, [currentUser?.isManager, router]);
+
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedClaimIds, setSelectedClaimIds] = useState<string[]>([]);
   const [rejectModalVisible, setRejectModalVisible] = useState(false);
   const [selectedClaimId, setSelectedClaimId] = useState('');
   const [rejectionRemarks, setRejectionRemarks] = useState('');
@@ -82,18 +86,12 @@ export default function ApprovalsPage() {
   };
   const [messageModal, setMessageModal] = useState<MessageModalState>(null);
 
-  const isBulkReleaseUser = currentUser?.role === 'B';
   const managerHistoryEntries = historyEntries || [];
 
-  const pendingClaims = isBulkReleaseUser ? filterClaims('finance', searchQuery) : filterClaims('manager', searchQuery);
-  const isBPendingRelease = (claim: ExpenseClaim) => isBulkReleaseUser && claim.rawStatus === 'P';
-  const bulkReleaseClaims = isBulkReleaseUser ? pendingClaims.filter((c) => c.status === 'Pending Release' || isBPendingRelease(c)) : [];
-  const allBulkSelected = bulkReleaseClaims.length > 0 && bulkReleaseClaims.every((c) => selectedClaimIds.includes(c.id));
-
-  useEffect(() => {
-    setSelectedClaimIds((prev) => prev.filter((id) => bulkReleaseClaims.some((c) => c.id === id)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bulkReleaseClaims.map((c) => c.id).join('|')]);
+  // Always the manager list now - isManager gates whether this screen/tab is reachable at all
+  // (see Shell.tsx/route guard), so this page no longer needs to know about Finance POST users;
+  // that's finance/page.tsx's own job.
+  const pendingClaims = filterClaims('manager', searchQuery);
 
   // Re-fetches from SAP (server-side Fiscalyear filter) every time the selected year chip
   // changes, instead of fetching once and filtering ActionDate client-side — covers the initial
@@ -103,37 +101,7 @@ export default function ApprovalsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFiscalYear]);
 
-  const toggleClaimSelection = (id: string) => setSelectedClaimIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
-  const toggleSelectAllBulkClaims = () => setSelectedClaimIds(allBulkSelected ? [] : bulkReleaseClaims.map((c) => c.id));
-
   const refreshHistoryStats = async () => { await fetchHistorySet(selectedFiscalYear); };
-
-  const confirmBulkRelease = async () => {
-    if (selectedClaimIds.length === 0) { setMessageModal({ title: 'No Claims Selected', message: 'Please select at least one claim to release.', type: 'error' }); return; }
-    let successCount = 0, failureCount = 0;
-    const failedIds: string[] = [];
-    for (const claimId of selectedClaimIds) {
-      const result = await releasePayment(claimId);
-      if (result.success) successCount++;
-      else { failureCount++; failedIds.push(claimId); }
-    }
-    setSelectedClaimIds(failedIds);
-    await refreshHistoryStats();
-    await fetchClaims();
-    if (failureCount > 0) setMessageModal({ title: 'Bulk Release Partial', message: `${successCount} claim(s) released. ${failureCount} claim(s) could not be released.`, type: 'error' });
-    else setMessageModal({ title: 'Bulk Release Complete', message: `${successCount} claim(s) were released successfully.`, type: 'success' });
-  };
-
-  const handleBulkRelease = () => {
-    if (selectedClaimIds.length === 0) { setMessageModal({ title: 'No Claims Selected', message: 'Please select at least one claim to release.', type: 'error' }); return; }
-    setMessageModal({
-      title: 'Confirm Bulk Release',
-      message: `Release ${selectedClaimIds.length} selected claim(s)?`,
-      cancelLabel: 'Cancel',
-      confirmLabel: 'Release',
-      onConfirm: () => { setMessageModal(null); confirmBulkRelease(); },
-    });
-  };
 
   const managerApprovedCount = managerHistoryEntries.filter((e: any) => (e.Action || '').toUpperCase() === 'APPROVE').length;
   const managerRejectedCount = managerHistoryEntries.filter((e: any) => (e.Action || '').toUpperCase() === 'REJECT').length;
@@ -221,15 +189,6 @@ export default function ApprovalsPage() {
   };
 
   const handleApprove = async (id: string) => {
-    if (isBulkReleaseUser) {
-      const result = await releasePayment(id);
-      if (!result.success) { setMessageModal({ title: 'Release Failed', message: result.error || 'Failed to release payment.', type: 'error' }); return; }
-      await refreshHistoryStats();
-      await fetchClaims();
-      setSuccessMessage(`Claim ${displayClaimNumber(id)} has been released successfully.`);
-      setSuccessModalVisible(true);
-      return;
-    }
     await approveClaim(id);
     await refreshHistoryStats();
     await fetchClaims();
@@ -240,7 +199,7 @@ export default function ApprovalsPage() {
   const handleOpenRejectModal = (id: string) => { setSelectedClaimId(id); setRejectionRemarks(''); setRejectModalVisible(true); };
 
   const handleConfirmReject = async () => {
-    const result = isBulkReleaseUser ? await rejectClaimFinance(selectedClaimId, rejectionRemarks) : await rejectClaim(selectedClaimId, rejectionRemarks);
+    const result = await rejectClaim(selectedClaimId, rejectionRemarks);
     if (!result.success) { setMessageModal({ title: 'Rejection Failed', message: result.error || 'Rejection remarks are mandatory.', type: 'error' }); return; }
     await refreshHistoryStats();
     await fetchClaims();
@@ -257,16 +216,7 @@ export default function ApprovalsPage() {
 
   return (
     <div className="flex flex-col gap-3">
-      <h1 className="text-xl font-extrabold text-ink">{isBulkReleaseUser ? 'Finance Approvals' : 'Manager Approvals'}</h1>
-
-      {isBulkReleaseUser && bulkReleaseClaims.length > 0 && (
-        <div className="flex gap-2">
-          <Button variant="secondary" className="flex-1" icon={allBulkSelected ? CheckSquare : Square} onClick={toggleSelectAllBulkClaims}>
-            {allBulkSelected ? 'Clear Selection' : `Select All (${bulkReleaseClaims.length})`}
-          </Button>
-          <Button variant="success" className="flex-1" icon={IndianRupee} onClick={handleBulkRelease}>Release Selected</Button>
-        </div>
-      )}
+      <h1 className="text-xl font-extrabold text-ink">Manager Approvals</h1>
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {managerStats.map((stat) => {
@@ -415,11 +365,6 @@ export default function ApprovalsPage() {
         <div className="flex flex-col gap-3">
           {pendingClaims.map((claim) => (
             <div key={claim.id} className="card flex items-stretch gap-0 overflow-hidden !p-0">
-              {isBulkReleaseUser && (
-                <button type="button" onClick={() => toggleClaimSelection(claim.id)} className="flex items-center justify-center border-r border-line bg-appBg px-4">
-                  {selectedClaimIds.includes(claim.id) ? <CheckSquare size={20} className="text-brand" /> : <Square size={20} className="text-inkFaint" />}
-                </button>
-              )}
               <div className="flex-1">
                 <button type="button" onClick={() => router.push(`/claim/?id=${encodeURIComponent(claim.id)}`)} className="block w-full p-3.5 text-left">
                   <div className="flex items-start justify-between">
@@ -458,7 +403,7 @@ export default function ApprovalsPage() {
                 </button>
                 <div className="flex gap-2 border-t border-line bg-appBg p-2">
                   <Button variant="danger" className="flex-1" onClick={() => handleOpenRejectModal(claim.id)}>Reject</Button>
-                  <Button variant="success" className="flex-1" onClick={() => handleApprove(claim.id)}>{isBulkReleaseUser ? 'Release' : 'Approve'}</Button>
+                  <Button variant="success" className="flex-1" onClick={() => handleApprove(claim.id)}>Approve</Button>
                 </div>
               </div>
             </div>

@@ -4,13 +4,24 @@ import type { FieldMap } from '../price-context/odata';
  *  Werks and DateTo are $filter properties only. Decimals are strings. */
 export const DASH_SET = 'DashMisSet';
 export const DASH_FILTER = { Werks: 'Werks', DateTo: 'DateTo' } as const;
-export const DASH_MARGIN_FILTER = { Vkorg: 'Vkorg', Vtweg: 'Vtweg', Crssku: 'Crssku', Vbeln: 'Vbeln' } as const;
+export const DASH_MARGIN_FILTER = { Matnr: 'Matnr', Vkorg: 'Vkorg', Vtweg: 'Vtweg', Crssku: 'Crssku', Vbeln: 'Vbeln' } as const;
 export const DASH_MIS_FIELDS = {
   Zbrand: ['Zbrand', 's'], Gjahr: ['Gjahr', 's'], Version: ['Version', 's'], FgCnt: ['FgCnt', 'i'], FgNobud: ['FgNobud', 'i'],
   FtmQty: ['FtmQty', 'd'], FtmBudget: ['FtmBudget', 'd'], FtmActual: ['FtmActual', 'd'], FtmActualCmp: ['FtmActualCmp', 'd'],
   YtmQty: ['YtmQty', 'd'], YtmBudget: ['YtmBudget', 'd'], YtmActual: ['YtmActual', 'd'], YtmActualCmp: ['YtmActualCmp', 'd'],
   Msg: ['Msg', 's'],
 } as const satisfies FieldMap;
+
+/** DashMisSet with Grain eq 'F': one row per finished good (material and plant) of the same figures, with the budget key SAP matched (or could not match). */
+export const DASH_MIS_FG_FIELDS = {
+  ...DASH_MIS_FIELDS,
+  Grain: ['Grain', 's'], Matnr: ['Matnr', 's'], Maktx: ['Maktx', 's'], BudPc: ['BudPc', 'd'], ActPc: ['ActPc', 'd'], BudSrc: ['BudSrc', 's'], Prodha: ['Prodha', 's'], Werks: ['Werks', 's'],
+  Zscheme: ['Zscheme', 's'], BudRm: ['BudRm', 'd'], BudPm: ['BudPm', 'd'], BudPf: ['BudPf', 'd'], BudOh: ['BudOh', 'd'],
+} as const satisfies FieldMap;
+
+/** DashBridgeSet (ZCL_MM_COGM_BRIDGE): year-to-date COGM variance bridge per brand, one row per effect; Value in INR. Werks / DateTo are $filter properties only. */
+export const DASH_BRIDGE_SET = 'DashBridgeSet';
+export const DASH_BRIDGE_FIELDS = { Zbrand: ['Zbrand', 's'], Effect: ['Effect', 's'], SortNo: ['SortNo', 'i'], Value: ['Value', 'd'], Msg: ['Msg', 's'] } as const satisfies FieldMap;
 
 /** DashSalesSet: invoiced sales of finished goods. Grain 'B' = one row per brand, 'S' = one row per SKU x distribution channel. GSV = condition ZSAL (the item's net value when it has none),
  *  NSV = VBRP-NETWR, Deductions = GSV - NSV; COGM = SAP's actual cost per piece of the period x sold quantity. Werks / DateFrom / DateTo are $filter properties only. */
@@ -19,6 +30,7 @@ export const DASH_SALES_FIELDS = {
   Grain: ['Grain', 's'], Zbrand: ['Zbrand', 's'], Matnr: ['Matnr', 's'], Maktx: ['Maktx', 's'], Matkl: ['Matkl', 's'], Vtweg: ['Vtweg', 's'], VtwegTxt: ['VtwegTxt', 's'],
   SoldQty: ['SoldQty', 'd'], Gsv: ['Gsv', 'd'], Deductions: ['Deductions', 'd'], Nsv: ['Nsv', 'd'], CogmQty: ['CogmQty', 'd'], NsvCmp: ['NsvCmp', 'd'], Cogm: ['Cogm', 'd'], CogmPc: ['CogmPc', 'd'],
   SkuCnt: ['SkuCnt', 'i'], SkuNocogm: ['SkuNocogm', 'i'], Msg: ['Msg', 's'],
+  Prodha: ['Prodha', 's'], Vkorg: ['Vkorg', 's'], Vbeln: ['Vbeln', 's'], Fkdat: ['Fkdat', 't'],
 } as const satisfies FieldMap;
 
 /** DashPvmSet: budget gross margin -> Price -> Volume -> Mix -> Cost -> actual gross margin (+ 'Unexplained' when the effects do not add up). Same filter as DashSalesSet. */
@@ -39,6 +51,7 @@ export const DASH_MARGIN_FIELDS = {
   Kunag: ['Kunag', 's'],
   Maktx: ['Maktx', 's'],
   Matkl: ['Matkl', 's'],
+  Prodha: ['Prodha', 's'],
   KunagTxt: ['KunagTxt', 's'],
   Zscheme: ['Zscheme', 's'],
   Crssku: ['Crssku', 's'],

@@ -1,0 +1,160 @@
+<mvc:View
+    controllerName="zcapexportal.controller.Capitalization"
+    xmlns="sap.m"
+    xmlns:mvc="sap.ui.core.mvc"
+    xmlns:core="sap.ui.core"
+    xmlns:l="sap.ui.layout"
+    height="100%">
+
+    <Page id="pageCapitalization" showHeader="false" class="zcpxApp">
+        <content>
+            <VBox class="zcpxScreen">
+
+                <VBox class="zcpxHero zcpxSection">
+                    <HBox justifyContent="SpaceBetween" alignItems="Start" wrap="Wrap">
+                        <VBox>
+                            <Text text="{i18n>capitalizationTitle}" class="zcpxHeroTitle"/>
+                            <Text text="CWIP ageing and fixed-asset creation" class="zcpxHeroSub"/>
+                        </VBox>
+                        <VBox alignItems="End">
+                            <Text text="{i18n>kpiCwipPending}" class="zcpxHeroSub"/>
+                            <Text text="{path: 'cap>/summary/value', formatter: '.formatter.money'}" class="zcpxHeroTitle"/>
+                            <Text text="{parts: ['cap>/summary/count','cap>/summary/avgAge'], formatter: '.formatSummaryFoot'}" class="zcpxHeroSub"/>
+                        </VBox>
+                    </HBox>
+                </VBox>
+
+                <l:Grid class="zcpxSection" defaultSpan="XL3 L3 M6 S6" hSpacing="1" vSpacing="1">
+                    <VBox class="zcpxKpi zcpxKpi--brand">
+                        <Text text="Open CWIP" class="zcpxKpiLabel"/>
+                        <Text text="{cap>/summary/count}" class="zcpxKpiValue"/>
+                        <Text text="assets" class="zcpxKpiFoot"/>
+                    </VBox>
+                    <VBox class="zcpxKpi zcpxKpi--purple">
+                        <Text text="CWIP Value" class="zcpxKpiLabel"/>
+                        <Text text="{path: 'cap>/summary/value', formatter: '.formatter.money'}" class="zcpxKpiValue"/>
+                    </VBox>
+                    <VBox class="zcpxKpi zcpxKpi--warning">
+                        <Text text="Average Age" class="zcpxKpiLabel"/>
+                        <HBox alignItems="Baseline">
+                            <Text text="{cap>/summary/avgAge}" class="zcpxKpiValue"/>
+                            <Text text="days" class="zcpxKpiUnit"/>
+                        </HBox>
+                    </VBox>
+                    <!-- Only this tile represents a genuine subset of the CWIP table
+                         below (the other 3 summarize the whole list, nothing to filter
+                         to) - clicking it filters that table in place, same reasoning as
+                         Approval Inbox's SLA tiles. -->
+                    <VBox id="tileCapOverdue" class="zcpxKpi zcpxKpi--error sapMPointer">
+                        <Text text="{= 'Over ' + (${config>/cwipOverdueDays} || 45) + ' Days' }" class="zcpxKpiLabel"/>
+                        <Text text="{cap>/summary/overdue}" class="zcpxKpiValue"/>
+                        <Text text="require action" class="zcpxKpiFoot"/>
+                    </VBox>
+                </l:Grid>
+
+                <MessageStrip
+                    class="zcpxSection"
+                    text="{= 'Showing CWIP open more than ' + (${config>/cwipOverdueDays} || 45) + ' days only.' }"
+                    type="Information"
+                    showIcon="true"
+                    visible="{cap>/overdueFilterActive}">
+                    <link>
+                        <Link text="Clear" press=".onClearAgeingFilter"/>
+                    </link>
+                </MessageStrip>
+
+                <MessageStrip
+                    class="zcpxSection"
+                    text="{parts: ['cap>/summary/overdue', 'config>/cwipOverdueDays'], formatter: '.formatOverdueMsg'}"
+                    type="Error"
+                    showIcon="true"
+                    visible="{= ${cap>/summary/overdue} > 0 }"/>
+
+                <!-- CWIP ageing -->
+                <VBox class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <core:Icon src="sap-icon://history" class="sapUiTinyMarginEnd"/>
+                        <Text text="{i18n>cwipAgeing}" class="zcpxCardTitle"/>
+                    </HBox>
+                    <Table
+                        id="tblAgeing"
+                        items="{path: 'asset>/cwipAgeing', sorter: {path: 'ageDays', descending: true}}"
+                        growing="true"
+                        growingThreshold="20"
+                        noDataText="No open CWIP. Everything is capitalized."
+                        sticky="ColumnHeaders">
+                        <columns>
+                            <Column width="10rem"><Text text="CWIP"/></Column>
+                            <Column minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="Description"/></Column>
+                            <Column minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>plant}"/></Column>
+                            <Column hAlign="End" minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="Value"/></Column>
+                            <Column hAlign="End" width="7rem" minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>ageDays}"/></Column>
+                            <Column hAlign="End" minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline" width="10rem"><Text text="{i18n>icStatus}"/></Column>
+                            <Column hAlign="End" width="8rem"><Text text=""/></Column>
+                        </columns>
+                        <items>
+                            <ColumnListItem highlight="{asset>risk}">
+                                <cells>
+                                    <ObjectIdentifier title="{asset>cwipId}"/>
+                                    <Text text="{asset>title}"/>
+                                    <Text text="{asset>plant}"/>
+                                    <ObjectNumber
+                                        number="{path: 'asset>value', formatter: '.formatter.inLakhs'}"
+                                        emphasized="true"/>
+                                    <ObjectStatus
+                                        text="{asset>ageDays}"
+                                        state="{asset>risk}"
+                                        icon="{= ${asset>risk} === 'Error' ? 'sap-icon://alert' : '' }"/>
+                                    <ObjectStatus
+                                        text="{path: 'asset>icStatus', formatter: '.formatIcStatus'}"
+                                        state="{path: 'asset>icStatus', formatter: '.formatter.statusState'}"/>
+                                    <Button
+                                        text="Upload IC"
+                                        type="Emphasized"
+                                        press=".onUploadIC"/>
+                                </cells>
+                            </ColumnListItem>
+                        </items>
+                    </Table>
+                </VBox>
+
+                <!-- Capitalized assets -->
+                <VBox class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <core:Icon src="sap-icon://building" class="sapUiTinyMarginEnd"/>
+                        <Text text="Capitalized Assets" class="zcpxCardTitle"/>
+                    </HBox>
+                    <Table
+                        items="{path: 'asset>/ic', filters: [{path: 'status', operator: 'EQ', value1: 'CAPITALIZED'}]}"
+                        growing="true"
+                        growingThreshold="20"
+                        noDataText="No assets capitalized yet.">
+                        <columns>
+                            <Column><Text text="{i18n>assetNumber}"/></Column>
+                            <Column minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="Description"/></Column>
+                            <Column minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>plant}"/></Column>
+                            <Column hAlign="End" minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>totalCapitalCost}"/></Column>
+                            <Column hAlign="End" minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>capitalizedOn}"/></Column>
+                        </columns>
+                        <items>
+                            <ColumnListItem type="Navigation" press=".onICPress">
+                                <cells>
+                                    <ObjectIdentifier title="{asset>assetNumber}" text="{asset>icId}"/>
+                                    <Text text="{asset>title}"/>
+                                    <Text text="{asset>plantName}"/>
+                                    <ObjectNumber
+                                        number="{path: 'asset>totalCapitalCost', formatter: '.formatter.inLakhs'}"
+                                        state="Success"
+                                        emphasized="true"/>
+                                    <Text text="{path: 'asset>capitalizedOn', formatter: '.formatter.date'}"/>
+                                </cells>
+                            </ColumnListItem>
+                        </items>
+                    </Table>
+                </VBox>
+
+            </VBox>
+        </content>
+    </Page>
+
+</mvc:View>

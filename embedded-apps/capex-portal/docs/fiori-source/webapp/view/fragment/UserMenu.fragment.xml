@@ -1,0 +1,61 @@
+<core:FragmentDefinition
+    xmlns="sap.m"
+    xmlns:core="sap.ui.core"
+    xmlns:f="sap.ui.layout.form">
+
+    <ResponsivePopover
+        placement="Bottom"
+        contentWidth="20rem"
+        showHeader="false"
+        class="sapUiPopupWithPadding">
+
+        <VBox class="sapUiSmallMargin">
+
+            <HBox alignItems="Center" class="sapUiSmallMarginBottom">
+                <Button
+                    text="{path: 'app>/user/name', formatter: '.formatter.initials'}"
+                    type="Transparent"
+                    tooltip="{app>/user/name}"
+                    class="zcpxAvatar zcpxAvatarM"/>
+                <VBox class="sapUiSmallMarginBegin">
+                    <Title text="{app>/user/name}" level="H4"/>
+                    <Text text="{app>/user/role}" class="zcpxHintText"/>
+                    <Text text="{app>/user/unit}" class="zcpxHintText"/>
+                </VBox>
+            </HBox>
+
+            <Text
+                text="{i18n>authorizedPlants}"
+                class="zcpxSectionLabel"/>
+            <HBox wrap="Wrap" class="sapUiTinyMarginBottom">
+                <items>
+                    <ObjectStatus
+                        text="{= ${app>/user/isGlobal} ? ${i18n>allPlants} : ${app>/user/authorizedPlants}.join(', ') }"
+                        state="Information"/>
+                </items>
+            </HBox>
+
+            <core:Title text=""/>
+
+            <Text text="{i18n>previewAs}" class="zcpxSectionLabel"/>
+            <Text text="{i18n>previewAsHint}" class="zcpxHintText"/>
+
+            <List items="{app>/personas}" mode="None" class="sapUiTinyMarginTop">
+                <StandardListItem
+                    title="{app>name}"
+                    description="{app>role}"
+                    icon="sap-icon://employee"
+                    iconInset="false"
+                    type="Active"
+                    press=".onSwitchRole">
+                    <customData>
+                        <core:CustomData key="role" value="{app>role}"/>
+                    </customData>
+                </StandardListItem>
+            </List>
+
+        </VBox>
+
+    </ResponsivePopover>
+
+</core:FragmentDefinition>

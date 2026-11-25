@@ -1,0 +1,54 @@
+<core:FragmentDefinition
+    xmlns="sap.m"
+    xmlns:core="sap.ui.core"
+    xmlns:u="sap.ui.unified"
+    xmlns:f="sap.ui.layout.form">
+
+    <Dialog title="{i18n>reviseAmount}" contentWidth="28rem">
+        <content>
+            <f:SimpleForm
+                layout="ResponsiveGridLayout"
+                editable="true"
+                labelSpanXL="4" labelSpanL="4" labelSpanM="4" labelSpanS="12"
+                adjustLabelSpan="false"
+                columnsXL="1" columnsL="1" columnsM="1">
+                <f:content>
+                    <Label text="{i18n>cpeAmount}" required="true"/>
+                    <StepInput
+                        id="inpReviseAmount"
+                        value="{revise>/newAmount}"
+                        min="1"
+                        step="1000"
+                        width="100%"/>
+
+                    <Label text="{i18n>reviseAmountReason}" required="true"/>
+                    <TextArea
+                        id="taReviseReason"
+                        value="{revise>/reason}"
+                        rows="3"
+                        width="100%"
+                        maxLength="500"/>
+
+                    <Label text="{i18n>reviseAmountDoc}" required="true"/>
+                    <u:FileUploader
+                        id="fuReviseDoc"
+                        change=".onReviseDocFileChange"
+                        typeMissmatch=".onAttachmentTypeMismatch"
+                        fileSizeExceed=".onAttachmentFileSizeExceed"
+                        fileType="{path: 'config>/docExtensions', formatter: '.formatFileTypes'}"
+                        maximumFileSize="{= ${config>/docMaxMb} || 10 }"
+                        buttonText="{i18n>upload}"
+                        placeholder="No file chosen"
+                        width="100%"/>
+                </f:content>
+            </f:SimpleForm>
+        </content>
+        <beginButton>
+            <Button text="{i18n>submit}" type="Emphasized" press=".onConfirmReviseAmount"/>
+        </beginButton>
+        <endButton>
+            <Button text="{i18n>cancel}" press=".onCancelReviseAmount"/>
+        </endButton>
+    </Dialog>
+
+</core:FragmentDefinition>

@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Grid3x3, Lock } from 'lucide-react';
 import { colors, fonts, fontWeights, radii, appColor, catColor, categoryTint, navColor, shadows } from '../theme/tokens';
@@ -10,6 +10,8 @@ import { useFavorites } from '../context/FavoritesContext';
 import { useAuth } from '../context/AuthContext';
 import { useUnlockedAppIds } from '../hooks/useAppAccess';
 import { logEvent } from '../lib/authApi';
+import { getPendingRequestCount } from '../lib/accessRequestsApi';
+import { ACCESS_CHANGED_EVENT } from '../lib/accessApi';
 import EmpAppMark from './EmpAppMark';
 import type { CategoryFilter } from '../types';
 
@@ -34,6 +36,7 @@ function NavButton({
   accentColor,
   locked,
   iconFit = SIMPLE_ICON_FIT,
+  badge,
 }: {
   icon: React.ElementType;
   label: string;
@@ -47,6 +50,8 @@ function NavButton({
   locked?: boolean;
   /** Size and line weight inside the chip — see categoryIconFit. */
   iconFit?: IconFit;
+  /** Small red count at the row's right edge (e.g. access requests waiting for a Super Admin). */
+  badge?: number;
 }) {
   const accent = accentColor || colors.rust;
   return (
@@ -101,6 +106,9 @@ function NavButton({
       >
         {label}
       </span>
+      {!!badge && badge > 0 && (
+        <span aria-label={`${badge} waiting`} style={{ minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9, backgroundColor: '#DC2626', color: colors.white, fontSize: 10.5, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{badge > 99 ? '99+' : badge}</span>
+      )}
       {locked && <Lock size={13} color="#9CA3AF" strokeWidth={1.8} style={{ flexShrink: 0 }} />}
     </button>
   );
@@ -133,6 +141,17 @@ export default function Sidebar({ compact = false }: SidebarProps) {
   // Viewer at all. Favorites is dropped from the side pane entirely, per instruction — the page
   // and route (NAV_ROUTES.Favorites) still exist, just unlinked from here.
   const canManageAccess = access?.accessLevel === 'Super Admin' || access?.accessLevel === 'Admin';
+  // Access requests waiting for a Super Admin — shown as a red count on Admin Center so approvals are not missed.
+  const isSuperAdmin = access?.accessLevel === 'Super Admin';
+  const [pendingRequests, setPendingRequests] = useState(0);
+  useEffect(() => {
+    if (!isSuperAdmin) { setPendingRequests(0); return; }
+    const load = () => getPendingRequestCount().then((r) => { if (r.ok) setPendingRequests(r.pending); });
+    load();
+    const timer = setInterval(load, 60_000);
+    window.addEventListener(ACCESS_CHANGED_EVENT, load);
+    return () => { clearInterval(timer); window.removeEventListener(ACCESS_CHANGED_EVENT, load); };
+  }, [isSuperAdmin]);
   const ADMIN_ONLY_NAV_IDS = new Set(['UserAccess']);
   const HIDDEN_NAV_IDS = new Set(['Favorites']);
   const navItems = NAV.filter((item) => !HIDDEN_NAV_IDS.has(item.id) && (!ADMIN_ONLY_NAV_IDS.has(item.id) || canManageAccess));
@@ -213,7 +232,7 @@ export default function Sidebar({ compact = false }: SidebarProps) {
         <p style={{ color: colors.sidebarTextSoft, fontSize: 10.5, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, letterSpacing: 0.8, textTransform: 'uppercase', margin: '10px 7px 6px' }}>
           Categories
         </p>
-        {CATEGORIES.filter((c) => c !== 'All').map((c) => (
+        {CATEGORIES.filter((c) => c !== 'All' && !isCategoryLocked(c) && APPS.some((a) => a.cat === c)).map((c) => (
           <NavButton
             key={c}
             icon={CATEGORY_ICONS[c] || Grid3x3}
@@ -232,8 +251,9 @@ export default function Sidebar({ compact = false }: SidebarProps) {
             icon={item.icon}
             label={item.label}
             active={normalizePath(pathname) === normalizePath(NAV_ROUTES[item.id])}
-            onClick={() => router.push(NAV_ROUTES[item.id])}
+            onClick={() => router.push(item.id === 'UserAccess' && pendingRequests > 0 ? '/manage-access/?tab=requests' : NAV_ROUTES[item.id])}
             accentColor={navColor(item.id)}
+            badge={item.id === 'UserAccess' ? pendingRequests : undefined}
           />
         ))}
       </nav>

@@ -1,16 +1,16 @@
 'use client';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import TutorialButton from './TutorialButton';
-import { ArrowLeft, Boxes, Calendar, ChevronRight, ClipboardList, Layers, Menu, Scale, Tags, Truck, User, X, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, Boxes, Calendar, ChevronRight, ClipboardList, Layers, Menu, PanelLeftClose, PanelLeftOpen, Scale, Tags, Truck, User, X, type LucideIcon } from 'lucide-react';
 import { WAC_ENABLED, wacNavVisible } from '@/lib/wac/flag';
 import { PSUM_ENABLED } from '@/lib/psum/flag';
 import { COGM_ENABLED } from '@/lib/margin/flag';
 import { CK_ENABLED } from '@/lib/ck/flag';
 import { BUDGET_ENABLED } from '@/lib/budget/flag';
-import { activeOf, navSections, sectionPath, type NavSection, type PlanNav, type SectionId } from '@/lib/nav/sections';
+import { activeOf, navSections, sectionPath, tileAllowed, type NavSection, type PlanNav, type SectionId } from '@/lib/nav/sections';
 import { PriceContextBar, PriceContextProvider } from './price-context/slots';
 import { COGM_SO_ENABLED } from '@/lib/so/flag';
-import { fetchAppRole, fetchIsAdmin } from '@/lib/client/hubAccess';
+import { fetchAppRole, fetchAppTiles, fetchIsAdmin } from '@/lib/client/hubAccess';
 import { MODE_LABEL, type Mode } from '@/lib/query/schema';
 import { BASE_PATH } from '@/lib/client/session';
 import { leaveApp } from '@/lib/useScreenHistory';
@@ -44,11 +44,12 @@ export function nameFromEmail(email: string): string {
 
 export type { PlanNav };
 
-function NavPane({ sections, active, onHome, open, onClose, wide }: { sections: NavSection[]; active?: SectionId; onHome?: (id: SectionId) => void; open: boolean; onClose: () => void; wide: boolean }) {
+function NavPane({ sections, active, onHome, open, onClose, wide, collapsed, onCollapse }: { sections: NavSection[]; active?: SectionId; onHome?: (id: SectionId) => void; open: boolean; onClose: () => void; wide: boolean; collapsed?: boolean; onCollapse?: () => void }) {
   const dark = 'bg-gradient-to-b from-plum-deep via-plum to-[#2A2A92] text-white';
   const pane = wide
     ? cx('relative w-64 shrink-0', dark)
     : cx('fixed inset-y-0 left-0 z-40 w-72 max-w-[85vw] shadow-pop transition-transform duration-200', dark, open ? 'translate-x-0' : '-translate-x-full');
+  if (wide && collapsed) return null;
   return (
     <>
       {!wide && open && <div className="fixed inset-0 z-30 bg-plum-deep/50 backdrop-blur-sm" onClick={onClose} />}
@@ -59,6 +60,11 @@ function NavPane({ sections, active, onHome, open, onClose, wide }: { sections: 
           {!wide && (
             <div className="flex justify-end px-3 pt-3">
               <button type="button" onClick={onClose} aria-label="Close menu" className="p-1 text-white/70 hover:text-white"><X size={20} /></button>
+            </div>
+          )}
+          {wide && onCollapse && (
+            <div className="flex justify-end px-3 pt-3">
+              <button type="button" onClick={onCollapse} aria-label="Collapse side pane" title="Collapse side pane (bigger screen)" className="rounded p-1 text-white/70 hover:bg-white/10 hover:text-white"><PanelLeftClose size={18} /></button>
             </div>
           )}
           <div className={cx('relative flex items-center justify-center px-4 pb-5', wide ? 'pt-5' : 'pt-1')}>
@@ -128,10 +134,19 @@ export default function Shell({ mode, email, actions, children, env, onBack, pla
   // Budget costing: the person's role of this app; with the flag off no request is made.
   const [budgetRole, setBudgetRole] = useState('');
   useEffect(() => { if (BUDGET_ENABLED && email) void fetchAppRole(email).then(setBudgetRole); }, [email]);
-  const sections = useMemo(() => navSections({ wac: wacNavVisible(WAC_ENABLED, wacAdmin), ck: wacNavVisible(CK_ENABLED, wacAdmin), so: wacNavVisible(COGM_SO_ENABLED, wacAdmin), psum: wacNavVisible(PSUM_ENABLED, wacAdmin), marginRole, budgetRole }), [wacAdmin, marginRole, budgetRole]);
+  // Screen limit from Manage Access: undefined while loading, null = no limit.
+  const [tiles, setTiles] = useState<string[] | null | undefined>(undefined);
+  useEffect(() => { if (email) void fetchAppTiles(email).then(setTiles); else setTiles(null); }, [email]);
+  const sections = useMemo(() => navSections({ wac: wacNavVisible(WAC_ENABLED, wacAdmin), ck: wacNavVisible(CK_ENABLED, wacAdmin), so: wacNavVisible(COGM_SO_ENABLED, wacAdmin), psum: wacNavVisible(PSUM_ENABLED, wacAdmin), marginRole, budgetRole, tiles }), [wacAdmin, marginRole, budgetRole, tiles]);
+  // The screen on show, by its Manage Access id: a section page lists screens, so it is not itself limited.
+  const shownId = section ? null : planActive && planActive !== 'section' ? planActive : planActive ? null : `mode-${mode}`;
+  const blocked = tiles !== undefined && shownId !== null && !tileAllowed(tiles, shownId);
   const now = activeOf(sections, planActive, mode, section);
   const wide = useIsWide();
   const [open, setOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => { try { setCollapsed(localStorage.getItem('cc-nav-collapsed') === '1'); } catch { /* storage blocked */ } }, []);
+  const toggleCollapsed = () => setCollapsed((c) => { const n = !c; try { localStorage.setItem('cc-nav-collapsed', n ? '1' : '0'); } catch { /* storage blocked */ } return n; });
   const [today, setToday] = useState('');
   useEffect(() => setToday(new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })), []);
   const Icon = MODE_ICON[mode];
@@ -139,13 +154,16 @@ export default function Shell({ mode, email, actions, children, env, onBack, pla
     <PriceContextProvider email={email}>
     <NavContext.Provider value={sections}>
     <div className="flex h-screen overflow-clip bg-plum">
-      <NavPane sections={sections} active={now.section?.id} onHome={onHome} open={open} onClose={() => setOpen(false)} wide={wide} />
+      <NavPane sections={sections} active={now.section?.id} onHome={onHome} open={open} onClose={() => setOpen(false)} wide={wide} collapsed={collapsed} onCollapse={toggleCollapsed} />
       <div className="app-canvas flex min-w-0 flex-1 flex-col overflow-clip bg-bg">
         <header className="no-print">
           <div aria-hidden className="banner-line h-1" />
           <div className="page-banner flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3.5 text-white sm:px-5">
             {!wide && (
               <button type="button" onClick={() => setOpen(true)} aria-label="Open menu" className="rounded-lg p-1.5 text-white hover:bg-white/10"><Menu size={22} /></button>
+            )}
+            {wide && collapsed && (
+              <button type="button" onClick={toggleCollapsed} aria-label="Show side pane" title="Show side pane" className="rounded-lg p-1.5 text-white hover:bg-white/10"><PanelLeftOpen size={22} /></button>
             )}
             {/* In-app "Back" to the previous screen; without a screen history it leaves the app. */}
             <button type="button" onClick={onBack ?? leaveApp} aria-label="Back" title="Back" className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/30 bg-white/10 text-white transition hover:bg-white/20">
@@ -170,7 +188,14 @@ export default function Shell({ mode, email, actions, children, env, onBack, pla
             </div>
           </div>
         </header>
-        <main className="flex min-h-0 flex-1 flex-col overflow-clip animate-pageIn">{children}</main>
+        <main className="flex min-h-0 flex-1 flex-col overflow-clip animate-pageIn">
+          {tiles === undefined ? null : blocked ? (
+            <div className="m-auto max-w-md p-8 text-center">
+              <h2 className="text-lg font-extrabold text-ink">This screen is not part of your access</h2>
+              <p className="mt-2 text-sm text-inkSoft">Your Costing Cockpit access is limited to some screens. Use the side pane to open one of them, or ask for access from the Emami Apps hub.</p>
+            </div>
+          ) : children}
+        </main>
       </div>
     </div>
     </NavContext.Provider>

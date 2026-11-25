@@ -46,4 +46,5 @@ define type zdash_s_margin {
   bud_pf      : abap.dec(23,6);
   bud_oh      : abap.dec(23,6);
   nmr         : abap.dec(23,6);
+  prodha      : zpproduct;
 }

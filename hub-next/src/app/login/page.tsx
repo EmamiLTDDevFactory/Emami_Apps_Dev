@@ -3,8 +3,9 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Mail, CheckCircle2, MailCheck } from 'lucide-react';
-import { colors, fonts, fontWeights, radii } from '../../theme/tokens';
+import { colors, fonts, fontWeights } from '../../theme/tokens';
 import { getMicrosoftSignInUrl, requestMagicLink, checkStillAuthorized } from '../../lib/authApi';
+import SigningInScreen from '../../components/SigningInScreen';
 import { useAuth, getLastLoginEmail } from '../../context/AuthContext';
 
 /**
@@ -25,17 +26,9 @@ import { useAuth, getLastLoginEmail } from '../../context/AuthContext';
 const SSO_DOMAIN = '@emamigroup.com';
 const LIVE_CHECK_DEBOUNCE_MS = 500;
 
-// Purely decorative accents for this page only — Login intentionally breaks from the brand
-// palette here, so these stay local rather than being promoted into theme/tokens.ts.
-const LOGIN_ACCENTS = {
-  blobTop: '#F7B9A0',
-  blobBottom: '#A9C9F5',
-  blobMid: '#F5C9E0',
-} as const;
-
 // One-off hero-card radius (bigger than any step in the shared `radii` scale) — not a missing
 // token, just this card's specific treatment.
-const CARD_RADIUS = radii.xxxl + 6;
+const CARD_RADIUS = 32;
 
 /** Classic four-square Microsoft glyph — lucide has no brand icon for this, so it's drawn directly. */
 function MicrosoftGlyph() {
@@ -56,6 +49,8 @@ function MicrosoftGlyph() {
  * corporate email resolves to 'sso'. */
 type LiveStatus = 'idle' | 'checking' | 'sso' | 'authorized' | 'unauthorized';
 
+const SIGNIN_STEPS = ['Verifying your Microsoft sign-in', 'Checking your access', 'Loading your apps', 'Almost there'];
+
 export default function LoginPage() {
   const router = useRouter();
   const { isLoggedIn, login, authError, verifyingAuth, dismissAuthError } = useAuth();
@@ -69,6 +64,12 @@ export default function LoginPage() {
   // ?ssoToken=. @emamigroup.com is entirely unaffected — that path still goes straight to
   // Microsoft via signInWithMicrosoft below.
   const [linkSentTo, setLinkSentTo] = useState<string | null>(null);
+  const [stepIdx, setStepIdx] = useState(0);
+  useEffect(() => {
+    if (!verifyingAuth) { setStepIdx(0); return; }
+    const t = setInterval(() => setStepIdx((i) => Math.min(i + 1, SIGNIN_STEPS.length - 1)), 1400);
+    return () => clearInterval(t);
+  }, [verifyingAuth]);
 
   useEffect(() => {
     if (isLoggedIn) router.replace('/');
@@ -147,6 +148,8 @@ export default function LoginPage() {
     setLinkSentTo(trimmedEmail);
   };
 
+  if (verifyingAuth) return <SigningInScreen />;
+
   const shownError = authError || localError;
   const busy = verifyingAuth || checkingAccess;
   const buttonDisabled = checkingAccess || liveStatus === 'idle' || liveStatus === 'checking';
@@ -154,28 +157,34 @@ export default function LoginPage() {
   const fieldValid = liveStatus === 'authorized' || liveStatus === 'sso';
 
   return (
-    <div style={{ position: 'relative', minHeight: '100vh', backgroundColor: colors.cream2, overflow: 'hidden' }}>
-      <div style={{ position: 'absolute', borderRadius: 999, opacity: 0.22, width: 420, height: 420, backgroundColor: LOGIN_ACCENTS.blobTop, top: -200, right: -160 }} />
-      <div style={{ position: 'absolute', borderRadius: 999, opacity: 0.22, width: 360, height: 360, backgroundColor: LOGIN_ACCENTS.blobBottom, bottom: -160, left: -130 }} />
-      <div style={{ position: 'absolute', borderRadius: 999, opacity: 0.16, width: 300, height: 300, backgroundColor: LOGIN_ACCENTS.blobMid, top: 100, left: -130 }} />
+    <div
+      style={{
+        position: 'relative',
+        minHeight: '100vh',
+        overflow: 'hidden',
+        background: 'linear-gradient(180deg, #F8F7FB 0%, #EFEDF9 100%)',
+      }}
+    >
+      <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(rgba(21,17,41,0.07) 1px, transparent 1px)', backgroundSize: '28px 28px' }} />
+      <div style={{ position: 'absolute', width: 620, height: 620, borderRadius: 999, left: '12%', top: '30%', background: 'radial-gradient(circle, rgba(139,111,245,0.32) 0%, rgba(139,111,245,0) 68%)' }} />
+      <div style={{ position: 'absolute', width: 560, height: 560, borderRadius: 999, right: '4%', bottom: '4%', background: 'radial-gradient(circle, rgba(245,201,224,0.35) 0%, rgba(245,201,224,0) 68%)' }} />
 
-      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '48px 20px' }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/emami-apps-logo.png" alt="Emami Apps" style={{ width: 240, height: 240 / 1.208, objectFit: 'contain', marginBottom: 20 }} />
-
+      <div style={{ position: 'relative', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 20px' }}>
         <div
           style={{
             width: '100%',
-            maxWidth: 380,
+            maxWidth: 430,
             backgroundColor: colors.white,
             borderRadius: CARD_RADIUS,
-            padding: '32px 28px',
+            padding: '44px 40px 36px',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            boxShadow: '0 16px 30px 0 rgba(21,17,41,0.12)',
+            boxShadow: '0 30px 70px -12px rgba(79,63,214,0.22), 0 4px 14px rgba(21,17,41,0.05)',
           }}
         >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/emami-apps-logo.png" alt="Emami Apps" className={verifyingAuth ? 'pulse' : undefined} style={{ width: 200, height: 'auto', marginBottom: 20 }} />
           {linkSentTo ? (
             <>
               <div style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: `${colors.rust}14`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
@@ -199,15 +208,23 @@ export default function LoginPage() {
             </>
           ) : (
             <>
-              <p style={{ fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, fontSize: 22, color: colors.ink, margin: 0 }}>
+              <p style={{ fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, fontSize: 28, color: colors.ink, margin: 0 }}>
                 {busy ? 'Signing you in…' : 'Welcome back'}
               </p>
-              <p style={{ fontFamily: fonts.sansRegular, fontSize: 13.5, color: colors.inkSoft, marginTop: 6, marginBottom: 24, textAlign: 'center' }}>
-                {verifyingAuth ? 'Verifying your Microsoft sign-in.' : 'Sign in with your Emami work email'}
+              <p style={{ fontFamily: fonts.sansRegular, fontSize: 15, color: colors.inkSoft, marginTop: 8, marginBottom: 30, textAlign: 'center' }}>
+                {verifyingAuth ? SIGNIN_STEPS[stepIdx] + '…' : 'Sign in with your Microsoft work account'}
               </p>
 
               {verifyingAuth ? (
-                <div className="spinner" style={{ width: 22, height: 22, borderRadius: '50%', border: `3px solid ${colors.border}`, borderTopColor: colors.plumDeep, marginTop: 10 }} />
+                <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 22, marginTop: 6, marginBottom: 6 }}>
+                  <div className="orbit" />
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {SIGNIN_STEPS.map((_, i) => (
+                      <span key={i} style={{ width: i === stepIdx ? 22 : 7, height: 7, borderRadius: 4, background: i <= stepIdx ? 'linear-gradient(90deg,#6D5BF5,#E879B9)' : '#E4E0F5', transition: 'all .4s ease' }} />
+                    ))}
+                  </div>
+                  <div className="bar"><div className="barFill" /></div>
+                </div>
               ) : (
                 <>
                   {!!shownError && (
@@ -216,20 +233,22 @@ export default function LoginPage() {
                     </p>
                   )}
 
-                  <div style={{ width: '100%', position: 'relative', display: 'flex', alignItems: 'center' }}>
-                    <Mail size={16} color={colors.inkSoft} style={{ position: 'absolute', left: 16 }} />
+                  <div style={{ width: '100%', position: 'relative', display: 'flex', alignItems: 'center', padding: 3, borderRadius: 22, background: fieldInvalid ? '#FCA5A5' : 'linear-gradient(90deg, #C9BDFB, #F7C6DE)' }}>
+                    <div style={{ position: 'absolute', inset: 3, borderRadius: 19, backgroundColor: colors.white }} />
+                    <Mail size={18} color={colors.inkSoft} style={{ position: 'absolute', left: 20 }} />
                     <input
                       style={{
                         width: '100%',
-                        backgroundColor: colors.cream2,
-                        border: `1px solid ${fieldInvalid ? '#DC2626' : fieldValid ? colors.rust : 'transparent'}`,
-                        borderRadius: radii.pill,
-                        paddingLeft: 42,
-                        paddingRight: 40,
-                        paddingTop: 14,
-                        paddingBottom: 14,
+                        position: 'relative',
+                        backgroundColor: 'transparent',
+                        border: 'none',
+                        borderRadius: 19,
+                        paddingLeft: 56,
+                        paddingRight: 48,
+                        paddingTop: 18,
+                        paddingBottom: 18,
                         fontFamily: fonts.sansMedium,
-                        fontSize: 14.5,
+                        fontSize: 16,
                         color: colors.ink,
                         outline: 'none',
                       }}
@@ -243,14 +262,23 @@ export default function LoginPage() {
                       onKeyDown={(e) => { if (e.key === 'Enter') signInWithEmail(); }}
                     />
                     {liveStatus === 'checking' && (
-                      <div className="spinner" style={{ position: 'absolute', right: 16, width: 16, height: 16, borderRadius: '50%', border: `2px solid ${colors.border}`, borderTopColor: colors.inkSoft }} />
+                      <div className="spinner" style={{ position: 'absolute', right: 20, width: 16, height: 16, borderRadius: '50%', border: `2px solid ${colors.border}`, borderTopColor: colors.inkSoft }} />
                     )}
-                    {fieldValid && <CheckCircle2 size={18} color={colors.green} style={{ position: 'absolute', right: 16 }} />}
+                    {fieldValid && <CheckCircle2 size={20} color={colors.green} style={{ position: 'absolute', right: 20 }} />}
                   </div>
                   {fieldInvalid && (
                     <p style={{ width: '100%', fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, fontSize: 11.5, color: '#DC2626', marginTop: 6, marginBottom: 0 }}>
                       This email-id is not registered. Contact your admin for access.
                     </p>
+                  )}
+                  {fieldInvalid && (
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/request-access/?email=${encodeURIComponent(trimmedEmail)}`)}
+                      style={{ width: '100%', marginTop: 10, padding: '13px 0', borderRadius: 16, border: `1.5px solid ${colors.rust}55`, backgroundColor: `${colors.rust}0d`, cursor: 'pointer', fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, fontSize: 14.5, color: colors.rust }}
+                    >
+                      Request access for this email →
+                    </button>
                   )}
 
                   <button
@@ -263,15 +291,15 @@ export default function LoginPage() {
                       alignItems: 'center',
                       justifyContent: 'center',
                       gap: 10,
-                      borderRadius: radii.pill,
-                      padding: '14px 0',
+                      borderRadius: 20,
+                      padding: '19px 0',
                       marginTop: 16,
-                      border: liveStatus === 'sso' ? `1px solid ${colors.border}` : 'none',
+                      border: liveStatus === 'sso' ? `2px solid ${colors.ink}55` : 'none',
                       backgroundColor: buttonDisabled ? colors.border : liveStatus === 'sso' ? colors.white : colors.rust,
                       cursor: buttonDisabled ? 'default' : 'pointer',
                       fontFamily: fonts.sansSemiBold,
                       fontWeight: fontWeights.sansSemiBold,
-                      fontSize: 14.5,
+                      fontSize: 17,
                       color: buttonDisabled ? colors.inkSoft : liveStatus === 'sso' ? colors.ink : colors.white,
                     }}
                   >
@@ -289,15 +317,60 @@ export default function LoginPage() {
                 </>
               )}
 
-              <p style={{ marginTop: 20, fontFamily: fonts.sansRegular, fontSize: 11.5, color: colors.inkSoft, textAlign: 'center' }}>
-                <span style={{ fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, color: colors.rust }}>@emamigroup.com signs in with Microsoft. </span>
-                No access? Contact your admin.
+              <p style={{ marginTop: 24, marginBottom: 0, fontFamily: fonts.sansRegular, fontSize: 13.5, color: colors.inkSoft, textAlign: 'center' }}>
+                Use your Emami Microsoft account.
+              </p>
+              <p style={{ marginTop: 6, marginBottom: 0, fontFamily: fonts.sansRegular, fontSize: 13.5, color: colors.inkSoft, textAlign: 'center' }}>
+                No access?{' '}
+                <button type="button" onClick={() => router.push('/request-access/')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, fontSize: 13.5, color: colors.rust }}>Request access</button>
+                {' · '}
+                <button type="button" onClick={() => router.push('/request-access/?track=1')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, fontSize: 13.5, color: colors.rust }}>Track a request</button>
               </p>
             </>
           )}
         </div>
+
+        <div style={{ marginTop: 36, textAlign: 'center', fontFamily: fonts.sansRegular, color: colors.inkSoft }}>
+          <p style={{ margin: 0, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, fontSize: 14, letterSpacing: 0.3 }}>Emami Apps</p>
+          <p style={{ margin: '6px 0 0', fontSize: 13 }}>Powered by AI · © 2026 Emami Group</p>
+        </div>
       </div>
       <style jsx>{`
+        .orbit {
+          width: 54px;
+          height: 54px;
+          border-radius: 50%;
+          background: conic-gradient(from 0deg, rgba(109, 91, 245, 0) 0%, #6d5bf5 55%, #e879b9 100%);
+          -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4px));
+          animation: login-spin 1s linear infinite;
+          filter: drop-shadow(0 4px 10px rgba(109, 91, 245, 0.35));
+        }
+        .bar {
+          width: 100%;
+          height: 4px;
+          border-radius: 4px;
+          background: #ece9f8;
+          overflow: hidden;
+        }
+        .barFill {
+          width: 40%;
+          height: 100%;
+          border-radius: 4px;
+          background: linear-gradient(90deg, #6d5bf5, #e879b9);
+          animation: login-slide 1.3s ease-in-out infinite;
+        }
+        .pulse {
+          animation: login-pulse 1.8s ease-in-out infinite;
+        }
+        @keyframes login-slide {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(260%); }
+        }
+        @keyframes login-pulse {
+          0%, 100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(109, 91, 245, 0)); }
+          50% { transform: scale(1.05); filter: drop-shadow(0 8px 18px rgba(109, 91, 245, 0.35)); }
+        }
         .spinner {
           animation: login-spin 0.8s linear infinite;
         }

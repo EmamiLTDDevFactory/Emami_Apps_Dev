@@ -56,20 +56,7 @@ export default function ViewsPanel({ group, cfg, onChange, scope, setScope }: {
   };
 
   return (
-    <div className="wf-views">
-      <div className="wf-scopes" role="tablist" aria-label="Whose tabs">
-        <button type="button" role="tab" aria-selected={isL0} className={`wf-scope ${isL0 ? 'on' : ''}`} onClick={() => setScope('L0')}>
-          <strong>Initiator</strong><span>L0 · {group.l0Views.filter((v) => v.active).length} tabs</span>
-        </button>
-        {levels.map((l) => (
-          <button key={l.lvl} type="button" role="tab" aria-selected={scope === l.lvl} className={`wf-scope ${scope === l.lvl ? 'on' : ''}`} onClick={() => setScope(l.lvl)}>
-            <strong>{AREA_LABEL[l.typeLvl] || 'Level'}</strong><span>{l.lvl} · {new Set(l.views.filter((v) => v.active).map((v) => v.viewName)).size} tabs</span>
-          </button>
-        ))}
-      </div>
-      <p className="muted wf-views-lead">
-        {isL0 ? 'The initiator is whoever creates the request. These are the tabs the requester can edit.' : `Tabs the ${AREA_LABEL[level?.typeLvl || ''] || 'agent'}s of ${scope} see. "Read only" shows a tab without letting them change it.`}
-      </p>
+    <div className="wf-views wf-views-pane">
       {!isL0 && !level && <p className="alert alert-warn">Select a level.</p>}
       {parallel && (
         <div className="field wf-agent-pick">
@@ -98,14 +85,14 @@ export default function ViewsPanel({ group, cfg, onChange, scope, setScope }: {
           </div>
           {error && <p className="alert alert-error">{error}</p>}
           {shown.length === 0 ? <p className="muted wf-none">No tab yet.</p> : (
-            <div className="table-wrap">
-              <table className="table wf-table">
-                <thead><tr><th>Tab</th><th>Description</th><th>Active</th><th>Read only</th><th><span className="wf-sr">Remove</span></th></tr></thead>
+            <div>
+              <table className="wf-grid">
+                <thead><tr><th>View description</th><th>View name</th><th>Active</th><th>Read only</th><th /></tr></thead>
                 <tbody>
                   {shown.map(({ v, i }) => (
                     <tr key={`${v.agent}-${v.viewName}-${i}`} className={v.active ? '' : 'wf-off'}>
-                      <td><code>{v.viewName}</code>{appViews && !appViews.some((x) => x.key === v.viewName) && <span className="badge badge-error">not a tab of this application</span>}</td>
-                      <td className="muted">{desc(v.viewName) || v.description}</td>
+                      <td>{desc(v.viewName) || v.description || <span className="muted">-</span>}</td>
+                      <td><code>{v.viewName}</code>{appViews && !appViews.some((x) => x.key === v.viewName) && <span className="badge badge-error" title="not a tab of this application">?</span>}</td>
                       <td><input type="checkbox" checked={v.active} aria-label={`${v.viewName} active`} onChange={(e) => patch(i, { active: e.target.checked })} /></td>
                       <td><input type="checkbox" checked={v.readOnly} aria-label={`${v.viewName} read only`} onChange={(e) => patch(i, { readOnly: e.target.checked })} /></td>
                       <td><button type="button" className="btn btn-sm btn-danger-ghost" aria-label={`Remove ${v.viewName}`} onClick={() => write(rows.filter((_, k) => k !== i))}><IconTrash size={14} /></button></td>

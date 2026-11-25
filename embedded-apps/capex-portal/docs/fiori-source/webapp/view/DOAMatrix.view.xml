@@ -1,0 +1,189 @@
+<mvc:View
+    controllerName="zcapexportal.controller.DOAMatrix"
+    xmlns="sap.m"
+    xmlns:mvc="sap.ui.core.mvc"
+    xmlns:core="sap.ui.core"
+    xmlns:l="sap.ui.layout"
+    height="100%">
+
+    <Page id="pageDOAMatrix" showHeader="false" class="zcpxApp">
+        <content>
+            <VBox class="zcpxScreen">
+
+                <VBox class="zcpxHero zcpxSection">
+                    <Text text="{i18n>doaTitle}" class="zcpxHeroTitle"/>
+                    <Text text="{i18n>doaSubtitle}" class="zcpxHeroSub"/>
+                </VBox>
+
+                <!-- Simulator -->
+                <VBox class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <core:Icon src="sap-icon://simulate" class="sapUiTinyMarginEnd"/>
+                        <Text text="Routing Simulator" class="zcpxCardTitle"/>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+                        <HBox wrap="Wrap" alignItems="End">
+                            <VBox class="sapUiTinyMarginEnd sapUiTinyMarginBottom" width="11rem">
+                                <Label text="{i18n>docTypeCol}"/>
+                                <Select id="cbSimDocType" selectedKey="CPE" change=".onSimulate">
+                                    <core:Item key="CPE" text="CPE"/>
+                                    <core:Item key="BUD" text="Budget (CJN)"/>
+                                </Select>
+                            </VBox>
+                            <VBox class="sapUiTinyMarginEnd sapUiTinyMarginBottom" width="14rem">
+                                <Label text="{i18n>capexType}"/>
+                                <ComboBox
+                                    id="cbSimType"
+                                    selectedKey="MANUFACTURING"
+                                    items="{budget>/capexTypes}"
+                                    selectionChange=".onSimulate">
+                                    <core:Item key="{budget>key}" text="{budget>text}"/>
+                                </ComboBox>
+                            </VBox>
+                            <VBox class="sapUiTinyMarginEnd sapUiTinyMarginBottom" width="12rem">
+                                <Label text="Amount"/>
+                                <Input
+                                    id="inpSimAmount"
+                                    type="Number"
+                                    description="₹"
+                                    value="1500000"
+                                    liveChange=".onSimulate"/>
+                            </VBox>
+                            <Button
+                                text="Simulate"
+                                icon="sap-icon://simulate"
+                                type="Emphasized"
+                                press=".onSimulate"
+                                class="sapUiTinyMarginBottom"/>
+                        </HBox>
+
+                        <VBox class="zcpxTimeline sapUiSmallMarginTop" items="{sim>/chain}">
+                            <VBox class="zcpxTlItem zcpxTlItem--current">
+                                <HBox justifyContent="SpaceBetween" wrap="Wrap">
+                                    <VBox>
+                                        <Text text="Level {sim>level} — {sim>role}" class="zcpxTlRole"/>
+                                        <Text text="{sim>approver}" class="zcpxTlMeta"/>
+                                    </VBox>
+                                    <Text text="{path: 'sim>slaDays', formatter: '.formatter.days'} SLA" class="zcpxTlMeta"/>
+                                </HBox>
+                            </VBox>
+                        </VBox>
+
+                        <MessageStrip
+                            id="msSim"
+                            class="sapUiSmallMarginTop"
+                            text=""
+                            type="Information"
+                            showIcon="true"
+                            visible="false"/>
+                    </VBox>
+                </VBox>
+
+                <!-- Matrix -->
+                <VBox class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" justifyContent="SpaceBetween" alignItems="Center" wrap="Wrap">
+                        <Text text="{i18n>doaTitle}" class="zcpxCardTitle"/>
+                        <HBox alignItems="Center">
+                            <Label text="{i18n>docTypeCol}" class="sapUiTinyMarginEnd"/>
+                            <Select id="cbMatrixDocType" width="9rem" class="sapUiTinyMarginEnd" change=".onMatrixFilter">
+                                <core:Item key="" text="All"/>
+                                <core:Item key="CPE" text="CPE"/>
+                                <core:Item key="BUD" text="Budget (CJN)"/>
+                            </Select>
+                            <Button
+                                text="{i18n>export}"
+                                icon="sap-icon://excel-attachment"
+                                type="Transparent"
+                                press=".onExport"/>
+                        </HBox>
+                    </HBox>
+                    <Table id="tblDoaMatrix" items="{config>/doaMatrix}" class="sapUiSizeCompact">
+                        <columns>
+                            <Column><Text text="{i18n>capexType}"/></Column>
+                            <Column width="9rem" minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>docTypeCol}"/></Column>
+                            <Column width="9rem" minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>amountRange}"/></Column>
+                            <Column><Text text="{i18n>approvalChainCol}"/></Column>
+                            <Column hAlign="End" width="8rem" minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="Total SLA"/></Column>
+                        </columns>
+                        <items>
+                            <ColumnListItem>
+                                <cells>
+                                    <Text text="{config>capexTypeText}"/>
+                                    <ObjectStatus text="{path: 'config>docType', formatter: '.formatDocType'}" state="None"/>
+                                    <ObjectStatus text="{config>rangeText}" state="Information"/>
+                                    <VBox>
+                                        <HBox wrap="Wrap" items="{path: 'config>chain', templateShareable: false}">
+                                            <ObjectStatus
+                                                text="{config>role}"
+                                                state="None"
+                                                icon="sap-icon://arrow-right"
+                                                class="sapUiTinyMarginEnd sapUiTinyMarginBottom"/>
+                                        </HBox>
+                                    </VBox>
+                                    <Text text="{path: 'config>chain', formatter: '.formatTotalSla'}" class="zcpxNum"/>
+                                </cells>
+                            </ColumnListItem>
+                        </items>
+                    </Table>
+                </VBox>
+
+                <!-- SLA config -->
+                <VBox class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <core:Icon src="sap-icon://timesheet" class="sapUiTinyMarginEnd"/>
+                        <Text text="SLA Configuration" class="zcpxCardTitle"/>
+                    </HBox>
+                    <VBox class="zcpxCardBody">
+                        <l:Grid defaultSpan="XL4 L4 M4 S12" hSpacing="1" vSpacing="1">
+                            <VBox class="zcpxKpi zcpxKpi--warning">
+                                <Text text="Warn After" class="zcpxKpiLabel"/>
+                                <HBox alignItems="Baseline">
+                                    <Text text="{path: 'config>/slaConfig/warnDays', formatter: '.formatter.orDash'}" class="zcpxKpiValue"/>
+                                    <Text text="days" class="zcpxKpiUnit" visible="{= ${config>/slaConfig/warnDays} !== null }"/>
+                                </HBox>
+                            </VBox>
+                            <VBox class="zcpxKpi zcpxKpi--error">
+                                <Text text="Breach After" class="zcpxKpiLabel"/>
+                                <HBox alignItems="Baseline">
+                                    <Text text="{path: 'config>/slaConfig/breachDays', formatter: '.formatter.orDash'}" class="zcpxKpiValue"/>
+                                    <Text text="days" class="zcpxKpiUnit" visible="{= ${config>/slaConfig/breachDays} !== null }"/>
+                                </HBox>
+                            </VBox>
+                            <VBox class="zcpxKpi zcpxKpi--brand">
+                                <Text text="Auto-Escalate" class="zcpxKpiLabel"/>
+                                <Text text="{path: 'config>/slaConfig/autoEscalate', formatter: '.formatAutoEscalate'}" class="zcpxKpiValue"/>
+                                <Text text="On breach, notify next level" class="zcpxKpiFoot"/>
+                            </VBox>
+                        </l:Grid>
+                    </VBox>
+                </VBox>
+
+                <!-- SAP integration points -->
+                <VBox class="zcpxCard zcpxSection">
+                    <HBox class="zcpxCardHeader" alignItems="Center">
+                        <core:Icon src="sap-icon://synchronize" class="sapUiTinyMarginEnd"/>
+                        <Text text="{i18n>sapSyncTitle}" class="zcpxCardTitle"/>
+                    </HBox>
+                    <Table items="{config>/sapSync}" class="sapUiSizeCompact">
+                        <columns>
+                            <Column><Text text="{i18n>portalAction}"/></Column>
+                            <Column><Text text="{i18n>sapResult}"/></Column>
+                            <Column hAlign="End" minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>timing}"/></Column>
+                        </columns>
+                        <items>
+                            <ColumnListItem>
+                                <cells>
+                                    <Text text="{config>action}"/>
+                                    <ObjectStatus text="{config>sapResult}" state="Success" icon="sap-icon://sys-enter-2"/>
+                                    <Text text="{config>timing}"/>
+                                </cells>
+                            </ColumnListItem>
+                        </items>
+                    </Table>
+                </VBox>
+
+            </VBox>
+        </content>
+    </Page>
+
+</mvc:View>

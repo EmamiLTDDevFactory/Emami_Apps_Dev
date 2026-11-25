@@ -3,19 +3,30 @@ CLASS zcl_mm_dash_mis DEFINITION PUBLIC FINAL CREATE PUBLIC.
     TYPES tt_mis TYPE STANDARD TABLE OF zdash_s_mis WITH DEFAULT KEY.
     "Costing dashboard, MIS tab: COGM budget vs actual by brand, FTM (month to date) and YTM (financial year to date).
     "Actual  = SAP actual cost of the period (ZCL_MM_WAC_ACTUAL: RM + PM + perfume + conversion, INR, totals).
-    "Budget  = approved budget cost per piece (ZMM_BUDCOST_SUM-COST_PC, latest approved version of the financial year) x ACTUAL produced quantity (flexed budget).
-    METHODS constructor IMPORTING is_par TYPE zif_mm_wac_types=>ty_par.
+    "Budget  = approved budget cost per piece x ACTUAL produced quantity (flexed budget). Source: ZMM_FBUDCOST_SUM, the same table and key as the Margin tab: status A, financial year of the as-of date,
+    "          latest VERSION, WERKS = production plant, CRSSKU / business vertical / scheme / material type from MARA; cost per piece = RM + PM + perfume + machine + labour + power + steam + labour 3P (average of the rows of that version).
+    METHODS constructor IMPORTING is_par TYPE zif_mm_wac_types=>ty_par iv_detail TYPE abap_bool DEFAULT abap_false.
     METHODS run RETURNING VALUE(rt_mis) TYPE tt_mis.
     METHODS get_messages RETURNING VALUE(rt_msg) TYPE string_table.
   PRIVATE SECTION.
     TYPES: BEGIN OF ty_bud,
-             matnr   TYPE matnr,
              werks   TYPE werks_d,
-             version TYPE zcostversion,
-             cost_pc TYPE zcost_pc,
+             crssku  TYPE zskugrcodecrs,
+             bus     TYPE zbusiness,
+             scheme  TYPE zscheme,
+             mtart   TYPE mtart,
+             version TYPE c LENGTH 2,
+             n       TYPE i,
+             tot     TYPE decfloat34,   "sum over the rows of the latest version
+             cost_pc TYPE decfloat34,   "average = tot / n
+             rm      TYPE decfloat34,   "sums of the latest version rows by group (budget per piece = sum / n)
+             pm      TYPE decfloat34,
+             pf      TYPE decfloat34,
+             oh      TYPE decfloat34,
            END OF ty_bud,
-           tt_bud TYPE SORTED TABLE OF ty_bud WITH UNIQUE KEY matnr werks.
-    DATA: ms_par TYPE zif_mm_wac_types=>ty_par,
+           tt_bud TYPE HASHED TABLE OF ty_bud WITH UNIQUE KEY werks crssku bus scheme mtart.
+    DATA: mv_detail TYPE abap_bool,
+          ms_par TYPE zif_mm_wac_types=>ty_par,
           mt_msg TYPE string_table.
     METHODS actuals
       IMPORTING iv_from TYPE d iv_to TYPE d
@@ -27,6 +38,7 @@ CLASS zcl_mm_dash_mis IMPLEMENTATION.
 
   METHOD constructor.
     ms_par = is_par.
+    mv_detail = iv_detail.
     IF ms_par-date_to IS INITIAL. ms_par-date_to = sy-datum. ENDIF.
   ENDMETHOD.
 
@@ -55,14 +67,14 @@ CLASS zcl_mm_dash_mis IMPLEMENTATION.
           lv_gjahr   TYPE gjahr,
           lt_ftm     TYPE zif_mm_wac_types=>ty_t_act,
           lt_ytm     TYPE zif_mm_wac_types=>ty_t_act,
-          lt_bud_db  TYPE STANDARD TABLE OF ty_bud,
           lt_bud     TYPE tt_bud,
           ls_bud     TYPE ty_bud,
           ls_row     TYPE zdash_s_mis,
           lv_act     TYPE decfloat34,
           lv_budv    TYPE decfloat34,
-          lv_ver     TYPE zcostversion.
-    FIELD-SYMBOLS: <a> TYPE zif_mm_wac_types=>ty_act, <r> TYPE zdash_s_mis.
+          lv_ver     TYPE zcostversion,
+          lt_fg      TYPE tt_mis.
+    FIELD-SYMBOLS: <a> TYPE zif_mm_wac_types=>ty_act, <r> TYPE zdash_s_mis, <f> TYPE zdash_s_mis.
 
     lv_to  = ms_par-date_to.
     lv_ftm = lv_to.  lv_ftm+6(2) = '01'.
@@ -87,17 +99,36 @@ CLASS zcl_mm_dash_mis IMPLEMENTATION.
     lt_ftm = actuals( iv_from = lv_ftm iv_to = lv_to ).
     IF lt_ytm IS INITIAL. RETURN. ENDIF.
 
-    " approved budget cost per piece: latest approved version of the financial year, one row per material and plant
-    SELECT matnr, werks, version, cost_pc
-      FROM zmm_budcost_sum
-      FOR ALL ENTRIES IN @lt_ytm
-      WHERE gjahr = @lv_gjahr AND status = 'A' AND matnr = @lt_ytm-matnr AND werks = @lt_ytm-werks
-      INTO CORRESPONDING FIELDS OF TABLE @lt_bud_db.
-    SORT lt_bud_db BY matnr werks version DESCENDING.
-    DELETE ADJACENT DUPLICATES FROM lt_bud_db COMPARING matnr werks.
-    lt_bud = lt_bud_db.
+    " approved budget cost per piece: ZMM_FBUDCOST_SUM, status A, financial year, latest version of each key (the key of the Margin tab)
+    SELECT werks, zskugrcodecrs, zbusiness, zscheme, mtart, version, rm_cost, pm_cost, perfume_cost, machine, labour, power, steam, labour3p
+      FROM zmm_fbudcost_sum
+      WHERE gjahr = @lv_gjahr AND status = 'A'
+      INTO TABLE @DATA(lt_bs).
+    SORT lt_bs BY werks zskugrcodecrs zbusiness zscheme mtart version DESCENDING.
+    LOOP AT lt_bs ASSIGNING FIELD-SYMBOL(<bs>).
+      READ TABLE lt_bud ASSIGNING FIELD-SYMBOL(<b>) WITH TABLE KEY werks = <bs>-werks crssku = <bs>-zskugrcodecrs bus = <bs>-zbusiness scheme = <bs>-zscheme mtart = <bs>-mtart.
+      IF sy-subrc <> 0.
+        CLEAR ls_bud.
+        ls_bud-werks = <bs>-werks. ls_bud-crssku = <bs>-zskugrcodecrs. ls_bud-bus = <bs>-zbusiness. ls_bud-scheme = <bs>-zscheme. ls_bud-mtart = <bs>-mtart. ls_bud-version = <bs>-version.
+        INSERT ls_bud INTO TABLE lt_bud ASSIGNING <b>.
+      ENDIF.
+      IF <b>-version = <bs>-version.   "the first (highest) version only
+        <b>-n = <b>-n + 1.
+        <b>-tot = <b>-tot + <bs>-rm_cost + <bs>-pm_cost + <bs>-perfume_cost + <bs>-machine + <bs>-labour + <bs>-power + <bs>-steam + <bs>-labour3p.
+        <b>-rm = <b>-rm + <bs>-rm_cost. <b>-pm = <b>-pm + <bs>-pm_cost. <b>-pf = <b>-pf + <bs>-perfume_cost.
+        <b>-oh = <b>-oh + <bs>-machine + <bs>-labour + <bs>-power + <bs>-steam + <bs>-labour3p.
+      ENDIF.
+    ENDLOOP.
+    LOOP AT lt_bud ASSIGNING <b> WHERE n > 0.
+      <b>-cost_pc = <b>-tot / <b>-n.
+    ENDLOOP.
+    " master data of the produced finished goods: CRSSKU, business vertical, scheme, material type
+    IF lt_ytm IS NOT INITIAL.
+      SELECT matnr, zskugrcodecrs, zbusiness, zscheme, mtart FROM mara FOR ALL ENTRIES IN @lt_ytm WHERE matnr = @lt_ytm-matnr INTO TABLE @DATA(lt_mm).
+      SORT lt_mm BY matnr.
+    ENDIF.
     IF lt_bud IS INITIAL.
-      APPEND |No approved budget for financial year { lv_gjahr } in the budget cost table| TO mt_msg.
+      APPEND |No approved budget for financial year { lv_gjahr } in ZMM_FBUDCOST_SUM| TO mt_msg.
     ENDIF.
 
     " YTM then FTM, per brand
@@ -113,12 +144,44 @@ CLASS zcl_mm_dash_mis IMPLEMENTATION.
           READ TABLE rt_mis ASSIGNING <r> WITH KEY zbrand = <a>-zbrand.
         ENDIF.
         lv_act = <a>-rm + <a>-pm + <a>-perf + <a>-conv.
-        READ TABLE lt_bud INTO ls_bud WITH TABLE KEY matnr = <a>-matnr werks = <a>-werks.
-        DATA(lv_has) = xsdbool( sy-subrc = 0 ).
+        DATA(lv_has) = abap_false.
+        CLEAR ls_bud.
+        READ TABLE lt_mm INTO DATA(ls_mm) WITH KEY matnr = <a>-matnr BINARY SEARCH.
+        DATA(lv_mmok) = xsdbool( sy-subrc = 0 ).
+        IF lv_mmok = abap_true.
+          READ TABLE lt_bud INTO ls_bud WITH TABLE KEY werks = <a>-werks crssku = ls_mm-zskugrcodecrs bus = ls_mm-zbusiness scheme = ls_mm-zscheme mtart = ls_mm-mtart.
+          IF sy-subrc = 0 AND ls_bud-n > 0. lv_has = abap_true. ENDIF.
+        ENDIF.
         IF lv_has = abap_true.
           lv_budv = ls_bud-cost_pc * <a>-qty.
         ELSE.
           lv_budv = 0.
+        ENDIF.
+        " finished-good rows (detail): one per material and plant, with the budget key that was (not) found
+        IF mv_detail = abap_true.
+          READ TABLE lt_fg ASSIGNING <f> WITH KEY matnr = <a>-matnr werks = <a>-werks.
+          IF sy-subrc <> 0.
+            APPEND VALUE #( grain = 'F' zbrand = <a>-zbrand matnr = <a>-matnr maktx = <a>-maktx prodha = <a>-prodha werks = <a>-werks gjahr = lv_gjahr date_to = lv_to fg_cnt = 1 ) TO lt_fg ASSIGNING <f>.
+            IF lv_mmok = abap_true. <f>-zscheme = ls_mm-zscheme. ENDIF.
+            IF lv_mmok = abap_false.
+              <f>-bud_src = 'No material master record found'.
+            ELSEIF lv_has = abap_true.
+              <f>-bud_pc  = ls_bud-cost_pc.
+              <f>-bud_rm  = ls_bud-rm / ls_bud-n. <f>-bud_pm = ls_bud-pm / ls_bud-n. <f>-bud_pf = ls_bud-pf / ls_bud-n. <f>-bud_oh = ls_bud-oh / ls_bud-n.
+              <f>-version = ls_bud-version.
+              <f>-bud_src = |ZMM_FBUDCOST_SUM FY { lv_gjahr } version { ls_bud-version }, key { <a>-werks } / { ls_mm-zskugrcodecrs } / { ls_mm-zbusiness } / { ls_mm-zscheme } / { ls_mm-mtart } ({ ls_bud-n } row(s) averaged)|.
+            ELSE.
+              <f>-bud_src = |No approved budget (status A, FY { lv_gjahr }) in ZMM_FBUDCOST_SUM for key { <a>-werks } / { ls_mm-zskugrcodecrs } / { ls_mm-zbusiness } / { ls_mm-zscheme } / { ls_mm-mtart }|.
+              <f>-fg_nobud = 1.
+            ENDIF.
+          ENDIF.
+          IF lv_ytm = abap_true.
+            <f>-ytm_qty = <f>-ytm_qty + <a>-qty. <f>-ytm_actual = <f>-ytm_actual + lv_act.
+            IF lv_has = abap_true. <f>-ytm_budget = <f>-ytm_budget + lv_budv. <f>-ytm_actual_cmp = <f>-ytm_actual_cmp + lv_act. ENDIF.
+          ELSE.
+            <f>-ftm_qty = <f>-ftm_qty + <a>-qty. <f>-ftm_actual = <f>-ftm_actual + lv_act.
+            IF lv_has = abap_true. <f>-ftm_budget = <f>-ftm_budget + lv_budv. <f>-ftm_actual_cmp = <f>-ftm_actual_cmp + lv_act. ENDIF.
+          ENDIF.
         ENDIF.
         IF lv_ytm = abap_true.
           <r>-fg_cnt     = <r>-fg_cnt + 1.
@@ -141,6 +204,14 @@ CLASS zcl_mm_dash_mis IMPLEMENTATION.
         ENDIF.
       ENDLOOP.
     ENDDO.
+    IF mv_detail = abap_true.
+      LOOP AT lt_fg ASSIGNING <f>.
+        IF <f>-ytm_qty > 0. <f>-act_pc = <f>-ytm_actual / <f>-ytm_qty. ENDIF.
+      ENDLOOP.
+      SORT lt_fg BY zbrand matnr.
+      rt_mis = lt_fg.
+      RETURN.
+    ENDIF.
     SORT rt_mis BY zbrand.
     LOOP AT rt_mis ASSIGNING <r>.
       <r>-date_to = lv_to.

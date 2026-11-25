@@ -27,6 +27,37 @@ export function hasHubSession(): boolean {
   }
 }
 
+/** The hub's own signed session JWT (same one Timesheet's and audit-capa's backends already
+ * verify independently via the shared HUB_AUTH_JWT_SECRET) — sent as Bearer auth to this app's own
+ * backend proxy routes (see ClaimContext.tsx's sensitiveApiClient), so the backend can verify who's
+ * really calling instead of trusting whatever identity a request claims. */
+export function getHubToken(): string | null {
+  if (typeof window === 'undefined' || !window.localStorage) return null;
+  try {
+    return window.localStorage.getItem(HUB_TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** Same check the hub itself runs (hub-next's AuthContext.hubTokenExpired) before letting someone
+ * use a 12h-old token - mirrored here so this app can catch an expired session proactively (bounce
+ * back to the hub to sign in again) instead of finding out only when a backend proxy call (see
+ * ClaimContext.tsx's requireHubAuth-gated routes) rejects it mid-use with no explanation. A missing
+ * or unreadable token is NOT treated as expired - same conservative choice as the hub's own check,
+ * so this never signs someone out over a token it simply can't parse. */
+export function isHubTokenExpired(): boolean {
+  const token = getHubToken();
+  if (!token) return false;
+  try {
+    const part = token.split('.')[1] || '';
+    const payload = JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(part.length / 4) * 4, '=')));
+    return typeof payload.exp === 'number' && Date.now() >= payload.exp * 1000;
+  } catch {
+    return false;
+  }
+}
+
 export function nameFromEmail(email: string): string {
   const local = email.split('@')[0] || '';
   const name = local
@@ -37,16 +68,9 @@ export function nameFromEmail(email: string): string {
   return name || email;
 }
 
-// Exact copies of login.tsx's role-resolution helpers, kept separate (not imported from
-// login.tsx) so this hub-email path can never change behavior of the existing Employee ID + OTP
-// flow, which stays as the fallback when no hub email is present.
-const normalizeRole = (role: unknown): UserRole => {
-  const normalized = (role || '').toString().toLowerCase();
-  return normalized === 'manager' || normalized === 'finance' || normalized === 'employee'
-    ? (normalized as UserRole)
-    : 'employee';
-};
-
+// SAP's LoginSet now always returns an explicit Role (M/F/B/E) - the ZEXP_MASTERSet manager-
+// detection probe this used to fall back to (12 failed requests per login: 4 candidate entity
+// names x 3 filter shapes, none of which ever existed) is dead weight now that Role is reliable.
 const mapSapRole = (rawRole: unknown): UserRole | null => {
   if (!rawRole) return null;
   const role = rawRole.toString().trim().toUpperCase();
@@ -56,36 +80,16 @@ const mapSapRole = (rawRole: unknown): UserRole | null => {
   return null;
 };
 
-const detectUserRole = async (loginId: string): Promise<UserRole> => {
-  const sanitizedLoginId = (loginId || '').toString().trim().replace(/\D/g, '').padStart(8, '0');
-  const entityCandidates = ['ZEXP_MASTERSet', 'ZEXP_MASTER', 'Zexp_MasterSet', 'Zexp_Master'];
-  const filterCandidates = [
-    `PERNR_D eq '${sanitizedLoginId}' or L1 eq '${sanitizedLoginId}' or L2 eq '${sanitizedLoginId}'`,
-    `PERNR_D eq '${sanitizedLoginId}' or ManagerL1 eq '${sanitizedLoginId}' or ManagerL2 eq '${sanitizedLoginId}'`,
-    `PERNR eq '${sanitizedLoginId}' or L1 eq '${sanitizedLoginId}' or L2 eq '${sanitizedLoginId}'`,
-  ];
-
-  for (const entityName of entityCandidates) {
-    for (const filter of filterCandidates) {
-      try {
-        const { data } = await axios.get(`${SAP_BASE_URL}/${entityName}`, {
-          params: { '$format': 'json', '$filter': filter },
-        });
-        const results = data?.d?.results || data?.results || [];
-        if (Array.isArray(results) && results.length > 0) return 'manager';
-        if (results && typeof results === 'object' && !Array.isArray(results) && Object.keys(results).length > 0) return 'manager';
-      } catch {
-        // try next entity/filter candidate
-      }
-    }
-  }
-  return 'employee';
-};
+// SAP's LoginSet returns these as either a real boolean or the legacy XFELD string 'X' - same
+// ambiguity ExptypeSet.IsMobile and MobCapSet.NoCap already needed this exact check for.
+const asFlag = (value: unknown): boolean => value === true || value === 'X';
 
 export interface HubEmailLoginResult {
   ok: boolean;
   employeeId?: string;
   role?: UserRole;
+  isManager?: boolean;
+  isFinance?: boolean;
   name?: string;
   info?: any;
   error?: string;
@@ -120,14 +124,22 @@ export async function loginWithHubEmail(email: string): Promise<HubEmailLoginRes
     }
 
     const sapRole = mapSapRole(sapResponse.Role || sapResponse.role);
-    const computedRole = sapRole || normalizeRole(await detectUserRole(employeeId));
+    const computedRole = sapRole || 'employee';
     const info = { ...sapResponse, role: computedRole };
 
-    // Explicit Role='B' always wins, even over a manager-fallback scan that would otherwise agree.
+    // Explicit Role='B' always wins - mapSapRole doesn't recognise 'B' on its own, so without this
+    // it would fall through to the 'employee' default above.
     const explicitRole = typeof sapResponse.Role === 'string' ? sapResponse.Role.trim() : '';
     const role: UserRole = explicitRole.toUpperCase() === 'B' ? 'B' : computedRole;
 
-    return { ok: true, employeeId: employeeId.toUpperCase(), role, name: sapResponse.Name, info };
+    // Independent capability flags (live 2026-11-25) - tabs/lists/actions gate on these directly,
+    // not on Role (which still comes back, B/F overwriting M, but is kept only as a display label).
+    // IsAdmin is deliberately NOT read here - resolveIsAdmin(info, employeeId) in AuthContext stays
+    // the single source of truth for it, since it also covers the local/QA test-PERNR allowlist.
+    const isManager = asFlag(sapResponse.IsManager);
+    const isFinance = asFlag(sapResponse.IsFinance);
+
+    return { ok: true, employeeId: employeeId.toUpperCase(), role, isManager, isFinance, name: sapResponse.Name, info };
   } catch {
     return { ok: false, error: 'Could not reach the server.' };
   }

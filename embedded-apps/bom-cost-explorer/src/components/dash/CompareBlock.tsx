@@ -5,10 +5,10 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type Decimal from 'decimal.js';
-import { Button, Segmented, Spinner, cx, inputCls } from '../ui';
+import { Button, Segmented, SourceBadge, Spinner, cx, inputCls } from '../ui';
 import { ErrorBox, errorText } from '../budget-mgmt/shared';
 import { CAT_LABEL, type BudGroup, type Cat, type Cdrill } from '@/lib/dash/cdrill';
-import { buildCompare, costComponents, varTone, type CmpRow, type CmpTotals, type RateCosting } from '@/lib/dash/compare';
+import { atRateType, buildCompare, costRun, varTone, type CmpRow, type CmpTotals, type RateRun } from '@/lib/dash/compare';
 import { COGM_RATE_LABEL, COGM_RATE_TYPES } from '@/lib/psum/rateCogm';
 import type { RateType } from '@/lib/cost/rateSummary';
 import { tdCls, thCls } from './parts';
@@ -23,7 +23,7 @@ export default function CompareBlock({ matnr, data, defaultPlant }: { matnr: str
   const [bwtar, setBwtar] = useState(groups.find((g) => g.flag !== 'NBC')?.bwtar ?? groups[0]?.bwtar ?? '');
   const [type, setType] = useState<RateType>('SELECTED');
   const [plant, setPlant] = useState(defaultPlant);
-  const [rate, setRate] = useState<RateCosting | null>(null);
+  const [run, setRun] = useState<RateRun | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [cat, setCat] = useState<Cat | 'ALL'>('ALL');
@@ -38,13 +38,17 @@ export default function CompareBlock({ matnr, data, defaultPlant }: { matnr: str
     const p = plant.trim().toUpperCase();
     if (!/^[A-Z0-9]{4}$/.test(p)) { setError('Enter the 4 character production plant to cost the finished good in.'); return; }
     setBusy(true); setError('');
-    try { const r = await costComponents(p, matnr, type, c.signal); if (!c.signal.aborted) setRate(r); }
-    catch (e) { if (!c.signal.aborted) { setRate(null); setError(errorText(e)); } }
+    try { const r = await costRun(p, matnr, c.signal); if (!c.signal.aborted) setRun(r); }
+    catch (e) { if (!c.signal.aborted) { setRun(null); setError(errorText(e)); } }
     if (!c.signal.aborted) setBusy(false);
   }
   // the loaded figures belong to one rate type: choosing another one asks for a new load
-  const shownRate = rate && rate.type === type && rate.priced > 0 ? rate : null;
-  const emptyRate = rate && rate.type === type && rate.priced === 0 ? rate : null;
+  const rate = useMemo(() => (run ? atRateType(run, type) : null), [run, type]);
+  const shownRate = rate && rate.priced > 0 ? rate : null;
+  const emptyRate = rate && rate.priced === 0 ? rate : null;
+  // cost automatically once, in the plant the valuation type points to
+  const auto = useRef(false);
+  useEffect(() => { if (!auto.current && /^[A-Z0-9]{4}$/.test(plant.trim().toUpperCase())) { auto.current = true; void load(); } }, [plant]); // eslint-disable-line react-hooks/exhaustive-deps
   const cmp = useMemo(() => buildCompare(data, bud, shownRate), [data, bud, shownRate]);
   const rows = cmp.rows.filter((r) => cat === 'ALL' || r.cat === cat);
   const label = COGM_RATE_LABEL(type);
@@ -72,7 +76,7 @@ export default function CompareBlock({ matnr, data, defaultPlant }: { matnr: str
         {busy && <Spinner className="h-4 w-4" />}
         <p className="basis-full text-2xs text-muted">
           Rate type = which rate is used to price each component of the BOM (quantity per piece x rate): Selected = the rate SAP picked by its priority, Consumption = consumption based rate,
-          C-MAP = moving average (MBEW), Budget = budget landed rate. The finished good is costed live in the plant above (it must be a production plant). Variance = figure minus budget: red costs more, green costs less (within 0.5 % not coloured).
+          C-MAP = moving average (MBEW), Budget = budget landed rate. The finished good is costed live in the plant above (it must be a production plant). Variance = actual minus budget: red costs more, green costs less (within 0.5 % not coloured).
         </p>
       </div>
       {error && <ErrorBox>{error}</ErrorBox>}
@@ -82,20 +86,20 @@ export default function CompareBlock({ matnr, data, defaultPlant }: { matnr: str
       {bud?.flag === 'NBC' && <p className="rounded-xl border border-warn/40 bg-warn/10 p-2.5 text-xs">{bud.msg}. The budget column is empty, so variances show the full cost.</p>}
       <Segmented label="Category" size="sm" value={cat} onChange={setCat} options={[{ value: 'ALL' as const, label: 'All' }, ...(['R', 'P', 'F', 'O'] as Cat[]).map((k) => ({ value: k, label: CAT_LABEL[k] }))]} />
       <div className="max-h-[48vh] overflow-auto rounded-xl border border-line">
-        <table className="w-full min-w-[1040px] border-collapse">
+        <table className="w-full min-w-[980px] border-collapse">
           <thead className="sticky top-0">
             <tr>
               <th className={cx(thCls, '!text-left')} rowSpan={2}>Component</th>
-              <th className={thCls} colSpan={2}>Actual (process orders)</th><th className={thCls} colSpan={2}>Budget (approved)</th><th className={thCls} colSpan={3}>{label} rate</th>
-              <th className={thCls} colSpan={2}>Actual - budget</th><th className={thCls} colSpan={2}>{label} - budget</th>
+              <th className={thCls} colSpan={2}>Actual (process orders)</th><th className={thCls} colSpan={2}>Budget (approved)</th><th className={thCls} colSpan={4}>{label} rate</th>
+              <th className={thCls} colSpan={2}>Actual - budget</th>
             </tr>
             <tr>
-              {['Qty / pc', '₹ / pc', 'Qty / pc', '₹ / pc', 'Qty / pc', 'Rate', '₹ / pc', '₹', '%', '₹', '%'].map((h, i) => <th key={i} className={thCls}>{h}</th>)}
+              {['Qty / pc', '₹ / pc', 'Qty / pc', '₹ / pc', 'Qty / pc', 'Rate', 'Source', '₹ / pc', '₹', '%'].map((h, i) => <th key={i} className={thCls}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => <Row key={r.key} r={r} hasRate={!!shownRate} />)}
-            {rows.length === 0 && <tr><td colSpan={12} className="p-3 text-center text-xs text-muted">No components.</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={11} className="p-3 text-center text-xs text-muted">No components.</td></tr>}
           </tbody>
           <tfoot>
             {(['R', 'P', 'F', 'O'] as Cat[]).filter((k) => cat === 'ALL' || k === cat).map((k) => <Tot key={k} label={CAT_LABEL[k]} t={cmp.byCat[k]} hasRate={!!shownRate} />)}
@@ -108,30 +112,28 @@ export default function CompareBlock({ matnr, data, defaultPlant }: { matnr: str
 }
 
 function Row({ r, hasRate }: { r: CmpRow; hasRate: boolean }) {
-  const a = TONE[varTone(r.actVar, r.actVarPct)], b = TONE[varTone(r.rateVar, r.rateVarPct)];
+  const a = TONE[varTone(r.actVar, r.actVarPct)];
   const note = r.budCost === null ? 'not in budget' : r.actCost === null ? 'not consumed' : '';
   return (
     <tr className="border-t border-line/60">
       <td className="px-2.5 py-1.5 text-left text-xs"><span className="font-bold">{r.key}</span> <span className="text-muted" title={r.maktx}>{r.maktx}</span>{note && <span className="ml-1 rounded-full bg-warn/15 px-1.5 py-0.5 text-2xs font-bold text-warn">{note}</span>}</td>
       <td className={tdCls}>{num(r.actQty, 5)}</td><td className={tdCls}>{num(r.actCost)}</td>
       <td className={tdCls}>{num(r.budQty, 5)}</td><td className={tdCls}>{num(r.budCost)}</td>
-      <td className={tdCls}>{hasRate ? num(r.rateQty, 5) : '-'}</td><td className={tdCls}>{hasRate ? num(r.rate) : '-'}</td><td className={tdCls}>{hasRate ? num(r.rateCost) : '-'}</td>
+      <td className={tdCls}>{hasRate ? num(r.rateQty, 5) : '-'}</td><td className={tdCls}>{hasRate ? num(r.rate) : '-'}</td><td className={cx(tdCls, '!text-left')}>{hasRate && r.rateSrc ? <SourceBadge source={r.rateSrc} /> : hasRate && r.rateQty ? <span className="text-2xs font-semibold text-bad">NO RATE</span> : ''}</td><td className={tdCls}>{hasRate ? num(r.rateCost) : '-'}</td>
       <td className={cx(tdCls, a)}>{sgn(r.actVar)}</td><td className={cx(tdCls, a)}>{pc(r.actVarPct)}</td>
-      <td className={cx(tdCls, b)}>{hasRate ? sgn(r.rateVar) : '-'}</td><td className={cx(tdCls, b)}>{hasRate ? pc(r.rateVarPct) : ''}</td>
     </tr>
   );
 }
 
 function Tot({ label, t, hasRate, bold }: { label: string; t: CmpTotals; hasRate: boolean; bold?: boolean }) {
-  const a = TONE[varTone(t.actVar, null)], b = TONE[varTone(t.rateVar, null)];
+  const a = TONE[varTone(t.actVar, null)];
   const p = (v: Decimal) => (t.budget.gt(0) ? pc(v.div(t.budget).times(100)) : '');
   return (
     <tr className={cx('border-t border-line bg-line/20', bold ? 'font-extrabold' : 'font-bold')}>
       <td className="px-2.5 py-1.5 text-left text-xs">{label}</td>
       <td className={tdCls} /><td className={tdCls}>{num(t.actual)}</td><td className={tdCls} /><td className={tdCls}>{num(t.budget)}</td>
-      <td className={tdCls} /><td className={tdCls} /><td className={tdCls}>{hasRate ? num(t.rate) : '-'}</td>
+      <td className={tdCls} /><td className={tdCls} /><td className={tdCls} /><td className={tdCls}>{hasRate ? num(t.rate) : '-'}</td>
       <td className={cx(tdCls, a)}>{sgn(t.actVar)}</td><td className={cx(tdCls, a)}>{p(t.actVar)}</td>
-      <td className={cx(tdCls, b)}>{hasRate ? sgn(t.rateVar) : '-'}</td><td className={cx(tdCls, b)}>{hasRate ? p(t.rateVar) : ''}</td>
     </tr>
   );
 }

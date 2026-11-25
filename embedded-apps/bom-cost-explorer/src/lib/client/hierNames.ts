@@ -5,13 +5,20 @@
  */
 import { loadBrands, loadLevel, type HierOption } from './hier';
 import { sapConfig } from '../sap/config';
+import { loadMgmt, mgmtBrand, mgmtProduct, type MgmtData } from './mgmtNames';
 
 export interface HierNames { brand: Map<string, string>; product: Map<string, string> }
 export const EMPTY_NAMES: HierNames = { brand: new Map(), product: new Map() };
 const TTL = 10 * 60 * 1000;
 const cache = new Map<string, { at: number; p: Promise<HierNames> }>();
 
-const toMap = (o: HierOption[]) => new Map(o.filter((x) => x.code && x.descr && x.descr.trim() !== x.code.trim()).map((x) => [x.code.trim(), x.descr.trim()] as const));
+/** code -> name: the management name when the workbook has one for it, else the SAP description (only when it says more than the code). */
+const toMap = (o: HierOption[], mgmt: MgmtData | null, pick: typeof mgmtBrand) => new Map(o.flatMap((x) => {
+  const code = (x.code ?? '').trim(); if (!code) return [];
+  const m = pick(mgmt, code, x.descr ?? '');
+  const d = (x.descr ?? '').trim();
+  return m ? [[code, m] as const] : d && d !== code ? [[code, d] as const] : [];
+}));
 
 export function loadHierNames(): Promise<HierNames> {
   let system = '';
@@ -19,9 +26,10 @@ export function loadHierNames(): Promise<HierNames> {
   const hit = cache.get(system);
   if (hit && Date.now() - hit.at < TTL) return hit.p;
   const p = (async () => {
+    const mgmt = await loadMgmt();
     const [b, pr] = await Promise.all([
-      loadBrands({}).then((r) => toMap(r.brands)).catch(() => new Map<string, string>()),
-      loadLevel('P', {}).then(toMap).catch(() => new Map<string, string>()),
+      loadBrands({}).then((r) => toMap(r.brands, mgmt, mgmtBrand)).catch(() => new Map<string, string>()),
+      loadLevel('P', {}).then((o) => toMap(o, mgmt, mgmtProduct)).catch(() => new Map<string, string>()),
     ]);
     return { brand: b, product: pr };
   })();

@@ -24,7 +24,7 @@ function LevelCombo({ label, opts, value, disabled, onPick }: { label: string; o
   const boxRef = useRef<HTMLDivElement>(null);
   const chosen = (opts ?? []).find((o) => o.code === value);
   const needle = text.trim().toLowerCase();
-  const shown = (opts ?? []).filter((o) => !needle || o.code.toLowerCase().includes(needle) || (o.descr ?? '').toLowerCase().includes(needle));
+  const shown = (opts ?? []).filter((o) => !needle || o.code.toLowerCase().includes(needle) || (o.descr ?? '').toLowerCase().includes(needle) || (o.sapDescr ?? '').toLowerCase().includes(needle));
   useEffect(() => {
     if (!open) return;
     const away = (e: MouseEvent) => { if (!boxRef.current?.contains(e.target as Node)) { setOpen(false); setText(''); } };
@@ -47,8 +47,9 @@ function LevelCombo({ label, opts, value, disabled, onPick }: { label: string; o
           onKeyDown={(e) => { if (e.key === 'Escape') { setOpen(false); setText(''); } else if (e.key === 'Enter' && shown.length === 1) { e.preventDefault(); choose(shown[0].code); } }}
         />
       </label>
+      {!open && chosen && <span className="break-words text-xs font-medium normal-case leading-snug tracking-normal text-ink">{optionLabel(chosen)}</span>}
       {open && !off && (
-        <ul role="listbox" aria-label={`${label} options`} className="scroll-thin absolute left-0 right-0 top-full z-20 mt-1 max-h-60 overflow-auto rounded-lg border border-line bg-panel py-1 text-sm normal-case tracking-normal text-ink shadow-lg">
+        <ul role="listbox" aria-label={`${label} options`} className="scroll-thin absolute left-0 top-full z-20 mt-1 max-h-72 w-max min-w-full max-w-[min(44rem,90vw)] overflow-auto rounded-lg border border-line bg-panel py-1 text-sm normal-case tracking-normal text-ink shadow-lg">
           <li role="option" aria-selected={!value} className="cursor-pointer px-2.5 py-1.5 text-muted hover:bg-accent/5" onMouseDown={(e) => { e.preventDefault(); choose(''); }}>All ({opts?.length ?? 0})</li>
           {shown.map((o) => (
             <li key={o.code} role="option" aria-selected={o.code === value} className={cx('cursor-pointer px-2.5 py-1.5 hover:bg-accent/5', o.code === value && 'bg-accent/10 font-semibold')} onMouseDown={(e) => { e.preventDefault(); choose(o.code); }}>{optionLabel(o)}</li>
@@ -178,7 +179,7 @@ export default function MaterialCascadePicker({ values, onChange, max, werks: we
         </div>
       )}
 
-      <div className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(190px,1fr))]">
+      <div className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(320px,1fr))]">
         {level('Brand', 'brand', blocking ? [] : brands)}
         {level('Product', 'product', blocking ? [] : products)}
         {level('SKU', 'sku', blocking ? [] : skus)}

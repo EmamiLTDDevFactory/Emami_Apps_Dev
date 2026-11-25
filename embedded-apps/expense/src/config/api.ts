@@ -37,11 +37,13 @@ export const API_BASE_URL = getBaseUrl();
 // same service name. Quality is NGQ, not NWQ: the proxy rejects NWQ outright with
 // {"error":"Invalid Landscape : NWQ"}, so do not use that spelling.
 //
-// Quality (NGQ) — ACTIVE. Verified live: GstSet 41,414 rows and TaxSet 1,933 rows returned
-// from backend 10.17.9.4, so the service is registered and anonymous reads work.
-export const SAP_BASE_URL = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGQ/ZFI_EXPCLAIM_SRV';
-// Development (NGD) — backend 10.17.10.12
-// export const SAP_BASE_URL = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGD/ZFI_EXPCLAIM_SRV';
+// Quality (NGQ) — verified live: GstSet 41,414 rows and TaxSet 1,933 rows returned from backend
+// 10.17.9.4, so the service is registered and anonymous reads work. QA doesn't have the DOA/
+// mobile/eligibility/HoD backend work yet, though - switched to NGD below for testing that.
+// export const SAP_BASE_URL = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGQ/ZFI_EXPCLAIM_SRV';
+// Development (NGD) — backend 10.17.10.12. ACTIVE for testing the DOA chain/mobile/eligibility/
+// HoD work, which only exists on this landscape right now.
+export const SAP_BASE_URL = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGD/ZFI_EXPCLAIM_SRV';
 // Production (NWP) — the landscape route exists, but ZFI_EXPCLAIM_SRV was NOT registered
 // there as of this change ("No service found ... ZFI_EXPCLAIM_SRV"). It has to be transported
 // and activated in /IWFND/MAINT_SERVICE before this line can be used. Pre-existing gap, not

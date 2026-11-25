@@ -1,0 +1,91 @@
+<mvc:View
+    controllerName="zcapexportal.controller.POList"
+    xmlns="sap.m"
+    xmlns:mvc="sap.ui.core.mvc"
+    xmlns:core="sap.ui.core"
+    height="100%">
+
+    <Page id="pagePOList" showHeader="false" class="zcpxApp">
+        <content>
+            <VBox class="zcpxScreen">
+
+                <VBox class="zcpxHero zcpxSection">
+                    <Text text="{i18n>poListTitle}" class="zcpxHeroTitle"/>
+                    <Text text="Issued from approved CPEs · synced from SAP MM" class="zcpxHeroSub"/>
+                </VBox>
+
+                <VBox class="zcpxCard zcpxCardPad zcpxSection">
+                    <HBox wrap="Wrap" alignItems="End">
+                        <VBox class="sapUiTinyMarginEnd sapUiTinyMarginBottom" width="14rem">
+                            <Label text="{i18n>search1}"/>
+                            <SearchField id="sfPO" placeholder="PO number or vendor" search=".onFilter" liveChange=".onFilter"/>
+                        </VBox>
+                        <VBox class="sapUiTinyMarginEnd sapUiTinyMarginBottom" width="11rem">
+                            <Label text="{i18n>plant}"/>
+                            <ComboBox id="cbPlant" items="{budget>/plants}" change=".onFilter" placeholder="All">
+                                <core:Item key="{budget>key}" text="{budget>text}"/>
+                            </ComboBox>
+                        </VBox>
+                        <VBox class="sapUiTinyMarginEnd sapUiTinyMarginBottom" width="11rem">
+                            <Label text="GRN Status"/>
+                            <ComboBox id="cbGrn" change=".onFilter" placeholder="All">
+                                <core:Item key="YES" text="GRN Posted"/>
+                                <core:Item key="NO" text="Awaiting GRN"/>
+                            </ComboBox>
+                        </VBox>
+                        <Button text="Clear" icon="sap-icon://clear-filter" press=".onClearFilter" class="sapUiTinyMarginBottom"/>
+                    </HBox>
+                </VBox>
+
+                <VBox class="zcpxCard zcpxSection">
+                    <Table
+                        id="tblPO"
+                        items="{procure>/po}"
+                        growing="true"
+                        growingThreshold="20"
+                        noDataText="{i18n>noData}"
+                        sticky="ColumnHeaders">
+                        <headerToolbar>
+                            <OverflowToolbar>
+                                <Title text="{i18n>poListTitle}" level="H3"/>
+                                <ToolbarSpacer/>
+                                <Button icon="sap-icon://refresh" tooltip="{i18n>refresh}" press=".onRefresh" type="Transparent"/>
+                            </OverflowToolbar>
+                        </headerToolbar>
+                        <columns>
+                            <Column width="10rem"><Text text="{i18n>poNumber}"/></Column>
+                            <Column minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>cpeTitle}"/></Column>
+                            <Column minScreenWidth="Tablet" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>vendor}"/></Column>
+                            <Column minScreenWidth="Desktop" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>plant}"/></Column>
+                            <Column hAlign="End"><Text text="Value"/></Column>
+                            <Column minScreenWidth="Desktop" demandPopin="true" popinDisplay="Inline"><Text text="{i18n>expectedDelivery}"/></Column>
+                            <Column hAlign="End" width="9rem"><Text text="GRN"/></Column>
+                        </columns>
+                        <items>
+                            <ColumnListItem type="Navigation" press=".onRowPress">
+                                <cells>
+                                    <ObjectIdentifier
+                                        title="{procure>poId}"
+                                        text="{path: 'procure>issuedOn', formatter: '.formatter.date'}"/>
+                                    <Text text="{procure>title}"/>
+                                    <Text text="{procure>vendor}"/>
+                                    <Text text="{procure>plantName}"/>
+                                    <ObjectNumber
+                                        number="{path: 'procure>amount', formatter: '.formatter.inLakhs'}"
+                                        emphasized="true"/>
+                                    <Text text="{path: 'procure>expectedDelivery', formatter: '.formatter.date'}"/>
+                                    <ObjectStatus
+                                        text="{= ${procure>grnPosted} ? 'Posted' : 'Awaiting' }"
+                                        state="{= ${procure>grnPosted} ? 'Success' : 'Warning' }"
+                                        icon="{= ${procure>grnPosted} ? 'sap-icon://sys-enter-2' : 'sap-icon://pending' }"/>
+                                </cells>
+                            </ColumnListItem>
+                        </items>
+                    </Table>
+                </VBox>
+
+            </VBox>
+        </content>
+    </Page>
+
+</mvc:View>

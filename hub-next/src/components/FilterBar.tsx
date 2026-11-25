@@ -29,7 +29,7 @@ export default function FilterBar({ category, onCategoryChange, sort, onSortChan
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, position: 'relative' }}>
       <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingRight: 8, flex: 1 }}>
-        {CATEGORIES.map((c) => {
+        {CATEGORIES.filter((c) => c === 'All' || APPS.some((a) => a.cat === c && unlockedAppIds.has(a.id))).map((c) => {
           const active = category === c;
           const Icon = CATEGORY_ICONS[c] || Grid3x3;
           const accent = catColor(c);
