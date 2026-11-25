@@ -128,8 +128,9 @@ export interface DoaChainRow {
   Active: boolean;
   ValidFrom: string;
   ValidTo: string;
-  // HoD flag - only allowed for DoaCtype='MBN' rows. When set, this approver is offered as a
-  // choosable HoD for non-sales mobile claims above the employee's eligibility cap.
+  // HoD flag - allowed on any DOA row for the cost centre, any DoaCtype (no longer tied to a
+  // separate MBN-only row). When set, this approver is offered as a choosable HoD for non-sales
+  // mobile claims above the employee's eligibility cap.
   Hod?: boolean;
   Aenam?: string; // logged-in admin's PERNR - UI must send this on every POST/PUT
   // Audit fields - all backend-filled, read-only. Do not send Ernam/Erdat/Erzet/Aedat/Aezet.
