@@ -190,12 +190,7 @@ export default function Report() {
   );
 
   return (
-    <Card
-      title="Details of advertisement expenses"
-      sub={`${ytd} vs ${pyYtd} · ${UNIT_LABEL[unit]} · click a group heading for its G/L columns; click any figure - a row, a sub-total or a total - for the posting lines behind it`}
-      bodyClass="p-0"
-      actions={<Button size="sm" onClick={exportXlsx}><Download size={14} /> Excel</Button>}
-    >
+    <Card bodyClass="p-0">
       <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2.5">
         <Tabs label="Layout" value={mode} onChange={setMode} tabs={[{ id: 'mis', label: 'MIS layout' }, { id: 'compact', label: 'Compact' }]} />
         {mode === 'mis' && (
@@ -207,6 +202,10 @@ export default function Report() {
           tabs={[{ id: '0', label: 'Categories' }, { id: '1', label: 'Ranges' }, { id: '2', label: 'Brands' }, { id: '3', label: 'All rows' }]} />
         <label className="flex items-center gap-1.5 text-xs font-semibold text-muted"><input type="checkbox" checked={showZero} onChange={(e) => setShowZero(e.target.checked)} className="accent-[rgb(var(--accent))]" /> Zero rows</label>
         <label className="flex items-center gap-1.5 text-xs font-semibold text-muted"><input type="checkbox" checked={showHidden} onChange={(e) => setShowHidden(e.target.checked)} className="accent-[rgb(var(--accent))]" /> Rows hidden in MIS</label>
+        <div className="ml-auto flex items-center gap-3">
+          <span className="hidden text-2xs text-muted min-[1760px]:inline">Click a group heading for its G/L columns · any figure for the posting lines behind it</span>
+          <Button size="sm" onClick={exportXlsx} title={`${ytd} vs ${pyYtd} · ${UNIT_LABEL[unit]}`}><Download size={14} /> Excel</Button>
+        </div>
       </div>
       <div className="scroll-thin max-h-[calc(100vh-15rem)] overflow-auto">
         <table className="mis w-max min-w-full border-separate border-spacing-0 text-[12px]" data-testid="mis-grid">

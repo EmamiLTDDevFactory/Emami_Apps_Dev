@@ -189,3 +189,39 @@ test('through the Azure gateway: Q2 reads YTD P06 and YTD P03 once each; another
         if (keep.d === undefined) delete process.env.PUBEXP_SAP_DETAIL_BASE; else process.env.PUBEXP_SAP_DETAIL_BASE = keep.d;
     }
 });
+
+test('G/L drill-down: SAP sends the G/L without leading zeros (507926) - a G/L column figure finds its lines', async () => {
+    const GW = 'https://gw.example.net/api/NWP';
+    const keep = { s: process.env.PUBEXP_SAP_SUMMARY_BASE, d: process.env.PUBEXP_SAP_DETAIL_BASE };
+    process.env.PUBEXP_SAP_SUMMARY_BASE = `${GW}/ZC_ATLBTL_EXP_SUMMARY_CDS`;
+    process.env.PUBEXP_SAP_DETAIL_BASE = `${GW}/ZC_ATLBTL_EXP_DETAIL_CDS`;
+    const real = global.fetch;
+    let sapReads = 0;
+    // As the live NWP detail view answers: G/L 6 digits, two posting lines of 507926 (31,500) and one of 508034.
+    const line = (gl, cc, amt) => ({ CompanyCode: '1000', ReportingKey: 'NF-KOSTL-70', GLAccount: gl, Site: 'HO', ReportHeader: 'ATL', CostCenter: cc, ProfitCenter: 'EH00',
+        CYYTDAmount: String(amt), PYYTDAmount: '0', CYPeriodAmount: String(amt), PYPeriodAmount: '0' });
+    global.fetch = async (url, o) => {
+        if (String(url).startsWith('http://127.0.0.1')) return real(url, o); // the test's own calls to the router
+        sapReads++;
+        return new Response(JSON.stringify({ d: { results: [line('507926', 'BEH70', 31000), line('507926', 'BEH71', 500), line('508034', 'BEH70', 200000)] } }), { status: 200 });
+    };
+    try {
+        await withServer(async (call) => {
+            const cell = { fy: '2032', periods: '1', companies: ['1000', 'EM01'], keys: ['NF-KOSTL-70'], sites: ['HO'], groups: ['ATL'] };
+            for (const gl of ['507926', '0000507926']) {
+                const d = await call('POST', '/detail', { ...cell, gls: [gl] });
+                assert.equal(d.status, 200, JSON.stringify(d.body));
+                assert.equal(d.body.rows.length, 2, `G/L ${gl}: both posting lines of 507926`);
+                assert.equal(sum(d.body.rows, 'CYYTDAmount'), 31500, 'equals the G/L column figure');
+                assert.ok(d.body.rows.every((l) => l.GLAccount === '507926'));
+            }
+            const all = await call('POST', '/detail', cell);
+            assert.equal(sum(all.body.rows, 'CYYTDAmount'), 231500, 'no G/L: every G/L of the row');
+            assert.equal(sapReads, 1, 'the period is read once through the gateway, then filtered from the cache');
+        });
+    } finally {
+        global.fetch = real;
+        if (keep.s === undefined) delete process.env.PUBEXP_SAP_SUMMARY_BASE; else process.env.PUBEXP_SAP_SUMMARY_BASE = keep.s;
+        if (keep.d === undefined) delete process.env.PUBEXP_SAP_DETAIL_BASE; else process.env.PUBEXP_SAP_DETAIL_BASE = keep.d;
+    }
+});
