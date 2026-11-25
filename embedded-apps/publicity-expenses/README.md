@@ -72,10 +72,44 @@ G/L and name, cost centre and description, **company code**, profit centre, site
 field, **one column per picked period** (that period alone) and the CY / PY total of the selection. The drawer checks
 that the lines add up to the figure clicked (and flags a difference between the period columns and the SAP YTD, e.g.
 special periods 13-16); views: posting lines, by G/L, by cost centre, by report row; search; Excel with the selection,
-the source and how SAP was read (sheets: lines, by G/L, by cost centre, by report row, SKUs). SKUs (ZNET_SALE_MASTER) for
-one report row come from a second call in the background (`skus: true`): through the gateway each line is its own SAP
-call (~1 s, 4 at a time; measured 52 s for 46 lines on NWP), so the lines show first. Each picked period is one
+the source and how SAP was read (sheets: lines, by G/L, by cost centre, by report row, SKUs). Each picked period is one
 whole-period SAP read the first time (~5 s on NWP), cached 10 minutes.
+
+**ZNET_SALE_MASTER columns** at the end of every posting line (screen and Excel): ZSKUGRCODECRS (`SkuGroupCode`),
+Product, Prd_Typ (`ProductType`), Prd_Rng (`ProductRange`), Item_Cat (`ItemCategory`) of the line's SKU group; the
+arrow on a line lists its SKUs (material, size, unit, code). The server reads the whole master once (entity set
+`ZI_ATLBTL_NETSALEMASTER` of the detail service, ~1,600 rows on NWP; `PUBEXP_SAP_SKU_SET` overrides the name), keeps it
+an hour and joins it on the SKU group key (first 9 characters of ZSKUGRCODECRS = `SkuGroupKey` of the line), like the
+association `to_NetSaleMaster`. This replaced one SAP call per line (~3 s each through the gateway), so every
+drill-down, also of a sub-total, has its SKUs with the lines. If the master cannot be read, the lines still come and
+the drawer says so (`skuError`). Older clients sending `skus: true` get the SKUs on each line as before.
+
+## Security and performance (backend/publicityExpenses/guard.js)
+
+All inside this app's router; the shared `server.js` is not changed. Limits are per process (PM2 runs one instance).
+
+- **Access**: hub session (JWT HS256) + Manage Access grant on every route; settings routes need role Admin; every
+  change is in the audit log. Input is validated (fiscal year, periods, company codes, reporting keys, G/L, header
+  groups, sizes); SQL is parameterised; SAP is read only (GET), its URLs and sign-in never reach the browser.
+- **Headers** on every answer (also 401 / 403 / 404 / 429): `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
+  `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`, `Referrer-Policy: no-referrer`,
+  `Cache-Control: no-store`; `X-Powered-By` removed.
+- **Rate limits** (429 + `Retry-After`; env `PUBEXP_RATE_*`): per client IP before the session check 3,000/min (an
+  office behind one address shares it); per user 300 requests/min, 90 drill-downs/min, 60 changes/min, 30 Refresh
+  reads per 5 min, at most 8 requests at the same time.
+- **SAP protection**: at most 6 SAP reads at once for the whole app (`PUBEXP_SAP_MAX_PARALLEL`), the rest queue; a
+  full queue (200) answers 503 "SAP is busy". Identical reads share one SAP call (the cache keeps the promise).
+- **Errors**: SAP's own error text (program names, dumps) only goes to the server log; the browser gets a plain message.
+- **Exclusion patterns**: `*` / `?` are matched in linear time (no regular expression), so a crafted pattern cannot
+  hang the server (the old regex took 7.5 s for 8 wildcards and grew exponentially - the whole hub backend would stall).
+- **Compression**: JSON over 1 KB is sent brotli or gzip (nginx here compresses HTML only); the summary sends only the
+  fields the report uses. A one-period summary went from ~0.8 MB to a fraction of that on the wire.
+- **Frontend**: static export (no Next.js server, so the Next.js server advisories - Image Optimizer, Server Actions,
+  middleware, rewrites - do not apply); SheetJS 0.20.3 (patched prototype-pollution / ReDoS versions); React escapes
+  all text; Excel exports write text cells, never formulas.
+- **Left to the server admin (needs root, affects every app on the box)**: nginx `gzip_types application/json`,
+  `limit_req` per IP, HSTS, `server_tokens off`; PM2 cluster mode for load balancing (then a shared cache such as Redis
+  would be needed for the cache and the limits to be shared).
 
 ## Decisions
 

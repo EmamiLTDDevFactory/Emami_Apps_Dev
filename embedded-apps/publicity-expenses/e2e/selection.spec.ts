@@ -82,6 +82,11 @@ test('a sub-total drills down to posting lines with one column per selected peri
   const head = drawer.getByTestId('drill-table').locator('thead');
   for (const p of ['P04', 'P05', 'P06', 'P08']) await expect(head).toContainText(p);
   await expect(head).toContainText('Co. code');
+  // ZNET_SALE_MASTER columns at the end, filled for a sub-total too (with the lines, no second call).
+  for (const f of ['ZSKUGRCODECRS', 'Product', 'Prd_Typ', 'Prd_Rng', 'Item_Cat']) await expect(head).toContainText(f);
+  const heads = await head.locator('th').allInnerTexts();
+  expect(heads[heads.length - 5]).toMatch(/^ZSKUGRCODECRS/);
+  await expect(drawer.locator('td[data-col="sku-code"] span.font-mono').first()).toHaveText(/^\S{9,}/);
   await expect(drawer.getByTestId('drill-basis')).toContainText('YTD P06 - YTD P03 + P08');
   // Grouped by G/L: same total.
   await drawer.getByRole('tab', { name: 'By G/L' }).click();
