@@ -586,12 +586,13 @@ CLASS ZCL_ZCAPEX_PORTAL_DPC_EXT IMPLEMENTATION.
                                       IMPORTING ev_cwipid = DATA(lv_cwipid)
                                                 ev_ebeln = DATA(lv_ebeln) ).
             IF lv_adesc IS NOT INITIAL AND lv_cwipid IS NOT INITIAL.
-              " Stored as a settings row CWIPDESC_<cwip> (no new table, nothing of Fiori's changes); read at capitalization.
-              DATA ls_adesc TYPE zcapex_config.
-              ls_adesc-param  = |CWIPDESC_{ lv_cwipid }|.
-              ls_adesc-value  = lv_adesc.
-              ls_adesc-remark = 'Asset description from CWIP creation'.
-              MODIFY zcapex_config FROM @ls_adesc.
+              " Kept in its own table ZCAPEX_CWPX (Fiori's tables are untouched); read at capitalization.
+              DATA ls_adesc TYPE zcapex_cwpx.
+              ls_adesc-cwipid     = lv_cwipid.
+              ls_adesc-asset_desc = lv_adesc.
+              ls_adesc-changed_by = zcl_capex_auth=>effective_user( ).
+              ls_adesc-changed_on = sy-datum.
+              MODIFY zcapex_cwpx FROM @ls_adesc.
               COMMIT WORK.
             ENDIF.
             ls_res = result( iv_doctype = 'CPE' iv_docid = ls_in-cpeid

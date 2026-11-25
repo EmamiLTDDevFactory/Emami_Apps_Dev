@@ -154,8 +154,8 @@ CLASS ZCL_CAPEX_SAP IMPLEMENTATION.
     ls_gen-descript       = ls_ic-title.
     " Description typed on the CWIP screen (CreateCWIP.AssetDesc), when there is one.
     IF ls_ic-cwipid IS NOT INITIAL.
-      DATA(lv_adesc) = zcl_capex_config=>get( |CWIPDESC_{ ls_ic-cwipid }| ).
-      IF lv_adesc IS NOT INITIAL.
+      SELECT SINGLE asset_desc FROM zcapex_cwpx INTO @DATA(lv_adesc) WHERE cwipid = @ls_ic-cwipid.
+      IF sy-subrc = 0 AND lv_adesc IS NOT INITIAL.
         ls_gen-descript = lv_adesc.
       ENDIF.
     ENDIF.
