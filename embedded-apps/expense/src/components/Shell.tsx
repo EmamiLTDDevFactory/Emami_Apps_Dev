@@ -23,35 +23,36 @@ const norm = (p: string | null) => (p || '/').replace(/\/?$/, '/');
 // button previously needed several presses because tab switches pushed history entries).
 function TabBar() {
   const pathname = norm(usePathname());
-  const { activeRole, currentUser } = useAuth();
+  const { currentUser } = useAuth();
   const { claims } = useClaim();
   const myNumeric = normalizeId(currentUser?.employeeId);
 
+  // Independent capability flags from SAP's LoginSet (live 2026-11-25) - tabs gate on these
+  // directly now, not on `role` (B/F overwrite M, so a manager who is also finance-POST used to
+  // lose the Approvals tab entirely under the old single-role model). One person can hold any
+  // combination, including all three.
+  const { isManager, isFinance } = currentUser || {};
+
   const approvalsCount = claims.filter((c) => {
-    if (activeRole === 'manager') {
-      // Under the DOA chain, SAP only ever returns ONE CurrentApprover even for a parallel (rule
-      // O/A) level, so this user can be a valid pending approver without being that single value -
-      // re-checking currentApprover here would wrongly drop that case. But `claims` (scoped
-      // server-side to this user's LoginId) also includes the viewer's OWN open claims routed to
-      // someone else's approval, not just ones actually pending this user - same gap just fixed in
-      // ClaimContext.filterClaims('manager'), mirrored here so the badge count and the list agree.
-      const employeeNumeric = normalizeId(c.employeeId);
-      if (employeeNumeric === myNumeric) return false;
-      return c.rawStatus === 'N' || c.rawStatus === 'A';
-    }
-    if (!c.currentApprover) return false;
-    if (activeRole === 'B') {
-      const employeeNumeric = normalizeId(c.employeeId);
-      if (employeeNumeric === myNumeric) return false;
-      return c.rawStatus === 'H' || c.rawStatus === 'P';
-    }
-    return false;
+    if (!isManager) return false;
+    // Under the DOA chain, SAP only ever returns ONE CurrentApprover even for a parallel (rule
+    // O/A) level, so this user can be a valid pending approver without being that single value -
+    // checking currentApprover here would wrongly drop that case. `claims` (scoped server-side to
+    // this user's LoginId) also includes the viewer's OWN open claims routed to someone else's
+    // approval, not just ones actually pending this user - same gap fixed in
+    // ClaimContext.filterClaims('manager'), mirrored here so the badge count and the list agree.
+    const employeeNumeric = normalizeId(c.employeeId);
+    if (employeeNumeric === myNumeric) return false;
+    return c.rawStatus === 'N' || c.rawStatus === 'A';
   }).length;
 
   const financeCount = claims.filter((c) => {
-    if (c.rawStatus !== 'H') return false;
-    if (!currentUser?.employeeId) return false;
-    return normalizeId(c.employeeId) !== myNumeric;
+    if (!isFinance) return false;
+    // H/P claims waiting to be posted never carry a CurrentApprover (that field is for the DOA
+    // chain, not the finance step) - a stray check for it here made this badge always read 0.
+    const employeeNumeric = normalizeId(c.employeeId);
+    if (employeeNumeric === myNumeric) return false;
+    return c.rawStatus === 'H' || c.rawStatus === 'P';
   }).length;
 
   // Same per-tab identity colors the original Expo app's tab bar already used (Dashboard=green,
@@ -62,14 +63,14 @@ function TabBar() {
     { href: '/create/', label: 'Create', subtitle: 'New Claim', icon: FilePlus2, accent: '#2563EB' },
     { href: '/my-claims/', label: 'My Claims', subtitle: 'View & Track Claims', icon: ListChecks, accent: '#F97316' },
   ];
-  if (activeRole === 'manager' || activeRole === 'B') {
+  if (isManager) {
     items.push({ href: '/approvals/', label: 'Approvals', subtitle: 'Manager Review', icon: FileCheck2, badge: approvalsCount, accent: '#8B5CF6' });
   }
-  if (activeRole === 'finance') {
+  if (isFinance) {
     items.push({ href: '/finance/', label: 'Finance', subtitle: 'Finance & Reports', icon: Wallet, badge: financeCount, accent: '#0EA5E9' });
   }
-  // Additive admin capability (ZEXP_ADMIN PERNR list) - independent of activeRole, so an admin
-  // who is also a manager/finance user sees this tab alongside their normal ones.
+  // Additive admin capability (ZEXP_ADMIN PERNR list) - independent of the flags above, so an
+  // admin who is also a manager/finance user sees this tab alongside their normal ones.
   if (currentUser?.isAdmin) {
     items.push({ href: '/admin/', label: 'Admin', subtitle: 'Search & DOA Chain', icon: ShieldAlert, accent: '#DC2626' });
   }

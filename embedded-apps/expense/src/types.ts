@@ -92,6 +92,11 @@ export interface EmployeeProfile {
   // Additive admin capability (SAP variable ZEXP_ADMIN), independent of role - see
   // lib/adminAccess.ts for how this is resolved.
   isAdmin?: boolean;
+  // Independent capability flags from SAP's LoginSet (IsManager/IsFinance, live 2026-11-25) -
+  // tabs/lists/actions gate on these directly now, not on `role`, so one person can hold any
+  // combination (e.g. manager AND finance). `role` is kept only as a display/profile label.
+  isManager?: boolean;
+  isFinance?: boolean;
 }
 
 export interface TaxCode {

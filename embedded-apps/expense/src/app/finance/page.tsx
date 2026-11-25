@@ -55,6 +55,12 @@ export default function FinancePage() {
   const { filterClaims, releasePayment, fetchTaxes, calculateTax, rejectClaimFinance, claims, fetchClaims, fetchHistorySet, historyEntries, claimSummaryCache, fetchClaimSummaries } = useClaim();
   const { currentUser } = useAuth();
 
+  // A typed URL shouldn't open this screen for someone without the Finance capability - the
+  // backend refuses the actions anyway, but bouncing here avoids showing an empty/broken screen.
+  useEffect(() => {
+    if (!currentUser?.isFinance) router.push('/');
+  }, [currentUser?.isFinance, router]);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [screenMessage, setScreenMessage] = useState<{ title: string; message: string; type: 'success' | 'error' } | null>(null);
   const [selectedClaimIds, setSelectedClaimIds] = useState<string[]>([]);
@@ -100,7 +106,9 @@ export default function FinancePage() {
   const financeNumeric = normalizeId(currentUser?.employeeId);
   const financeHistoryEntries = historyEntries || [];
 
-  const financeStatusesForCount = currentUser?.role === 'B' ? ['H', 'P'] : ['H'];
+  // H is the live queue (direct post, no park step); P is legacy-only. Always both now - isFinance
+  // gates whether this screen is reachable at all, not which statuses count once someone's here.
+  const financeStatusesForCount = ['H', 'P'];
   const financeApprovedCount = financeHistoryEntries.filter((e: any) => (e.Action || '').toUpperCase() === 'APPROVE').length;
   const financePendingCount = claims.filter((c) => financeStatusesForCount.includes(c.rawStatus || '') && normalizeId(c.employeeId) !== financeNumeric).length;
   const financeRejectedCount = financeHistoryEntries.filter((e: any) => (e.Action || '').toUpperCase() === 'REJECT').length;
@@ -114,9 +122,17 @@ export default function FinancePage() {
   ];
 
   const financeClaims = filterClaims('finance', searchQuery);
-  const isBulkReleaseUser = currentUser?.role === 'B';
+  // isFinance (not role === 'B') gates bulk release now - independent capability flag from SAP's
+  // LoginSet, since one person can hold any combination of manager/finance/admin.
+  const isBulkReleaseUser = !!currentUser?.isFinance;
+  // Legacy-only - a claim parked (P) before direct H->S posting existed. Still drives the
+  // "Pending Release" display label specifically, since H has its own correct label already
+  // ("Pending at finance") that shouldn't be overridden.
   const isBPendingRelease = (claim: ExpenseClaim) => isBulkReleaseUser && claim.rawStatus === 'P';
-  const bulkReleaseClaims = financeClaims.filter((c) => c.status === 'Pending Release' || isBPendingRelease(c));
+  // The normal queue is H (direct post, no park step), with legacy P still possible for claims
+  // parked before this change.
+  const isBBulkEligible = (claim: ExpenseClaim) => isBulkReleaseUser && (claim.rawStatus === 'H' || claim.rawStatus === 'P');
+  const bulkReleaseClaims = financeClaims.filter((c) => isBBulkEligible(c));
   const allBulkSelected = bulkReleaseClaims.length > 0 && bulkReleaseClaims.every((c) => selectedClaimIds.includes(c.id));
 
   // Purely informational Expense/Tax split shown directly on each GST pending card, so Finance
@@ -528,7 +544,7 @@ export default function FinancePage() {
         <div className="flex flex-col gap-3">
           {financeClaims.map((claim) => (
             <div key={claim.id} className="card flex items-stretch gap-0 overflow-hidden !p-0">
-              {isBulkReleaseUser && (claim.status === 'Pending Release' || isBPendingRelease(claim)) && (
+              {isBulkReleaseUser && isBBulkEligible(claim) && (
                 <button type="button" onClick={() => toggleClaimSelection(claim.id)} className="flex items-center justify-center border-r border-line bg-appBg px-4">
                   {selectedClaimIds.includes(claim.id) ? <CheckSquare size={20} className="text-brand" /> : <Square size={20} className="text-inkFaint" />}
                 </button>

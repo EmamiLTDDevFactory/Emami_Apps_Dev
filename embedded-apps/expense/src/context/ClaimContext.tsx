@@ -1560,8 +1560,11 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             if (employeeNumeric === userNumericF) return false;
           }
 
-          const financeStatuses = currentUser?.role === 'B' ? ['H', 'P'] : ['H'];
-          if (!financeStatuses.includes(c.rawStatus || '')) return false;
+          // H is the live queue (direct post, no park step); P is legacy-only (claims parked
+          // before this change). No role check - whether someone may open the Finance screen at
+          // all is decided by the isFinance flag gating the tab/route, not by what this filter
+          // returns once they're there.
+          if (c.rawStatus !== 'H' && c.rawStatus !== 'P') return false;
         }
 
         // Search by employee name or claim ID or cost center
