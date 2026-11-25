@@ -242,8 +242,13 @@ export default function ConfigPage() {
             )}
             {sectionRows.map((row) => (
               <div key={row.Numb} className="rounded-lg border border-border p-3">
-                <div className="grid grid-cols-1 items-start gap-2 sm:grid-cols-[1fr_auto_auto_auto] sm:items-center">
-                  <Field label={config.lowLabel} error={row._error || undefined}>
+                {/* Fixed widths (not auto/flex-1-everywhere) on every column after the field so
+                    the field's own right edge lands in the same place on every row, regardless of
+                    how long that row's own Resolved text or whether Role even applies - each row
+                    is its own independent layout box, so anything size-by-content varies row to
+                    row otherwise (confirmed live: GL Set Name's width visibly drifted per row). */}
+                <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+                  <Field label={config.lowLabel} error={row._error || undefined} className="min-w-0 flex-1">
                     <Input
                       value={row._draftLow}
                       onChange={(e) => setRows((prev) => prev.map((r) => (r.Numb === row.Numb ? { ...r, _draftLow: e.target.value, _error: null } : r)))}
@@ -251,7 +256,7 @@ export default function ConfigPage() {
                     />
                   </Field>
                   {config.hasHigh && (
-                    <Field label="Role">
+                    <Field label="Role" className="shrink-0 sm:w-28">
                       <Select
                         value={row._draftHigh}
                         onChange={(v) => setRows((prev) => prev.map((r) => (r.Numb === row.Numb ? { ...r, _draftHigh: v, _error: null } : r)))}
@@ -259,13 +264,15 @@ export default function ConfigPage() {
                       />
                     </Field>
                   )}
-                  {row.LowText && (
-                    <div className="min-w-0 sm:px-2">
-                      <p className="text-2xs font-semibold text-inkFaint">Resolved</p>
-                      <p className="truncate text-sm font-semibold text-ink" title={row.LowText}>{row.LowText}</p>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-1 justify-self-end">
+                  <div className="min-w-0 shrink-0 sm:w-40 sm:px-2">
+                    {row.LowText && (
+                      <>
+                        <p className="text-2xs font-semibold text-inkFaint">Resolved</p>
+                        <p className="truncate text-sm font-semibold text-ink" title={row.LowText}>{row.LowText}</p>
+                      </>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1 self-end sm:self-center">
                     <IconButton icon={Save} label="Save" onClick={() => handleSaveRow(row)} disabled={row._saving} />
                     {!config.singleLine && (
                       <IconButton
@@ -289,19 +296,22 @@ export default function ConfigPage() {
                 </Button>
               ) : (
                 <div className="rounded-lg border border-dashed border-border p-3">
-                  <div className="grid grid-cols-1 items-start gap-2 sm:grid-cols-[1fr_auto_auto]">
-                    <Field label={config.lowLabel} error={addError || undefined}>
+                  {/* Fields first, action row below - Add/Cancel sitting beside a taller label+
+                      input column (the previous layout) put them level with the label instead of
+                      the input, which read as misaligned. Stacking removes the ambiguity entirely. */}
+                  <div className="flex flex-col items-stretch gap-2 sm:flex-row">
+                    <Field label={config.lowLabel} error={addError || undefined} className="min-w-0 flex-1">
                       <Input value={newRow.low} onChange={(e) => setNewRow({ ...newRow, low: e.target.value })} placeholder={config.lowPlaceholder} />
                     </Field>
                     {config.hasHigh && (
-                      <Field label="Role">
+                      <Field label="Role" className="shrink-0 sm:w-28">
                         <Select value={newRow.high} onChange={(v) => setNewRow({ ...newRow, high: v })} options={[{ value: '', label: 'Select…' }, ...(config.highOptions || [])]} />
                       </Field>
                     )}
-                    <div className="flex items-center gap-2 justify-self-end">
-                      <Button variant="primary" size="sm" loading={adding} onClick={handleAdd}>Add</Button>
-                      <Button variant="secondary" size="sm" onClick={() => { setNewRow(null); setAddError(null); }}>Cancel</Button>
-                    </div>
+                  </div>
+                  <div className="mt-2 flex items-center justify-end gap-2">
+                    <Button variant="primary" size="sm" loading={adding} onClick={handleAdd}>Add</Button>
+                    <Button variant="secondary" size="sm" onClick={() => { setNewRow(null); setAddError(null); }}>Cancel</Button>
                   </div>
                 </div>
               )}
