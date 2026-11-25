@@ -8,10 +8,10 @@ import { ErrorState, LoadingState } from '../ui';
 import GroupEditor, { EditorTarget } from './wf/GroupEditor';
 import LogPanel from './wf/LogPanel';
 import { ConfirmDialog, MessageBox, VhInput } from './wf/parts';
-import { CopyDialog, KeyPointsPanel, MassAgentPanel, WhereUsedPanel } from './wf/ToolsPanels';
+import { CopyDialog, MassAgentPanel, WhereUsedPanel } from './wf/ToolsPanels';
 
-type Top = 'groups' | 'keys' | 'user' | 'mass' | 'log';
-const TOPS: [Top, string][] = [['groups', 'Combinations'], ['keys', 'Key points'], ['user', 'Where is a user used'], ['mass', 'Mass agent change'], ['log', 'Change log']];
+type Top = 'groups' | 'user' | 'mass' | 'log';
+const TOPS: [Top, string][] = [['groups', 'Combinations'], ['user', 'Where is a user used'], ['mass', 'Mass agent change'], ['log', 'Change History']];
 
 /** Workflow maintenance of the flow engine: approval levels (Initiator, Reviewer, Approver) per application and generic key */
 export default function WorkflowAdminScreen() {
@@ -123,10 +123,9 @@ export default function WorkflowAdminScreen() {
         </div>
       )}
 
-      {top === 'keys' && <section className="card"><div className="card-bar"><h2>Key points</h2></div><div className="tab-body"><KeyPointsPanel appId={appId} /></div></section>}
       {top === 'user' && <section className="card"><div className="card-bar"><h2>Where is a user used</h2></div><div className="tab-body"><WhereUsedPanel appId={appId} onOpen={(k) => { setAppId(k.appId); setFilter(emptyKey(k.appId)); search(k.appId, emptyKey(k.appId)); open(k); }} /></div></section>}
       {top === 'mass' && <section className="card"><div className="card-bar"><h2>Mass agent change</h2></div><div className="tab-body"><MassAgentPanel appId={appId} cfg={cfg} /></div></section>}
-      {top === 'log' && <section className="card"><div className="card-bar"><h2>Change log</h2></div><div className="tab-body">{appId ? <LogPanel key={appId} appId={appId} cfg={cfg} /> : <p className="muted">Choose an application first.</p>}</div></section>}
+      {top === 'log' && <section className="card"><div className="card-bar"><h2>Change History</h2></div><div className="tab-body">{appId ? <LogPanel key={appId} appId={appId} cfg={cfg} /> : <p className="muted">Choose an application first.</p>}</div></section>}
 
       {pending && (
         <ConfirmDialog title="Discard unsaved changes?" confirmText="Discard" danger onCancel={() => setPending(null)} onConfirm={() => { const fn = pending; setPending(null); setDirty(false); fn(); }}>

@@ -1983,3 +1983,18 @@ h1 { font-size: 22px; } h2 { font-size: 16px; } h3 { font-size: 14px; margin-bot
   .wf-frow { grid-template-columns: 1fr; gap: 2px; }
   .wf-frow > label, .wf-frow > .field-label { text-align: left; }
 }
+
+/* ---- round 3: wider General Details, status colours, changed rows, pinned Home ---- */
+.wf-board { grid-template-columns: minmax(340px, 1.05fr) minmax(0, 1.5fr) minmax(250px, 0.75fr); }
+@media (max-width: 1280px) { .wf-board { grid-template-columns: minmax(320px, 1fr) minmax(0, 1.6fr); } }
+@media (max-width: 900px) { .wf-board { grid-template-columns: minmax(0, 1fr); } }
+.wf-grid input[type='checkbox'] { width: 16px; height: 16px; cursor: pointer; }
+.wf-grid input.chk-active { accent-color: #16a34a; }
+.wf-grid input.chk-ro { accent-color: #dc2626; }
+.wf-grid tbody tr.wf-chg td { background: #fff7d6; }
+.wf-grid tbody tr.wf-chg td:first-child { box-shadow: inset 4px 0 0 #f59e0b; }
+.wf-grid tbody tr.wf-chg.on td { background: #ffeeb0; }
+.wf-unsaved { background: #fff1c2; color: #8a5a00; border: 1px solid #f59e0b; font-weight: 700; }
+.wf-sapid { display: block; font-family: var(--mono); font-size: 11px; }
+.nav-home { padding: 8px 10px 0; flex: none; position: relative; }
+.nav-home .nav-item { background: rgba(255, 255, 255, 0.08); }
