@@ -33,11 +33,20 @@ export const lineOf = (r: SummaryRow) => r.MISHeading || r.Product || r.ProductG
 /** Rows with actual postings (not the budget-only rows of an uploaded OB / RB). */
 export const actuals = (rows: SummaryRow[]) => rows.filter((r) => !r.IsBudget);
 
+/** Dimension filters (the company and periods are applied by the server). A G/L filter leaves the budget-only rows out (budget has no G/L). */
 export function applyFilters(rows: SummaryRow[], f: Filters): SummaryRow[] {
-  const site = new Set(f.site); const groups = new Set(f.groups); const cats = new Set(f.categories); const brands = new Set(f.brands);
+  const site = new Set(f.site); const groups = new Set(f.groups); const cats = new Set(f.categories); const brands = new Set(f.brands); const gls = new Set(f.gls);
   return rows.filter((r) =>
     (!site.size || site.has(r.Site) || (r.IsBudget && !r.Site)) && (!groups.size || groups.has(r.HeaderGroup))
-    && (!cats.size || cats.has(categoryOf(r))) && (!brands.size || brands.has(rangeOf(r))));
+    && (!cats.size || cats.has(categoryOf(r))) && (!brands.size || brands.has(rangeOf(r))) && (!gls.size || gls.has(r.GLAccount)));
+}
+
+/** Reporting keys of the report rows under a node (one key for a row, all of them for the grand total). */
+export function keysOf(n: Node): string[] {
+  const out = new Set<string>();
+  const walk = (x: Node) => { if (x.key) out.add(x.key); x.children.forEach(walk); };
+  walk(n);
+  return [...out];
 }
 
 // ---------------------------------------------------------------- columns
@@ -163,5 +172,5 @@ export function pareto(rolls: Roll[]): { rows: (Roll & { cum: number })[]; n80: 
   return { rows: out, n80 };
 }
 
-/** Straight-line full-year projection from YTD. */
-export const projectFY = (ytd: number, period: number) => (period ? (ytd / period) * 12 : 0);
+/** Straight-line full-year projection: average of the selected periods x 12 (for YTD P01..Pn: YTD / n x 12). */
+export const projectFY = (amount: number, periods: number) => (periods ? (amount / periods) * 12 : 0);

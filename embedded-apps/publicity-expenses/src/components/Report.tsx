@@ -5,14 +5,15 @@
  *    PY Total, then GR TOTAL MIS, DSR AND OTHER EXP and GR TOTAL LR.
  *  - Drill-down layout: the same grid with the G/L columns of a group opened (CY HO per G/L, then CY Units per G/L) -
  *    click a group heading, or "All G/L columns".
- *  - A reporting-row cell opens the cost-centre / SKU detail (ZC_ATLBTL_EXP_DETAIL).
+ *  - Any figure (a reporting row, a sub-total, the grand total, GR Total MIS / LR) opens the posting lines behind it
+ *    (ZC_ATLBTL_EXP_DETAIL: G/L x cost centre, with the amount of each selected period), which add up to the figure.
  * Rows: category > range > product type > reporting row with sub-totals, sorted by SerialNo, T1, T2, T3.
  */
 import { Fragment, startTransition, useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, Columns3, Download, Minus, Plus } from 'lucide-react';
 import { useApp } from '@/lib/context';
-import { fyLabel, growth, pct, UNIT_LABEL, ytdLabel } from '@/lib/format';
-import { buildTree, cyOf, groupColumns, isZero, nodeMeasures, zero, type GroupCol, type Measures, type Node } from '@/lib/model';
+import { fyLabel, growth, pct, UNIT_LABEL } from '@/lib/format';
+import { buildTree, cyOf, groupColumns, isZero, keysOf, nodeMeasures, zero, type GroupCol, type Measures, type Node } from '@/lib/model';
 import DetailDrawer, { type Cell } from './DetailDrawer';
 import { Button, Card, Empty, Tabs, cx } from './ui';
 
@@ -28,7 +29,8 @@ interface Col {
   tone?: 'total' | 'budget' | 'gl';
   value: (n: Node, nm: ReturnType<typeof nodeMeasures>) => number | null;
   pct?: boolean;
-  drill?: { group?: string; site?: string; gl?: string };
+  /** What a click on the figure drills into (header group(s), site, G/L; measure = which total it must equal). */
+  drill?: Omit<Cell, 'label' | 'keys' | 'value'>;
 }
 
 /** G/L x site columns with no amount in the current selection are left out (the sheet's hidden columns). */
@@ -40,7 +42,7 @@ function groupCols(g: GroupCol, mode: Mode, open: boolean, fy: string, ytd: stri
   if (mode === 'compact') {
     return [
       { ...base, id: `${g.id}|cy`, label: 'CY Total', sub: ytd, tone: 'total', value: (n) => cyOf(m(n)), drill: { group: g.id } },
-      { ...base, id: `${g.id}|py`, label: 'PY Total', sub: pyYtd, value: (n) => m(n).py },
+      { ...base, id: `${g.id}|py`, label: 'PY Total', sub: pyYtd, value: (n) => m(n).py, drill: { group: g.id, measure: 'py' } },
     ];
   }
   const has = (gl: string, site: 'HO' | 'UN') => { const t = glTotals.get(`${g.id}|${gl}`); return !!t && Math.abs(site === 'HO' ? t.ho : t.un) >= 0.5; };
@@ -58,21 +60,23 @@ function groupCols(g: GroupCol, mode: Mode, open: boolean, fy: string, ytd: stri
     ...glCols('UN'),
     { ...base, id: `${g.id}|un`, label: 'CY Actual Units', sub: ytd, value: (n) => m(n).un, drill: { group: g.id, site: 'UN' } },
     { ...base, id: `${g.id}|cy`, label: 'CY Total', sub: ytd, tone: 'total', value: (n) => cyOf(m(n)), drill: { group: g.id } },
-    { ...base, id: `${g.id}|py`, label: 'PY Total', sub: pyYtd, value: (n) => m(n).py },
+    { ...base, id: `${g.id}|py`, label: 'PY Total', sub: pyYtd, value: (n) => m(n).py, drill: { group: g.id, measure: 'py' } },
   ];
 }
 
-function totalCols(id: 'mis' | 'lr', label: string, mode: Mode, fy: string, ytd: string, pyYtd: string): Col[] {
+/** GR Total MIS (groups with mis = true) and GR Total LR (every group). misIds = the MIS groups, for the drill-down. */
+function totalCols(id: 'mis' | 'lr', label: string, mode: Mode, fy: string, ytd: string, pyYtd: string, misIds: string[]): Col[] {
   const pick = (nm: ReturnType<typeof nodeMeasures>): Measures => (id === 'mis' ? nm.mis : nm.lr);
   const base = { band: label, bandKey: id, tone: 'total' as const };
+  const d = id === 'mis' ? { groups: misIds } : {};
   const cyPy: Col[] = [
-    { ...base, id: `${id}|cy`, label: 'CY Total', sub: ytd, value: (_n, nm) => cyOf(pick(nm)) },
-    { ...base, id: `${id}|py`, label: 'PY Total', sub: pyYtd, value: (_n, nm) => pick(nm).py },
+    { ...base, id: `${id}|cy`, label: 'CY Total', sub: ytd, value: (_n, nm) => cyOf(pick(nm)), drill: d },
+    { ...base, id: `${id}|py`, label: 'PY Total', sub: pyYtd, value: (_n, nm) => pick(nm).py, drill: { ...d, measure: 'py' } },
     { ...base, id: `${id}|gr`, label: 'Growth', sub: 'CY vs PY', pct: true, value: (_n, nm) => growth(cyOf(pick(nm)), pick(nm).py) },
   ];
   if (mode === 'compact') {
     return id === 'lr'
-      ? [...cyPy, { ...base, id: 'lr|rby', label: 'RB', sub: ytd, value: (_n, nm) => nm.lr.rby }, { ...base, id: 'lr|ut', label: 'Utilised', sub: 'CY / RB YTD', pct: true, value: (_n, nm) => (nm.lr.rby ? (cyOf(nm.lr) / nm.lr.rby) * 100 : null) }]
+      ? [...cyPy, { ...base, id: 'lr|rby', label: 'RB', sub: ytd, value: (_n, nm) => nm.lr.rby }, { ...base, id: 'lr|ut', label: 'Utilised', sub: 'CY / RB', pct: true, value: (_n, nm) => (nm.lr.rby ? (cyOf(nm.lr) / nm.lr.rby) * 100 : null) }]
       : cyPy;
   }
   return [
@@ -80,8 +84,8 @@ function totalCols(id: 'mis' | 'lr', label: string, mode: Mode, fy: string, ytd:
     { ...base, id: `${id}|rby`, label: 'RB', sub: ytd, value: (_n, nm) => pick(nm).rby },
     { ...base, id: `${id}|oba`, label: 'OB', sub: fy, value: (_n, nm) => pick(nm).oba },
     { ...base, id: `${id}|oby`, label: 'OB', sub: ytd, value: (_n, nm) => pick(nm).oby },
-    { ...base, id: `${id}|ho`, label: 'CY Actual HO', sub: ytd, value: (_n, nm) => pick(nm).ho },
-    { ...base, id: `${id}|un`, label: 'CY Actual Units', sub: ytd, value: (_n, nm) => pick(nm).un },
+    { ...base, id: `${id}|ho`, label: 'CY Actual HO', sub: ytd, value: (_n, nm) => pick(nm).ho, drill: { ...d, site: 'HO' } },
+    { ...base, id: `${id}|un`, label: 'CY Actual Units', sub: ytd, value: (_n, nm) => pick(nm).un, drill: { ...d, site: 'UN' } },
     ...cyPy,
   ];
 }
@@ -89,7 +93,7 @@ function totalCols(id: 'mis' | 'lr', label: string, mode: Mode, fy: string, ytd:
 interface Line { node: Node; kind: 'header' | 'row' | 'total' | 'grand'; depth: number; label: string; collapsed?: boolean }
 
 export default function Report() {
-  const { rows, config, filters, unit, fmt } = useApp();
+  const { rows, config, filters, unit, fmt, sel } = useApp();
   const [mode, setMode] = useState<Mode>('mis');
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
   const [depth, setDepth] = useState<Depth>(3);
@@ -102,15 +106,15 @@ export default function Report() {
 
   const groups = useMemo(() => groupColumns(rows, config), [rows, config]);
   const tree = useMemo(() => buildTree(rows), [rows]);
-  const fy = fyLabel(filters.fy); const ytd = ytdLabel(filters.fy, filters.period); const pyYtd = ytdLabel(Number(filters.fy) - 1, filters.period);
+  const fy = fyLabel(filters.fy); const ytd = sel.cy; const pyYtd = sel.py;
 
   const cols = useMemo(() => {
     const out: Col[] = [];
     const mis = groups.filter((g) => g.mis); const rest = groups.filter((g) => !g.mis);
     for (const g of mis) out.push(...groupCols(g, mode, openGroups.has(g.id), fy, ytd, pyYtd, tree.byGl));
-    out.push(...totalCols('mis', 'GR Total MIS', mode, fy, ytd, pyYtd));
+    out.push(...totalCols('mis', 'GR Total MIS', mode, fy, ytd, pyYtd, mis.map((g) => g.id)));
     for (const g of rest) out.push(...groupCols(g, mode, openGroups.has(g.id), fy, ytd, pyYtd, tree.byGl));
-    out.push(...totalCols('lr', 'GR Total LR', mode, fy, ytd, pyYtd));
+    out.push(...totalCols('lr', 'GR Total LR', mode, fy, ytd, pyYtd, mis.map((g) => g.id)));
     return out;
   }, [groups, mode, openGroups, fy, ytd, pyYtd, tree]);
 
@@ -165,8 +169,14 @@ export default function Report() {
     ws['!freeze'] = { xSplit: 1, ySplit: 3 };
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, mode === 'mis' ? 'Summary' : 'Compact');
-    XLSX.writeFile(wb, `ATL-BTL-expenses-${ytd}.xlsx`);
+    XLSX.writeFile(wb, `ATL-BTL-expenses-${ytd.replace(/[^A-Za-z0-9'-]+/g, '-')}.xlsx`);
   }
+
+  /** Open the posting lines behind a figure of a line (a row, a sub-total or the grand total). */
+  const drillInto = (l: Line, d: NonNullable<Col['drill']>, value: number) => setCell({
+    label: l.kind === 'row' ? l.label : l.kind === 'grand' ? 'All report rows (TOTAL)' : `${l.node.label} (total)`,
+    keys: keysOf(l.node), ...d, value,
+  });
 
   if (!rows.length) return <Card><Empty title="No expenses for this selection">Change the period or clear a filter.</Empty></Card>;
 
@@ -182,7 +192,7 @@ export default function Report() {
   return (
     <Card
       title="Details of advertisement expenses"
-      sub={`${ytd} vs ${ytdLabel(Number(filters.fy) - 1, filters.period)} · ${UNIT_LABEL[unit]} · click a group heading for its G/L columns, a figure for the cost-centre drill-down`}
+      sub={`${ytd} vs ${pyYtd} · ${UNIT_LABEL[unit]} · click a group heading for its G/L columns; click any figure - a row, a sub-total or a total - for the posting lines behind it`}
       bodyClass="p-0"
       actions={<Button size="sm" onClick={exportXlsx}><Download size={14} /> Excel</Button>}
     >
@@ -236,7 +246,7 @@ export default function Report() {
                         </button>
                       ) : <span className="w-5" />}
                       {l.kind === 'row' ? (
-                        <button type="button" className="max-w-[18rem] truncate text-left hover:text-accent hover:underline" title={`${l.label} · ${l.node.key}`} onClick={() => setCell({ key: l.node.key!, label: l.label })}>{l.label}</button>
+                        <button type="button" className="max-w-[18rem] truncate text-left hover:text-accent hover:underline" title={`${l.label} · ${l.node.key}`} onClick={() => setCell({ label: l.label, keys: [l.node.key!], value: cyOf(nm.lr) })}>{l.label}</button>
                       ) : (
                         <span className={cx('max-w-[18rem] truncate', l.kind === 'header' && 'text-2xs font-extrabold uppercase tracking-wide text-accent')} title={l.label}>{l.label}</span>
                       )}
@@ -249,11 +259,11 @@ export default function Report() {
                       const first = i === 0 || cols[i - 1].bandKey !== c.bandKey;
                       const isUt = c.id.endsWith('|ut');
                       const shown = v === null ? '–' : c.pct ? (isUt ? `${v.toFixed(1)}%` : pct(v)) : fmt(v);
-                      const drill = l.kind === 'row' && c.drill && v ? c.drill : null;
+                      const drill = c.drill && v ? c.drill : null;
                       return (
-                        <td key={c.id} className={cx('num px-2 py-1.5 text-right', first && 'border-l border-line', c.tone === 'total' && l.kind !== 'grand' && 'font-semibold', c.tone === 'budget' && l.kind !== 'grand' && 'text-muted', c.pct && v !== null && l.kind !== 'grand' && isUt && (v > 100 ? 'text-bad' : 'text-good'))}>
+                        <td key={c.id} data-col={c.tone === 'gl' ? 'gl' : undefined} className={cx('num px-2 py-1.5 text-right', first && 'border-l border-line', c.tone === 'total' && l.kind !== 'grand' && 'font-semibold', c.tone === 'budget' && l.kind !== 'grand' && 'text-muted', c.pct && v !== null && l.kind !== 'grand' && isUt && (v > 100 ? 'text-bad' : 'text-good'))}>
                           {drill ? (
-                            <button type="button" data-drill className="rounded px-0.5 hover:bg-accent/10 hover:text-accent hover:underline" onClick={() => setCell({ key: l.node.key!, label: l.label, ...drill })}>{shown}</button>
+                            <button type="button" data-drill={l.kind} title="Posting lines behind this figure" className={cx('rounded px-0.5 hover:underline', l.kind === 'grand' ? 'hover:bg-white/15' : 'hover:bg-accent/10 hover:text-accent')} onClick={() => drillInto(l, drill, v ?? 0)}>{shown}</button>
                           ) : shown}
                         </td>
                       );

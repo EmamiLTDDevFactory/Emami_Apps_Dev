@@ -8,7 +8,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, Download, FileSpreadsheet, History, RotateCcw, Upload } from 'lucide-react';
 import { api, type ApiError } from '@/lib/api';
 import { useApp } from '@/lib/context';
-import { fmtDateTime, fyLabel, short, UNIT_DIV, UNIT_LABEL, ytdLabel, type Unit } from '@/lib/format';
+import { fmtDateTime, fyLabel, short, UNIT_DIV, UNIT_LABEL, type Unit } from '@/lib/format';
 import { MONTHS, mapColumns, readSheet, writeBook, type Cell } from '@/lib/excel';
 import type { BudgetStatus, BudgetVersion, UploadResult, UploadRow } from '@/lib/types';
 import { Button, Card, Field, Notice, Pill, Select, Skeleton, Tabs, cx, inputCls } from '../ui';
@@ -26,7 +26,7 @@ const COLUMNS: Record<string, string[]> = {
 };
 
 export default function BudgetAdmin() {
-  const { q, filters, config, refreshAll } = useApp();
+  const { q, filters, config, refreshAll, sel } = useApp();
   const [status, setStatus] = useState<BudgetStatus | { error: string } | null>(null);
   const [kind, setKind] = useState<Kind>('RB');
   const [unit, setUnit] = useState<Unit>('lakh');
@@ -48,7 +48,7 @@ export default function BudgetAdmin() {
       const div = UNIT_DIV[unit];
       const v = (x: number | null | undefined) => (x === null || x === undefined ? null : r2(x / div));
       const rows: Cell[][] = [
-        ['Reporting key', 'Company', 'Category', 'Range', 'Brand', 'Report row', 'Header', 'Site', 'Annual', ...MONTHS, `PY ${ytdLabel(Number(filters.fy) - 1, filters.period)} (ref)`, `CY ${ytdLabel(filters.fy, filters.period)} (ref)`],
+        ['Reporting key', 'Company', 'Category', 'Range', 'Brand', 'Report row', 'Header', 'Site', 'Annual', ...MONTHS, `PY ${sel.py} (ref)`, `CY ${sel.cy} (ref)`],
         ...lines.map((l) => [l.key, l.company, l.category, l.range, l.brand, l.line, l.headerLabel, l.site, v(l.annual), ...(l.months ? l.months.map((m) => v(m)) : MONTHS.map(() => null)), v(l.py), v(l.cy)]),
       ];
       const readMe: Cell[][] = [

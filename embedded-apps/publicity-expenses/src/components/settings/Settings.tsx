@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { FileClock, FilterX, Network, Upload } from 'lucide-react';
 import { useApp } from '@/lib/context';
-import { defaultPeriod, fyLabel, periodLabel, ytdLabel } from '@/lib/format';
+import { defaultPeriod, fyLabel } from '@/lib/format';
+import PeriodPicker from '../PeriodPicker';
 import { Select, Tabs } from '../ui';
 import Exclusions from './Exclusions';
 import BudgetAdmin from './BudgetAdmin';
@@ -13,7 +14,7 @@ import AuditLog from './AuditLog';
 type Tab = 'exclusions' | 'budget' | 'mappings' | 'audit';
 
 export default function Settings() {
-  const { filters, setFilters } = useApp();
+  const { filters, setFilters, sel } = useApp();
   const [tab, setTab] = useState<Tab>(() => {
     try { return (sessionStorage.getItem('pubexp.settingsTab') as Tab) || 'exclusions'; } catch { return 'exclusions'; }
   });
@@ -33,10 +34,9 @@ export default function Settings() {
         <div className="flex-1" />
         <span className="text-2xs text-muted">Figures for</span>
         <Select label="Fiscal year" value={filters.fy} onChange={(v) => setFilters({ fy: v })} options={years.map((y) => ({ value: y, label: fyLabel(y) }))} className="w-[6.5rem]" />
-        <Select label="YTD up to period" value={String(filters.period)} onChange={(v) => setFilters({ period: Number(v) })}
-          options={Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: `P${String(i + 1).padStart(2, '0')} · ${periodLabel(filters.fy, i + 1)}` }))} className="w-[9.75rem]" />
+        <PeriodPicker fy={filters.fy} value={filters.periods} onChange={(v) => setFilters({ periods: v })} className="w-[12.5rem]" align="right" />
       </div>
-      <p className="px-1 text-2xs text-muted">Every change applies to every user at once and is written to the audit log. Amounts shown are for {ytdLabel(filters.fy, filters.period)}.</p>
+      <p className="px-1 text-2xs text-muted">Every change applies to every user at once and is written to the audit log. Amounts shown are for {sel.cy}{filters.companies.length ? `, company ${filters.companies.join(', ')}` : ', all companies'}; rules take effect by the latest selected period ({`P${String(sel.latest).padStart(2, '0')}`}).</p>
       {tab === 'exclusions' && <Exclusions />}
       {tab === 'budget' && <BudgetAdmin />}
       {tab === 'mappings' && <Mappings />}

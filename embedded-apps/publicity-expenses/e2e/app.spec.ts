@@ -74,10 +74,9 @@ test('MIS report: G/L columns open, a figure drills down and the drill-down adds
   const shown = (await fig.innerText()).trim();
   await fig.evaluate((el) => { el.scrollIntoView({ block: 'center', inline: 'center' }); (el as HTMLElement).click(); });
   const drawer = page.locator('[role=dialog]');
-  await expect(drawer.getByText('Drill-down')).toBeVisible();
-  const totalRow = drawer.locator('tbody tr').last();
-  await expect(totalRow).toContainText('Total');
-  await expect(totalRow.locator('td').nth(1)).toHaveText(shown);
+  await expect(drawer.getByText('Drill-down').first()).toBeVisible();
+  await expect(drawer.getByTestId('drill-total-cy')).toHaveText(shown);
+  await expect(drawer.getByTestId('drill-check')).toBeVisible();
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/${info.project.name === 'mobile-360' ? 'm' : 'd'}-drilldown.png` });
 });
 

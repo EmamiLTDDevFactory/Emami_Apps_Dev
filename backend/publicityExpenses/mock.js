@@ -5,6 +5,8 @@
    Structure (rows, product hierarchy, G/L accounts per report header) comes from the MIS layout (layout.json: labels
    only). Every amount is synthetic: a seeded random generator, so the same year / period always gives the same
    numbers and drill-down totals match the summary. Amounts are in INR (company code currency), like HSL in SAP.
+   Two company codes: 1000 for everything, and EM01 (a second, smaller company) on part of the brand rows, so the
+   company filter can be tried with more than one company.
 */
 const layout = require('./layout.json');
 const { NON_BRAND } = require('./config');
@@ -59,7 +61,7 @@ const ROWS = (() => {
     return out;
 })();
 
-/** One amount line per row x G/L x site with 12 CY and 12 PY monthly amounts. Built once per fiscal year. */
+/** One amount line per company x row x G/L x site with 12 CY and 12 PY monthly amounts. Built once per fiscal year. */
 const LINES = new Map();
 function lines(fy) {
     if (LINES.has(fy)) return LINES.get(fy);
@@ -89,6 +91,9 @@ function lines(fy) {
         for (const [g, share] of pick) merged.set(g.gl, { g, share: (merged.get(g.gl)?.share || 0) + share });
         const sea = season(row.Product || row.ProductGroup);
         const growth = 0.85 + r() * 0.45; // CY vs PY
+        // EM01: own random stream, so company 1000 keeps the same numbers it always had.
+        const rc = rng(`${fy}|${row.ReportingKey}|EM01`);
+        const em01 = row._brand && rc() < 0.2;
         for (const { g, share } of merged.values()) {
             const header = g.header;
             const hoShare = header === 'ATL' || header === 'MODELLING' || header === 'FILM PROD' || header === 'CREATIVE' ? (r() < 0.9 ? 1 : 0.85)
@@ -103,7 +108,11 @@ function lines(fy) {
                     cy.push(round2(v));
                     py.push(round2((v / growth) * (0.8 + r() * 0.4)));
                 }
-                out.push({ row, gl: g, site, cy, py });
+                out.push({ row, gl: g, site, company: '1000', cy, py });
+                if (em01 && rc() < 0.6) {
+                    const f = 0.15 + rc() * 0.35;
+                    out.push({ row, gl: g, site, company: 'EM01', cy: cy.map((v) => round2(v * f)), py: py.map((v) => round2(v * f * (0.7 + rc() * 0.6))) });
+                }
             }
         }
     }
@@ -131,7 +140,7 @@ const matches = (obj, where) => Object.entries(where || {}).every(([k, v]) => {
 function summary(fy, period, where) {
     const p = Math.min(12, Math.max(1, period));
     return lines(fy).map((l) => ({
-        CompanyCode: '1000', ...strip(l.row), GLAccount: l.gl.gl, Site: l.site, GLAccountName: l.gl.name,
+        CompanyCode: l.company, ...strip(l.row), GLAccount: l.gl.gl, Site: l.site, GLAccountName: l.gl.name,
         ReportHeader: l.gl.header, ReportHeaderSequence: l.gl.headerSeq, FSVItem: `ATLBTL${pad(l.gl.headerSeq, 2)}`, ...amounts(l, p),
     })).filter((r) => matches(r, where));
 }
@@ -146,9 +155,11 @@ function detail(fy, period, where, { expand = false } = {}) {
     const p = Math.min(12, Math.max(1, period));
     const out = [];
     for (const l of lines(fy)) {
-        const base = { CompanyCode: '1000', ...strip(l.row), GLAccount: l.gl.gl, Site: l.site };
+        const base = { CompanyCode: l.company, ...strip(l.row), GLAccount: l.gl.gl, Site: l.site };
         if (!matches(base, where)) continue;
-        const r = rng(`${fy}|${l.row.ReportingKey}|${l.gl.gl}|${l.site}`);
+        const em = l.company === 'EM01';
+        const seed = `${fy}|${l.row.ReportingKey}|${l.gl.gl}|${l.site}${em ? '|EM01' : ''}`;
+        const r = rng(seed);
         const n = 1 + Math.floor(r() * 3);
         const weights = Array.from({ length: n }, () => 0.3 + r());
         const total = weights.reduce((a, b) => a + b, 0);
@@ -163,22 +174,24 @@ function detail(fy, period, where, { expand = false } = {}) {
                 left[key] = round2(left[key] - part[key]);
             }
             const [rule, lookup] = l.row._brand ? (l.site === 'HO' ? RULES_HO : RULES_UN)[Math.floor(r() * (l.site === 'HO' ? 3 : 2))] : [NB_RULE[l.row.ProductGroup] || 'R99', 'KOSTL'];
-            const cc = l.site === 'HO' ? `EH${num}${k ? k : ''}` : `UN${pad(1 + Math.floor(r() * 6), 2)}${num}`;
+            const cc = (l.site === 'HO' ? `${em ? 'EI' : 'EH'}${num}${k ? k : ''}` : `${em ? 'EU' : 'UN'}${pad(1 + Math.floor(r() * 6), 2)}${num}`);
             const row = {
-                ...base, ProfitCenter: l.site === 'HO' ? `EMHO${pad(1 + (k % 3), 2)}` : `EMUN${pad(1 + Math.floor(r() * 6), 2)}`,
+                ...base, ProfitCenter: l.site === 'HO' ? `${em ? 'EIHO' : 'EMHO'}${pad(1 + (k % 3), 2)}` : `${em ? 'EIUN' : 'EMUN'}${pad(1 + Math.floor(r() * 6), 2)}`,
                 CostCenter: cc, CostCenterType: l.row._brand ? 'B' : (r() < 0.5 ? 'M' : 'S'), ControllingArea: '1000', ChartOfAccounts: 'EMLC',
                 GLAccountName: l.gl.name, CostCenterName: l.row._brand ? `${l.row.Product.slice(0, 28)} - ${l.site}` : `${l.row.ProductGroup.slice(0, 28)}`,
-                CostCenterCompanyCode: '1000', CostCenterProfitCenter: '', FSVVersion: 'ZATL', FSVItem: `ATLBTL${pad(l.gl.headerSeq, 2)}`,
+                CostCenterCompanyCode: l.company, CostCenterProfitCenter: '', FSVVersion: 'ZATL', FSVItem: `ATLBTL${pad(l.gl.headerSeq, 2)}`,
                 ReportHeader: l.gl.header, ReportHeaderSequence: l.gl.headerSeq, MappingRule: rule, LookupField: lookup, DerivedCostCenterNo: num,
                 ProductHierarchy: l.row._brand ? `0${pad(Number(l.row.T1), 2)}${pad(Number(l.row.T3), 3)}${num}0` : '', SalesBrand: l.row._brand ? l.row.ProductType : '',
                 SkuGroupKey: l.row._brand ? `${pad(Number(l.row.T1), 2)}${pad(Number(l.row.T3), 3)}${num}`.slice(0, 9) : '',
                 ...a, ...part, CYvsPYVariance: round2(part.CYYTDAmount - part.PYYTDAmount), CYvsRBYTDDeviation: part.CYYTDAmount,
             };
             if (expand) {
-                const ns = l.row._brand ? 1 + Math.floor(r() * 4) : 0;
+                // Own random stream: the cost centres of a line are the same with or without SKUs.
+                const rs = rng(`${seed}|sku|${k}`);
+                const ns = l.row._brand ? 1 + Math.floor(rs() * 4) : 0;
                 row.to_NetSaleMaster = Array.from({ length: ns }, (_, s) => ({
                     SerialNo: l.row.SerialNo, ItemCategory: l.row.ItemCategory, ProductRange: l.row.ProductRange, ProductType: l.row.ProductType,
-                    Product: l.row.Product, SKUSize: SIZES[Math.floor(r() * SIZES.length)], Material: `0000000000400${num}${s}`.slice(-18),
+                    Product: l.row.Product, SKUSize: SIZES[Math.floor(rs() * SIZES.length)], Material: `0000000000400${num}${s}`.slice(-18),
                     SkuGroupKey: row.SkuGroupKey, BaseUnit: 'EA', MISHeading: l.row.MISHeading, VisibleInMIS: l.row.VisibleInMIS,
                 }));
             }
