@@ -11,9 +11,10 @@
      GET  /me                                  { email, role, admin }
      GET  /config                              header groups (overrides applied), classes, media buckets, dimensions
      GET  /summary   ?fy&periods[&companies][&exclusions=off]   summary rows (exclusions + budget applied) + meta
-     POST /detail    { fy, periods, companies, keys[], gls[], sites[], groups[], exclusions }   drill-down of any report
-                     figure (one row or a sub-total): posting lines (G/L x cost centre) with the amount of every
-                     selected period; SKUs when one report row is drilled. GET with key / gl / site still works.
+     POST /detail    { fy, periods, companies, keys[], gls[], sites[], groups[], exclusions, skus }   drill-down of any
+                     report figure (one row or a sub-total): posting lines (G/L x cost centre) with the amount of every
+                     selected period; skus: true (one report row) adds the SKUs - one SAP call per line through the
+                     gateway, so the app asks for them in a second call. GET with key / gl / site still works (with SKUs).
      GET  /trend     ?fy&periods[&companies][&exclusions=off]   CY / PY per period 1..latest selected, by header group
      GET  /breakdown ?fy&periods[&companies][&exclusions=off]   detail totals by site, profit centre, type, rule, cost centre
    Admin only (role Admin):
@@ -335,14 +336,17 @@ const drillRow = (r) => { const o = {}; for (const f of DRILL_FIELDS) if (r[f] !
    Drill-down of any report figure: one report row (key) or a sub-total (keys of its rows), optionally one G/L, sites,
    header groups. Lines = G/L x cost centre x profit centre with the selection total (read like the summary, so it equals
    the report figure) and the amount of each selected period (cy[i] / py[i] for periods[i]) - the basis to check against
-   SAP (FAGLB03 / KSB1). SKUs (ZNET_SALE_MASTER) when one report row is drilled.
+   SAP (FAGLB03 / KSB1). SKUs (ZNET_SALE_MASTER) only when asked for (skus: true) and one report row is drilled: through
+   the gateway each line is its own SAP call (~1 s each, 4 at a time), so the app shows the lines first and asks again
+   for the SKUs (cached 10 minutes like everything else).
 */
 async function drill(req) {
-    const p = params(req.method === 'POST' ? (req.body || {}) : req.query, { cell: true });
+    const src = req.method === 'POST' ? (req.body || {}) : req.query;
+    const p = params(src, { cell: true });
     const mapping = await mappingNow();
     const where = { ...(p.keys.length ? { ReportingKey: p.keys } : {}), ...(p.gls.length ? { GLAccount: p.gls } : {}), ...(p.sites.length ? { Site: p.sites } : {}) };
     const terms = S.termsOf(p.periods);
-    const expand = p.keys.length === 1;
+    const expand = p.keys.length === 1 && (req.method === 'GET' || src.skus === true || src.skus === 'true');
     const reads = await readPeriods(uniq([...p.periods, ...terms.map((t) => t.period)]).sort((a, b) => a - b),
         (q) => rawDetail({ ...p, period: q }, where, { expand: expand && q === p.period }));
     const combined = S.combine(terms.map((t) => ({ term: t, rows: reads.get(t.period) })), S.lineKey, p.period);

@@ -73,7 +73,9 @@ field, **one column per picked period** (that period alone) and the CY / PY tota
 that the lines add up to the figure clicked (and flags a difference between the period columns and the SAP YTD, e.g.
 special periods 13-16); views: posting lines, by G/L, by cost centre, by report row; search; Excel with the selection,
 the source and how SAP was read (sheets: lines, by G/L, by cost centre, by report row, SKUs). SKUs (ZNET_SALE_MASTER) for
-one report row. Each picked period is one SAP read the first time (cached 10 minutes).
+one report row come from a second call in the background (`skus: true`): through the gateway each line is its own SAP
+call (~1 s, 4 at a time; measured 52 s for 46 lines on NWP), so the lines show first. Each picked period is one
+whole-period SAP read the first time (~5 s on NWP), cached 10 minutes.
 
 ## Decisions
 

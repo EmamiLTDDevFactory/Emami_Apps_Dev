@@ -99,7 +99,7 @@ export interface DrillResult {
   meta: Meta;
 }
 /** What a drill-down asks for: report rows (keys of a row or a sub-total), optionally one G/L, sites, header groups. */
-export interface DrillRequest { keys: string[]; gls?: string[]; sites?: string[]; groups?: string[] }
+export interface DrillRequest { keys: string[]; gls?: string[]; sites?: string[]; groups?: string[]; /** add the SKUs (one report row; slow through the gateway) */ skus?: boolean }
 
 export interface ExclusionMeta { rules: number; cy: number; py: number; cyP?: number; lines: number; byRule: { id: number; dimension: string; reason: string; cy: number; py: number; lines: number }[] }
 

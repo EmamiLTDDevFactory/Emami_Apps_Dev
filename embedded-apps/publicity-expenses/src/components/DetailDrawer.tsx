@@ -4,7 +4,8 @@
  * ZC_ATLBTL_EXP_DETAIL (G/L x cost centre x profit centre of the report rows under the figure) with company code,
  * cost-centre description, mapping rule and the amount of every selected period (P04, P05, ...) next to the total of
  * the selection. The screen checks that the lines add up to the figure clicked. Views: posting lines, by G/L, by cost
- * centre, by report row. One report row: the SKUs of each line (ZNET_SALE_MASTER). The Excel export carries the
+ * centre, by report row. One report row: the SKUs of each line (ZNET_SALE_MASTER), read in a second call in the
+ * background (one SAP call per line through the gateway), so the lines show at once. The Excel export carries the
  * selection, the source and how SAP was read.
  */
 import { Fragment, useEffect, useMemo, useState } from 'react';
@@ -13,7 +14,7 @@ import { api, type ApiError } from '@/lib/api';
 import { useApp } from '@/lib/context';
 import { writeBook, type Cell as XCell } from '@/lib/excel';
 import { fmtDateTime, growth, pct, periodLabel, UNIT_DIV, UNIT_LABEL } from '@/lib/format';
-import type { DrillLine, DrillResult } from '@/lib/types';
+import type { DrillLine, DrillResult, Sku } from '@/lib/types';
 import { Button, Drawer, Empty, Notice, Pill, Skeleton, Tabs, cx, inputBase } from './ui';
 
 export interface Cell {
@@ -39,6 +40,8 @@ const P = (p: number) => `P${String(p).padStart(2, '0')}`;
 const noZeros = (s?: string) => (s ?? '').replace(/^0+(?=\d)/, '');
 const rowLabel = (l: DrillLine) => l.MISHeading || l.Product || l.ProductGroup || l.ReportingKey;
 const ccKey = (l: DrillLine) => `${l.CompanyCode}|${l.CostCenter ?? ''}`;
+/** One posting line (the server's line grain), to match the SKUs of the second call to the lines of the first. */
+const lineId = (l: DrillLine) => [l.CompanyCode, l.ReportingKey, l.GLAccount, l.Site, l.CostCenter, l.ProfitCenter, l.CostCenterType, l.MappingRule].join('|');
 
 function totalsOf(lines: DrillLine[], n: number): Totals {
   const cy = Array<number>(n).fill(0); const py = Array<number>(n).fill(0); let cyT = 0; let pyT = 0;
@@ -72,6 +75,7 @@ export default function DetailDrawer({ cell, onClose }: { cell: Cell; onClose: (
   const [find, setFind] = useState('');
   const [limit, setLimit] = useState(PAGE);
   const [open, setOpen] = useState<Set<number>>(new Set());
+  const [skuMap, setSkuMap] = useState<Map<string, Sku[]> | 'loading' | 'error' | null>(null);
 
   // The figure's own header group(s) / site / G/L, narrowed by the filters in force (the figure was shown with them).
   const req = useMemo(() => {
@@ -82,8 +86,20 @@ export default function DetailDrawer({ cell, onClose }: { cell: Cell; onClose: (
 
   useEffect(() => {
     let live = true;
-    setState(null); setOpen(new Set()); setLimit(PAGE);
-    api.detail(q, req).then((b) => live && setState(b)).catch((e: ApiError) => live && setState({ error: e.message }));
+    setState(null); setOpen(new Set()); setLimit(PAGE); setSkuMap(null);
+    api.detail(q, req).then((b) => {
+      if (!live) return;
+      setState(b);
+      if (req.keys.length !== 1 || !b.rows.length) return;
+      // One report row: SKUs in a second call - through the gateway every line is its own SAP call.
+      setSkuMap('loading');
+      api.detail(q, { ...req, skus: true }).then((s) => {
+        if (!live) return;
+        const m = new Map<string, Sku[]>();
+        for (const l of s.rows) if (l.to_NetSaleMaster?.length) m.set(lineId(l), l.to_NetSaleMaster);
+        setSkuMap(m);
+      }).catch(() => live && setSkuMap('error'));
+    }).catch((e: ApiError) => live && setState({ error: e.message }));
     return () => { live = false; };
   }, [req, q]);
 
@@ -110,7 +126,8 @@ export default function DetailDrawer({ cell, onClose }: { cell: Cell; onClose: (
   const got = cell.measure === 'py' ? all.pyT : all.cyT;
   const matches = target === undefined ? null : Math.abs(got - target) < 1;
   const periodGap = multiP ? all.cy.reduce((a, b) => a + b, 0) - all.cyT : 0;
-  const skus = !multiRow && lines.some((l) => (l.to_NetSaleMaster ?? []).length > 0);
+  const skusOf = (l: DrillLine): Sku[] => l.to_NetSaleMaster ?? (skuMap instanceof Map ? skuMap.get(lineId(l)) : undefined) ?? [];
+  const skus = !multiRow && lines.some((l) => skusOf(l).length > 0);
   const companies = q.companies.length ? q.companies.join(', ') : 'all companies';
   const source = ready ? (ready.meta.source === 'sap' ? `SAP ${ready.meta.system}` : 'Mock data') : '';
 
@@ -152,7 +169,7 @@ export default function DetailDrawer({ cell, onClose }: { cell: Cell; onClose: (
       aggSheet('By G-L', 'gl', ['G/L', 'G/L name', 'Header']),
       aggSheet('By cost centre', 'cc', ['Cost centre', 'Description', 'Company code']),
       ...(multiRow ? [aggSheet('By report row', 'row', ['Report row', 'Reporting key', 'Brand family'])] : []),
-      ...(skus ? [{ name: 'SKUs', rows: [['Cost centre', 'G/L', 'Material', 'SKU size', 'Product', 'Base unit'], ...lines.flatMap((l) => (l.to_NetSaleMaster ?? []).map((s) => [l.CostCenter ?? '', noZeros(l.GLAccount), noZeros(s.Material), s.SKUSize, s.Product, s.BaseUnit]))] as XCell[][], widths: [12, 11, 18, 10, 30, 8] }] : []),
+      ...(skus ? [{ name: 'SKUs', rows: [['Cost centre', 'G/L', 'Material', 'SKU size', 'Product', 'Base unit'], ...lines.flatMap((l) => skusOf(l).map((s) => [l.CostCenter ?? '', noZeros(l.GLAccount), noZeros(s.Material), s.SKUSize, s.Product, s.BaseUnit]))] as XCell[][], widths: [12, 11, 18, 10, 30, 8] }] : []),
     ];
     await writeBook(`ATL-BTL-drilldown-${cell.label.replace(/[^A-Za-z0-9]+/g, '-').slice(0, 60)}-${sel.cy.replace(/[^A-Za-z0-9'-]+/g, '-')}.xlsx`, sheets);
   }
@@ -220,6 +237,8 @@ export default function DetailDrawer({ cell, onClose }: { cell: Cell; onClose: (
             <b className="text-ink">Basis:</b> {source} · CDS ZC_ATLBTL_EXP_DETAIL (G/L × cost centre × profit centre) · fiscal year {filters.fy} · read as <span className="font-mono">{ready.reads.text}</span>
             {' '}· {companies} · {q.excl === false ? 'without exclusion rules' : `exclusion rules in force for ${P(sel.latest)} applied`}. Each period column is that period alone; CY is the selection total, read the same way as the report.
           </p>
+          {skuMap === 'loading' && <p className="text-2xs text-muted" data-testid="sku-loading">Reading the SKUs of each line (ZNET_SALE_MASTER) from SAP in the background - about a second per line; the lines and amounts above are complete.</p>}
+          {skuMap === 'error' && <p className="text-2xs text-warn">The SKUs could not be read from SAP; the lines and amounts are complete.</p>}
           {Math.abs(periodGap) >= 1 && (
             <Notice tone="warn"><AlertTriangle size={13} className="mr-1 inline" />The period columns add up to {fmt(all.cy.reduce((a, b) => a + b, 0))}; the selection total read from SAP as YTD is {fmt(all.cyT)} (difference {fmt(periodGap)}): SAP counts postings in the YTD that are in no single period 1-12 (e.g. special periods 13-16).</Notice>
           )}
@@ -258,7 +277,7 @@ export default function DetailDrawer({ cell, onClose }: { cell: Cell; onClose: (
               </thead>
               <tbody className="divide-y divide-line">
                 {view === 'lines' ? shown.slice(0, limit).map(({ l, i }) => {
-                  const sk = l.to_NetSaleMaster ?? [];
+                  const sk = skusOf(l);
                   const isOpen = open.has(i);
                   return (
                     <Fragment key={i}>

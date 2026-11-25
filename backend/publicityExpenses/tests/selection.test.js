@@ -134,7 +134,10 @@ test('drill-down: a sub-total (several rows) with an amount per selected period 
     const want = sumRes.rows.filter((r) => r.ReportingKey === cell.ReportingKey && r.GLAccount === cell.GLAccount && r.Site === 'HO' && !r.IsBudget);
     assert.ok(near(sum(one.body.rows, 'CYYTDAmount'), sum(want, 'CYYTDAmount')));
     assert.ok(one.body.rows.every((l) => l.Site === 'HO' && l.GLAccount === cell.GLAccount && l.HeaderGroup === cell.HeaderGroup));
-    assert.ok(one.body.rows.some((l) => Array.isArray(l.to_NetSaleMaster)), 'SKUs for one report row');
+    assert.ok(one.body.rows.every((l) => !('to_NetSaleMaster' in l)), 'no SKU reads unless asked for');
+    const withSkus = await call('POST', '/detail', { ...sel, keys: [cell.ReportingKey], gls: [cell.GLAccount], sites: ['HO'], groups: [cell.HeaderGroup], skus: true });
+    assert.ok(withSkus.body.rows.some((l) => Array.isArray(l.to_NetSaleMaster)), 'SKUs for one report row when asked');
+    assert.equal(sum(withSkus.body.rows, 'CYYTDAmount'), sum(one.body.rows, 'CYYTDAmount'));
     // Header groups filter on the server.
     const atl = await call('POST', '/detail', { ...sel, keys, groups: ['ATL'] });
     assert.ok(atl.body.rows.every((l) => l.HeaderGroup === 'ATL'));
