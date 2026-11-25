@@ -149,6 +149,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return;
         }
 
+        // A session cached before IsManager/IsFinance existed on SAP's response (2026-11-25) has
+        // neither key AT ALL in its saved `info` - not false, genuinely undefined - and would
+        // otherwise sit on stale capability flags for the rest of this browser tab's life (no tab
+        // ever re-checks after the first restore). Force one fresh SAP call to pick them up instead
+        // of trusting that specific cached session; same fallback path a missing/invalid session
+        // already uses.
+        const cachedInfo = parsedSession?.info;
+        const hubEmailForRefresh = getHubEmail();
+        if (cachedInfo && hubEmailForRefresh && (cachedInfo.IsManager === undefined || cachedInfo.IsFinance === undefined)) {
+          if (await tryHubEmailLogin()) return;
+        }
+
         PROFILES[role].employeeId = employeeId;
         if (name) {
           PROFILES[role].name = name;
