@@ -41,6 +41,7 @@ export function mergeCdrill(parts: CdrillRow[][]): CdrillRow[] {
   const matnr = parts.flat()[0]?.Matnr ?? '';
   const batches = new Map<string, CdrillRow>();
   const comps = new Map<string, CdrillRow & { _qty: Decimal; _val: Decimal }>();
+  const orderItems = new Map<string, CdrillRow>();
   let weight = new Decimal(0);
   let budget: CdrillRow[] = [];
   for (const rows of parts) {
@@ -52,6 +53,8 @@ export function mergeCdrill(parts: CdrillRow[][]): CdrillRow[] {
         const x = batches.get(r.Charg);
         if (!x) batches.set(r.Charg, { ...r });
         else { x.SoldQty = D(x.SoldQty).plus(D(r.SoldQty)).toString(); if (x.Flag !== 'OK' && r.Flag === 'OK') { x.Flag = 'OK'; x.Msg = r.Msg; x.RmPc = r.RmPc; x.PmPc = r.PmPc; x.PfPc = r.PfPc; x.OthPc = r.OthPc; x.ProdQty = r.ProdQty; x.Orders = r.Orders; } }
+      } else if (r.Grain === 'O') {
+        if (!orderItems.has(`${r.Msg}|${r.Idnrk}`)) orderItems.set(`${r.Msg}|${r.Idnrk}`, r);
       } else if (r.Grain === 'C') {
         const x = comps.get(r.Idnrk);
         if (!x) comps.set(r.Idnrk, { ...r, _qty: D(r.Qty), _val: D(r.Val) });
@@ -73,7 +76,7 @@ export function mergeCdrill(parts: CdrillRow[][]): CdrillRow[] {
     ProdQty: bRows.reduce((a, b) => a.plus(D(b.ProdQty)), new Decimal(0)).toString(), Flag: ok ? 'OK' : 'NBC', Msg: `${ok} of ${bRows.length} sold batches costed from ${orders} process orders`,
   } : null;
   void matnr;
-  return [...(s ? [s] : []), ...bRows, ...cRows, ...budget];
+  return [...(s ? [s] : []), ...bRows, ...cRows, ...Array.from(orderItems.values()), ...budget];
 }
 
 export interface Progress { rows: CdrillRow[]; /** days of the period read so far / in total */ coveredDays: number; totalDays: number; current: Win | null; splits: number; failed: Win | null; error: string }
