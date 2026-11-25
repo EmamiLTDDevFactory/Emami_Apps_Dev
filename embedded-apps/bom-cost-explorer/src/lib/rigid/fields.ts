@@ -16,4 +16,4 @@ export const RIGID_FIELDS = {
 
 type KindType = { s: string; d: string; i: number; t: string | null; b: boolean; f: boolean };
 export type RigidRow = { [K in keyof typeof RIGID_FIELDS]: KindType[(typeof RIGID_FIELDS)[K][1]] };
-export type RigidMode = 'C' | 'F' | 'B' | 'H' | 'U';
+export type RigidMode = 'C' | 'F' | 'B' | 'H' | 'U' | 'G';

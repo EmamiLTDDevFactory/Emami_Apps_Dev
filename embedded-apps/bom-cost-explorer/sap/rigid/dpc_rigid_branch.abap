@@ -25,6 +25,7 @@
             WHEN 'B'. lt_rig = lo_rig->budget( ).
             WHEN 'H'. lt_rig = lo_rig->history( ).
             WHEN 'U'. lt_rig = lo_rig->usage( ).
+            WHEN 'G'. lt_rig = lo_rig->fgsplit( ).
             WHEN OTHERS. lt_rig = lo_rig->calc( ).
           ENDCASE.
         CATCH cx_root INTO DATA(lx_rig).

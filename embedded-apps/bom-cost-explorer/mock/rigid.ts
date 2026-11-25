@@ -14,6 +14,13 @@ export function handleRigid(set: string, sp: URLSearchParams, d: Deps): Response
   const mats = (f.get('Matnr') ?? []).map((m) => m.replace(/^0+/, ''));
   const rows: Raw[] = []; let i = 0;
   for (const m of mats) {
+    if (mode === 'G') {
+      if (!/[1357]$/.test(m)) continue;
+      const q = 1.02, land = 1908, mat = 1703, conv = 113;
+      rows.push(base('R', ++i, m, { Comp: P('151000753'), CompTxt: 'PME-PLASTIC CONTAINER ZANDU BALM 25/30ML', CompQty: n(q), LandRate: n(land), MatCost: n(mat), ConvCost: n(conv), ValidFrom: '2026-09-01', ValidTo: '2026-09-30', Mould: P('600000095'), Lifnr: P('99'), Flag: 'OK' }),
+        base('G', ++i, m, { Nmould: 1, LandRate: n(q * land / 1000), MatCost: n(q * mat / 1000), ConvCost: n(q * conv / 1000), Flag: 'OK' }));
+      continue;
+    }
     if (mode === 'U') { rows.push(base('U', ++i, '151000753', { Comp: P(m), BomQty: n(2.5), Maktx: 'PME-PLASTIC CONTAINER ZANDU BALM 25/30ML' }), base('U', ++i, '151000762', { Comp: P(m), BomQty: n(1.8), Maktx: 'PME-PLASTIC CAP 40MM' })); continue; }
     if (!isRigid(m)) continue;
     if (mode === 'F') { rows.push(base('F', ++i, m, { Flag: 'RIGID', Nmould: 3 })); continue; }

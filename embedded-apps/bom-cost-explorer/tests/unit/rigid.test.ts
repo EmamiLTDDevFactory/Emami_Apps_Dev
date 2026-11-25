@@ -81,3 +81,16 @@ describe('rigid analysis', () => {
     expect(s[0].cols[0].get(0)).toBe('600000095');
   });
 });
+
+import { parseFgRigid } from '@/lib/rigid/fgRigid';
+describe('finished good rigid split', () => {
+  it('parses G and R rows; other = landed - resin - conversion; no rows = empty map (screens stay as they were)', () => {
+    const m = parseFgRigid([
+      row({ Grain: 'G', Matnr: '400004939', Werks: 'UN09', LandRate: '1.9462', MatCost: '1.7371', ConvCost: '0.1153', Nmould: 1, Flag: 'OK' }),
+      row({ Grain: 'R', Matnr: '400004939', Comp: '151000753', CompQty: '1.02', LandRate: '1908', MatCost: '1703', ConvCost: '113', Flag: 'OK', ValidFrom: '2026-09-01' }),
+    ]);
+    const x = m.get('400004939')!;
+    expect(x.other.toFixed(4)).toBe('0.0938'); expect(x.list).toHaveLength(1); expect(x.list[0].comp).toBe('151000753');
+    expect(parseFgRigid([]).size).toBe(0);
+  });
+});

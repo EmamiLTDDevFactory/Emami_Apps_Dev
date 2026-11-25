@@ -16,3 +16,7 @@ D budget (ZCOMPONENT; `BomQty` carries the price unit) / P packing budget build-
 
 **Tested on EDS** with a temporary class (deleted): item 151000753 / plant UN13 -> 3 moulds, vendor 99, landed 1816 / 1703 / 1741 per 1000 (the program saved 1908 .. 2035 in 2022 with other conditions); item 151002533 -> NOBOM message; polymer 151002525 -> usage row.
 **Not verified:** the gateway metadata of `RigidSet` (refresh and call `RigidSet?$filter=Matnr eq '151000753' and Werks eq 'UN13' and Mode eq 'F'`), ZCOMPONENT / ZPKG_BUD_ITEM rows (empty on EDS for these items), A363 box/margin conditions (none on EDS).
+
+**Finished-good split (Mode G / R, added later, same transport):** `fgsplit` = rigid packing cost per FG piece for a list of finished goods (Matnr list + production plant): level 1 BOM (CS_BOM_EXPL_MAT_V2, capid PP01, else the default application) -> components that are rigid items (A819) ->
+the LAST SAVED ZRIGID rate of each (ZMM_RIGID_COST: newest month, newest run, FG plant first, lowest positive landed). G = per FG (LAND_RATE rigid INR/pc, MAT_COST resin, CONV_COST conversion, NMOULD items, FLAG OK / PART / NOSAVED), R = per FG x item. Used by the dashboard Cost breakup and MIS finished-good tables and the process-orders drawer.
+Additive in the app: the columns / section appear only when SAP returns rows; any error leaves the screens as they were.

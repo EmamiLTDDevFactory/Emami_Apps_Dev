@@ -15,6 +15,8 @@ import { fetchCdrill } from '@/lib/dash/service';
 import { readGradually } from '@/lib/dash/cdrillProgressive';
 import { CAT_LABEL, parseCdrill, parseOrderItems, type Cat, type OrderItem } from '@/lib/dash/cdrill';
 import { ckVariance } from '@/lib/dash/ckVariance';
+import { loadFgRigid, type FgRigid } from '@/lib/rigid/fgRigid';
+import MouldDrawer from '../rigid/MouldDrawer';
 import type { WacCompRow, WacDocRow } from '@/lib/wac/types';
 import { money, tdCls, thCls } from './parts';
 
@@ -48,6 +50,8 @@ export default function FgOrdersDrawer({ target, onClose }: { target: FgTarget |
   const [busyA, setBusyA] = useState(false);
   const [errorA, setErrorA] = useState('');
   const [catA, setCatA] = useState<Cat>('R');
+  const [rigid, setRigid] = useState<FgRigid | null>(null);
+  const [mould, setMould] = useState<{ matnr: string; maktx: string; werks: string } | null>(null);
   const [busyK, setBusyK] = useState(false);
   const [errorK, setErrorK] = useState('');
   const [error, setError] = useState('');
@@ -67,6 +71,14 @@ export default function FgOrdersDrawer({ target, onClose }: { target: FgTarget |
     try { setComps((await fetchWac('COMP', q)).rows); } catch (e) { setError(errorText(e)); }
     setBusyC(false);
   }
+  // additive and silent: the rigid packing section appears only when ZRIGID returns saved rates for this finished good
+  useEffect(() => {
+    setRigid(null); setMould(null);
+    if (!target) return;
+    const c = new AbortController();
+    void loadFgRigid([{ matnr: target.matnr, werks: target.werks }], (m) => { if (!c.signal.aborted) setRigid([...m.values()][0] ?? null); }, c.signal);
+    return () => c.abort();
+  }, [target]);
   async function loadActual() {
     if (!target) return;
     setBusyA(true); setErrorA('');
@@ -94,6 +106,7 @@ export default function FgOrdersDrawer({ target, onClose }: { target: FgTarget |
   const items = (comps ?? []).filter((c) => grp === 'ALL' || c.Grp === grp);
   const itemTotal = items.reduce((s, c) => s.plus(D(c.CostSel)), new Decimal(0));
   return (
+    <>
     <Drawer open={!!target} onClose={onClose} title={target ? `Process orders: ${target.matnr.replace(/^0+/, '')} ${target.maktx}` : ''} width={1180}>
       {busy && <p className="flex items-center gap-2 text-sm text-muted"><Spinner className="h-4 w-4" /> Reading the process orders of the period</p>}
       {error && <ErrorBox>{error}</ErrorBox>}
@@ -132,6 +145,23 @@ export default function FgOrdersDrawer({ target, onClose }: { target: FgTarget |
                 </tbody>
               </table>
             </div>
+          )}
+          {rigid && rigid.list.length > 0 && (
+            <>
+              <h4 className="text-xs font-extrabold uppercase tracking-wide text-muted">Rigid packing (last saved ZRIGID rates)</h4>
+              <p className="text-2xs text-muted">Rigid packing cost per piece of this finished good: {money(rigid.perPc, 4)} (resin {money(rigid.resin, 4)}, conversion {money(rigid.conv, 4)}, other {money(rigid.other, 4)}). It is part of the PM cost; saved rates are the ones ZRIGID posted for the item, not today&apos;s simulation.</p>
+              <div className="overflow-auto rounded-xl border border-line">
+                <table className="w-full min-w-[760px] border-collapse">
+                  <thead><tr><th className={cx(thCls, '!text-left')}>Rigid item</th><th className={thCls}>Qty / pc</th><th className={thCls}>Landed / 1000</th><th className={thCls}>Resin / 1000</th><th className={thCls}>Conv. / 1000</th><th className={thCls}>₹ / pc of FG</th><th className={cx(thCls, '!text-left')}>Saved rate valid</th><th className={thCls} /></tr></thead>
+                  <tbody>{rigid.list.map((i) => (
+                    <tr key={i.comp} className="border-t border-line/60"><td className="px-2.5 py-1.5 text-left text-xs"><span className="font-bold">{i.comp}</span> <span className="text-muted">{i.compTxt}</span></td><td className={tdCls}>{money(i.qty, 4)}</td>
+                      <td className={tdCls}>{i.flag === 'OK' ? money(i.landed1000, 0) : '-'}</td><td className={tdCls}>{i.flag === 'OK' ? money(i.resin1000, 2) : '-'}</td><td className={tdCls}>{i.flag === 'OK' ? money(i.conv1000, 2) : '-'}</td><td className={cx(tdCls, 'font-bold')}>{i.flag === 'OK' ? money(i.qty.times(i.landed1000).div(1000), 4) : '-'}</td>
+                      <td className="px-2.5 py-1.5 text-left text-xs">{i.flag === 'OK' ? `${i.validFrom ?? ''} to ${i.validTo ?? ''}` : <span className="text-warn">no saved ZRIGID rate</span>}</td>
+                      <td className={tdCls}><button type="button" className="rounded-full border border-line px-2.5 py-0.5 text-2xs font-bold hover:border-accent hover:bg-accent/10" onClick={() => setMould({ matnr: i.comp, maktx: i.compTxt, werks: target.werks })}>Mould details</button></td></tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            </>
           )}
           <div className="flex flex-wrap items-center gap-3">
             <h4 className="text-xs font-extrabold uppercase tracking-wide text-muted">Item level actual: consumption of the process orders</h4>
@@ -220,5 +250,7 @@ export default function FgOrdersDrawer({ target, onClose }: { target: FgTarget |
         </div>
       )}
     </Drawer>
+    {mould && <MouldDrawer item={mould} cockpit={{ ratePc: null, sourceLabel: '' }} onClose={() => setMould(null)} />}
+    </>
   );
 }

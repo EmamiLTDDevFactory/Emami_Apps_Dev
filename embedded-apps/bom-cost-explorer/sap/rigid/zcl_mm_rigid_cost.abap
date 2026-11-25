@@ -16,6 +16,10 @@ CLASS zcl_mm_rigid_cost DEFINITION PUBLIC FINAL CREATE PUBLIC.
     METHODS history RETURNING VALUE(rt_rows) TYPE tt_row.
     "! U = the rigid items (with a mould) whose BOM uses the given polymer / master batch: for the "what if the polymer rate changes" view
     METHODS usage   RETURNING VALUE(rt_rows) TYPE tt_row.
+    "! G / R = rigid packing cost of FINISHED GOODS (Matnr = the finished goods, Werks = their production plant), per FG piece, from the LAST SAVED ZRIGID rates (ZMM_RIGID_COST),
+    "! so it is cheap enough for a list: G = one row per FG (LAND_RATE rigid INR/pc, MAT_COST resin, CONV_COST conversion, NMOULD number of rigid items, FLAG OK / NOSAVED),
+    "! R = one row per FG x rigid item (COMP, COMP_QTY per FG piece, LAND_RATE / MAT_COST / CONV_COST per 1000 pieces of the item, VALID_FROM / VALID_TO of the saved rate, MOULD, LIFNR).
+    METHODS fgsplit RETURNING VALUE(rt_rows) TYPE tt_row.
 
   PRIVATE SECTION.
     TYPES: BEGIN OF ty_g,
@@ -385,6 +389,93 @@ CLASS zcl_mm_rigid_cost IMPLEMENTATION.
       CLEAR ls_r.
       ls_r-grain = 'U'. ls_r-rowid = next_id( ). ls_r-matnr = ls_u-matnr. ls_r-werks = ls_u-werks. ls_r-comp = ls_u-idnrk. ls_r-bom_qty = ls_u-menge.
       IF line_exists( lt_t[ matnr = ls_u-matnr ] ). ls_r-maktx = lt_t[ matnr = ls_u-matnr ]-maktx. ENDIF.
+      APPEND ls_r TO rt_rows.
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD fgsplit.
+    TYPES: BEGIN OF ty_c, fg TYPE matnr, idnrk TYPE matnr, qty TYPE decfloat34, END OF ty_c.
+    DATA: lt_c   TYPE STANDARD TABLE OF ty_c WITH DEFAULT KEY,
+          lt_stb TYPE STANDARD TABLE OF stpox,
+          ls_r   TYPE zrigid_s_row,
+          lv_land TYPE decfloat34, lv_mat TYPE decfloat34, lv_conv TYPE decfloat34.
+    DATA(lv_werks) = COND werks_d( WHEN lines( mr_werks ) > 0 THEN mr_werks[ 1 ]-low ).
+    IF lv_werks IS INITIAL OR zcl_mm_bom_cost_auth=>check_plant( lv_werks ) = abap_false. RETURN. ENDIF.
+    " ---- 1. level 1 BOM components of every finished good (production BOM, plant, today)
+    LOOP AT mr_matnr INTO DATA(ls_m) WHERE sign = 'I' AND option = 'EQ'.
+      " BOM application PP01 (production, as in BOM costing); a system without it: the default application
+      DATA lv_cap TYPE c LENGTH 4.
+      DATA(lv_rc) = 1.
+      DO 2 TIMES.
+        lv_cap = COND #( WHEN sy-index = 1 THEN 'PP01' ELSE space ).
+        CLEAR lt_stb.
+        CALL FUNCTION 'CS_BOM_EXPL_MAT_V2'
+          EXPORTING aumgb = 'X' mktls = 'X' capid = lv_cap datuv = sy-datum emeng = 1 auskz = 'X' mehrs = space rndkz = '1' mtnrv = ls_m-low stlan = '1' svwvo = 'X' vrsvo = 'X' werks = lv_werks
+          TABLES stb = lt_stb
+          EXCEPTIONS OTHERS = 1.
+        lv_rc = sy-subrc.
+        IF lv_rc = 0. EXIT. ENDIF.
+      ENDDO.
+      IF lv_rc <> 0. CONTINUE. ENDIF.
+      LOOP AT lt_stb INTO DATA(ls_stb) WHERE idnrk IS NOT INITIAL.
+        COLLECT VALUE ty_c( fg = ls_m-low idnrk = ls_stb-idnrk qty = ls_stb-mnglg ) INTO lt_c.
+      ENDLOOP.
+    ENDLOOP.
+    IF lt_c IS INITIAL. RETURN. ENDIF.
+    " ---- 2. which components are rigid items (current mould relation, not deleted)
+    SELECT a~matnr, a~knumh FROM a819 AS a FOR ALL ENTRIES IN @lt_c WHERE a~matnr = @lt_c-idnrk AND a~datbi = '99991231' INTO TABLE @DATA(lt_a).
+    IF lt_a IS INITIAL. RETURN. ENDIF.
+    SELECT knumh FROM konp FOR ALL ENTRIES IN @lt_a WHERE knumh = @lt_a-knumh AND loevm_ko = 'X' INTO TABLE @DATA(lt_del).
+    LOOP AT lt_del INTO DATA(ls_del).
+      DELETE lt_a WHERE knumh = ls_del-knumh.
+    ENDLOOP.
+    SORT lt_a BY matnr. DELETE ADJACENT DUPLICATES FROM lt_a COMPARING matnr.
+    IF lt_a IS INITIAL. RETURN. ENDIF.
+    " ---- 3. the last saved ZRIGID rate of each rigid item (newest month, newest run, plant of the finished good first, then the lowest positive landed rate)
+    SELECT p_matnr, m_matnr, lifnr, werks, valid_from, valid_to, land_rate, conv_cost, mat_cost, crt_date, crt_time
+      FROM zmm_rigid_cost FOR ALL ENTRIES IN @lt_a WHERE p_matnr = @lt_a-matnr AND land_rate > 0 INTO TABLE @DATA(lt_s).
+    SORT lt_s BY p_matnr valid_from DESCENDING crt_date DESCENDING crt_time DESCENDING land_rate ASCENDING.
+    SELECT matnr, maktx FROM makt FOR ALL ENTRIES IN @lt_a WHERE matnr = @lt_a-matnr AND spras = @sy-langu INTO TABLE @DATA(lt_t).
+    " ---- 4. rows
+    DATA lt_fg TYPE STANDARD TABLE OF matnr WITH DEFAULT KEY.
+    LOOP AT lt_c INTO DATA(ls_c).
+      COLLECT ls_c-fg INTO lt_fg.
+    ENDLOOP.
+    LOOP AT lt_fg INTO DATA(lv_fg).
+      CLEAR: lv_land, lv_mat, lv_conv, ls_r.
+      DATA(lv_n) = 0. DATA(lv_ok) = 0.
+      LOOP AT lt_c INTO ls_c WHERE fg = lv_fg.
+        IF NOT line_exists( lt_a[ matnr = ls_c-idnrk ] ). CONTINUE. ENDIF.
+        lv_n = lv_n + 1.
+        CLEAR ls_r.
+        ls_r-grain = 'R'. ls_r-rowid = next_id( ). ls_r-matnr = lv_fg. ls_r-werks = lv_werks. ls_r-comp = ls_c-idnrk. ls_r-comp_qty = ls_c-qty.
+        IF line_exists( lt_t[ matnr = ls_c-idnrk ] ). ls_r-comp_txt = lt_t[ matnr = ls_c-idnrk ]-maktx. ENDIF.
+        DATA(lv_found) = abap_false.
+        LOOP AT lt_s INTO DATA(ls_s) WHERE p_matnr = ls_c-idnrk AND werks = lv_werks.
+          lv_found = abap_true. EXIT.
+        ENDLOOP.
+        IF lv_found = abap_false.
+          LOOP AT lt_s INTO ls_s WHERE p_matnr = ls_c-idnrk.
+            lv_found = abap_true. EXIT.
+          ENDLOOP.
+        ENDIF.
+        IF lv_found = abap_true.
+          lv_ok = lv_ok + 1.
+          ls_r-land_rate = ls_s-land_rate. ls_r-mat_cost = ls_s-mat_cost. ls_r-conv_cost = ls_s-conv_cost. ls_r-valid_from = ls_s-valid_from. ls_r-valid_to = ls_s-valid_to.
+          ls_r-mould = ls_s-m_matnr. ls_r-lifnr = ls_s-lifnr. ls_r-flag = 'OK'.
+          lv_land = lv_land + ls_c-qty * ls_s-land_rate / 1000.
+          lv_mat  = lv_mat  + ls_c-qty * ls_s-mat_cost / 1000.
+          lv_conv = lv_conv + ls_c-qty * ls_s-conv_cost / 1000.
+        ELSE.
+          ls_r-flag = 'NOSAVED'. ls_r-msg = 'ZRIGID has no saved rate for this rigid item'.
+        ENDIF.
+        APPEND ls_r TO rt_rows.
+      ENDLOOP.
+      IF lv_n = 0. CONTINUE. ENDIF.
+      CLEAR ls_r.
+      ls_r-grain = 'G'. ls_r-rowid = next_id( ). ls_r-matnr = lv_fg. ls_r-werks = lv_werks. ls_r-nmould = lv_n.
+      ls_r-land_rate = lv_land. ls_r-mat_cost = lv_mat. ls_r-conv_cost = lv_conv.
+      ls_r-flag = COND #( WHEN lv_ok = 0 THEN 'NOSAVED' WHEN lv_ok < lv_n THEN 'PART' ELSE 'OK' ).
       APPEND ls_r TO rt_rows.
     ENDLOOP.
   ENDMETHOD.
