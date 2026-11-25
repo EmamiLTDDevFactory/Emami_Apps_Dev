@@ -6,7 +6,7 @@ import { ArrowLeft, Plus, RefreshCw, Save, ScrollText, ShieldAlert, Trash2 } fro
 import { useAuth } from '../../context/AuthContext';
 import { useClaim } from '../../context/ClaimContext';
 import { ConfigLogRow, ConfigVarName, ConfigVarRow } from '../../types';
-import { Banner, Button, Card, CardTitle, EmptyState, Field, IconButton, Input, LoadingBlock, PageHeader, Segmented, Select } from '../../components/ui';
+import { Banner, Button, Card, CardTitle, EmptyState, Field, IconButton, Input, LoadingBlock, MessageModal, type MessageModalState, PageHeader, Segmented, Select } from '../../components/ui';
 
 // Admin maintenance for the settings formerly kept in STVARV, now ConfigVarSet/ConfigLogSet (see
 // UI_CHANGES_REQUIRED section J). Each variable is a short list of lines (or, for the two
@@ -27,7 +27,6 @@ const VAR_CONFIGS: VarConfig[] = [
   { name: 'ZEXP_ADMIN', label: 'Admins', lowLabel: 'Employee ID (PERNR)', lowPlaceholder: 'e.g. 90001020', hasHigh: false, singleLine: false },
   { name: 'ZEXP_DOA_ADMIN', label: 'DOA Admins', lowLabel: 'Employee ID (PERNR)', lowPlaceholder: 'e.g. 90001020', hasHigh: false, singleLine: false },
   { name: 'ZEXP_FINANCE', label: 'Finance Users', lowLabel: 'Employee ID (PERNR)', lowPlaceholder: 'e.g. 90001020', hasHigh: true, highOptions: [{ value: 'POST', label: 'POST' }, { value: 'PARK', label: 'PARK' }], singleLine: false },
-  { name: 'ZFI_NONCTC_USER', label: 'Employee Subgroups (skip approval)', lowLabel: 'Subgroup (PERSK)', lowPlaceholder: 'e.g. 27', hasHigh: false, singleLine: false },
   { name: 'ZEXP_EXPTYPE_SET', label: 'Expense Type Sets', lowLabel: 'GL Set Name', lowPlaceholder: 'e.g. EMA_CAREXP', hasHigh: false, singleLine: false },
   { name: 'ZEXP_MOBILE_SET', label: 'Mobile Expense Sets', lowLabel: 'GL Set Name', lowPlaceholder: 'e.g. EMA_MOBILE', hasHigh: false, singleLine: false },
   { name: 'ZEXP_NON_CTC_GO_LIVE', label: 'Go-Live Date', lowLabel: 'Date (YYYYMMDD)', lowPlaceholder: 'e.g. 20261101', hasHigh: false, singleLine: true },
@@ -44,7 +43,7 @@ type EditableRow = ConfigVarRow & { _draftLow: string; _draftHigh: string; _savi
 function validateLow(cfg: VarConfig, value: string): string | null {
   const v = value.trim();
   if (!v) return 'This field is required';
-  if ((cfg.name === 'ZEXP_ADMIN' || cfg.name === 'ZEXP_DOA_ADMIN' || cfg.name === 'ZEXP_FINANCE' || cfg.name === 'ZFI_NONCTC_USER') && !/^\d+$/.test(v)) {
+  if ((cfg.name === 'ZEXP_ADMIN' || cfg.name === 'ZEXP_DOA_ADMIN' || cfg.name === 'ZEXP_FINANCE') && !/^\d+$/.test(v)) {
     return 'Enter a numeric value';
   }
   if (cfg.name === 'ZEXP_NON_CTC_GO_LIVE' && !/^\d{8}$/.test(v)) return 'Enter the date as YYYYMMDD';
@@ -88,6 +87,7 @@ export default function ConfigPage() {
   const [logError, setLogError] = useState<string | null>(null);
   const [logFilter, setLogFilter] = useState('');
   const [logLoaded, setLogLoaded] = useState(false);
+  const [messageModal, setMessageModal] = useState<MessageModalState>(null);
 
   if (!currentUser?.isAdmin) {
     return (
@@ -142,16 +142,27 @@ export default function ConfigPage() {
     }
   };
 
-  const handleRemoveRow = async (row: EditableRow) => {
-    if (!config) return;
-    if (!window.confirm(`Remove this ${config.label.toLowerCase()} line${row.LowText ? ` (${row.LowText})` : ''}?`)) return;
+  const performRemoveRow = async (row: EditableRow) => {
     setRows((prev) => prev.map((r) => (r.Numb === row.Numb ? { ...r, _saving: true, _error: null } : r)));
     try {
-      await removeConfigVar(row, adminPernr);
+      const { _draftLow, _draftHigh, _saving, _error, ...plain } = row;
+      await removeConfigVar(plain, adminPernr);
       await handleLoad();
     } catch (e: any) {
       setRows((prev) => prev.map((r) => (r.Numb === row.Numb ? { ...r, _saving: false, _error: e?.message || 'Failed to remove' } : r)));
     }
+  };
+
+  const handleRemoveRow = (row: EditableRow) => {
+    if (!config) return;
+    setMessageModal({
+      title: 'Remove line',
+      message: `Remove this ${config.label.toLowerCase()} line${row.LowText ? ` (${row.LowText})` : ''}?`,
+      type: 'error',
+      confirmLabel: 'Remove',
+      cancelLabel: 'Cancel',
+      onConfirm: () => { setMessageModal(null); performRemoveRow(row); },
+    });
   };
 
   const handleAdd = async () => {
@@ -354,6 +365,8 @@ export default function ConfigPage() {
           )}
         </Card>
       )}
+
+      <MessageModal state={messageModal} onClose={() => setMessageModal(null)} />
     </div>
   );
 }

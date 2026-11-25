@@ -68,7 +68,7 @@ interface ClaimContextType {
   updateMobCapRow: (row: MobCapRow, adminPernr: string) => Promise<MobCapRow>;
   // Configuration Maintenance Actions — CRUD against the new ConfigVarSet/ConfigLogSet entities,
   // replacing the former STVARV-maintained variables (ZEXP_ADMIN, ZEXP_DOA_ADMIN, ZEXP_FINANCE,
-  // ZFI_NONCTC_USER, ZEXP_EXPTYPE_SET, ZEXP_MOBILE_SET, ZEXP_NON_CTC_GO_LIVE, ZFI_EXPENCE_CLAIM).
+  // ZEXP_EXPTYPE_SET, ZEXP_MOBILE_SET, ZEXP_NON_CTC_GO_LIVE, ZFI_EXPENCE_CLAIM).
   fetchConfigVars: (adminPernr: string, name?: ConfigVarName) => Promise<ConfigVarRow[]>;
   addConfigVar: (row: { Name: ConfigVarName; Low: string; High?: string }, adminPernr: string) => Promise<ConfigVarRow>;
   updateConfigVar: (row: ConfigVarRow, adminPernr: string) => Promise<ConfigVarRow>;

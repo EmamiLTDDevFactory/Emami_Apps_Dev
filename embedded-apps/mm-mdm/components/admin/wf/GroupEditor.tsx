@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AdminApiError } from '@/lib/admin/adminApi';
 import { WfCfg, WfGroup, WfKey, WfMeta, WfMsg, wfApi } from '@/lib/admin/wfApi';
-import { emptyGroup, keyText, newLevel, recount, snapshot, visibleKeyFields } from '@/lib/admin/wfLogic';
+import { agentSig, emptyGroup, keyText, levelSig, newLevel, recount, snapshot, viewSig, visibleKeyFields } from '@/lib/admin/wfLogic';
 import { IconCopy, IconPlus, IconRefresh, IconSave, IconTrash, IconUndo } from '../../icons';
 import { ErrorState, LoadingState } from '../../ui';
 import { AgentTable, LevelTable } from './LevelGrid';
@@ -26,6 +26,7 @@ export default function GroupEditor({ target, cfg, meta, onDirty, onSaved, onDel
   const [loadError, setLoadError] = useState('');
   const [group, setGroup] = useState<WfGroup>(() => emptyGroup(appId));
   const [base, setBase] = useState(() => snapshot(emptyGroup(appId)));
+  const [baseGroup, setBaseGroup] = useState<WfGroup>(() => emptyGroup(appId));
   const [version, setVersion] = useState('');
   const [issues, setIssues] = useState<WfMsg[]>([]);
   const [open, setOpen] = useState(0);
@@ -54,7 +55,7 @@ export default function GroupEditor({ target, cfg, meta, onDirty, onSaved, onDel
   const keyOf = (g: WfGroup): WfKey => ({ appId: g.appId, genType: g.genType, genField: g.genField, genField2: g.genField2, genField3: g.genField3, genField4: g.genField4 });
   const adopt = useCallback((g: WfGroup, ver: string, msgs: WfMsg[] = []) => {
     const first = g.levels.find((l) => l.typeLvl) || g.levels[0];
-    setGroup(g); setBase(snapshot(g)); setVersion(ver); setIssues(msgs); setLive([]);
+    setGroup(g); setBase(snapshot(g)); setBaseGroup(g); setVersion(ver); setIssues(msgs); setLive([]);
     setScope((s) => (s === 'L0' || g.levels.some((l) => l.lvl === s) ? s : first?.lvl || 'L0'));
   }, []);
 
@@ -129,6 +130,17 @@ export default function GroupEditor({ target, cfg, meta, onDirty, onSaved, onDel
   const fields = visibleKeyFields(cfg, [group]);
   const agentsN = group.levels.reduce((n, l) => n + l.agents.length, 0);
   const errN = messages.filter((m) => m.severity === 'E').length;
+  const changes = (() => {
+    if (!dirty) return null;
+    const bl = new Map(baseGroup.levels.map((l) => [l.lvl, l]));
+    let lv = 0, ag = 0, vw = 0;
+    const cmp = (cur: string[], old: string[]) => { const o = new Set(old); const c = new Set(cur); return cur.filter((x) => !o.has(x)).length + old.filter((x) => !c.has(x)).length; };
+    for (const l of group.levels) { const b = bl.get(l.lvl); if (!b || levelSig(b) !== levelSig(l)) lv++; ag += cmp(l.agents.map(agentSig), b ? b.agents.map(agentSig) : []); vw += cmp(l.views.map(viewSig), b ? b.views.map(viewSig) : []); }
+    for (const b of baseGroup.levels) if (!group.levels.some((l) => l.lvl === b.lvl)) { lv++; ag += b.agents.length; vw += b.views.length; }
+    vw += cmp(group.l0Views.map(viewSig), baseGroup.l0Views.map(viewSig));
+    const keyChg = isNew ? 0 : 0;
+    return { lv, ag, vw, total: lv + ag + vw + keyChg };
+  })();
   const canSave = dirty && !saving && (group.genType !== '' || group.genField !== '' || group.genField2 !== '' || group.genField3 !== '' || group.genField4 !== '' || !isNew || cfg?.family !== 'MATERIAL');
 
   return (
@@ -139,7 +151,7 @@ export default function GroupEditor({ target, cfg, meta, onDirty, onSaved, onDel
           <span className="muted">{cfg?.text || appId}{cfg?.wfId ? ` · template ${cfg.wfId}` : ''}{open > 0 ? ` · ${open} request${open === 1 ? '' : 's'} running` : ''}</span>
         </div>
         <div className="wf-actions">
-          {dirty && <span className="badge badge-warn" role="status">Unsaved changes</span>}
+          {dirty && <span className="badge badge-warn wf-unsaved" role="status">● Unsaved changes{changes && changes.total > 0 ? `: ${[changes.lv && `${changes.lv} level`, changes.ag && `${changes.ag} agent`, changes.vw && `${changes.vw} view`].filter(Boolean).join(', ')}` : ''}</span>}
           {!isNew && <button type="button" className="btn btn-sm" onClick={() => onCopy(keyOf(group))} disabled={dirty} title={dirty ? 'Save or discard first' : ''}><IconCopy size={14} /> Copy</button>}
           {!isNew && <button type="button" className="btn btn-sm btn-danger-ghost" onClick={() => setConfirm({ kind: 'delete' })}><IconTrash size={14} /> Delete</button>}
           {!isNew && <button type="button" className="btn btn-sm" onClick={load} disabled={saving}><IconRefresh size={14} /> Reload</button>}
@@ -173,21 +185,21 @@ export default function GroupEditor({ target, cfg, meta, onDirty, onSaved, onDel
       </div>
 
       <div className="wf-mid">
-        <LevelTable levels={group.levels} cfg={cfg} flagged={flagged} scope={scope} setScope={setScope} pirTypes={meta.pirTypes}
+        <LevelTable base={baseGroup} levels={group.levels} cfg={cfg} flagged={flagged} scope={scope} setScope={setScope} pirTypes={meta.pirTypes}
           onChange={setLevel} onAdd={addLevel} onRemove={(lvl) => setConfirm({ kind: 'level', lvl })} />
-        <AgentTable level={group.levels.find((l) => l.lvl === scope)} appId={appId} levelTexts={meta.levelTexts} departments={meta.departments} cfg={cfg} flagged={flagged}
+        <AgentTable base={baseGroup} level={group.levels.find((l) => l.lvl === scope)} appId={appId} levelTexts={meta.levelTexts} departments={meta.departments} cfg={cfg} flagged={flagged}
           onChange={(nl) => setLevel(group.levels.findIndex((l) => l.lvl === scope), nl)} />
       </div>
       <section className="card wf-pane wf-right" aria-label="View visibility">
         <div className="wf-pane-bar"><h2>View Visibility<span className="wf-pane-sub"> · {scope === 'L0' ? 'Initiator L0' : scope}</span></h2></div>
-        <div className="wf-pane-body"><ViewsPanel group={group} cfg={cfg} onChange={update} scope={scope} setScope={setScope} /></div>
+        <div className="wf-pane-body"><ViewsPanel base={baseGroup} group={group} cfg={cfg} onChange={update} scope={scope} setScope={setScope} /></div>
       </section>
 
       <div className="wf-more">
         <FlowStrip group={group} />
         <div className="wf-more-tabs" role="tablist" aria-label="More">
           <button type="button" role="tab" aria-selected={tab === 'routing'} className={`btn btn-sm ${tab === 'routing' ? 'btn-primary' : ''}`} onClick={() => setTab(tab === 'routing' ? '' : 'routing')}>Routing preview</button>
-          {saved && <button type="button" role="tab" aria-selected={tab === 'log'} className={`btn btn-sm ${tab === 'log' ? 'btn-primary' : ''}`} onClick={() => setTab(tab === 'log' ? '' : 'log')}>History</button>}
+          {saved && <button type="button" role="tab" aria-selected={tab === 'log'} className={`btn btn-sm ${tab === 'log' ? 'btn-primary' : ''}`} onClick={() => setTab(tab === 'log' ? '' : 'log')}>Change History</button>}
         </div>
         {tab === 'routing' && <PreviewPanel group={group} cfg={cfg} saved={saved} dirty={dirty} />}
         {tab === 'log' && saved && <LogPanel appId={appId} cfg={cfg} fixedKey={keyOf(group)} auto />}
