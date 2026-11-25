@@ -163,7 +163,7 @@ test('through the Azure gateway: Q2 reads YTD P06 and YTD P03 once each; another
         seen.push(url);
         const n = Number(/P_FiscalPeriod='(\d{3})'/.exec(url)[1]);
         const row = (cc, f) => ({ CompanyCode: cc, ReportingKey: 'BR001', GLAccount: '0000507929', Site: 'HO', ReportHeader: 'ATL', CYYTDAmount: String(n * f), PYYTDAmount: String(n * f / 2), CYPeriodAmount: String(f), PYPeriodAmount: String(f / 2) });
-        return new Response(JSON.stringify({ d: { Set: { results: [row('1000', 10), row('EM01', 1)] } } }), { status: 200 });
+        return new Response(JSON.stringify({ d: { results: [row('1000', 10), row('EM01', 1)] } }), { status: 200 });
     };
     try {
         const { selectionSummary } = router._test;
@@ -173,7 +173,7 @@ test('through the Azure gateway: Q2 reads YTD P06 and YTD P03 once each; another
         assert.equal(q2[0].PYYTDAmount, 15);
         assert.equal(q2[0].CYPeriodAmount, 10, 'period amount of P06');
         assert.deepEqual(seen.map((u) => /P_FiscalPeriod='(\d{3})'/.exec(u)[1]).sort(), ['003', '006']);
-        assert.ok(seen.every((u) => u.endsWith('?$expand=Set')));
+        assert.ok(seen.every((u) => u.endsWith('%252FSet?$format=json')), 'gateway form: (params)%252FSet');
         const em = await selectionSummary({ fy: '2031', periods: [4, 5, 6], period: 6, companies: ['EM01'] });
         assert.equal(em[0].CYYTDAmount, 3);
         assert.equal(seen.length, 2, 'same reads, other company: served from the cache');
