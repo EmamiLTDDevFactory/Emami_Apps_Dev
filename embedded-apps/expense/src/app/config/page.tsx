@@ -146,7 +146,8 @@ export default function ConfigPage() {
   const performRemoveRow = async (row: EditableRow) => {
     setRows((prev) => prev.map((r) => (r.Numb === row.Numb ? { ...r, _saving: true, _error: null } : r)));
     try {
-      await removeConfigVar(row, adminPernr);
+      const { _draftLow, _draftHigh, _saving, _error, ...plain } = row;
+      await removeConfigVar(plain, adminPernr);
       await handleLoad();
     } catch (e: any) {
       setRows((prev) => prev.map((r) => (r.Numb === row.Numb ? { ...r, _saving: false, _error: e?.message || 'Failed to remove' } : r)));
