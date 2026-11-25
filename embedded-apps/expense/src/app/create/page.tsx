@@ -12,14 +12,21 @@ import {
   ALLOWED_ATTACHMENT_EXTENSIONS,
   ALLOWED_ATTACHMENT_LABEL,
   ALLOWED_ATTACHMENT_MIME_TYPES,
-  MAX_ATTACHMENT_FILE_BYTES,
-  MAX_ATTACHMENT_FILE_LABEL,
+  compressAttachmentImage,
+  getPerFileTargetBytes,
   MIME_TO_EXTENSION,
+  SAFE_COMBINED_RAW_ATTACHMENT_BYTES,
 } from '../../lib/attachmentCompression';
 import { getDocumentAsync } from '../../lib/documentPicker';
+import { ensurePdfAttachmentUnderLimit } from '../../lib/pdfAttachment';
 import { Attachment, MobileMonthItem } from '../../types';
 
 const COST_CENTERS = ['CC-SA', 'CC-ENG-GLOBAL', 'CC-MARKETING-UK', 'CC-FINANCE-HQ', 'CC-IT-INFRA'];
+
+// Real measured ceiling (see attachmentCompression.ts), not a generic file-size cap — showing an
+// honest number here instead of a made-up "30 MB" that the real gateway would reject long before.
+const MAX_ATTACHMENTS_TOTAL_BYTES = SAFE_COMBINED_RAW_ATTACHMENT_BYTES;
+const MAX_ATTACHMENTS_TOTAL_LABEL = `${Math.round(SAFE_COMBINED_RAW_ATTACHMENT_BYTES / 1024)} KB`;
 
 const EXCEL_MIME_TYPES = ['application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
 
@@ -195,9 +202,19 @@ function CreateClaimInner() {
   // with originalExpenseDocument into one `attachments` array at submit time (see handleSubmit) so
   // ClaimContext/SAP still see exactly the same single list they always have - no backend changes.
   const [supportingDocuments, setSupportingDocuments] = useState<Attachment[]>([]);
+  // Pristine, pre-compression source for every attachment picked THIS session (keyed by attachment
+  // id) — the only way to recompress an already-added file to a tighter shared target when a new
+  // attachment arrives, without compounding quality loss by re-encoding an already-compressed copy.
+  // Attachments loaded from an existing claim (resubmit) have no entry here — there's no original
+  // file to re-derive, so their already-fixed size is treated as a sunk cost against the shared
+  // budget instead.
+  const [originalExpenseDocumentSources, setOriginalExpenseDocumentSources] = useState<Record<string, { uri: string; mimeType: string }>>({});
+  const [supportingDocumentSources, setSupportingDocumentSources] = useState<Record<string, { uri: string; mimeType: string }>>({});
   // Second, separate attachment required when the selected expense type's ExptypeSet.Flag comes
-  // back blank (not 'X') - see requiresManagerApprovedAttachment below.
+  // back blank (not 'X') - see requiresManagerApprovedAttachment below. Shares the same combined
+  // size budget as the two lists above (see pickAttachmentInto).
   const [managerApprovedAttachments, setManagerApprovedAttachments] = useState<Attachment[]>([]);
+  const [managerApprovedOriginalSources, setManagerApprovedOriginalSources] = useState<Record<string, { uri: string; mimeType: string }>>({});
 
   // Non-CTC: Mobile Exp — multi-month claim state. Independent of the shared attachment-budget
   // system above: each month's document is its own claim line with its own amount, not folded
@@ -265,8 +282,11 @@ function CreateClaimInner() {
     setDocumentExtractionError('');
     setJustification('');
     setOriginalExpenseDocument([]);
+    setOriginalExpenseDocumentSources({});
     setSupportingDocuments([]);
+    setSupportingDocumentSources({});
     setManagerApprovedAttachments([]);
+    setManagerApprovedOriginalSources({});
     setPreviewAttachment(null);
     setPreviewModalVisible(false);
     setExcelPreview(null);
@@ -473,6 +493,8 @@ function CreateClaimInner() {
         // Expense Document, everything else as Supporting Document(s).
         setOriginalExpenseDocument(formData.attachments.slice(0, 1));
         setSupportingDocuments(formData.attachments.slice(1));
+        setOriginalExpenseDocumentSources({});
+        setSupportingDocumentSources({});
         // Mobile Exp: restore one month card per CLAIMNAV line that has PeriodFrom, then re-run
         // the eligibility check for each - a rejected mobile claim previously lost its month cards
         // entirely on resubmit, loading as a single generic line instead.
@@ -501,6 +523,8 @@ function CreateClaimInner() {
     const loadedAttachments = claim.attachments || [];
     setOriginalExpenseDocument(loadedAttachments.slice(0, 1));
     setSupportingDocuments(loadedAttachments.slice(1));
+    setOriginalExpenseDocumentSources({});
+    setSupportingDocumentSources({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingClaimId, getClaimById, tempClaimForResubmit, expenseTypes]);
 
@@ -777,11 +801,6 @@ function CreateClaimInner() {
         return;
       }
 
-      if ((asset.size || 0) > MAX_ATTACHMENT_FILE_BYTES) {
-        setFormError(`This file is larger than the ${MAX_ATTACHMENT_FILE_LABEL} limit. Please attach a smaller file.`);
-        return;
-      }
-
       const newAtt: Attachment = { id: `att-${monthKey}-${Date.now()}`, name: asset.name || 'document', uri: asset.uri, size: asset.size || 0, type: mimeType };
       setMonthClaims((prev) => ({ ...prev, [monthKey]: { ...getMonthEntry(monthKey), attachment: newAtt } }));
       extractMonthDocumentDetails(monthKey, newAtt);
@@ -855,18 +874,40 @@ function CreateClaimInner() {
   type AttachmentSectionKey = 'original' | 'supporting' | 'managerApproved';
 
   // Shared by all three attachment sections (Original Expense Document, Supporting Document, and
-  // Manager Approved Attachment). No compression and no combined-budget math — each file picked
-  // just needs to be under the flat per-file limit, per the user's explicit instruction to stop
-  // compressing attachments and keep a normal 3 MB default instead.
+  // Manager Approved Attachment) - all three ride in the SAME SAP submission payload (see
+  // handleSubmit's combined `attachments` and ClaimContext's allAttachments), so they share ONE
+  // combined size budget across all lists, not one budget each — independent 70KB budgets per
+  // section would let a claim carry far more than the backend proxy's request-size limit accepts
+  // (confirmed: PayloadTooLargeError).
   const pickAttachmentInto = async (target: AttachmentSectionKey) => {
     const sections: Record<AttachmentSectionKey, {
       list: Attachment[];
       setList: (updater: Attachment[] | ((prev: Attachment[]) => Attachment[])) => void;
+      sources: Record<string, { uri: string; mimeType: string }>;
+      setSources: (updater: Record<string, { uri: string; mimeType: string }> | ((prev: Record<string, { uri: string; mimeType: string }>) => Record<string, { uri: string; mimeType: string }>)) => void;
       maxFiles: number;
     }> = {
-      original: { list: originalExpenseDocument, setList: setOriginalExpenseDocument, maxFiles: 1 },
-      supporting: { list: supportingDocuments, setList: setSupportingDocuments, maxFiles: Infinity },
-      managerApproved: { list: managerApprovedAttachments, setList: setManagerApprovedAttachments, maxFiles: Infinity },
+      original: {
+        list: originalExpenseDocument,
+        setList: setOriginalExpenseDocument,
+        sources: originalExpenseDocumentSources,
+        setSources: setOriginalExpenseDocumentSources,
+        maxFiles: 1,
+      },
+      supporting: {
+        list: supportingDocuments,
+        setList: setSupportingDocuments,
+        sources: supportingDocumentSources,
+        setSources: setSupportingDocumentSources,
+        maxFiles: Infinity,
+      },
+      managerApproved: {
+        list: managerApprovedAttachments,
+        setList: setManagerApprovedAttachments,
+        sources: managerApprovedOriginalSources,
+        setSources: setManagerApprovedOriginalSources,
+        maxFiles: Infinity,
+      },
     };
 
     const current = sections[target];
@@ -874,6 +915,13 @@ function CreateClaimInner() {
       setFormError('Remove the current document before adding another.');
       return;
     }
+
+    const otherKeys = (Object.keys(sections) as AttachmentSectionKey[]).filter((k) => k !== target);
+    const otherList = otherKeys.flatMap((k) => sections[k].list);
+    const otherSources = otherKeys.reduce(
+      (acc, k) => ({ ...acc, ...sections[k].sources }),
+      {} as Record<string, { uri: string; mimeType: string }>,
+    );
 
     setPickingTarget(target);
     try {
@@ -889,20 +937,107 @@ function CreateClaimInner() {
         return;
       }
 
-      if ((asset.size || 0) > MAX_ATTACHMENT_FILE_BYTES) {
-        setFormError(`This file is larger than the ${MAX_ATTACHMENT_FILE_LABEL} limit. Please attach a smaller file.`);
+      // Images can be safely re-encoded smaller, and a PDF can be re-rasterized smaller —
+      // XLS/XLSX/CSV/TXT can't be shrunk either way and are left exactly as picked.
+      const isRecompressible = attachmentMimeType.startsWith('image/') || attachmentMimeType === 'application/pdf';
+      const newId = `att-${Date.now()}`;
+
+      // Budget math runs across ALL THREE lists combined - everything already on the claim, in
+      // any section, counts against the one shared ceiling.
+      const combinedExisting = [...current.list, ...otherList];
+      const combinedSources = { ...current.sources, ...otherSources };
+
+      // Attachments that can't be (further) shrunk — resubmit-loaded attachments, and any
+      // non-image/PDF file already on the claim — are a fixed cost against the shared budget.
+      // Everything else (image/PDF attachments picked this session) gets re-targeted below.
+      const reservedBytes = combinedExisting.reduce(
+        (sum, a) => (combinedSources[a.id] ? sum : sum + (a.size || 0)),
+        0,
+      );
+      const recompressibleCount = combinedExisting.filter((a) => combinedSources[a.id]).length + (isRecompressible ? 1 : 0);
+      const targetBytes = recompressibleCount > 0 ? getPerFileTargetBytes(recompressibleCount, reservedBytes) : null;
+
+      if (isRecompressible && targetBytes === null) {
+        setFormError('This claim is already close to the safe combined attachment size. Remove an attachment before adding another.');
         return;
       }
 
-      const newAtt: Attachment = {
-        id: `att-${Date.now()}`,
-        name: asset.name || 'document',
-        uri: asset.uri,
-        size: asset.size || 0,
-        type: attachmentMimeType,
-      };
+      let finalUri = asset.uri;
+      let finalSize = asset.size || 0;
+      let finalType = attachmentMimeType;
 
-      current.setList((prev) => [...prev, newAtt]);
+      if (attachmentMimeType.startsWith('image/')) {
+        const compressed = await compressAttachmentImage(asset.uri, targetBytes as number);
+        if (compressed) {
+          finalUri = compressed.uri;
+          finalSize = compressed.size;
+          // Compression always re-encodes as JPEG — the stored Mimetype must say so too.
+          finalType = 'image/jpeg';
+        }
+      } else if (attachmentMimeType === 'application/pdf') {
+        if ((asset.size || 0) > (targetBytes as number)) {
+          const compressed = await ensurePdfAttachmentUnderLimit(asset.uri, targetBytes as number);
+          if (compressed) {
+            finalUri = compressed.uri;
+            finalSize = compressed.size;
+          } else {
+            setFormError('This PDF is too large and could not be compressed enough to upload alongside your other attachments. Please attach a smaller PDF or remove an existing attachment.');
+            return;
+          }
+        }
+      } else if (reservedBytes + finalSize > SAFE_COMBINED_RAW_ATTACHMENT_BYTES) {
+        // XLS/XLSX/CSV/TXT can't be shrunk — reject outright rather than let it blow the real
+        // combined ceiling at submit time.
+        setFormError(`This file is too large to add alongside your other attachments (max ${MAX_ATTACHMENTS_TOTAL_LABEL}). Please use a smaller file or remove an existing attachment.`);
+        return;
+      }
+
+      const newAtt: Attachment = { id: newId, name: asset.name || 'document', uri: finalUri, size: finalSize, type: finalType };
+
+      // Existing session-picked image/PDF attachments — in ANY section — were compressed
+      // against a looser (fewer-attachments) target; re-derive each from its pristine source
+      // against the same tighter target this new attachment uses, so the combined total across
+      // all sections actually stays in budget. Recompressed results are split back into their
+      // original section below.
+      let finalCombined: Attachment[];
+      if (isRecompressible && recompressibleCount > 1) {
+        finalCombined = await Promise.all(
+          combinedExisting.map(async (a) => {
+            const original = combinedSources[a.id];
+            if (!original) return a;
+            if (original.mimeType.startsWith('image/')) {
+              const recompressed = await compressAttachmentImage(original.uri, targetBytes as number);
+              return recompressed ? { ...a, uri: recompressed.uri, size: recompressed.size, type: 'image/jpeg' } : a;
+            }
+            const recompressed = await ensurePdfAttachmentUnderLimit(original.uri, targetBytes as number);
+            return recompressed ? { ...a, uri: recompressed.uri, size: recompressed.size } : a;
+          }),
+        );
+      } else {
+        finalCombined = combinedExisting;
+      }
+
+      // Final safety net against the real combined ceiling, using the actual post-compression
+      // sizes rather than the predicted target — catches any edge case the math above missed.
+      const finalTotal = finalCombined.reduce((sum, a) => sum + (a.size || 0), 0) + finalSize;
+      if (finalTotal > SAFE_COMBINED_RAW_ATTACHMENT_BYTES) {
+        setFormError(`Combined attachment size would exceed the safe upload limit (${MAX_ATTACHMENTS_TOTAL_LABEL}). Please remove an attachment or use a smaller file.`);
+        return;
+      }
+
+      // Split the (possibly recompressed) combined set back into each section's own list by id.
+      otherKeys.forEach((k) => {
+        const ownIds = new Set(sections[k].list.map((a) => a.id));
+        const recompressedForSection = finalCombined.filter((a) => ownIds.has(a.id));
+        if (recompressedForSection.length > 0) sections[k].setList(recompressedForSection);
+      });
+      const thisSectionIds = new Set(current.list.map((a) => a.id));
+      const recompressedThis = finalCombined.filter((a) => thisSectionIds.has(a.id));
+
+      current.setList([...recompressedThis, newAtt]);
+      if (isRecompressible) {
+        current.setSources((prev) => ({ ...prev, [newId]: { uri: asset.uri, mimeType: attachmentMimeType } }));
+      }
 
       // Only the Original Expense Document is a candidate receipt to read GST/HSN/Amount off of -
       // not Supporting Document or the separate Manager Approved Attachment.
@@ -922,16 +1057,34 @@ function CreateClaimInner() {
 
   const handleRemoveOriginalExpenseDocument = (id: string) => {
     setOriginalExpenseDocument((prev) => prev.filter((a) => a.id !== id));
+    setOriginalExpenseDocumentSources((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
     setFormError('');
   };
 
   const handleRemoveSupportingDocument = (id: string) => {
     setSupportingDocuments((prev) => prev.filter((a) => a.id !== id));
+    setSupportingDocumentSources((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
     setFormError('');
   };
 
   const handleRemoveManagerApprovedAttachment = (id: string) => {
     setManagerApprovedAttachments((prev) => prev.filter((a) => a.id !== id));
+    setManagerApprovedOriginalSources((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
     setFormError('');
   };
 
@@ -1130,7 +1283,7 @@ function CreateClaimInner() {
         <h2 className="text-sm font-bold text-ink">Original Expense Document{attachmentOptionalForType ? '' : ' *'}</h2>
         <p className="text-xs text-inkSoft">{attachmentOptionalForType ? 'Optional for this expense type' : 'Mandatory — upload the receipt or invoice for this expense'}</p>
         <p className="text-xs text-inkSoft">Allowed: {ALLOWED_ATTACHMENT_LABEL}</p>
-        <p className="mb-3 text-xs text-inkSoft">Max file size: {MAX_ATTACHMENT_FILE_LABEL}. Allowed types: {ALLOWED_ATTACHMENT_LABEL}</p>
+        <p className="mb-3 text-xs text-inkSoft">Images/PDFs are compressed automatically; combined size after compression: {MAX_ATTACHMENTS_TOTAL_LABEL}</p>
 
         {originalExpenseDocument.map((att) => (
           <div key={att.id} className="mb-2 flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-2">
@@ -1458,7 +1611,7 @@ function CreateClaimInner() {
         <h2 className="text-sm font-bold text-ink">Supporting Document</h2>
         <p className="text-xs text-inkSoft">Optional — upload any other related document</p>
         <p className="text-xs text-inkSoft">Allowed: {ALLOWED_ATTACHMENT_LABEL}</p>
-        <p className="mb-3 text-xs text-inkSoft">Max file size: {MAX_ATTACHMENT_FILE_LABEL}. Allowed types: {ALLOWED_ATTACHMENT_LABEL}</p>
+        <p className="mb-3 text-xs text-inkSoft">Images/PDFs are compressed automatically; combined size after compression: {MAX_ATTACHMENTS_TOTAL_LABEL}</p>
 
         {supportingDocuments.map((att) => (
           <div key={att.id} className="mb-2 flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-2">
@@ -1493,7 +1646,7 @@ function CreateClaimInner() {
           <p className="mb-3 text-sm font-semibold text-red/60">Manager Approved attachment is mandatory for 1st Telephone Claim</p>
           <h2 className="text-sm font-bold text-ink">Manager Approved Attachment *</h2>
           <p className="text-xs text-inkSoft">Allowed: {ALLOWED_ATTACHMENT_LABEL}</p>
-          <p className="mb-3 text-xs text-inkSoft">Max file size: {MAX_ATTACHMENT_FILE_LABEL}. Allowed types: {ALLOWED_ATTACHMENT_LABEL}</p>
+          <p className="mb-3 text-xs text-inkSoft">Images/PDFs are compressed automatically; combined size after compression: {MAX_ATTACHMENTS_TOTAL_LABEL}</p>
 
           {managerApprovedAttachments.map((att) => (
             <div key={att.id} className="mb-2 flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-2">
