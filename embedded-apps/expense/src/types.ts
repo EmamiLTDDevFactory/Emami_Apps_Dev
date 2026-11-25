@@ -169,7 +169,6 @@ export type ConfigVarName =
   | 'ZEXP_ADMIN'
   | 'ZEXP_DOA_ADMIN'
   | 'ZEXP_FINANCE'
-  | 'ZFI_NONCTC_USER'
   | 'ZEXP_EXPTYPE_SET'
   | 'ZEXP_MOBILE_SET'
   | 'ZEXP_NON_CTC_GO_LIVE'
@@ -181,9 +180,9 @@ export interface ConfigVarRow {
   VarType?: string;
   Sign?: string;
   Opti?: string;
-  Low: string; // PERNR / GL set name / PERSK / date YYYYMMDD / absolute path, depending on Name
+  Low: string; // PERNR / GL set name / date YYYYMMDD / absolute path, depending on Name
   High?: string; // 'POST' | 'PARK' - ZEXP_FINANCE only
-  LowText?: string; // backend-resolved display text (employee name / set text / subgroup text)
+  LowText?: string; // backend-resolved display text (employee name / set text)
   Aenam?: string; // logged-in admin's PERNR - must be sent on every POST/PUT
   Remove?: boolean; // PUT-only - true removes the line; there is no DELETE
 }
