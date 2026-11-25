@@ -6,7 +6,7 @@ import { ArrowLeft, Plus, RefreshCw, Save, ScrollText, ShieldAlert, Trash2 } fro
 import { useAuth } from '../../context/AuthContext';
 import { useClaim } from '../../context/ClaimContext';
 import { ConfigLogRow, ConfigVarName, ConfigVarRow } from '../../types';
-import { Banner, Button, Card, CardTitle, EmptyState, Field, IconButton, Input, LoadingBlock, PageHeader, Segmented, Select } from '../../components/ui';
+import { Banner, Button, Card, CardTitle, EmptyState, Field, IconButton, Input, LoadingBlock, MessageModal, type MessageModalState, PageHeader, Segmented, Select } from '../../components/ui';
 
 // Admin maintenance for the settings formerly kept in STVARV, now ConfigVarSet/ConfigLogSet (see
 // UI_CHANGES_REQUIRED section J). Each variable is a short list of lines (or, for the two
@@ -88,6 +88,7 @@ export default function ConfigPage() {
   const [logError, setLogError] = useState<string | null>(null);
   const [logFilter, setLogFilter] = useState('');
   const [logLoaded, setLogLoaded] = useState(false);
+  const [messageModal, setMessageModal] = useState<MessageModalState>(null);
 
   if (!currentUser?.isAdmin) {
     return (
@@ -142,9 +143,7 @@ export default function ConfigPage() {
     }
   };
 
-  const handleRemoveRow = async (row: EditableRow) => {
-    if (!config) return;
-    if (!window.confirm(`Remove this ${config.label.toLowerCase()} line${row.LowText ? ` (${row.LowText})` : ''}?`)) return;
+  const performRemoveRow = async (row: EditableRow) => {
     setRows((prev) => prev.map((r) => (r.Numb === row.Numb ? { ...r, _saving: true, _error: null } : r)));
     try {
       await removeConfigVar(row, adminPernr);
@@ -152,6 +151,18 @@ export default function ConfigPage() {
     } catch (e: any) {
       setRows((prev) => prev.map((r) => (r.Numb === row.Numb ? { ...r, _saving: false, _error: e?.message || 'Failed to remove' } : r)));
     }
+  };
+
+  const handleRemoveRow = (row: EditableRow) => {
+    if (!config) return;
+    setMessageModal({
+      title: 'Remove line',
+      message: `Remove this ${config.label.toLowerCase()} line${row.LowText ? ` (${row.LowText})` : ''}?`,
+      type: 'error',
+      confirmLabel: 'Remove',
+      cancelLabel: 'Cancel',
+      onConfirm: () => { setMessageModal(null); performRemoveRow(row); },
+    });
   };
 
   const handleAdd = async () => {
@@ -354,6 +365,8 @@ export default function ConfigPage() {
           )}
         </Card>
       )}
+
+      <MessageModal state={messageModal} onClose={() => setMessageModal(null)} />
     </div>
   );
 }

@@ -6,7 +6,7 @@ import { ArrowLeft, ChevronLeft, ChevronRight, Copy, Info, Plus, Power, PowerOff
 import { useAuth } from '../../context/AuthContext';
 import { useClaim } from '../../context/ClaimContext';
 import { DoaChainRow } from '../../types';
-import { Banner, Button, Card, Checkbox, cx, DateField, EmptyState, Field, Input, LoadingBlock, PageHeader, Select } from '../../components/ui';
+import { Banner, Button, Card, Checkbox, cx, DateField, EmptyState, Field, Input, LoadingBlock, MessageModal, type MessageModalState, PageHeader, Select } from '../../components/ui';
 
 // SM30-style flat maintenance grid for ZEXP_DOA_CHAIN (DoaChainSet) - replaces the earlier
 // slab-by-slab card editor per the rebuild spec. One row = one approver in one amount slab of one
@@ -132,6 +132,7 @@ export default function DoaChainPage() {
   const [importError, setImportError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [page, setPage] = useState(1);
+  const [messageModal, setMessageModal] = useState<MessageModalState>(null);
 
   if (!currentUser?.isAdmin) {
     return (
@@ -243,10 +244,22 @@ export default function DoaChainPage() {
     // claims at this level to the new approver and e-mails them - not reversible from here, so
     // confirm once before the whole batch goes out.
     const approverChanged = toSave.some((r) => !r._isNew && (originalsRef.current[r._cid]?.ApprEmail || '').trim().toLowerCase() !== r.ApprEmail.trim().toLowerCase());
-    if (approverChanged && !window.confirm('Pending claims waiting for the old approver at this level will move to the new approver, who gets a mail. Continue?')) {
+    if (approverChanged) {
+      setMessageModal({
+        title: 'Confirm approver change',
+        message: 'Pending claims waiting for the old approver at this level will move to the new approver, who gets a mail. Continue?',
+        type: 'info',
+        confirmLabel: 'Continue',
+        cancelLabel: 'Cancel',
+        onConfirm: () => { setMessageModal(null); performSaveAll(toSave); },
+      });
       return;
     }
 
+    await performSaveAll(toSave);
+  };
+
+  const performSaveAll = async (toSave: GridRow[]) => {
     setSavingAll(true);
     for (const row of toSave) {
       setRows((prev) => prev.map((r) => (r._cid === row._cid ? { ...r, _saving: true } : r)));
@@ -681,6 +694,8 @@ export default function DoaChainPage() {
           )}
         </>
       )}
+
+      <MessageModal state={messageModal} onClose={() => setMessageModal(null)} />
     </div>
   );
 }
