@@ -32,7 +32,8 @@
      GET    /settings/mapping ?fy&period  PUT /settings/mapping
      GET    /audit
    Exclusions apply to every screen and every user (the meta says what was excluded); ?exclusions=off shows the report
-   without them, for checking. Raw SAP answers are cached 10 minutes per fiscal year / period, all companies in one
+   without them, for checking. Raw SAP answers are cached 10 minutes per fiscal year / period (or one read of P12 per
+   fiscal year when the views carry each period alone, CYP01Amount..; see periodRows), all companies in one
    read (the company filter is applied here, so switching companies does not read SAP again; ?refresh=1 skips the
    cache); rules, budget and mapping are read on every request, so a change shows at once.
 
@@ -149,7 +150,8 @@ function params(q, { cell = false } = {}) {
 const cache = new Map();
 function cached(key, refresh, load, ttl = TTL) {
     const hit = cache.get(key);
-    if (!refresh && hit && Date.now() - hit.at < ttl) return hit.promise;
+    // A refresh reuses a read made in the last 15 s (one Refresh click fans out to several periods of the same year read).
+    if (hit && Date.now() - hit.at < (refresh ? 15000 : ttl)) return hit.promise;
     const promise = load();
     cache.set(key, { at: Date.now(), promise });
     promise.catch(() => cache.delete(key));
@@ -159,16 +161,62 @@ function cached(key, refresh, load, ttl = TTL) {
 
 const byCompany = (rows, companies) => (companies?.length ? rows.filter((r) => companies.includes(r.CompanyCode)) : rows);
 
-/** Summary rows of ONE fiscal period as SAP returns them (YTD + period amounts); all companies read once, filtered here. */
+/*
+   One read per fiscal year (SAP change 2026-11-26): the views carry each period alone, CYP01Amount..CYP12Amount and
+   PYP01Amount..PYP12Amount. One read of period 12 then gives every period of the year: YTD(n) = P01 + .. + Pn (SAP's
+   YTD adds periods 1..n only), period n = Pn, and the AMDP keeps every row with postings anywhere in the year in every
+   period's answer, so the rows are the same as a read of that period. Without the fields (views not changed yet,
+   PUBEXP_SAP_MONTHS=off, or the budget read from SAP: budget YTD exists per period only) every period is read as before.
+   Whether the views carry the fields is learned from the answers themselves (per source and kind, the last answer
+   decides), so the old views never cost an extra read and a change in SAP is picked up without a restart.
+*/
+const MONTHS = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0'));
+const months = {}; // `${source}|${kind}` -> true / false (unknown until the first answer)
+const hasMonths = (rows) => rows.length > 0 && 'CYP01Amount' in rows[0];
+const monthsOn = (kind) => process.env.PUBEXP_SAP_MONTHS !== 'off' && !(kind === 's' && envBudgetSource() === 'sap') && months[`${source()}|${kind}`] === true;
+const round2 = (x) => Math.round(x * 100) / 100;
+
+/** Rows of period n worked out from the year rows (a period-12 answer carrying the month fields). */
+function periodOf(yearRows, n) {
+    const p = MONTHS.slice(0, n);
+    const at = (r, f) => Number(r[f]) || 0;
+    return yearRows.map((r) => {
+        const cy = round2(p.reduce((s, m) => s + at(r, `CYP${m}Amount`), 0));
+        const py = round2(p.reduce((s, m) => s + at(r, `PYP${m}Amount`), 0));
+        return {
+            ...r, P_FiscalPeriod: String(n).padStart(3, '0'), CYYTDAmount: cy, PYYTDAmount: py,
+            CYPeriodAmount: at(r, `CYP${MONTHS[n - 1]}Amount`), PYPeriodAmount: at(r, `PYP${MONTHS[n - 1]}Amount`),
+            CYvsPYVariance: round2(cy - py), CYvsRBYTDDeviation: round2(cy - at(r, 'RBYTDAmount')),
+        };
+    });
+}
+
+/** All rows of one period (all companies, no filter): from the cached year read when SAP gives the month fields. */
+async function periodRows(kind, fy, period, refresh, read) {
+    if (monthsOn(kind)) {
+        const year = await cached(`${kind}Y|${source()}|${fy}`, refresh, async () => { readStats.year++; return read(12); });
+        if (year.length) months[`${source()}|${kind}`] = hasMonths(year);
+        if (hasMonths(year)) return period === 12 ? year : periodOf(year, period);
+        if (period === 12) return year;
+    }
+    readStats.period++;
+    const rows = await read(period);
+    if (rows.length) months[`${source()}|${kind}`] = hasMonths(rows);
+    return rows;
+}
+const readStats = { year: 0, period: 0 };
+
+/** Summary rows of ONE fiscal period (YTD + period amounts, as SAP returns them); all companies read once, filtered here. */
 function rawSummary({ fy, period, companies, refresh }) {
     const src = source();
-    return cached(`s|${src}|${fy}|${period}`, refresh, async () => (src === 'sap' ? G.sapSlot(() => sap.fetchSummary(fy, period, {})) : mock.summary(fy, period, {})))
+    const read = (q) => (src === 'sap' ? G.sapSlot(() => sap.fetchSummary(fy, q, {})) : mock.summary(fy, q, {}));
+    return cached(`s|${src}|${fy}|${period}`, refresh, () => periodRows('s', fy, period, refresh, read))
         .then((rows) => byCompany(rows, companies));
 }
 
 /**
- * Detail rows of ONE fiscal period. `where` (report rows, sites) goes to SAP in direct mode when it is short; through
- * the gateway, or for long lists, the whole period is read once (cached) and filtered here. The G/L list is always
+ * Detail rows of ONE fiscal period. `where` (report rows, sites) goes to SAP in direct mode when it is short and the
+ * views have no month fields; otherwise the whole period is read once (cached; from the year read) and filtered here. The G/L list is always
  * filtered here, without leading zeros on either side (SAP sends 507926; a padded 0000507926 never matched it).
  * Company filter always here. SKUs come from the SKU master (skuGroups), never per line.
  */
@@ -180,10 +228,15 @@ function rawDetail({ fy, period, companies, refresh }, where = {}) {
     const keep = (r) => !gls || gls.has(glNo(r.GLAccount));
     const long = Object.values(rest).some((v) => Array.isArray(v) && v.length > 25);
     let promise;
-    if (src === 'sap' && Object.keys(where).length && (sap.isGateway() || long || !Object.keys(rest).length)) {
+    if (!Object.keys(where).length) {
+        const read = (q) => (src === 'sap' ? G.sapSlot(() => sap.fetchDetail(fy, q, {})) : mock.detail(fy, q, {}));
+        promise = cached(ck, refresh, () => periodRows('d', fy, period, refresh, read));
+    } else if (src !== 'sap' || sap.isGateway() || long || !Object.keys(rest).length || monthsOn('d')) {
+        // Filtered here from the whole period (itself from the year read when SAP gives the month fields).
         promise = cached(ck, refresh, async () => (await rawDetail({ fy, period, refresh }, {})).filter((r) => sap.matches(r, rest) && keep(r)));
     } else {
-        promise = cached(ck, refresh, async () => (await (src === 'sap' ? G.sapSlot(() => sap.fetchDetail(fy, period, rest)) : mock.detail(fy, period, rest))).filter(keep));
+        // Direct SAP connection, short filter, no month fields: the filter goes to SAP.
+        promise = cached(ck, refresh, async () => (await G.sapSlot(() => sap.fetchDetail(fy, period, rest))).filter(keep));
     }
     return promise.then((rows) => byCompany(rows, companies));
 }
@@ -359,7 +412,7 @@ const meta = (p, extra = {}) => ({
     companies: p.companies, exclusionsOn: p.exclusions, fetchedAt: new Date().toISOString(), ...extra,
 });
 
-router.get('/health', handle('health', async () => ({ ok: true, source: source(), budget: envBudgetSource(), system: source() === 'sap' ? sap.systemLabel() : 'Mock data', sapReads: G.sapStats() })));
+router.get('/health', handle('health', async () => ({ ok: true, source: source(), budget: envBudgetSource(), system: source() === 'sap' ? sap.systemLabel() : 'Mock data', sapReads: G.sapStats(), monthFields: { ...months }, reads: { ...readStats } })));
 router.get('/me', handle('me', async (req) => ({ email: req.email, role: req.role, admin: req.role === 'Admin' })));
 router.get('/config', handle('config', async () => ({ config: { ...publicConfig(await mappingNow()), dimensions: Object.entries(R.DIMENSIONS).map(([id, d]) => ({ id, label: d.label, level: d.level })) } })));
 
@@ -727,4 +780,4 @@ router.get('/audit', requireAdmin, handle('audit', async () => ({ entries: await
 router.use((req, res) => res.status(404).json({ success: false, error: 'Not found.' }));
 
 module.exports = router;
-module.exports._test = { params, enrich, totalBy, source, reportRows, selectionSummary, selectionDetail };
+module.exports._test = { params, enrich, totalBy, source, reportRows, selectionSummary, selectionDetail, forgetMonthFields: () => { for (const k of Object.keys(months)) delete months[k]; } };

@@ -56,7 +56,11 @@ Fiscal year and unit (₹ lakh default, crore, rupees) pick one value; every oth
   closed, Q1-Q4, full year). Figures are the picked periods **added up**, against the same periods of the previous year;
   P01..Pn is the MIS YTD. The app opens on the **current period only** (one SAP read). SAP is read as few times as
   possible (`backend/publicityExpenses/selection.js`): a run P01..Pn is one read (YTD n), a run Pa..Pb is YTD b - YTD a-1,
-  a single period is that period's amount - so a YTD always equals SAP's own YTD. Budget "YTD" = the budget of the
+  a single period is that period's amount - so a YTD always equals SAP's own YTD. Since the SAP change of 2026-11-26 the
+  views also carry each period alone (`CYP01Amount`..`CYP12Amount`, `PYP01Amount`..`PYP12Amount`): then **one read of
+  P12 per fiscal year** serves every period selection, the monthly trend and the drill-down period columns (YTD n =
+  P01 + .. + Pn, exactly SAP's YTD). The server notices the fields in SAP's answers by itself and falls back to the reads
+  above without them (`PUBEXP_SAP_MONTHS=off` forces the fall-back; `/health` shows `monthFields`). Budget "YTD" = the budget of the
   picked months; projections = average of the picked periods x 12. Exclusion rules in force for the latest picked
   period apply. Links from before (`p=7`) still open as YTD up to P07.
 - **Company codes** (`cc=1000|EM01`, `cc=all`): default **1000 + EM01** (with the current fiscal year and the current period). SAP is read once per period for all companies and

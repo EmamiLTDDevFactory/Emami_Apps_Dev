@@ -197,6 +197,84 @@ test('through the Azure gateway: Q2 reads YTD P06 and YTD P03 once each; another
     }
 });
 
+test('views with each period alone (CYP01Amount..): one read of P12 per fiscal year serves every selection, trend and drill-down', async () => {
+    const GW = 'https://gw.example.net/api/NWP';
+    const keep = { s: process.env.PUBEXP_SAP_SUMMARY_BASE, d: process.env.PUBEXP_SAP_DETAIL_BASE };
+    process.env.PUBEXP_SAP_SUMMARY_BASE = `${GW}/ZC_ATLBTL_EXP_SUMMARY_CDS`;
+    process.env.PUBEXP_SAP_DETAIL_BASE = `${GW}/ZC_ATLBTL_EXP_DETAIL_CDS`;
+    const seen = [];
+    const real = global.fetch;
+    // As the changed views answer for period n: CY of month m = m (PY = m / 2) on one line; a second line has postings in
+    // P10 only (the AMDP keeps it in every period's answer). YTD / period amounts follow n, the month fields do not.
+    const months = (f) => Object.fromEntries(Array.from({ length: 12 }, (_, i) => [[`CYP${String(i + 1).padStart(2, '0')}Amount`, String(f(i + 1))], [`PYP${String(i + 1).padStart(2, '0')}Amount`, String(f(i + 1) / 2)]]).flat());
+    global.fetch = async (url) => {
+        seen.push(String(url));
+        const n = Number(/P_FiscalPeriod='(\d{3})'/.exec(url)[1]);
+        const detail = /DETAIL/.test(url);
+        const line = (key, f, cc) => {
+            const ytd = Array.from({ length: n }, (_, i) => f(i + 1)).reduce((a, b) => a + b, 0);
+            return { CompanyCode: '1000', ReportingKey: key, GLAccount: '507929', Site: 'HO', ReportHeader: 'ATL', ...(detail ? { CostCenter: cc, ProfitCenter: 'EH00', MappingRule: 'R03' } : {}),
+                CYYTDAmount: String(ytd), PYYTDAmount: String(ytd / 2), CYPeriodAmount: String(f(n)), PYPeriodAmount: String(f(n) / 2), ...months(f) };
+        };
+        return new Response(JSON.stringify({ d: { results: [line('BR001', (m) => m, 'BEH01'), line('BR002', (m) => (m === 10 ? 100 : 0), 'BEH02')] } }), { status: 200 });
+    };
+    const per = (kind) => seen.filter((u) => (kind === 'd') === /DETAIL/.test(u)).map((u) => /P_FiscalPeriod='(\d{3})'/.exec(u)[1]);
+    const total = (rows, k) => rows.reduce((s, r) => s + r[k], 0);
+    try {
+        const { selectionSummary, selectionDetail } = router._test;
+        const sel = (periods) => ({ fy: '2033', periods, period: periods[periods.length - 1], companies: ['1000'] });
+        // The first answers show the views carry the month fields (no extra read to find out) ...
+        const q2 = await selectionSummary(sel([4, 5, 6]));
+        assert.equal(total(q2, 'CYYTDAmount'), 15, 'P04 + P05 + P06');
+        assert.equal(total(q2, 'PYYTDAmount'), 7.5);
+        assert.equal(total(q2, 'CYPeriodAmount'), 6);
+        assert.deepEqual(per('s').sort(), ['003', '006']);
+        // ... from then on one read of P12 serves every period of the year.
+        const p8 = await selectionSummary(sel([8]));
+        assert.equal(total(p8, 'CYYTDAmount'), 8);
+        assert.deepEqual(per('s').sort(), ['003', '006', '012']);
+        const ytd9 = await selectionSummary(sel([1, 2, 3, 4, 5, 6, 7, 8, 9]));
+        assert.equal(total(ytd9, 'CYYTDAmount'), 45, 'YTD P09 = P01 + .. + P09');
+        const odd = await selectionSummary(sel([2, 7, 10]));
+        assert.equal(total(odd, 'CYYTDAmount'), 2 + 7 + 10 + 100, 'the P10-only line counts in P10');
+        assert.equal(total(odd, 'PYYTDAmount'), (2 + 7 + 10 + 100) / 2);
+        for (let n = 1; n <= 12; n++) assert.equal(total(await selectionSummary(sel([n])), 'CYYTDAmount'), n + (n === 10 ? 100 : 0));
+        assert.equal(per('s').length, 3, 'no more SAP reads for the year');
+        // Drill-down: the same, with one amount per selected period.
+        assert.equal(total(await selectionDetail(sel([3])), 'CYYTDAmount'), 3);
+        const d = await selectionDetail(sel([4, 5, 6, 10]));
+        assert.equal(total(d, 'CYYTDAmount'), 4 + 5 + 6 + 10 + 100);
+        assert.deepEqual(per('d').sort(), ['003', '012'], 'the first answer shows the month fields, then P12 serves the rest');
+        // Switched off: every period is read again as before.
+        process.env.PUBEXP_SAP_MONTHS = 'off';
+        const off = await selectionSummary({ ...sel([11]), fy: '2034' });
+        assert.equal(total(off, 'CYYTDAmount'), 11);
+        assert.equal(per('s').pop(), '011');
+    } finally {
+        delete process.env.PUBEXP_SAP_MONTHS;
+        router._test.forgetMonthFields();
+        global.fetch = real;
+        if (keep.s === undefined) delete process.env.PUBEXP_SAP_SUMMARY_BASE; else process.env.PUBEXP_SAP_SUMMARY_BASE = keep.s;
+        if (keep.d === undefined) delete process.env.PUBEXP_SAP_DETAIL_BASE; else process.env.PUBEXP_SAP_DETAIL_BASE = keep.d;
+    }
+});
+
+test('mock: the month fields give the same report as reading every period', () => withServer(async (call) => {
+    const get = async (q) => { const r = await call('GET', q); assert.equal(r.status, 200, JSON.stringify(r.body)); return r.body; };
+    const pick = (rows) => rows.filter((r) => !r.IsBudget).map((r) => [r.CompanyCode, r.ReportingKey, r.GLAccount, r.Site, r.CYYTDAmount, r.PYYTDAmount, r.CYPeriodAmount, r.PYPeriodAmount].join('|')).sort();
+    const queries = ['/summary?fy=2029&periods=4-6,9', '/summary?fy=2029&periods=1-8', '/trend?fy=2029&periods=1-7'];
+    const withMonths = [];
+    for (const q of queries) withMonths.push(await get(q));
+    process.env.PUBEXP_MOCK_MONTHS = 'off'; process.env.PUBEXP_SAP_MONTHS = 'off';
+    try {
+        for (const [i, q] of queries.entries()) {
+            const old = await get(`${q}&refresh=1`);
+            if (q.startsWith('/trend')) assert.deepEqual(old.months, withMonths[i].months, q);
+            else assert.deepEqual(pick(old.rows), pick(withMonths[i].rows), q);
+        }
+    } finally { delete process.env.PUBEXP_MOCK_MONTHS; delete process.env.PUBEXP_SAP_MONTHS; }
+}));
+
 test('G/L drill-down: SAP sends the G/L without leading zeros (507926) - a G/L column figure finds its lines', async () => {
     const GW = 'https://gw.example.net/api/NWP';
     const keep = { s: process.env.PUBEXP_SAP_SUMMARY_BASE, d: process.env.PUBEXP_SAP_DETAIL_BASE };

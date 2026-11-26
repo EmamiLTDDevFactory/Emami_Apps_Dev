@@ -123,12 +123,20 @@ function lines(fy) {
 const sum = (a, n) => a.slice(0, n).reduce((x, y) => x + y, 0);
 const strip = ({ _brand, _visible, ...rest }) => rest; // eslint-disable-line no-unused-vars
 
+/**
+ * Amounts of a line for a period as the views give them: YTD and the period alone, plus each period alone
+ * (CYP01Amount..PYP12Amount, SAP change 2026-11-26). PUBEXP_MOCK_MONTHS=off answers like the views before that change.
+ */
 function amounts(line, period) {
     const cyYtd = round2(sum(line.cy, period)); const pyYtd = round2(sum(line.py, period));
-    return {
+    const out = {
         Currency: 'INR', CYYTDAmount: cyYtd, PYYTDAmount: pyYtd, CYPeriodAmount: line.cy[period - 1], PYPeriodAmount: line.py[period - 1],
         CYvsPYVariance: round2(cyYtd - pyYtd), OBAnnualAmount: 0, RBAnnualAmount: 0, OBYTDAmount: 0, RBYTDAmount: 0, CYvsRBYTDDeviation: cyYtd,
     };
+    if (process.env.PUBEXP_MOCK_MONTHS !== 'off') {
+        for (let m = 0; m < 12; m++) { out[`CYP${pad(m + 1, 2)}Amount`] = line.cy[m]; out[`PYP${pad(m + 1, 2)}Amount`] = line.py[m]; }
+    }
+    return out;
 }
 
 const matches = (obj, where) => Object.entries(where || {}).every(([k, v]) => {
@@ -196,14 +204,17 @@ function detail(fy, period, where, { expand = false } = {}) {
         const total = weights.reduce((a, b) => a + b, 0);
         const a = amounts(l, p);
         const num = numOf(l.row);
-        let left = { ...a };
+        // Each month is split over the cost centres (the last one takes the rest), YTD / period come from the split
+        // months, so the lines add up to the summary in every period and to the month fields.
+        const leftCy = [...l.cy]; const leftPy = [...l.py];
         for (let k = 0; k < n; k++) {
             const f = weights[k] / total;
-            const part = {};
-            for (const key of ['CYYTDAmount', 'PYYTDAmount', 'CYPeriodAmount', 'PYPeriodAmount']) {
-                part[key] = k === n - 1 ? round2(left[key]) : round2(a[key] * f);
-                left[key] = round2(left[key] - part[key]);
-            }
+            const cyM = l.cy.map((v, m) => (k === n - 1 ? round2(leftCy[m]) : round2(v * f)));
+            const pyM = l.py.map((v, m) => (k === n - 1 ? round2(leftPy[m]) : round2(v * f)));
+            cyM.forEach((v, m) => { leftCy[m] = round2(leftCy[m] - v); });
+            pyM.forEach((v, m) => { leftPy[m] = round2(leftPy[m] - v); });
+            const part = amounts({ cy: cyM, py: pyM }, p);
+            delete part.Currency;
             const [rule, lookup] = l.row._brand ? (l.site === 'HO' ? RULES_HO : RULES_UN)[Math.floor(r() * (l.site === 'HO' ? 3 : 2))] : [NB_RULE[l.row.ProductGroup] || 'R99', 'KOSTL'];
             const cc = (l.site === 'HO' ? `${em ? 'EI' : 'EH'}${num}${k ? k : ''}` : `${em ? 'EU' : 'UN'}${pad(1 + Math.floor(r() * 6), 2)}${num}`);
             const row = {
@@ -214,7 +225,7 @@ function detail(fy, period, where, { expand = false } = {}) {
                 ReportHeader: l.gl.header, ReportHeaderSequence: l.gl.headerSeq, MappingRule: rule, LookupField: lookup, DerivedCostCenterNo: num,
                 ProductHierarchy: l.row._brand ? `0${pad(Number(l.row.T1), 2)}${pad(Number(l.row.T3), 3)}${num}0` : '', SalesBrand: l.row._brand ? l.row.ProductType : '',
                 SkuGroupKey: skuKeyOf(l.row),
-                ...a, ...part, CYvsPYVariance: round2(part.CYYTDAmount - part.PYYTDAmount), CYvsRBYTDDeviation: part.CYYTDAmount,
+                ...a, ...part,
             };
             if (expand) row.to_NetSaleMaster = row.SkuGroupKey ? skuMaster().filter((x) => x.SkuGroupKey === row.SkuGroupKey) : [];
             out.push(row);
