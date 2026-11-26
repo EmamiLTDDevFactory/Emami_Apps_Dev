@@ -84,7 +84,10 @@ const map = {
     /** Outbound delivery with carton data and e-invoice / e-way bill status (read only). */
     outDelivery: (r) => ({ no: str(r.Vbeln), plant: str(r.Werks), shipTo: str(r.ShipToName) || str(r.Kunnr), cartons: Number(r.Cartons) || 0, weightKg: Number(r.GrossWeightKg) || 0, volumeM3: Number(r.VolumeM3) || 0, pgi: isX(r.Pgi), irn: str(r.Irn), ewbNo: str(r.EwbNo), ewbValid: sapDate(r.EwbValid) }),
     outShipment: (r) => ({ no: str(r.Tknum), type: str(r.Shtyp), serviceAgent: str(r.Tdlnr), deliveries: str(r.Vbelns).split(',').map((x) => x.trim()).filter(Boolean), cost: { net: Number(r.CostNet) || 0, tax: Number(r.CostTax) || 0, currency: str(r.Waers) || 'INR', status: str(r.CostStatus) } }),
-    lane: (r) => ({ fromLoc: str(r.FromLoc), toLoc: str(r.ToLoc), vendor: str(r.Lifnr), rate: Number(r.Rate) || 0, distanceKm: Number(r.Distance) || 0, transitH: Number(r.TransitH) || 0, priority: Number(r.Priority) || 0 }),
+    // ZB00 freight condition record (CDS ZI_TMS_LANERATE): lane = SAP route, mode = shipping type (Vsart) + ADD01 (vehicle type or rate method).
+    lane: (r) => ({ fromLoc: str(r.FromLoc), toLoc: str(r.ToLoc), vendor: str(r.Lifnr), vendorName: str(r.VendorName), rate: Number(r.Rate) || 0, distanceKm: Number(r.Distance) || 0, transitH: Number(r.TransitH) || 0, priority: Number(r.Priority) || 0,
+        route: str(r.Route), routeText: str(r.RouteText), sapVehicle: str(r.VehicleType), vehicleText: str(r.VehicleText), rateBasis: str(r.RateBasis), shippingType: str(r.Vsart), shippingText: str(r.VsartText),
+        sdabw: str(r.Sdabw), shtyp: str(r.Shtyp), zdays: str(r.ZDays), currency: str(r.Waers) || 'INR', perQty: Number(r.PerQty) || 1, perUnit: str(r.PerUnit), condTable: str(r.CondTable), condRecord: str(r.Knumh), validTo: sapDate(r.ValidTo) }),
     payment: (r) => ({ doc: str(r.Belnr), cleared: isX(r.Cleared) || !!str(r.Augbl), clearingDoc: str(r.Augbl), clearedOn: sapDate(r.Augdt) }),
 };
 

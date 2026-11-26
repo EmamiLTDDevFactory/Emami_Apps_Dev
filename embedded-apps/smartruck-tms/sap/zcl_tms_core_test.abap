@@ -19,6 +19,9 @@ CLASS ltc_core DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
     METHODS out_delivery_known_sane FOR TESTING.
     METHODS out_shipment_unknown_empty FOR TESTING.
     METHODS out_shipment_has_deliveries FOR TESTING.
+    METHODS lanes_valid_today FOR TESTING.
+    METHODS lanes_route_filter FOR TESTING.
+    METHODS lanes_priority_by_rate FOR TESTING.
 ENDCLASS.
 
 CLASS ltc_core IMPLEMENTATION.
@@ -102,4 +105,41 @@ CLASS ltc_core IMPLEMENTATION.
     ENDIF.
     cl_abap_unit_assert=>assert_equals( act = zcl_tms_core=>get_out_shipment( lv_tknum )-tknum exp = lv_tknum ).
   ENDMETHOD.
+  METHOD lanes_valid_today.
+    DATA(lt) = zcl_tms_core=>get_lanes( ).
+    cl_abap_unit_assert=>assert_not_initial( lt ).
+    LOOP AT lt INTO DATA(ls).
+      cl_abap_unit_assert=>assert_equals( act = ls-kschl exp = 'ZB00' ).
+      cl_abap_unit_assert=>assert_true( xsdbool( ls-validfrom <= sy-datum AND ls-validto >= sy-datum ) ).
+      cl_abap_unit_assert=>assert_true( xsdbool( ls-condtable = 'A964' OR ls-condtable = 'A973' OR ls-condtable = 'A972' ) ).
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD lanes_route_filter.
+    DATA(lt_all) = zcl_tms_core=>get_lanes( ).
+    CHECK lt_all IS NOT INITIAL.
+    DATA(lv_route) = CONV string( lt_all[ 1 ]-route ).
+    DATA(lt) = zcl_tms_core=>get_lanes( it_route = VALUE #( ( lv_route ) ) ).
+    cl_abap_unit_assert=>assert_not_initial( lt ).
+    LOOP AT lt INTO DATA(ls).
+      cl_abap_unit_assert=>assert_equals( act = CONV string( ls-route ) exp = lv_route ).
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD lanes_priority_by_rate.
+    DATA(lt) = zcl_tms_core=>get_lanes( ).
+    DATA lv_prev TYPE string.
+    DATA lv_rate TYPE zcl_tms_ty=>ts_lane-rate.
+    LOOP AT lt INTO DATA(ls).
+      DATA(lv_key) = |{ ls-shtyp }{ ls-route }{ ls-vehicletype }{ ls-ratebasis }{ ls-vsart }{ ls-sdabw }|.
+      IF lv_key <> lv_prev.
+        cl_abap_unit_assert=>assert_equals( act = condense( CONV string( ls-priority ) ) exp = `1` ).
+        lv_prev = lv_key.
+      ELSE.
+        cl_abap_unit_assert=>assert_true( xsdbool( ls-rate >= lv_rate ) ).
+      ENDIF.
+      lv_rate = ls-rate.
+    ENDLOOP.
+  ENDMETHOD.
+
 ENDCLASS.

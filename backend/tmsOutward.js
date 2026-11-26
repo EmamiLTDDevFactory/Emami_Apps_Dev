@@ -28,18 +28,24 @@ function build(k) {
     const indentOf = (db, iid) => (ensure(db).indents.find((x) => x.id === iid)) || fail('Indent not found.', 404);
     const currentOffer = (ind) => ind.offers.find((o) => o.response === 'Pending');
 
+    /** Lane vendor rows that fit the indent's mode: a row with a vehicle type / shipping type applies only to that one, a row without applies to all.
+        Exact vehicle-type rows come first, then by priority and rate. */
+    const modeVendors = (lane, ind) => ((lane && lane.vendors) || [])
+        .filter((v) => (!v.vehicleType || v.vehicleType === ind.vehicleType) && (!ind.shippingType || !v.shippingType || v.shippingType === ind.shippingType))
+        .sort((a, b) => (a.vehicleType === ind.vehicleType ? 0 : 1) - (b.vehicleType === ind.vehicleType ? 0 : 1) || a.priority - b.priority || a.rate - b.rate);
+    const offerOf = (v, now, db) => ({ carrierId: v.carrierId, offeredAt: iso(now), response: 'Pending', expiresAt: iso(now + db.settings.offerTimeoutH * 3600_000), rate: v.rate, ...(v.per ? { per: v.per, currency: v.currency || 'INR' } : {}) });
+
     /** Offer the indent to the next eligible vendor on its lane, or escalate to HO when the list is exhausted. */
     function offerNext(db, ind, now) {
         const lane = db.lanes.find((l) => l.id === ind.laneId);
         const tried = new Set(ind.offers.map((o) => o.carrierId));
-        const next = ((lane && lane.vendors) || []).slice().sort((a, b) => a.priority - b.priority)
-            .find((v) => !tried.has(v.carrierId) && db.carriers.some((c) => c.id === v.carrierId && !c.blocked));
+        const next = modeVendors(lane, ind).find((v) => !tried.has(v.carrierId) && db.carriers.some((c) => c.id === v.carrierId && !c.blocked));
         if (!next) {
             ind.escalated = true;
             notify(db, now, 'crit', `Indent ${ind.id}: no vendor left on lane ${ind.laneId} - HO to allocate manually`);
             return null;
         }
-        ind.offers.push({ carrierId: next.carrierId, offeredAt: iso(now), response: 'Pending', expiresAt: iso(now + db.settings.offerTimeoutH * 3600_000), rate: next.rate });
+        ind.offers.push(offerOf(next, now, db));
         ind.escalated = false;
         return next.carrierId;
     }
@@ -62,12 +68,21 @@ function build(k) {
             const vendors = (Array.isArray(c.vendors) ? c.vendors : []).map((v, i) => {
                 const carrierId = str(v.carrierId, 20);
                 if (!db.carriers.some((x) => x.id === carrierId)) fail(`Unknown carrier ${carrierId}.`);
-                if (seen.has(carrierId)) fail('A vendor can appear only once on a lane.'); seen.add(carrierId);
-                return { carrierId, priority: Number.isFinite(Number(v.priority)) ? Number(v.priority) : i + 1, rate: num(v.rate, 'Freight rate', { min: 1, max: 1e7 }) };
+                const vehicleType = str(v.vehicleType, 20).toUpperCase(), shippingType = str(v.shippingType, 2), per = str(v.per, 3).toUpperCase();
+                const mk = `${carrierId}|${vehicleType}|${shippingType}|${str(v.rateBasis, 10)}|${str(v.sdabw, 4)}|${str(v.shtyp, 4)}`;
+                if (seen.has(mk)) fail('A vendor can appear only once per vehicle type and shipping type on a lane.'); seen.add(mk);
+                // fields of SAP rows (condition record, texts) pass through unchanged so a save from the screen does not lose them
+                const keep = {}; for (const k of ['sapVehicle', 'vehicleText', 'rateBasis', 'shippingText', 'sdabw', 'shtyp', 'zdays', 'route', 'condTable', 'condRecord', 'validTo', 'source', 'perQty']) if (v[k] !== undefined && v[k] !== '') keep[k] = String(v[k]).slice(0, 60);
+                return { ...keep, carrierId, priority: Number.isFinite(Number(v.priority)) ? Number(v.priority) : i + 1, rate: num(v.rate, 'Freight rate', { min: 0.01, max: 1e7 }),
+                    ...(vehicleType ? { vehicleType } : {}), ...(shippingType ? { shippingType } : {}), ...(per ? { per, currency: str(v.currency, 5) || 'INR' } : {}) };
             });
             if (!vendors.length) fail('A lane needs at least one vendor.');
+            // SAP rates (condition ZB00) are mastered in SAP: a hand edit of the lane keeps them; the next sync refreshes them
+            const before = db.lanes.find((x) => x.id === (c.id ? str(c.id, 30) : `LN-${c.fromLocId}-${c.toLocId}`));
+            if (before) for (const v of before.vendors || []) if (v.source === 'sap' && !vendors.some((x) => x.condRecord === v.condRecord)) vendors.push(v);
             const lid = c.id ? str(c.id, 30) : `LN-${c.fromLocId}-${c.toLocId}`;
-            const row = { id: lid, fromLocId: c.fromLocId, toLocId: c.toLocId, distanceKm: num(c.distanceKm ?? 0, 'Distance', { max: 10000 }), transitH: num(c.transitH ?? 0, 'Transit hours', { max: 500 }), vendors };
+            const prev = db.lanes.find((x) => x.id === lid);
+            const row = { id: lid, fromLocId: c.fromLocId, toLocId: c.toLocId, distanceKm: num(c.distanceKm ?? 0, 'Distance', { max: 10000 }), transitH: num(c.transitH ?? 0, 'Transit hours', { max: 500 }), vendors, ...(prev && prev.sapRoutes ? { sapRoutes: prev.sapRoutes, syncedAt: prev.syncedAt } : {}) };
             const i = db.lanes.findIndex((x) => x.id === lid);
             if (i >= 0) db.lanes[i] = row; else db.lanes.push(row);
             return { laneId: lid };
@@ -85,6 +100,7 @@ function build(k) {
             const deliveries = (Array.isArray(c.deliveries) ? c.deliveries : []).map((d) => str(d, 12)).filter(Boolean).slice(0, 50);
             const ind = {
                 id: `IND${++db.seq}`, unitId: c.unitId, laneId: lane.id, fromLocId: lane.fromLocId, toLocId: lane.toLocId, customerId: c.customerId, vehicleType: c.vehicleType, vehicles,
+                ...(str(c.shippingType, 2) ? { shippingType: str(c.shippingType, 2) } : {}),
                 requiredAt: iso(at), deliveries, material: str(c.material, 60), qty: num(c.qty ?? 1, 'Quantity', { min: 0.1, max: 1000 }), status: 'Open', offers: [], createdAt: iso(now), createdBy: u.name, remarks: [],
             };
             const first = offerNext(db, ind, now);
@@ -115,10 +131,11 @@ function build(k) {
             if (ind.status !== 'Open') fail('Only an open indent can be offered.', 409);
             const car = db.carriers.find((x) => x.id === c.carrierId) || fail('Unknown carrier.');
             if (car.blocked) fail('That carrier is blocked.', 409);
-            const lv = (db.lanes.find((l) => l.id === ind.laneId) || { vendors: [] }).vendors.find((v) => v.carrierId === car.id);
-            const rate = c.rate !== undefined ? num(c.rate, 'Freight rate', { min: 1, max: 1e7 }) : (lv ? lv.rate : fail('That carrier is not on the lane; enter the freight rate.'));
+            const lv = modeVendors(db.lanes.find((l) => l.id === ind.laneId), ind).find((v) => v.carrierId === car.id);
+            const explicit = c.rate !== undefined;
+            const rate = explicit ? num(c.rate, 'Freight rate', { min: 1, max: 1e7 }) : (lv ? lv.rate : fail('That carrier has no rate on this lane for this vehicle / shipping type; enter the freight rate.'));
             ind.offers.forEach((o) => { if (o.response === 'Pending') o.response = 'Withdrawn'; });
-            ind.offers.push({ carrierId: car.id, offeredAt: iso(now), response: 'Pending', expiresAt: iso(now + db.settings.offerTimeoutH * 3600_000), rate });
+            ind.offers.push(explicit ? offerOf({ carrierId: car.id, rate }, now, db) : offerOf(lv, now, db));
             ind.escalated = false; ind.remarks.push(`Offered to ${car.name} by ${u.name}`);
             return { offeredTo: car.id };
         },
@@ -143,7 +160,8 @@ function build(k) {
             }
             offer.response = 'Accepted';
             const carrier = db.carriers.find((x) => x.id === u.carrierId);
-            const price = offer.rate;
+            // a per-KG lane rate (SAP ZB00) is estimated on the indent quantity (MT) until the deliveries give the real weight
+            const price = offer.per === 'KG' ? Math.round(offer.rate * ind.qty * 1000) : offer.rate;
             const o = {
                 id: `ORD${++db.seq}`, unitId: ind.unitId, customerId: ind.customerId, mode: 'FTL', basis: 'Vehicle', vehicleType: ind.vehicleType, vehicles: ind.vehicles,
                 stops: [{ type: 'P', locId: ind.fromLocId, at: ind.requiredAt }, { type: 'D', locId: ind.toLocId, at: iso(Date.parse(ind.requiredAt) + (db.lanes.find((l) => l.id === ind.laneId).transitH || 24) * 3600_000) }],
@@ -153,7 +171,7 @@ function build(k) {
             o.oin = `OIN-${o.unitId}-${db.seq}`;
             db.orders.unshift(o);
             const ships = makeShipments(db, o, carrier.id, price, now, `Indent ${ind.id}`);
-            ships.forEach((s) => { s.indentId = ind.id; });
+            ships.forEach((s) => { s.indentId = ind.id; if (offer.per) s.freightRate = { rate: offer.rate, per: offer.per, currency: offer.currency || 'INR' }; if (ind.shippingType) s.shippingType = ind.shippingType; });
             db.shipments.unshift(...ships);
             ind.status = 'Allocated'; ind.orderId = o.id; ind.sin = ships[0].sin;
             notify(db, now, 'info', `Indent ${ind.id} accepted by ${carrier.name} - shipment ${ind.sin}`);

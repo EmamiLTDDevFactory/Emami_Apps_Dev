@@ -1,0 +1,109 @@
+@AbapCatalog.sqlViewName: 'ZITMSLANERT'
+@AbapCatalog.compiler.compareFilter: true
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@EndUserText.label: 'TMS lane freight rates (ZB00, valid on date)'
+/* Lane-wise, mode-wise freight rate of the SD shipment-cost condition ZB00 "Freight Gross Weight" (access sequence Z001).
+   One row per condition record valid on p_date, from the three condition tables Logistics maintains (TK11/TK13):
+     A964  ShpTyp/Route/ADD01/ADD02/SpecProc/ServAgent/ZDAYS/ShippingType   (access step 09)
+     A973  ShpTyp/Route/ADD01/ADD02/SpecProc/ServAgent/ShippingType         (access step 10)
+     A972  ShpTyp/Route/ADD01/ADD02/SpecProc/ServAgent                      (access step 20, no shipping type)
+   Lane = ROUTE, mode = VSART (shipping type: 01 Truck, 03 Train ...) and ADD01 (vehicle type: FTL9MT, 15T, RTPKG ...),
+   ADD02 = rate basis (WEIGHT / FLAT RATE / CARTON). Rate = KONP-KBETR per KPEIN KMEIN (ZB00: INR per 1 KG gross weight).
+   Texts, route distance / transit and stage end points are added by ZCL_TMS_CORE=>GET_LANES. Used by OData ZTMS_SRV LaneSet. */
+define view ZI_TMS_LANERATE
+  with parameters
+    @Environment.systemField: #SYSTEM_DATE
+    p_date : abap.dats
+  as select from a964 as a
+    inner join   konp as p on p.knumh = a.knumh
+{
+  key cast( 'A964' as abap.char( 4 ) )  as CondTable,
+  key a.knumh                           as CondRecord,
+      a.kschl                           as CondType,
+      a.shtyp                           as ShipmentType,
+      a.route                           as Route,
+      cast( a.add01 as abap.char( 10 ) ) as VehicleType,
+      cast( a.add02 as abap.char( 10 ) ) as RateBasis,
+      a.sdabw                           as SpecialProcessing,
+      a.tdlnr                           as Lifnr,
+      cast( a.vsart as abap.char( 2 ) ) as ShippingType,
+      cast( a.zdays as abap.char( 4 ) ) as ZDays,
+      a.datab                           as ValidFrom,
+      a.datbi                           as ValidTo,
+      p.kbetr                           as Rate,
+      p.konwa                           as Currency,
+      p.kpein                           as PerQty,
+      p.kmein                           as PerUnit,
+      p.krech                           as CalcType
+}
+where
+      a.kappl    =  'F'
+  and a.kschl    =  'ZB00'
+  and a.datab    <= $parameters.p_date
+  and a.datbi    >= $parameters.p_date
+  and p.kopos    =  '01'
+  and p.loevm_ko =  ''
+
+union all
+
+select from a973 as a
+  inner join konp as p on p.knumh = a.knumh
+{
+  key cast( 'A973' as abap.char( 4 ) )  as CondTable,
+  key a.knumh                           as CondRecord,
+      a.kschl                           as CondType,
+      a.shtyp                           as ShipmentType,
+      a.route                           as Route,
+      cast( a.add01 as abap.char( 10 ) ) as VehicleType,
+      cast( a.add02 as abap.char( 10 ) ) as RateBasis,
+      a.sdabw                           as SpecialProcessing,
+      a.tdlnr                           as Lifnr,
+      cast( a.vsart as abap.char( 2 ) ) as ShippingType,
+      cast( '' as abap.char( 4 ) )      as ZDays,
+      a.datab                           as ValidFrom,
+      a.datbi                           as ValidTo,
+      p.kbetr                           as Rate,
+      p.konwa                           as Currency,
+      p.kpein                           as PerQty,
+      p.kmein                           as PerUnit,
+      p.krech                           as CalcType
+}
+where
+      a.kappl    =  'F'
+  and a.kschl    =  'ZB00'
+  and a.datab    <= $parameters.p_date
+  and a.datbi    >= $parameters.p_date
+  and p.kopos    =  '01'
+  and p.loevm_ko =  ''
+
+union all
+
+select from a972 as a
+  inner join konp as p on p.knumh = a.knumh
+{
+  key cast( 'A972' as abap.char( 4 ) )  as CondTable,
+  key a.knumh                           as CondRecord,
+      a.kschl                           as CondType,
+      a.shtyp                           as ShipmentType,
+      a.route                           as Route,
+      cast( a.add01 as abap.char( 10 ) ) as VehicleType,
+      cast( a.add02 as abap.char( 10 ) ) as RateBasis,
+      a.sdabw                           as SpecialProcessing,
+      a.tdlnr                           as Lifnr,
+      cast( '' as abap.char( 2 ) )      as ShippingType,
+      cast( '' as abap.char( 4 ) )      as ZDays,
+      a.datab                           as ValidFrom,
+      a.datbi                           as ValidTo,
+      p.kbetr                           as Rate,
+      p.konwa                           as Currency,
+      p.kpein                           as PerQty,
+      p.kmein                           as PerUnit,
+      p.krech                           as CalcType
+}
+where
+      a.kappl    =  'F'
+  and a.kschl    =  'ZB00'
+  and a.datab    <= $parameters.p_date
+  and a.datbi    >= $parameters.p_date
+  and p.kopos    =  '01'
+  and p.loevm_ko =  ''

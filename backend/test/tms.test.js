@@ -508,7 +508,7 @@ function depsOf(w, over = {}) {
         sap: {
             async deliveries(nos) { return { simulated: false, rows: nos.filter((n) => n !== '999999').map((n) => ({ no: n, plant: 'UN13', shipTo: 'Shop', cartons: 100, weightKg: 6000, volumeM3: 25 })) }; },
             async shipment(no) { return { no, serviceAgent: '100200', deliveries: ['80001234', '80001235'], cost: { net: 40000, tax: 2000, currency: 'INR', status: 'C' } }; },
-            async lanes() { return [{ fromLoc: 'GAU', toLoc: 'CCU', vendor: '100200', rate: 41000, distanceKm: 1030, transitH: 30, priority: 1 }, { fromLoc: 'GAU', toLoc: 'XXX', vendor: '100200', rate: 1, distanceKm: 1, transitH: 1, priority: 1 }]; },
+            async lanes() { return [{ fromLoc: 'GAU', toLoc: 'CCU', vendor: '100200', rate: 41000, distanceKm: 1030, transitH: 30, priority: 1, condRecord: '11' }, { fromLoc: 'GAU', toLoc: 'XXX', vendor: '100200', rate: 1, distanceKm: 1, transitH: 1, priority: 1, condRecord: '12' }]; },
         },
         ...over,
     };
@@ -689,7 +689,11 @@ test('trip: settings and lane sync from SAP are validated; vendor view never car
     await run(w, w.u.ho, { type: 'saveSettings', settings: { capacityMinPct: 70, invoiceMailbox: 'f@emami.test', consentText: 'New wording' } }, d);
     assert.equal(w.db.settings.capacityMinPct, 70); assert.equal(w.db.settings.consentVersion, 'v2');
     const r = await run(w, w.u.ho, { type: 'syncLanes' }, d);
-    assert.equal(r.result.lanes, 1); assert.equal(r.result.skipped.length, 1);
+    // GAU-CCU matches existing locations; the unknown SAP point XXX becomes a location instead of dropping the rate
+    assert.equal(r.result.lanes, 2); assert.equal(r.result.locationsAdded, 1); assert.equal(r.result.skippedCount, 0);
+    assert.equal(w.db.locs.find((l) => l.id === 'XXX').source, 'sap');
+    // a gateway on the old model (no condition record / unit / mode) is refused
+    await rejects(run(w, w.u.ho, { type: 'syncLanes' }, { ...d, sap: { ...d.sap, async lanes() { return [{ fromLoc: 'GAU', toLoc: 'CCU', vendor: '100200', rate: 4.9 }]; } } }), 503, /metadata cache/);
     const sin = await loaded(w, d);
     await run(w, w.u.v1, { type: 'vendorDepart', sin, lrNo: 'LR-3' }, d, NOW + H);
     assert.equal(engine.scopedDb(w.db, w.u.v1).shipments[0].trackToken, undefined);
@@ -713,4 +717,46 @@ test('outward: HO can hand an escalated indent to a chosen vendor', async () => 
     await run(w, w.u.ho, { type: 'offerIndent', id: result.indentId, carrierId: 'C001' });
     const r = await run(w, w.u.v1, { type: 'vendorRespond', id: result.indentId, response: 'accept' });
     assert.equal(w.db.shipments.find((s) => s.sin === r.result.sin).freight, 41000);
+});
+
+test('lanes from SAP ZB00: mode-wise rates, offers follow the indent vehicle type, per-KG freight estimated on the indent quantity', async () => {
+    const w = outwardWorld();
+    const row = (o) => ({ fromLoc: 'GUWAHATI', toLoc: 'KOLKATA', vendor: '100200', rate: 4.9, distanceKm: 1030, transitH: 30, priority: 1, route: 'ZGUKOL', routeText: 'Guwahati to Kolkata', sapVehicle: 'RTPKG', vehicleText: 'Rate Per KG',
+        rateBasis: 'WEIGHT', shippingType: '01', shippingText: 'Truck', sdabw: 'NORM', shtyp: 'ZSD1', zdays: '', currency: 'INR', perQty: 1, perUnit: 'KG', condTable: 'A973', condRecord: '1', validTo: '9999-12-31', ...o });
+    w.db.locs.find((l) => l.id === 'GAU').city = 'Guwahati'; w.db.locs.find((l) => l.id === 'CCU').city = 'Kolkata';
+    const rows = [
+        row({}),                                                                              // C001, any vehicle, 4.90/KG
+        row({ vendor: '100207', rate: 4.5, condRecord: '2' }),                                // C002 cheaper, any vehicle
+        row({ vendor: '100207', rate: 4.4, condTable: 'A964', zdays: '5', condRecord: '3' }), // same mode in A964: A973 row wins
+        row({ vendor: '100200', sapVehicle: 'FTL9MT', vehicleText: 'Full Truck Load 9 Metric Ton', rateBasis: 'FLAT RATE', rate: 3.8, condRecord: '4' }),
+        row({ vendor: '100200', shippingType: '03', shippingText: 'Train', rate: 3.1, condRecord: '5' }),
+        row({ vendor: '999999', condRecord: '6' }),                                           // not in the vendor master, no name: skipped
+        row({ vendor: '888888', vendorName: 'Lane Only Carrier', rate: 6, condRecord: '8' }),  // outside ZTRP: added from the rate row
+        row({ fromLoc: '', toLoc: '', route: 'ZNOPT', condRecord: '7' }),                     // route without stages
+    ];
+    const d = { ...depsOf(w), sap: { ...depsOf(w).sap, async lanes() { return rows; } } };
+    const r = await run(w, w.u.ho, { type: 'syncLanes' }, d);
+    assert.equal(r.result.lanes, 1); assert.equal(r.result.rates, 5); assert.equal(r.result.carriersAdded, 1); assert.equal(r.result.skippedCount, 2); assert.equal(r.result.locationsAdded, 0); assert.equal(r.result.vehicleTypesAdded, 1);
+    const lane = w.db.lanes.find((l) => l.id === 'LN-GAU-CCU');
+    assert.deepEqual(lane.sapRoutes, ['ZGUKOL']);
+    const c2 = lane.vendors.find((v) => v.carrierId === 'C002');
+    assert.equal(c2.condTable, 'A973'); assert.equal(c2.rate, 4.5); assert.equal(c2.priority, 1);
+    assert.equal(lane.vendors.find((v) => v.carrierId === 'C001' && v.sapVehicle === 'RTPKG' && v.shippingType === '01').priority, 2);
+    assert.equal(w.db.vehicleTypes.find((v) => v.code === 'FTL9MT').maxWeightKg, 9000);
+    assert.equal(w.db.sapTexts.shipping['03'], 'Train');
+
+    // an FTL9MT indent goes first to the FTL9MT rate (C001), a CONT15MT indent to the cheapest any-vehicle truck rate (C002)
+    const a = await run(w, w.u.depot, indentCmd({ vehicleType: 'FTL9MT', shippingType: '01' }), d);
+    assert.equal(a.result.offeredTo, 'C001'); assert.equal(w.db.indents[0].offers[0].rate, 3.8); assert.equal(w.db.indents[0].offers[0].per, 'KG');
+    const b = await run(w, w.u.depot, indentCmd({ shippingType: '01' }), d);
+    assert.equal(b.result.offeredTo, 'C002');
+    // accept: freight estimated on 12 MT, invoice checked against rate x delivered weight (2 deliveries x 6000 kg)
+    const acc = await run(w, w.u.v2, { type: 'vendorRespond', id: b.result.indentId, response: 'accept' }, d);
+    const s = w.db.shipments.find((x) => x.sin === acc.result.sin);
+    assert.equal(s.freight, 54000); assert.deepEqual(s.freightRate, { rate: 4.5, per: 'KG', currency: 'INR' });
+
+    // a hand-entered vendor row survives the next sync
+    await run(w, w.u.ho, { type: 'upsertLane', id: 'LN-GAU-CCU', fromLocId: 'GAU', toLocId: 'CCU', distanceKm: 1030, transitH: 30, vendors: [...lane.vendors, { carrierId: 'C001', priority: 9, rate: 50000, vehicleType: 'CONT15MT' }] });
+    await run(w, w.u.ho, { type: 'syncLanes' }, d);
+    assert.ok(w.db.lanes.find((l) => l.id === 'LN-GAU-CCU').vendors.some((v) => v.rate === 50000 && v.source === undefined));
 });

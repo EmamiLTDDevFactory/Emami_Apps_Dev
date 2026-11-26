@@ -99,27 +99,78 @@ function build(k, outward) {
             return { settings: next };
         },
 
-        /** Pull lanes (route, vendor, rate, distance, transit time) from SAP. Lanes whose locations are not in the app's master are reported, not guessed. */
+        /** Pull lanes from SAP: freight condition ZB00 (one row per route x transporter x mode). SAP route end points that are not yet locations are
+            added as locations (coordinates to be filled in Settings); truck codes become vehicle types (capacity from the code, volume unset).
+            Rows without both end points or with an unknown transporter are reported, not guessed. Vendor rows entered by hand are kept. */
         async syncLanes(db, c, u, now, deps) {
             ensure(db); need(u, 'lane.manage', 'sync lanes');
             const rows = await deps.sap.lanes();
             if (rows && rows.simulated) fail('SAP is not connected, so there is nothing to sync.', 503);
-            const by = new Map(), skipped = [];
+            // a gateway still on the old LaneSet model drops condition record, unit and mode: refuse rather than store per-KG rates as trip rates
+            if (rows.length && rows.every((r) => !r.condRecord)) fail('The SAP gateway still serves the old LaneSet model (no condition record, rate unit or mode). Ask Basis to clear the gateway metadata cache for ZTMS_SRV, then sync again.', 503);
+            const ALIAS = { BANGALORE: 'BENGALURU', CALCUTTA: 'KOLKATA', BOMBAY: 'MUMBAI', MADRAS: 'CHENNAI', TRICHUR: 'THRISSUR', PONDICHERR: 'PUDUCHERRY', GURGAON: 'GURUGRAM' };
+            const title = (x) => x.toLowerCase().replace(/\b[a-z]/g, (m) => m.toUpperCase());
+            let locsAdded = 0, vtAdded = 0, carriersAdded = 0;
+            const locFor = (code) => {
+                const k = String(code || '').trim().toUpperCase();
+                if (!k) return null;
+                const city = ALIAS[k] || k;
+                const hit = db.locs.find((l) => l.id.toUpperCase() === k || String(l.sapPoint || '').toUpperCase() === k || String(l.city).toUpperCase() === city);
+                if (hit) return hit.id;
+                const id = k.replace(/[^A-Z0-9]+/g, '-').slice(0, 20);
+                if (!db.locs.some((l) => l.id === id)) { db.locs.push({ id, city: title(k), state: '', zone: '', lat: 0, lon: 0, pincode: '', sapPoint: k, source: 'sap' }); locsAdded++; }
+                return id;
+            };
+            const isTruck = (v) => !!v && !/^(RTP|ABSL)/.test(v);
+            const capKg = (v) => { const m = /(\d+(?:\.\d+)?)\s*(?:MT|T)\b/.exec(v.replace(/-/g, ' ')); return m ? Math.round(Number(m[1]) * 1000) : 0; };
+            const PREF = { A973: 0, A964: 1, A972: 2 };
+            const by = new Map(), skipped = [], texts = { vehicles: {}, shipping: {} };
+            const carByCode = new Map(db.carriers.map((x) => [x.code, x]));
             for (const r of rows) {
-                const car = db.carriers.find((x) => x.code === r.vendor);
-                if (!db.locs.some((l) => l.id === r.fromLoc) || !db.locs.some((l) => l.id === r.toLoc) || !car) { skipped.push(`${r.fromLoc || '?'}-${r.toLoc || '?'} (${r.vendor || 'no vendor'})`); continue; }
-                const key = `${r.fromLoc}|${r.toLoc}`;
-                const e = by.get(key) || { fromLocId: r.fromLoc, toLocId: r.toLoc, distanceKm: r.distanceKm, transitH: r.transitH, vendors: [] };
-                if (!(r.rate > 0)) { skipped.push(`${key} (${r.vendor}: no rate)`); continue; }
-                e.vendors.push({ carrierId: car.id, priority: r.priority || e.vendors.length + 1, rate: r.rate });
+                let car = carByCode.get(r.vendor);
+                // a service agent with a freight rate but outside account group ZTRP (so not in Sync masters) is added from the rate row
+                if (!car && r.vendor && r.vendorName) {
+                    car = { id: `C${String(db.carriers.length + 1).padStart(3, '0')}`, name: r.vendorName, code: r.vendor, type: 'Broker', shortName: r.vendorName.split(' ')[0].toUpperCase(), paymentTerms: 'Net 30', weightage: 0, blocked: false, rating: 4, fleet: 0, lanes: [], rejectionPct: 0, fulfilledPct: 100, source: 'sap-lane' };
+                    db.carriers.push(car); carByCode.set(r.vendor, car); carriersAdded++;
+                }
+                if (!car) { skipped.push(`${r.route || '?'} (${r.vendor || 'no vendor'}: transporter not in SAP vendor master)`); continue; }
+                if (!(r.rate > 0)) { skipped.push(`${r.route || '?'} (${r.vendor}: no rate)`); continue; }
+                const from = locFor(r.fromLoc), to = locFor(r.toLoc);
+                if (!from || !to) { skipped.push(`${r.route || '?'} ${r.routeText || ''} (route has no start/end point in SAP)`.replace(/\s+/g, ' ')); continue; }
+                if (from === to) { skipped.push(`${r.route} ${r.routeText || ''} (local route: start and end are the same point)`.replace(/\s+/g, ' ')); continue; }
+                const vehicleType = isTruck(r.sapVehicle) ? r.sapVehicle : '';
+                if (vehicleType && !db.vehicleTypes.some((v) => v.code === vehicleType) && capKg(vehicleType) > 0) {
+                    db.vehicleTypes.push({ code: vehicleType, name: r.vehicleText || vehicleType, maxWeightKg: capKg(vehicleType), maxVolumeM3: 0, source: 'sap' }); vtAdded++;
+                }
+                const key = `${from}|${to}`;
+                const e = by.get(key) || { fromLocId: from, toLocId: to, distanceKm: r.distanceKm, transitH: r.transitH, sapRoutes: [], rows: new Map() };
+                if (r.route && !e.sapRoutes.includes(r.route)) e.sapRoutes.push(r.route);
+                if (!e.distanceKm && r.distanceKm) e.distanceKm = r.distanceKm;
+                if (!e.transitH && r.transitH) e.transitH = r.transitH;
+                // kept small: the whole document travels to every browser; texts go once into db.sapTexts
+                if (r.sapVehicle && r.vehicleText) texts.vehicles[r.sapVehicle] = r.vehicleText;
+                if (r.shippingType && r.shippingText) texts.shipping[r.shippingType] = r.shippingText;
+                const v = { carrierId: car.id, priority: 0, rate: r.rate, ...(r.currency !== 'INR' ? { currency: r.currency } : {}), per: r.perUnit, ...(r.perQty !== 1 ? { perQty: r.perQty } : {}), ...(vehicleType ? { vehicleType } : {}), sapVehicle: r.sapVehicle,
+                    rateBasis: r.rateBasis, shippingType: r.shippingType, sdabw: r.sdabw, shtyp: r.shtyp, route: r.route, condTable: r.condTable, condRecord: r.condRecord, source: 'sap' };
+                // one rate per transporter and mode; A973 (route + mode) wins over A964 (also needs transit days) and A972 (no shipping type)
+                const mk = [car.id, r.sapVehicle, r.rateBasis, r.shippingType, r.sdabw, r.shtyp].join('|');
+                const cur = e.rows.get(mk);
+                if (!cur || (PREF[v.condTable] ?? 9) < (PREF[cur.condTable] ?? 9) || ((PREF[v.condTable] ?? 9) === (PREF[cur.condTable] ?? 9) && v.rate < cur.rate)) e.rows.set(mk, v);
                 by.set(key, e);
             }
+            db.sapTexts = { vehicles: { ...((db.sapTexts || {}).vehicles || {}), ...texts.vehicles }, shipping: { ...((db.sapTexts || {}).shipping || {}), ...texts.shipping } };
+            let rates = 0;
             for (const e of by.values()) {
                 const lid = `LN-${e.fromLocId}-${e.toLocId}`, i = db.lanes.findIndex((l) => l.id === lid);
-                const row = { id: lid, ...e };
+                const manual = i >= 0 ? (db.lanes[i].vendors || []).filter((v) => v.source !== 'sap') : [];
+                const sapRows = [...e.rows.values()].sort((a, b) => [a.sapVehicle, a.rateBasis, a.shippingType, a.sdabw].join('|').localeCompare([b.sapVehicle, b.rateBasis, b.shippingType, b.sdabw].join('|')) || a.rate - b.rate);
+                let grp = '', n = 0;
+                for (const v of sapRows) { const g = [v.sapVehicle, v.rateBasis, v.shippingType, v.sdabw].join('|'); n = g === grp ? n + 1 : 1; grp = g; v.priority = n; }
+                rates += sapRows.length;
+                const row = { id: lid, fromLocId: e.fromLocId, toLocId: e.toLocId, distanceKm: e.distanceKm, transitH: e.transitH, sapRoutes: e.sapRoutes, vendors: [...manual, ...sapRows], syncedAt: iso(now) };
                 if (i >= 0) db.lanes[i] = row; else db.lanes.push(row);
             }
-            return { lanes: by.size, skipped };
+            return { lanes: by.size, rates, locationsAdded: locsAdded, vehicleTypesAdded: vtAdded, carriersAdded, skippedCount: skipped.length, skipped: [...new Set(skipped)].slice(0, 50) };
         },
 
         async linkDeliveries(db, c, u, now, deps) {
@@ -178,7 +229,7 @@ function build(k, outward) {
             if (!['Assigned', 'Towards Pickup', 'At Pickup'].includes(s.status)) fail('The loading check applies before departure, once a vehicle is assigned.', 409);
             const vt = db.vehicleTypes.find((v) => v.code === s.vehicleType) || fail(`Vehicle type ${s.vehicleType} has no capacity set; add it under Settings.`, 409);
             const w = s.deliveries.reduce((a, d) => a + d.weightKg, 0), v = s.deliveries.reduce((a, d) => a + d.volumeM3, 0);
-            const wPct = (w / vt.maxWeightKg) * 100, vPct = (v / vt.maxVolumeM3) * 100, eff = Math.max(wPct, vPct);
+            const wPct = (w / vt.maxWeightKg) * 100, vPct = vt.maxVolumeM3 > 0 ? (v / vt.maxVolumeM3) * 100 : 0, eff = Math.max(wPct, vPct); // volume not set (SAP vehicle types): weight only
             const min = db.settings.capacityMinPct, reason = str(c.reason, 300);
             let approval = 'NotNeeded', approvedBy;
             if (eff > 100) {
@@ -320,8 +371,11 @@ function build(k, outward) {
             if (db.invoices.some((i) => i.carrierId === s.carrierId && i.invoiceNo === no && i.status !== 'Disapproved')) fail(`Invoice ${no} was already submitted by this vendor.`, 409);
             try { checkFile(c.file); } catch (e) { fail(e.message); }
             const extras = s.receipt && s.receipt.chargesApproval === 'Approved' ? s.receipt.unloadingCharge + s.receipt.detentionCharge : 0;
-            const basis = s.eccCost ? 'ECC shipment cost' : 'Agreed lane rate';
-            const expected = s.eccCost ? s.eccCost.net + (s.eccCost.tax || 0) : s.freight;
+            // per-KG lane rates (SAP ZB00) are priced on the delivered gross weight once deliveries are linked
+            const wKg = (s.deliveries || []).reduce((a, d) => a + (d.weightKg || 0), 0);
+            const perKg = !s.eccCost && s.freightRate && s.freightRate.per === 'KG' && wKg > 0;
+            const basis = s.eccCost ? 'ECC shipment cost' : perKg ? `Lane rate ${s.freightRate.rate}/KG x ${wKg} kg` : 'Agreed lane rate';
+            const expected = s.eccCost ? s.eccCost.net + (s.eccCost.tax || 0) : perKg ? Math.round(s.freightRate.rate * wKg * 100) / 100 : s.freight;
             const allowed = expected + extras;
             const variancePct = Math.round(((amount - allowed) / allowed) * 1000) / 10;
             const tol = db.settings.invoiceTolerancePct;

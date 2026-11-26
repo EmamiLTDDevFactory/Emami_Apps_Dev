@@ -4,6 +4,8 @@ import React, { useState } from 'react';
 import { X, ChevronLeft, ChevronRight, MoreVertical } from 'lucide-react';
 
 export const inr = (n: number) => '₹' + Math.round(n).toLocaleString('en-IN');
+/** A lane / offer rate: per-unit SAP rates (e.g. ₹4.90/KG) keep their paise, trip rates are whole rupees. */
+export const rateText = (r: { rate: number; per?: string; currency?: string }) => (r.per ? `${r.currency && r.currency !== 'INR' ? `${r.currency} ` : '₹'}${r.rate.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/${r.per}` : inr(r.rate));
 export const fmtDT = (s: string | number) => new Date(s).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
 export const fmtD = (s: string | number) => new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 

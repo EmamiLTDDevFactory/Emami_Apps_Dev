@@ -74,3 +74,30 @@ see memory `backend_deploy_topology`.
 | 4 Reports, rollout | 41 server-side reports in 8 categories (plan says 9, lists 8) | 5 reports have no data source here (vehicle service / maintenance, driver expenses, warehouse temperature); warehouse/replica and load test at company scale |
 
 Known limits: state is one locked JSON document (pilot scale); move to tables before company-wide volume. No push notifications, e-mail or SMS are sent unless `TMS_NOTIFY_URL` is set.
+
+## LaneSet - lane-wise, mode-wise freight rates (2026-11-26)
+Source: SD shipment-cost condition **ZB00** "Freight Gross Weight" (KAPPL F, access sequence Z001), maintained in TK11/TK13.
+CDS view **`ZI_TMS_LANERATE`** (`sap/zi_tms_lanerate.ddls`, SQL view `ZITMSLANERT`, classic `define view` - EDS is SAP_BASIS 7.50,
+package ZEMAMI, transport EDSK9B0EM3) = `union all` of the three condition tables, each joined to KONP (KOPOS 01, not deleted), valid on
+parameter `p_date` (defaults to the system date):
+
+| Table | Key (after KAPPL/KSCHL) | Access step | Valid records 2026-11-26 |
+|---|---|---|---|
+| A964 | SHTYP ROUTE ADD01 ADD02 SDABW TDLNR ZDAYS VSART | 09 | 1,070 |
+| A973 | SHTYP ROUTE ADD01 ADD02 SDABW TDLNR VSART | 10 | 1,896 |
+| A972 | SHTYP ROUTE ADD01 ADD02 SDABW TDLNR (no VSART) | 20 | 3 |
+
+Meaning: lane = ROUTE (TVRO distance DISTZ, transit TRAZTD = HHHHMMSS, TVRAB first KNANF / last KNEND), mode = VSART (T173T: 01 Truck,
+03 Train ...) + ADD01 (VTADD01T: truck codes FTL9MT, 15T, CONT15MT ... or rate methods RTPKG/RTPCAR/ABSL), ADD02 = rate basis
+(WEIGHT / FLAT RATE / CARTON), SDABW NORM/COUR, TDLNR = transporter. Rate = KBETR per KPEIN KMEIN - **INR per 1 KG gross weight on every
+record, including those with ADD02 = FLAT RATE**. A502 / A601 are also in Z001 but hold only 4 / 2 ZB00 records and are not read.
+
+`ZCL_TMS_CORE=>GET_LANES` adds the texts, distance, transit hours, end points and Priority (1 = cheapest within shipment type + route +
+ADD01 + ADD02 + VSART + SDABW). OData `LaneSet` (filters Route, Lifnr, Vsart, VehicleType; $top/$skip) works through the hub NGD gateway
+with no extra Basis step (the MPC last-modified stamp was bumped). ABAP Unit: 17/17 in ZTMS_CORE_TEST.
+
+App side (`backend/tmsTrips.js` syncLanes): SAP route points become locations when no location matches (by id, city, alias or
+`sapPoint`; coordinates must then be filled in), truck codes become vehicle types (capacity from the code, volume unset = weight-only loading
+check), service agents outside ZTRP are added as carriers; one rate per transporter x mode (A973 preferred over A964 over A972); hand-entered
+rows are kept. Offers follow the indent's vehicle type and shipping type; a per-KG rate estimates freight on the indent quantity and the
+invoice is checked against rate x delivered weight when there is no ECC shipment cost. A gateway on the old model (no condition record) is refused.

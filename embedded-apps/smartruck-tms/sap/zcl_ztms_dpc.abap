@@ -1,5 +1,5 @@
 "! Data provider of OData service ZTMS_SRV (code based, no SEGW project): maps requests to ZCL_TMS_CORE. Reads: VendorSet, CustomerSet,
-"! PoSoCheckSet, PaymentStatusSet, OutDeliverySet, OutShipmentSet (LaneSet answers 501 until the freight source is decided). The only write is POST FreightInvoiceSet (the gateway hub passes no function imports / PUT / DELETE).
+"! PoSoCheckSet, PaymentStatusSet, OutDeliverySet, OutShipmentSet, LaneSet (freight condition ZB00 via CDS ZI_TMS_LANERATE). The only write is POST FreightInvoiceSet (the gateway hub passes no function imports / PUT / DELETE).
 "! The hub login e-mail arrives as option emamiuser= or header X-Emami-User and is written into the FI item text for traceability.
 CLASS zcl_ztms_dpc DEFINITION PUBLIC INHERITING FROM /iwbep/cl_mgw_abs_data CREATE PUBLIC.
   PUBLIC SECTION.
@@ -112,8 +112,19 @@ CLASS zcl_ztms_dpc IMPLEMENTATION.
         ENDIF.
         copy_data_to_ref( EXPORTING is_data = lt_os CHANGING cr_data = er_entityset ).
       WHEN 'LaneSet'.
-        " Where the lane freight lives (condition type / table) is a Logistics decision not yet taken: refuse clearly instead of returning nothing.
-        busi( iv_text = `The lane freight source is not configured yet (needs the SD freight condition type and key).` iv_status = '501' ).
+        " Lane freight = condition ZB00 records valid today (CDS ZI_TMS_LANERATE). Optional filters Route, Lifnr, Vsart, VehicleType; $top/$skip honoured.
+        DATA(lt_ln) = zcl_tms_core=>get_lanes(
+          it_route   = filter_values( it_filter = it_filter_select_options iv_name = 'Route' )
+          it_lifnr   = filter_values( it_filter = it_filter_select_options iv_name = 'Lifnr' )
+          it_vsart   = filter_values( it_filter = it_filter_select_options iv_name = 'Vsart' )
+          it_vehicle = filter_values( it_filter = it_filter_select_options iv_name = 'VehicleType' ) ).
+        IF is_paging-skip > 0.
+          DELETE lt_ln TO is_paging-skip.
+        ENDIF.
+        IF is_paging-top > 0 AND lines( lt_ln ) > is_paging-top.
+          DELETE lt_ln FROM is_paging-top + 1.
+        ENDIF.
+        copy_data_to_ref( EXPORTING is_data = lt_ln CHANGING cr_data = er_entityset ).
       WHEN OTHERS.
         busi( iv_text = |Unknown entity set { iv_entity_set_name }| iv_status = '404' ).
     ENDCASE.

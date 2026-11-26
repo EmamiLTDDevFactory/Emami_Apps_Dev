@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useTms } from '../../lib/store';
-import { Card, Field, Kpi, Modal, PageHead, Pill, StatusPill, Table, Tabs, fmtDT, inr } from '../../components/ui';
+import { Card, Field, Kpi, Modal, PageHead, Pill, StatusPill, Table, Tabs, fmtDT, inr, rateText } from '../../components/ui';
 import type { Indent } from '../../lib/types';
 
 const TABS = ['Open', 'Escalated', 'Allocated', 'All'] as const;
@@ -18,13 +18,13 @@ export default function IndentsPage() {
   const city = (id: string) => t.db.locs.find((l) => l.id === id)?.city ?? id;
   const carrier = (id: string) => t.db.carriers.find((c) => c.id === id)?.name ?? id;
   const mine = t.scoped(indents);
-  const [f, setF] = useState({ laneId: '', vehicleType: '', requiredAt: '', customerId: '', material: '', qty: '10', deliveries: '' });
+  const [f, setF] = useState({ laneId: '', vehicleType: '', shippingType: '01', requiredAt: '', customerId: '', material: '', qty: '10', deliveries: '' });
   const [off, setOff] = useState('');
 
   if (!live) return <div><PageHead title="Indents" sub="Depot indents and vendor allocation" /><Card><p className="text-sm">Outward tracking runs on the live server. Open this app with <code>?mode=live</code> on the DEV site.</p></Card></div>;
 
   const submit = async () => {
-    const r = await t.cmd<{ indentId: string; offeredTo: string | null }>({ type: 'createIndent', unitId: t.unitId, laneId: f.laneId, vehicleType: f.vehicleType, requiredAt: f.requiredAt ? new Date(f.requiredAt).toISOString() : '', customerId: f.customerId, material: f.material, qty: Number(f.qty), deliveries: f.deliveries.split(/[\s,]+/).filter(Boolean) });
+    const r = await t.cmd<{ indentId: string; offeredTo: string | null }>({ type: 'createIndent', unitId: t.unitId, laneId: f.laneId, vehicleType: f.vehicleType, shippingType: f.shippingType, requiredAt: f.requiredAt ? new Date(f.requiredAt).toISOString() : '', customerId: f.customerId, material: f.material, qty: Number(f.qty), deliveries: f.deliveries.split(/[\s,]+/).filter(Boolean) });
     if (r) { t.toast(r.offeredTo ? `Indent ${r.indentId} offered to ${carrier(r.offeredTo)}` : `Indent ${r.indentId} raised — no vendor on the lane, HO must allocate`); setForm(false); }
   };
 
@@ -46,6 +46,11 @@ export default function IndentsPage() {
         {!lanes.length || !vts.length ? <p className="text-sm">HO must first add lanes and vehicle types (Settings → Outward Rules).</p> : <div className="grid gap-3 md:grid-cols-2">
           <Field label="Lane"><select className="input" value={f.laneId} onChange={(e) => setF({ ...f, laneId: e.target.value })}><option value="">Select…</option>{lanes.map((l) => <option key={l.id} value={l.id}>{city(l.fromLocId)} → {city(l.toLocId)}</option>)}</select></Field>
           <Field label="Vehicle type"><select className="input" value={f.vehicleType} onChange={(e) => setF({ ...f, vehicleType: e.target.value })}><option value="">Select…</option>{vts.map((v) => <option key={v.code} value={v.code}>{v.name} ({v.maxWeightKg} kg)</option>)}</select></Field>
+          <Field label="Shipping type"><select className="input" value={f.shippingType} onChange={(e) => setF({ ...f, shippingType: e.target.value })}><option value="">Any</option>{Object.entries({ '01': 'Truck', '03': 'Train', ...(t.db.sapTexts?.shipping ?? {}) }).map(([c, n]) => <option key={c} value={c}>{n}</option>)}</select></Field>
+          {(() => { const l = lanes.find((x) => x.id === f.laneId); if (!l || !f.vehicleType) return null;
+            const fit = l.vendors.filter((v) => (!v.vehicleType || v.vehicleType === f.vehicleType) && (!f.shippingType || !v.shippingType || v.shippingType === f.shippingType))
+              .sort((a, b) => (a.vehicleType === f.vehicleType ? 0 : 1) - (b.vehicleType === f.vehicleType ? 0 : 1) || a.priority - b.priority || a.rate - b.rate);
+            return <div className="md:col-span-2 text-sm">{fit.length ? <>Offer order: {fit.slice(0, 4).map((v) => `${carrier(v.carrierId)} ${rateText(v)}`).join(' → ')}{fit.length > 4 ? ` → +${fit.length - 4} more` : ''}</> : <span className="text-red">No transporter rate on this lane for this vehicle / shipping type - HO will allocate.</span>}</div>; })()}
           <Field label="Required date and time"><input className="input" type="datetime-local" value={f.requiredAt} onChange={(e) => setF({ ...f, requiredAt: e.target.value })} /></Field>
           <Field label="Customer"><select className="input" value={f.customerId} onChange={(e) => setF({ ...f, customerId: e.target.value })}><option value="">Select…</option>{t.db.customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
           <Field label="Material"><input className="input" value={f.material} onChange={(e) => setF({ ...f, material: e.target.value })} /></Field>

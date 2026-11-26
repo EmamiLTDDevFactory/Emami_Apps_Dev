@@ -26,8 +26,15 @@ ENT = [
  dict(name='OutShipment', set='OutShipmentSet', create=False, props=[
   ('Tknum','tknum',S,10,True,'c'),('Shtyp','shtyp',S,4,False,'c'),('Tdlnr','tdlnr',S,10,False,'c'),('Route','route',S,6,False,'c'),('Vbelns','vbelns',S,255,False,'c'),
   ('CostNet','costnet',D,13,False,'p'),('CostTax','costtax',D,13,False,'p'),('Waers','waers',S,5,False,'c'),('CostStatus','coststatus',S,1,False,'c')]),
+ # Lane freight = SD shipment-cost condition ZB00 (tables A964 / A973 / A972 via CDS ZI_TMS_LANERATE), one row per valid condition record.
  dict(name='Lane', set='LaneSet', create=False, props=[
-  ('FromLoc','fromloc',S,20,True,'c'),('ToLoc','toloc',S,20,True,'c'),('Lifnr','lifnr',S,10,True,'c'),('Rate','rate',D,13,False,'p'),
+  ('Knumh','knumh',S,10,True,'c'),('CondTable','condtable',S,4,True,'c'),('Kschl','kschl',S,4,False,'c'),('Shtyp','shtyp',S,4,False,'c'),
+  ('Route','route',S,6,False,'c'),('RouteText','routetext',S,40,False,'c'),('FromLoc','fromloc',S,20,False,'c'),('ToLoc','toloc',S,20,False,'c'),
+  ('VehicleType','vehicletype',S,10,False,'c'),('VehicleText','vehicletext',S,40,False,'c'),('RateBasis','ratebasis',S,10,False,'c'),
+  ('Sdabw','sdabw',S,4,False,'c'),('Vsart','vsart',S,2,False,'c'),('VsartText','vsarttext',S,20,False,'c'),('ZDays','zdays',S,4,False,'c'),
+  ('Lifnr','lifnr',S,10,False,'c'),('VendorName','vendorname',S,35,False,'c'),('Rate','rate',D,13,False,'p'),('Waers','waers',S,5,False,'c'),
+  ('PerQty','perqty',D,13,False,'p'),('PerUnit','perunit',S,3,False,'c'),('CalcType','calctype',S,1,False,'c'),
+  ('ValidFrom','validfrom',DT,0,False,'d'),('ValidTo','validto',DT,0,False,'d'),
   ('Distance','distance',D,13,False,'p'),('TransitH','transith',D,13,False,'p'),('Priority','priority',S,2,False,'c')]),
 ]
 ASSOC = []

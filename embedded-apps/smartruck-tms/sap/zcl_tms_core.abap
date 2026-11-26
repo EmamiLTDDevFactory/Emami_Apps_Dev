@@ -35,6 +35,17 @@ CLASS zcl_tms_core DEFINITION PUBLIC FINAL CREATE PUBLIC.
     CLASS-METHODS payment_status
       IMPORTING iv_belnr TYPE belnr_d
       RETURNING VALUE(rs_status) TYPE zcl_tms_ty=>ts_paymentstatus.
+    "! Lane freight: ZB00 condition records valid on iv_date (CDS ZI_TMS_LANERATE over A964/A973/A972) with route text, distance (km),
+    "! transit hours (TVRO-TRAZTD is HHHHMMSS), first/last stage points (TVRAB), vehicle type, shipping type and transporter texts.
+    "! Priority 1 = cheapest transporter for the same shipment type + route + vehicle type + rate basis + shipping type + special processing.
+    "! Empty filter tables = no restriction.
+    CLASS-METHODS get_lanes
+      IMPORTING it_route   TYPE string_table OPTIONAL
+                it_lifnr   TYPE string_table OPTIONAL
+                it_vsart   TYPE string_table OPTIONAL
+                it_vehicle TYPE string_table OPTIONAL
+                iv_date    TYPE d DEFAULT sy-datum
+      RETURNING VALUE(rt_lane) TYPE zcl_tms_ty=>tt_lane.
   PRIVATE SECTION.
     CLASS-METHODS to_kg
       IMPORTING iv_val TYPE p iv_unit TYPE meins RETURNING VALUE(rv_kg) TYPE zcl_tms_ty=>ts_outdelivery-grossweightkg.
@@ -330,6 +341,82 @@ CLASS zcl_tms_core IMPLEMENTATION.
     IF sy-subrc = 0.
       rs_status-cleared = 'X'.
     ENDIF.
+  ENDMETHOD.
+
+  METHOD get_lanes.
+    DATA lr_route TYPE RANGE OF zcl_tms_ty=>ts_lane-route.
+    DATA lr_lifnr TYPE RANGE OF zcl_tms_ty=>ts_lane-lifnr.
+    DATA lr_vsart TYPE RANGE OF zcl_tms_ty=>ts_lane-vsart.
+    DATA lr_veh TYPE RANGE OF zcl_tms_ty=>ts_lane-vehicletype.
+    lr_route = VALUE #( FOR r IN it_route ( sign = 'I' option = 'EQ' low = to_upper( r ) ) ).
+    lr_lifnr = VALUE #( FOR l IN it_lifnr ( sign = 'I' option = 'EQ' low = |{ CONV lifnr( l ) ALPHA = IN }| ) ).
+    lr_vsart = VALUE #( FOR v IN it_vsart ( sign = 'I' option = 'EQ' low = v ) ).
+    lr_veh = VALUE #( FOR h IN it_vehicle ( sign = 'I' option = 'EQ' low = to_upper( h ) ) ).
+
+    SELECT * FROM zi_tms_lanerate( p_date = @iv_date )
+      WHERE route IN @lr_route AND lifnr IN @lr_lifnr AND shippingtype IN @lr_vsart AND vehicletype IN @lr_veh
+      INTO TABLE @DATA(lt_r).
+    IF lt_r IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    SELECT route, distz, medst, traztd FROM tvro FOR ALL ENTRIES IN @lt_r WHERE route = @lt_r-route INTO TABLE @DATA(lt_ro).
+    SELECT route, bezei FROM tvrot FOR ALL ENTRIES IN @lt_r WHERE route = @lt_r-route AND spras = 'E' INTO TABLE @DATA(lt_rt).
+    SELECT route, abnum, knanf, knend FROM tvrab FOR ALL ENTRIES IN @lt_r WHERE route = @lt_r-route INTO TABLE @DATA(lt_st).
+    SORT lt_st BY route abnum.
+    SELECT lifnr, name1 FROM lfa1 FOR ALL ENTRIES IN @lt_r WHERE lifnr = @lt_r-lifnr INTO TABLE @DATA(lt_lf).
+    SELECT add_info, bezei FROM vtadd01t WHERE spras = 'E' INTO TABLE @DATA(lt_vt).
+    SELECT vsart, bezei FROM t173t WHERE spras = 'E' INTO TABLE @DATA(lt_vs).
+
+    LOOP AT lt_r INTO DATA(ls_r).
+      DATA(ls_l) = VALUE zcl_tms_ty=>ts_lane(
+        knumh = ls_r-condrecord condtable = ls_r-condtable kschl = ls_r-condtype shtyp = ls_r-shipmenttype route = ls_r-route
+        vehicletype = ls_r-vehicletype ratebasis = ls_r-ratebasis sdabw = ls_r-specialprocessing vsart = ls_r-shippingtype
+        zdays = ls_r-zdays lifnr = ls_r-lifnr rate = ls_r-rate waers = ls_r-currency perqty = ls_r-perqty perunit = ls_r-perunit
+        calctype = ls_r-calctype validfrom = ls_r-validfrom validto = ls_r-validto ).
+      READ TABLE lt_rt INTO DATA(ls_rt) WITH KEY route = ls_r-route.
+      IF sy-subrc = 0.
+        ls_l-routetext = ls_rt-bezei.
+      ENDIF.
+      READ TABLE lt_ro INTO DATA(ls_ro) WITH KEY route = ls_r-route.
+      IF sy-subrc = 0.
+        ls_l-distance = COND #( WHEN ls_ro-medst = 'M' THEN ls_ro-distz / 1000 ELSE ls_ro-distz ).
+        ls_l-transith = ( ls_ro-traztd DIV 10000 ) + ( ( ls_ro-traztd MOD 10000 ) DIV 100 ) / 60.
+      ENDIF.
+      LOOP AT lt_st INTO DATA(ls_st) WHERE route = ls_r-route.
+        IF ls_l-fromloc IS INITIAL.
+          ls_l-fromloc = ls_st-knanf.
+        ENDIF.
+        ls_l-toloc = ls_st-knend.
+      ENDLOOP.
+      READ TABLE lt_lf INTO DATA(ls_lf) WITH KEY lifnr = ls_r-lifnr.
+      IF sy-subrc = 0.
+        ls_l-vendorname = ls_lf-name1.
+      ENDIF.
+      READ TABLE lt_vt INTO DATA(ls_vt) WITH KEY add_info = ls_r-vehicletype.
+      IF sy-subrc = 0.
+        ls_l-vehicletext = ls_vt-bezei.
+      ENDIF.
+      READ TABLE lt_vs INTO DATA(ls_vs) WITH KEY vsart = ls_r-shippingtype.
+      IF sy-subrc = 0.
+        ls_l-vsarttext = ls_vs-bezei.
+      ENDIF.
+      APPEND ls_l TO rt_lane.
+    ENDLOOP.
+
+    " rank transporters by rate within one lane + mode
+    SORT rt_lane BY shtyp route vehicletype ratebasis vsart sdabw rate lifnr.
+    DATA lv_prev TYPE string.
+    DATA lv_n TYPE i.
+    LOOP AT rt_lane ASSIGNING FIELD-SYMBOL(<l>).
+      DATA(lv_key) = |{ <l>-shtyp }{ <l>-route }{ <l>-vehicletype }{ <l>-ratebasis }{ <l>-vsart }{ <l>-sdabw }|.
+      IF lv_key <> lv_prev.
+        lv_n = 0.
+        lv_prev = lv_key.
+      ENDIF.
+      lv_n = lv_n + 1.
+      <l>-priority = COND #( WHEN lv_n > 99 THEN '99' ELSE |{ lv_n }| ).
+    ENDLOOP.
   ENDMETHOD.
 
 ENDCLASS.
