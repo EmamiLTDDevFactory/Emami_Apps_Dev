@@ -57,10 +57,13 @@ export default function TruckViewer({ result, colorOf, autoPlay }: { result: Pac
     const slot = new Map<number, { type: string; i: number }>();
     for (const id of typeIds) {
       const cs = result.cartons.filter((c) => c.typeId === id);
-      const mat = new THREE.MeshLambertMaterial({ color: colorOf(id) }); disposables.push(mat);
+      const mat = new THREE.MeshLambertMaterial({ color: 0xffffff }); disposables.push(mat);
       const m = new THREE.InstancedMesh(boxGeo, mat, cs.length); m.count = 0; m.frustumCulled = false;
       const list: number[] = [];
-      cs.forEach((c, i) => { list.push(c.seq); slot.set(c.seq, { type: id, i }); });
+      const base = new THREE.Color(colorOf(id)), dark = base.clone().multiplyScalar(0.8);
+      // checker shading: neighbouring cartons get a slightly different tone so single cartons, rows and layers can be told apart
+      cs.forEach((c, i) => { list.push(c.seq); slot.set(c.seq, { type: id, i }); m.setColorAt(i, (Math.round(c.x / c.l) + Math.round(c.y / c.w) + Math.round(c.z / c.h)) % 2 ? dark : base); });
+      if (m.instanceColor) m.instanceColor.needsUpdate = true;
       meshes.set(id, m); seqs.set(id, list); scene.add(m);
     }
     const dummy = new THREE.Object3D(); const GAP = 0.97;
@@ -115,13 +118,12 @@ export default function TruckViewer({ result, colorOf, autoPlay }: { result: Pac
     };
     let freeOn = true;
     const setView = (v: View) => {
-      const d = Math.max(L, W, H);
-      const tg = new THREE.Vector3(L / 2, H / 3, W / 2); controls.target.copy(tg);
-      if (v === 'iso') camera.position.set(L * 0.5 + d * 0.9, H * 1.5 + d * 0.35, W * 0.5 + d * 1.1);
-      if (v === 'side') camera.position.set(L / 2, H / 2, W / 2 + d * 1.6);
-      if (v === 'top') camera.position.set(L / 2, d * 1.7, W / 2 + 0.001);
-      if (v === 'door') camera.position.set(L + d * 1.5, H / 2, W / 2);
-      camera.lookAt(tg); controls.update();
+      // distance that fits the whole truck (with its cab) in the frame, then look from the chosen side
+      const R = 0.5 * Math.sqrt(L * L + W * W + H * H) + 0.4;
+      const dist = (R / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2))) * (v === 'iso' ? 0.62 : v === 'top' ? 0.55 : 0.5);
+      const tg = new THREE.Vector3(L / 2 - 0.3, H / 3, W / 2); controls.target.copy(tg);
+      const dir = v === 'iso' ? new THREE.Vector3(0.45, 0.5, 0.75) : v === 'side' ? new THREE.Vector3(0, 0.12, 1) : v === 'top' ? new THREE.Vector3(0.001, 1, 0.12) : new THREE.Vector3(1, 0.18, 0.02);
+      camera.position.copy(tg).add(dir.normalize().multiplyScalar(dist)); camera.lookAt(tg); controls.update();
     };
     setView('iso');
     api.current = {
