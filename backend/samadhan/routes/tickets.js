@@ -171,7 +171,7 @@ router.post('/tickets', wrap(async (req, res) => {
         sap: b.sap && typeof b.sap === 'object' ? (require('../lib/sap').cleanSap(b.sap), b.sap) : undefined,
         externalRef: b.externalRef && typeof b.externalRef === 'object' && b.externalRef.ref ? b.externalRef : undefined,
         // v7 Phase 5: IT details with the ticket; validated before anything is saved.
-        it: b.it && typeof b.it === 'object' ? (require('../lib/it').cleanIt(b.it), b.it) : undefined,
+        it: b.it && typeof b.it === 'object' ? (require('../lib/it').cleanIt(b.it, await require('../lib/itsm').hostingExtra()), b.it) : undefined,
         // v7 Phase 8: programme details (test cycle, severity ...); validated before anything is saved.
         program: b.program && typeof b.program === 'object' ? (require('../lib/program').cleanProgram(b.program), b.program) : undefined,
         subject,

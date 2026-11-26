@@ -12,8 +12,9 @@ import { multiDesk, workspaceByKey } from '@/lib/workspaces';
 import type { DeskAnalytics } from '@/lib/types';
 import { BarList, type BarRow } from './charts';
 import { Button, Card, cx, Empty, Kpi, Notice, Pill, Select, Skeleton, Tabs } from './ui';
+import { VendorScorecard } from './Itsm';
 
-type Tab = 'overview' | 'volume' | 'agents' | 'territory' | 'apps' | 'desks' | 'csat' | 'calls';
+type Tab = 'overview' | 'volume' | 'agents' | 'territory' | 'apps' | 'desks' | 'vendors' | 'csat' | 'calls';
 const TABS: { id: Tab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'volume', label: 'Volume' },
@@ -101,7 +102,7 @@ function AnalyticsScreen() {
         </div>
       </div>
 
-      <Tabs tabs={multiDesk(meta) ? [...TABS.slice(0, 5), { id: 'desks' as Tab, label: 'SAP, change & infra' }, ...TABS.slice(5)] : TABS} value={tab} onChange={setTab} label="Analytics sections" />
+      <Tabs tabs={[...TABS.slice(0, 5), ...(multiDesk(meta) ? [{ id: 'desks' as Tab, label: 'SAP, change & infra' }] : []), ...(meta.itsm ? [{ id: 'vendors' as Tab, label: 'Support vendors' }] : []), ...TABS.slice(5)]} value={tab} onChange={setTab} label="Analytics sections" />
 
       {error && data && <Notice onClose={() => setError('')}>{error}</Notice>}
       {!data ? (
@@ -121,6 +122,7 @@ function AnalyticsScreen() {
           )}
           {tab === 'apps' && <ByApplication list={data.byApplication ?? []} workspaces={data.byWorkspace ?? []} onPick={(id) => drill({ applicationId: String(id) })} />}
           {tab === 'desks' && <DeskInsights days={Number(days)} onModule={(m) => drill({ category: m })} />}
+          {tab === 'vendors' && <VendorScorecard days={Number(days)} />}
           {tab === 'csat' && <Satisfaction csat={data.csat} openTicket={openTicket} />}
           {tab === 'calls' && <Calls calls={data.calls} />}
         </>

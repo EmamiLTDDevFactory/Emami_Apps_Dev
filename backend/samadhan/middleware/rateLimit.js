@@ -19,7 +19,7 @@ const hits = new Map(); // key -> array of timestamps
 
 function bucketFor(req) {
     const path = req.path.replace(/\/+$/, ''); // "/tickets/export/" reaches the same route
-    if (/^\/(reports\/daily|tickets\/export$|analytics|admin\/distributors\/import|jobs\/run)/.test(path)) return 'heavy';
+    if (/^\/(reports\/daily|tickets\/export$|analytics|admin\/distributors\/import|jobs\/run|admin\/migration\/[a-z]+\/import)/.test(path)) return 'heavy';
     if (/\/insights/.test(path) && (req.query.generate === '1' || req.query.refresh === '1')) return 'ai';
     return req.method === 'GET' ? 'read' : 'write';
 }

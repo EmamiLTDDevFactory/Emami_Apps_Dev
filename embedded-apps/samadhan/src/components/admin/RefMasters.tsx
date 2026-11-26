@@ -14,7 +14,7 @@ const MAX_BYTES = 5 * 1024 * 1024;
 const LABEL: Record<string, string> = {
   SAP_SYSTEM: 'SAP systems', SAP_CLIENT: 'SAP clients', COMPANY_CODE: 'Company codes', PLANT: 'Plants', STORAGE_LOCATION: 'Storage locations',
   SALES_ORG: 'Sales orgs', PURCH_ORG: 'Purchasing orgs', TCODE: 'T-codes', FIORI_APP: 'Fiori apps', SAP_ROLE: 'SAP roles', INTERFACE: 'Interfaces',
-  BATCH_JOB: 'Batch jobs', SERVER: 'Servers', CLOUD_ACCOUNT: 'Cloud accounts', SITE: 'Sites / plants (IT)',
+  BATCH_JOB: 'Batch jobs', SERVER: 'Servers', CLOUD_ACCOUNT: 'Cloud accounts', SITE: 'Sites / plants (IT)', ASSET: 'IT assets (laptop, desktop ...)',
 };
 const PARENT_HINT: Record<string, string> = { SAP_CLIENT: 'System (e.g. ECP)', PLANT: 'Company code', STORAGE_LOCATION: 'Plant', SALES_ORG: 'Company code', PURCH_ORG: 'Company code' };
 

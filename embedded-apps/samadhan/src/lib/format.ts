@@ -72,6 +72,9 @@ export const htmlToText = (html: string) =>
 export const ACTION_LABEL: Record<string, string> = {
   created: 'Created',
   updated: 'Updated',
+  // ITSM support model (7.11)
+  escalated: 'Escalated',
+  migrated: 'Moved from the old tool',
   automation: 'Automation',
   email_sent: 'Email sent',
   message: 'Message',
