@@ -101,3 +101,32 @@ App side (`backend/tmsTrips.js` syncLanes): SAP route points become locations wh
 check), service agents outside ZTRP are added as carriers; one rate per transporter x mode (A973 preferred over A964 over A972); hand-entered
 rows are kept. Offers follow the indent's vehicle type and shipping type; a per-KG rate estimates freight on the indent quantity and the
 invoice is checked against rate x delivered weight when there is no ECC shipment cost. A gateway on the old model (no condition record) is refused.
+
+## Vehicle invoices - replacement of Instavans / ZSMART_VEH (2026-11-27)
+What ZSMART_VEH (`ZMM_GET_VEHICLE_FROM_SMARTRUCK`) does today: pulls vehicles placed by Instavans per plant into `ZINSTA_VEHICLE_H`, lets the
+depot attach billing documents to a vehicle (cases in KAR without inside-pack trade-scheme items, value NETWR+MWSBP, gross/net kg), sends
+them to Instavans and stores them in `ZINSTA_VEHICLE_I`. `ZSTOCK_NEW`, `ZSTKTR_REP2` and `ZPWC_BUDGET` read `ZINSTA_VEHICLE_I` for the
+truck number per invoice.
+
+**Parallel run (now): Instavans is not touched.** Trip Trail writes only its own shadow tables (transport EDSK9B0EM3, task EDSK9B0EQO):
+
+| Table | Key | Like |
+|---|---|---|
+| `ZTMS_TRIP_VEH` | SIN, WERKS | ZINSTA_VEHICLE_H (+ HUB_USER, CHG_ON/TIME) |
+| `ZTMS_TRIP_INV` | SIN, VBELN | ZINSTA_VEHICLE_I (+ WAERS, HUB_USER) |
+
+SIN = `TT-<trip sin>` (never clashes with Instavans AVQ.../BLU...). OData in ZTMS_SRV:
+- `TripInvoiceSet` (GET; `Vbeln eq` and/or `Vbelv eq` delivery, optional `Werks eq`): figures exactly as ZSMART_VEH (checked: billing
+  4280111664 / 4280111665 give 6.5 / 22,750 / 71.5 / 65 and 1 / 3,500 / 11 / 10 = what ZSMART_VEH stored), plus the Trip Trail vehicle
+  and the Instavans vehicle holding it. Cancelled (VBRK-FKSTO) and wrong-plant documents carry a Message.
+- `TripVehicleSet` (POST, idempotent): the vehicle and its COMPLETE invoice list; adds/refreshes rows, flags removed ones LOEKZ = 'X',
+  VehExit 'E' after departure. Refuses an invoice already on another Trip Trail vehicle. Commits only a fully valid write.
+- `ParallelCheckSet` (GET; `Werks eq`, `Days eq`): billing documents on a vehicle in either system in the last N days, status
+  MATCH / DIFF / TT_ONLY / INSTA_ONLY. App page: **Vehicle Invoices**.
+
+**Cutover (later, after the parallel run is signed off):** set TVARVC `ZTMS_INSTA_WRITE` = `X` (type P) - from then on the same write also
+fills `ZINSTA_VEHICLE_H/I`, so the three reports keep their truck number. Do it only together with stopping Instavans: lock transaction
+ZSMART_VEH (SM01) first, because its "get vehicles" run marks every open vehicle of the plant that Instavans does not return as exited.
+Then retire proxies ZCO_SAP_REQUEST / ZCO_SAP_INVOICEGET_VEHICLES / ZCO_SAP_API_AWSINVOICE (they carry hard-coded Instavans logins) and
+`ZMM_MATERIAL_DTL_TO_SMARTRUCK`. Write tests (11 scenarios incl. the cutover path) ran in a rolled-back classrun on EDS; EDS only allows
+harmless ABAP Unit, so they are not in ZTMS_CORE_TEST. No e-mail is sent by any of this.

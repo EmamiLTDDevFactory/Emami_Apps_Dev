@@ -1,5 +1,6 @@
 "! Data provider of OData service ZTMS_SRV (code based, no SEGW project): maps requests to ZCL_TMS_CORE. Reads: VendorSet, CustomerSet,
-"! PoSoCheckSet, PaymentStatusSet, OutDeliverySet, OutShipmentSet, LaneSet (freight condition ZB00 via CDS ZI_TMS_LANERATE). The only write is POST FreightInvoiceSet (the gateway hub passes no function imports / PUT / DELETE).
+"! PoSoCheckSet, PaymentStatusSet, OutDeliverySet, OutShipmentSet, LaneSet (freight condition ZB00 via CDS ZI_TMS_LANERATE),
+"! TripInvoiceSet + ParallelCheckSet (Instavans/ZSMART_VEH replacement, read) and POST TripVehicleSet (writes ZTMS_TRIP_VEH/INV). The only write is POST FreightInvoiceSet (the gateway hub passes no function imports / PUT / DELETE).
 "! The hub login e-mail arrives as option emamiuser= or header X-Emami-User and is written into the FI item text for traceability.
 CLASS zcl_ztms_dpc DEFINITION PUBLIC INHERITING FROM /iwbep/cl_mgw_abs_data CREATE PUBLIC.
   PUBLIC SECTION.
@@ -125,6 +126,29 @@ CLASS zcl_ztms_dpc IMPLEMENTATION.
           DELETE lt_ln FROM is_paging-top + 1.
         ENDIF.
         copy_data_to_ref( EXPORTING is_data = lt_ln CHANGING cr_data = er_entityset ).
+      WHEN 'TripInvoiceSet'.
+        " Filter Vbeln eq '<billing>' and/or Vbelv eq '<delivery>' (one is required, at most 50 each); optional Werks eq '<plant>'.
+        DATA(lt_tib) = filter_values( it_filter = it_filter_select_options iv_name = 'Vbeln' ).
+        DATA(lt_tid) = filter_values( it_filter = it_filter_select_options iv_name = 'Vbelv' ).
+        DATA(lt_tiw) = filter_values( it_filter = it_filter_select_options iv_name = 'Werks' ).
+        IF lt_tib IS INITIAL AND lt_tid IS INITIAL.
+          busi( `Filter Vbeln eq '<billing document>' or Vbelv eq '<delivery>' is mandatory.` ).
+        ENDIF.
+        IF lines( lt_tib ) > 50 OR lines( lt_tid ) > 50.
+          busi( `At most 50 documents per request.` ).
+        ENDIF.
+        DATA(lt_ti) = zcl_tms_core=>get_trip_invoices( it_vbeln = lt_tib it_vbelv = lt_tid
+                                                       iv_werks = COND #( WHEN lt_tiw IS NOT INITIAL THEN CONV werks_d( lt_tiw[ 1 ] ) ) ).
+        copy_data_to_ref( EXPORTING is_data = lt_ti CHANGING cr_data = er_entityset ).
+      WHEN 'ParallelCheckSet'.
+        DATA(lt_pcw) = filter_values( it_filter = it_filter_select_options iv_name = 'Werks' ).
+        DATA(lt_pcd) = filter_values( it_filter = it_filter_select_options iv_name = 'Days' ).
+        DATA(lv_days) = COND i( WHEN lt_pcd IS NOT INITIAL AND lt_pcd[ 1 ] CO '0123456789' AND lt_pcd[ 1 ] IS NOT INITIAL THEN lt_pcd[ 1 ] ELSE 30 ).
+        IF lv_days > 366.
+          lv_days = 366.
+        ENDIF.
+        DATA(lt_pc) = zcl_tms_core=>parallel_check( iv_werks = COND #( WHEN lt_pcw IS NOT INITIAL THEN CONV werks_d( lt_pcw[ 1 ] ) ) iv_days = lv_days ).
+        copy_data_to_ref( EXPORTING is_data = lt_pc CHANGING cr_data = er_entityset ).
       WHEN OTHERS.
         busi( iv_text = |Unknown entity set { iv_entity_set_name }| iv_status = '404' ).
     ENDCASE.
@@ -168,6 +192,19 @@ CLASS zcl_ztms_dpc IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD /iwbep/if_mgw_appl_srv_runtime~create_entity.
+    IF iv_entity_set_name = 'TripVehicleSet'.
+      " Trip vehicle + its complete invoice list (ZSMART_VEH replacement). Commits only a fully valid write.
+      DATA ls_tv TYPE zcl_tms_ty=>ts_tripvehicle.
+      io_data_provider->read_entry_data( IMPORTING es_data = ls_tv ).
+      DATA(ls_tvo) = zcl_tms_core=>write_trip_vehicle( is_in = ls_tv iv_user = hub_user( ) ).
+      IF ls_tvo-ok <> 'X'.
+        ROLLBACK WORK.
+        busi( iv_text = CONV #( ls_tvo-message ) ).
+      ENDIF.
+      COMMIT WORK.
+      copy_data_to_ref( EXPORTING is_data = ls_tvo CHANGING cr_data = er_entity ).
+      RETURN.
+    ENDIF.
     IF iv_entity_set_name <> 'FreightInvoiceSet'.
       busi( iv_text = |{ iv_entity_set_name } is read-only.| iv_status = '405' ).
     ENDIF.

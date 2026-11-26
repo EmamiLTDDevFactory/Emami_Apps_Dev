@@ -5,7 +5,7 @@ import { useTms } from '../lib/store';
 import { openFile } from '../lib/liveApi';
 import { readUpload, type Upload } from '../lib/files';
 import { Card, KV, Pill, StatusPill, fmtDT, inr } from './ui';
-import type { Shipment } from '../lib/types';
+import type { Shipment, TripInvoice } from '../lib/types';
 
 /** One trip's outward-tracking work, shown to the roles that may do each part (the server enforces it again on every command). */
 export default function TripPanel({ s }: { s: Shipment }) {
@@ -26,6 +26,11 @@ export default function TripPanel({ s }: { s: Shipment }) {
   const [dl, setDl] = useState(''); const [man, setMan] = useState({ cartons: '', weightKg: '', volumeM3: '' });
   const [ecc, setEcc] = useState({ no: '', net: '', tax: '' });
   const [reason, setReason] = useState('');
+  const [bill, setBill] = useState('');
+  const [found, setFound] = useState<(TripInvoice & { delivery?: string; message?: string; ttSin?: string; ttVehicle?: string; instaVehicle?: string })[] | null>(null);
+  const invNos = (s.invoices ?? []).map((i) => i.no);
+  const saveInv = (nos: string[], ok: string) => go({ type: 'setTripInvoices', sin: s.sin, invoices: nos }, ok);
+  const same = (a?: string, b?: string) => (a ?? '').replace(/[^A-Z0-9]/gi, '').toUpperCase() === (b ?? '').replace(/[^A-Z0-9]/gi, '').toUpperCase();
   const [dep, setDep] = useState<{ lr: string; seal: string; photo?: Upload }>({ lr: '', seal: '' });
   const [cp, setCp] = useState({ locId: '' });
   const [rc, setRc] = useState({ rec: '', dmg: '0', unl: '0', det: '0', remarks: '' });
@@ -77,6 +82,30 @@ export default function TripPanel({ s }: { s: Shipment }) {
             {sapSim && t.can('indent.override') && <><input className="input" placeholder="Shipment cost (manual)" value={ecc.net} onChange={(e) => setEcc({ ...ecc, net: e.target.value })} /><input className="input" placeholder="Tax (manual)" value={ecc.tax} onChange={(e) => setEcc({ ...ecc, tax: e.target.value })} /></>}
             <Btn kind="btn-ghost" onClick={() => void go({ type: 'linkShipment', sin: s.sin, eccShipmentNo: ecc.no, manualNet: Number(ecc.net), manualTax: Number(ecc.tax || 0) }, 'ECC shipment linked')}>{s.eccShipmentNo ? 'Refresh cost' : 'Link shipment'}</Btn>
           </div>
+        </Card>
+      )}
+
+      {staff && s.status !== 'Cancelled' && s.vehicleNo && s.vehicleNo !== '—' && (
+        <Card title="Invoices on this vehicle" right={s.sapVehicle ? <Pill tone={s.sapVehicle.ok ? (s.sapVehicle.simulated ? 'amber' : 'green') : 'red'}>{s.sapVehicle.ok ? (s.sapVehicle.simulated ? 'SAP simulated' : `In SAP · ${fmtDT(s.sapVehicle.at)}`) : 'Not in SAP yet'}</Pill> : null}>
+          <p className="hint mb-2">Replaces the Instavans step (ZSMART_VEH). During the parallel run Trip Trail keeps its own SAP record; the Instavans vehicle is shown only to compare.</p>
+          {s.sapVehicle && !s.sapVehicle.ok && <div className="mb-2 flex flex-wrap items-center gap-2 text-sm text-red">{s.sapVehicle.message}<Btn kind="btn-ghost" onClick={() => void go({ type: 'syncTripVehicle', sin: s.sin }, 'Sent to SAP')}>Retry</Btn></div>}
+          {s.invoices?.length ? <div className="mb-3 overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left text-xs text-inkSoft"><th className="py-1">Billing doc</th><th>Date</th><th>Customer</th><th>Cases</th><th>Value</th><th>Gross / net kg</th><th>Instavans vehicle</th><th /></tr></thead><tbody>
+            {s.invoices.map((i) => <tr key={i.no} className="border-t border-border/60"><td className="py-1 font-bold">{i.no}</td><td>{i.date}</td><td>{i.customer}</td><td>{i.cases}</td><td>{inr(i.value)}</td><td>{i.grossKg} / {i.netKg}</td>
+              <td>{i.instavans ? <span>{i.instavans.vehicle} <Pill tone={same(i.instavans.vehicle, s.vehicleNo) ? 'green' : 'amber'}>{same(i.instavans.vehicle, s.vehicleNo) ? 'same' : 'different'}</Pill></span> : <span className="hint">—</span>}</td>
+              <td>{!closed && <button className="btn-ghost !py-0.5 text-xs" disabled={busy} onClick={() => { if (confirm(`Remove ${i.no} from this vehicle?`)) void saveInv(invNos.filter((n) => n !== i.no), `${i.no} removed`); }}>Remove</button>}</td></tr>)}
+            <tr className="border-t border-border font-bold"><td className="py-1">Total</td><td /><td /><td>{Math.round(s.invoices.reduce((a, i) => a + i.cases, 0) * 100) / 100}</td><td>{inr(s.invoices.reduce((a, i) => a + i.value, 0))}</td><td>{Math.round(s.invoices.reduce((a, i) => a + i.grossKg, 0) * 10) / 10} / {Math.round(s.invoices.reduce((a, i) => a + i.netKg, 0) * 10) / 10}</td><td /><td /></tr>
+          </tbody></table></div> : <p className="mb-3 text-sm text-inkSoft">No invoices on this vehicle yet.</p>}
+          {!closed && <div className="grid gap-2 md:grid-cols-4">
+            <input className="input md:col-span-2" placeholder="Billing document numbers, comma separated" value={bill} onChange={(e) => setBill(e.target.value)} />
+            <Btn onClick={() => { const add = bill.split(/[\s,]+/).filter(Boolean); void saveInv([...invNos, ...add], 'Invoices saved').then((r) => { if (r) setBill(''); }); }} disabled={!bill.trim()}>Add invoices</Btn>
+            <Btn kind="btn-ghost" disabled={!s.deliveries?.length} onClick={async () => { setBusy(true); try { const r = await t.cmd<{ rows: NonNullable<typeof found> }>({ type: 'findTripInvoices', sin: s.sin }); if (r) setFound(r.rows); } finally { setBusy(false); } }}>Find from deliveries</Btn>
+          </div>}
+          {found && <div className="mt-3 rounded-lg border border-border p-2 text-sm">
+            {found.length === 0 ? <p className="hint">The linked deliveries are not billed yet.</p> : <>
+              {found.map((f) => <div key={f.no} className="flex flex-wrap items-center gap-2 py-0.5"><b>{f.no.replace(/^0+/, '')}</b><span className="hint">delivery {f.delivery?.replace(/^0+/, '')} · {f.cases} cases · {inr(f.value)}</span>
+                {f.message ? <Pill tone="red">{f.message}</Pill> : f.ttSin ? <Pill tone="amber">on {f.ttVehicle}</Pill> : invNos.includes(f.no.replace(/^0+/, '')) ? <Pill tone="green">on this vehicle</Pill> : null}</div>)}
+              <div className="mt-2 flex gap-2"><Btn onClick={() => { const add = found.filter((f) => !f.message && !f.ttSin).map((f) => f.no.replace(/^0+/, '')); void saveInv([...new Set([...invNos, ...add])], 'Invoices saved').then((r) => { if (r) setFound(null); }); }} disabled={!found.some((f) => !f.message && !f.ttSin && !invNos.includes(f.no.replace(/^0+/, '')))}>Add these to the vehicle</Btn><Btn kind="btn-ghost" onClick={() => setFound(null)}>Close</Btn></div></>}
+          </div>}
         </Card>
       )}
 

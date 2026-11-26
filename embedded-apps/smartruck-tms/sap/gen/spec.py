@@ -36,6 +36,25 @@ ENT = [
   ('PerQty','perqty',D,13,False,'p'),('PerUnit','perunit',S,3,False,'c'),('CalcType','calctype',S,1,False,'c'),
   ('ValidFrom','validfrom',DT,0,False,'d'),('ValidTo','validto',DT,0,False,'d'),
   ('Distance','distance',D,13,False,'p'),('TransitH','transith',D,13,False,'p'),('Priority','priority',S,2,False,'c')]),
+ # Instavans replacement (ZSMART_VEH). Billing documents on a trip vehicle, computed like ZSMART_VEH (cases in KAR without inside-pack scheme items,
+ # value incl. tax, kg); TtSin = Trip Trail vehicle already holding it, InstaSin = Instavans vehicle (parallel run, read only).
+ dict(name='TripInvoice', set='TripInvoiceSet', create=False, props=[
+  ('Vbeln','vbeln',S,10,True,'c'),('Vbelv','vbelv',S,10,False,'c'),('Werks','werks',S,4,False,'c'),('Fkdat','fkdat',DT,0,False,'d'),
+  ('Kunnr','kunnr',S,10,False,'c'),('Name1','name1',S,35,False,'c'),('Cancelled','cancelled',S,1,False,'c'),
+  ('Cases','cases',D,13,False,'p'),('Value','value',D,13,False,'p'),('Waers','waers',S,5,False,'c'),('GrossKg','grosskg',D,13,False,'p'),('NetKg','netkg',D,13,False,'p'),
+  ('TtSin','ttsin',S,50,False,'c'),('TtVehicle','ttvehicle',S,15,False,'c'),('InstaSin','instasin',S,50,False,'c'),('InstaVehicle','instavehicle',S,15,False,'c'),
+  ('Message','message',S,255,False,'c')]),
+ # Create-only, idempotent: Invoices = the vehicle's COMPLETE current list (comma separated); SAP adds, refreshes and flags removed ones (LOEKZ).
+ # Writes ZTMS_TRIP_VEH / ZTMS_TRIP_INV; ZINSTA_VEHICLE_H/I only when TVARVC ZTMS_INSTA_WRITE = 'X' (cutover, off during the parallel run).
+ dict(name='TripVehicle', set='TripVehicleSet', create=True, props=[
+  ('Sin','sin',S,50,True,'c'),('ShipmentId','shipmentid',S,50,False,'c'),('Werks','werks',S,4,False,'c'),('VehicleNo','vehicleno',S,15,False,'c'),
+  ('Delivery','delivery',S,4,False,'c'),('VehExit','vehexit',S,1,False,'c'),('Invoices','invoices',S,1000,False,'c'),
+  ('Count','count',S,4,False,'c'),('Target','target',S,20,False,'c'),('Ok','ok',S,1,False,'c'),('Message','message',S,255,False,'c')]),
+ # Parallel run: every billing document on a Trip Trail or an Instavans vehicle in the last Days days (default 30) and whether both agree.
+ dict(name='ParallelCheck', set='ParallelCheckSet', create=False, props=[
+  ('Vbeln','vbeln',S,10,True,'c'),('Werks','werks',S,4,False,'c'),('Days','days',S,3,False,'c'),
+  ('TtSin','ttsin',S,50,False,'c'),('TtVehicle','ttvehicle',S,15,False,'c'),('TtOn','tton',DT,0,False,'d'),
+  ('InstaSin','instasin',S,50,False,'c'),('InstaVehicle','instavehicle',S,15,False,'c'),('InstaOn','instaon',DT,0,False,'d'),('Status','status',S,12,False,'c')]),
 ]
 ASSOC = []
 ACT = []

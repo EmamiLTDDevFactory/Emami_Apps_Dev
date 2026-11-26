@@ -34,6 +34,19 @@ function checkFile(f) {
 
 function build(k, outward) {
     const { fail, need, can, inScope, isVendor, str, num, iso, id, log, notify, sees, shipOf, locOf, km, project, completeOrderIfDone, ingestPing } = k;
+    /** SAP key of a trip vehicle in ZTMS_TRIP_* (and in ZINSTA_* after cutover): never the same shape as an Instavans SIN (AVQ.../BLU...). */
+    const sapSinOf = (s) => `TT-${s.sin}`;
+    /** Write the trip vehicle and its invoice list to SAP; failures are kept on the trip (retry from the trip panel), never thrown. */
+    async function pushVehicle(s, deps, now) {
+        const plant = s.invoicePlant || ((s.invoices || [])[0] || {}).plant || ((s.deliveries || []).find((d) => d.plant) || {}).plant || '';
+        if (!plant) { s.sapVehicle = { ok: false, at: iso(now), message: 'No plant known yet (link deliveries or invoices first).' }; return s.sapVehicle; }
+        try {
+            const r = await deps.sap.writeTripVehicle({ sin: sapSinOf(s), shipmentId: s.indentId || s.orderId || '', plant, vehicleNo: s.vehicleNo, exit: !['Accepted', 'Assigned', 'Towards Pickup', 'At Pickup'].includes(s.status),
+                invoices: (s.invoices || []).map((i) => i.no) });
+            s.sapVehicle = { ok: !!r.ok, at: iso(now), message: r.message || '', target: r.target || '', ...(r.simulated ? { simulated: true } : {}) };
+        } catch (e) { s.sapVehicle = { ok: false, at: iso(now), message: e.message || 'SAP is not reachable.' }; }
+        return s.sapVehicle;
+    }
     const ensure = outward.ensure;
     const LIVE = ['Towards Pickup', 'At Pickup', 'In Transit', 'At Delivery'];
 
@@ -173,6 +186,73 @@ function build(k, outward) {
             return { lanes: by.size, rates, locationsAdded: locsAdded, vehicleTypesAdded: vtAdded, carriersAdded, skippedCount: skipped.length, skipped: [...new Set(skipped)].slice(0, 50) };
         },
 
+        /* ---------------- Billing invoices on the trip vehicle (replaces Instavans / ZSMART_VEH) ----------------
+           Parallel run: SAP keeps them in ZTMS_TRIP_VEH / ZTMS_TRIP_INV only; the Instavans tables are written by SAP only after the cutover
+           switch (TVARVC ZTMS_INSTA_WRITE). The SAP key is TT-<sin> so it can never clash with an Instavans SIN. No mail is sent. */
+
+        /** Billing documents of the linked deliveries (not saved): what the depot would put on the vehicle. */
+        async findTripInvoices(db, c, u, now, deps) {
+            ensure(db);
+            const s = tripFor(db, u, c.sin);
+            if (isVendor(u)) fail('Invoices are put on the vehicle by the depot.', 403);
+            const dl = (s.deliveries || []).map((d) => d.no);
+            if (!dl.length) fail('Link the deliveries first, or enter the billing numbers.', 409);
+            const r = await deps.sap.tripInvoices({ deliveries: dl });
+            if (r.simulated) fail('SAP is not connected, so billing documents cannot be looked up.', 503);
+            return { rows: r.rows };
+        },
+
+        /** Put the vehicle's complete invoice list on the trip and write it to SAP. The list replaces the previous one (removed ones are flagged in SAP). */
+        async setTripInvoices(db, c, u, now, deps) {
+            ensure(db);
+            const s = tripFor(db, u, c.sin);
+            if (isVendor(u)) fail('Invoices are put on the vehicle by the depot.', 403);
+            if (s.status === 'Cancelled') fail('This trip is cancelled.', 409);
+            if (!s.vehicleNo || s.vehicleNo === '—') fail('Assign the vehicle first.', 409);
+            const nos = [...new Set((Array.isArray(c.invoices) ? c.invoices : []).map((x) => str(x, 12).replace(/^0+/, '')))].filter(Boolean);
+            if (nos.length > 50 || nos.some((x) => !/^\d{6,10}$/.test(x))) fail('Enter up to 50 billing document numbers (digits only).');
+            for (const o of db.shipments) if (o.sin !== s.sin && o.status !== 'Cancelled') for (const i of o.invoices || []) if (nos.includes(i.no)) fail(`Billing document ${i.no} is already on trip ${o.sin} (${o.vehicleNo}).`, 409);
+            const plant = str(c.plant, 4).toUpperCase() || (s.invoices && s.invoices[0] && s.invoices[0].plant) || ((s.deliveries || []).find((d) => d.plant) || {}).plant || '';
+            let rows = [];
+            if (nos.length) {
+                const r = await deps.sap.tripInvoices({ billing: nos, plant });
+                if (r.simulated) fail('SAP is not connected, so billing documents cannot be checked.', 503);
+                for (const no of nos) {
+                    const x = r.rows.find((y) => y.no.replace(/^0+/, '') === no) || fail(`Billing document ${no} was not found in SAP.`, 404);
+                    if (x.message) fail(x.message, 409);
+                    if (x.ttSin && x.ttSin !== sapSinOf(s)) fail(`Billing document ${no} is already on Trip Trail vehicle ${x.ttVehicle} (${x.ttSin}).`, 409);
+                    rows.push({ no, plant: x.plant, date: x.date, customer: x.customerName || x.customer, cases: x.cases, value: x.value, currency: x.currency, grossKg: x.grossKg, netKg: x.netKg,
+                        ...(x.instaSin ? { instavans: { sin: x.instaSin, vehicle: x.instaVehicle } } : {}) });
+                }
+            }
+            const before = (s.invoices || []).map((i) => i.no);
+            s.invoices = rows;
+            s.invoicePlant = rows[0] ? rows[0].plant : plant;
+            log(s, now, u.name, `Invoices on vehicle: ${nos.length ? nos.join(', ') : 'none'}${before.length ? ` (was ${before.join(', ')})` : ''}`);
+            const sap = await pushVehicle(s, deps, now);
+            return { count: rows.length, sap };
+        },
+
+        /** Re-send the trip vehicle to SAP (after SAP was unreachable). */
+        async syncTripVehicle(db, c, u, now, deps) {
+            ensure(db);
+            const s = tripFor(db, u, c.sin);
+            if (isVendor(u)) fail('Only the depot or HO can do this.', 403);
+            if (!s.invoices || (!s.invoices.length && !s.sapVehicle)) fail('There are no invoices on this vehicle.', 409);
+            const sap = await pushVehicle(s, deps, now);
+            if (!sap.ok) fail(`SAP did not take it: ${sap.message}`, 502);
+            return { sap };
+        },
+
+        /** Parallel run report: each billing document on a Trip Trail or Instavans vehicle, side by side (read only). */
+        async parallelCheck(db, c, u, now, deps) {
+            ensure(db);
+            if (isVendor(u) || !(can(u, 'report.view') || can(u, 'indent.create'))) fail('You cannot view this report.', 403);
+            const r = await deps.sap.parallelCheck({ plant: str(c.plant, 4).toUpperCase(), days: Math.min(366, Math.max(1, Number(c.days) || 30)) });
+            if (r.simulated) fail('SAP is not connected.', 503);
+            return { rows: r.rows };
+        },
+
         async linkDeliveries(db, c, u, now, deps) {
             ensure(db);
             const s = tripFor(db, u, c.sin);
@@ -296,6 +376,8 @@ function build(k, outward) {
             addEvent(s, { at: iso(at), source: 'System', place: locOf(db, s.fromLocId).city, lat: locOf(db, s.fromLocId).lat, lon: locOf(db, s.fromLocId).lon, note: 'Departed' });
             updateEta(db, s, now);
             log(s, now, u.name, `Departed. LR ${lr}${seal ? `, seal ${seal}` : ''}`);
+            // vehicle left: mark the SAP trip vehicle as exited (best effort; a failure stays on the trip for retry)
+            if (s.invoices && s.invoices.length) await pushVehicle(s, deps, now);
             return { lr, trackToken: s.trackToken, etaAt: s.etaAt };
         },
 

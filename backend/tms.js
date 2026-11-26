@@ -188,7 +188,7 @@ function createService(store, depsForCaller) {
 }
 
 const depsFor = (caller) => ({
-    sap: { deliveries: (n) => sapSvc.deliveries(n, caller), shipment: (n) => sapSvc.shipment(n, caller), lanes: () => sapSvc.lanes(caller), vendors: () => sapSvc.vendors(caller), customers: () => sapSvc.customers(caller), checkPoSo: (q) => sapSvc.checkPoSo(q, caller), postFreightInvoice: (i) => sapSvc.postFreightInvoice(i, caller), paymentStatus: (d) => sapSvc.paymentStatus(d, caller) },
+    sap: { deliveries: (n) => sapSvc.deliveries(n, caller), shipment: (n) => sapSvc.shipment(n, caller), lanes: () => sapSvc.lanes(caller), tripInvoices: (q) => sapSvc.tripInvoices(q, caller), writeTripVehicle: (v) => sapSvc.writeTripVehicle(v, caller), parallelCheck: (q) => sapSvc.parallelCheck(q, caller), vendors: () => sapSvc.vendors(caller), customers: () => sapSvc.customers(caller), checkPoSo: (q) => sapSvc.checkPoSo(q, caller), postFreightInvoice: (i) => sapSvc.postFreightInvoice(i, caller), paymentStatus: (d) => sapSvc.paymentStatus(d, caller) },
     consent: integ.consent, eway: integ.eway, mail: integ.mail, ulip,
 });
 const service = createService(pgStore(), depsFor);

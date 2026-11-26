@@ -38,11 +38,14 @@ export interface Shipment {
   pickupAt: string; progress: number; delayH: number; anomaly?: 'Tracking' | 'Speed' | 'Distance'; lr: string; km: number;
   ewayExpiry: string; ewayNo?: string;
   /** Outward tracking (live): trip fields */
+  /** Billing documents on the vehicle (replaces Instavans / ZSMART_VEH); instavans = the Instavans vehicle holding it during the parallel run. */
+  invoices?: TripInvoice[]; invoicePlant?: string; sapVehicle?: { ok: boolean; at: string; message: string; target?: string; simulated?: boolean };
   indentId?: string; freightRate?: { rate: number; per: string; currency: string }; shippingType?: string; deliveries?: Delivery[]; eccShipmentNo?: string; eccCost?: { net: number; tax: number; currency: string; status: string; at: string; source: string };
   loading?: Loading; sealNo?: string; departedAt?: string; arrivedAt?: string; plannedArrival?: string; etaAt?: string; delayFlag?: boolean; events?: TrackEvent[];
   receipt?: Receipt; pod?: { fileId: string; name: string; at: string; by: string }; driverConsent?: { at: string; by: string; version: string }; ulipCheck?: { ok: boolean; simulated: boolean; at: string };
   trackToken?: string; departPhoto?: string; pos?: { lat: number; lon: number; at: string; speed: number; source: string }; material: string; qty: number; customerId: string; log: Activity[]; gpsReason?: string; delayReason?: string;
 }
+export interface TripInvoice { no: string; plant: string; date: string; customer: string; cases: number; value: number; currency: string; grossKg: number; netKg: number; instavans?: { sin: string; vehicle: string } }
 export interface Delivery { no: string; plant?: string; shipTo: string; cartons: number; weightKg: number; volumeM3: number; source: 'sap' | 'manual'; irn?: string; ewbNo?: string; ewbValid?: string }
 export interface Loading { weightKg: number; volumeM3: number; weightPct: number; volumePct: number; effectivePct: number; minPct: number; reason: string; approval: 'NotNeeded' | 'Pending' | 'Approved' | 'Rejected'; approvedBy?: string; at: string; by: string }
 export interface TrackEvent { at: string; source: 'ULIP' | 'Manual' | 'System'; place: string; lat: number; lon: number; note?: string; by?: string }

@@ -39,6 +39,22 @@ CLASS zcl_tms_core DEFINITION PUBLIC FINAL CREATE PUBLIC.
     "! transit hours (TVRO-TRAZTD is HHHHMMSS), first/last stage points (TVRAB), vehicle type, shipping type and transporter texts.
     "! Priority 1 = cheapest transporter for the same shipment type + route + vehicle type + rate basis + shipping type + special processing.
     "! Empty filter tables = no restriction.
+    "! Billing documents for a trip vehicle (ZSMART_VEH replacement), by billing number and/or by outbound delivery (VBFA -> M).
+    "! Figures as ZSMART_VEH: cases = billed qty in KAR (0 for inside-pack trade-scheme items), value = NETWR + MWSBP, weights in kg; with
+    "! iv_werks only that plant's items count. TtSin/TtVehicle = Trip Trail vehicle holding it, InstaSin/InstaVehicle = Instavans one (read only).
+    CLASS-METHODS get_trip_invoices
+      IMPORTING it_vbeln TYPE string_table OPTIONAL it_vbelv TYPE string_table OPTIONAL iv_werks TYPE werks_d OPTIONAL
+      RETURNING VALUE(rt_inv) TYPE zcl_tms_ty=>tt_tripinvoice.
+    "! Write the trip vehicle and its COMPLETE invoice list (idempotent; removed ones get LOEKZ = 'X') into ZTMS_TRIP_VEH / ZTMS_TRIP_INV.
+    "! ZINSTA_VEHICLE_H/I are written too only when TVARVC ZTMS_INSTA_WRITE = 'X' (cutover; OFF while Instavans runs in parallel).
+    "! No COMMIT: the caller commits when rs_out-ok = 'X', otherwise rolls back. Raises nothing: errors come back in rs_out-message.
+    CLASS-METHODS write_trip_vehicle
+      IMPORTING is_in TYPE zcl_tms_ty=>ts_tripvehicle iv_user TYPE string OPTIONAL iv_insta TYPE abap_bool OPTIONAL
+      RETURNING VALUE(rs_out) TYPE zcl_tms_ty=>ts_tripvehicle.
+    "! Parallel run: billing documents on a Trip Trail or Instavans vehicle created in the last iv_days days, side by side.
+    CLASS-METHODS parallel_check
+      IMPORTING iv_werks TYPE werks_d OPTIONAL iv_days TYPE i DEFAULT 30
+      RETURNING VALUE(rt_chk) TYPE zcl_tms_ty=>tt_parallelcheck.
     CLASS-METHODS get_lanes
       IMPORTING it_route   TYPE string_table OPTIONAL
                 it_lifnr   TYPE string_table OPTIONAL
@@ -47,6 +63,10 @@ CLASS zcl_tms_core DEFINITION PUBLIC FINAL CREATE PUBLIC.
                 iv_date    TYPE d DEFAULT sy-datum
       RETURNING VALUE(rt_lane) TYPE zcl_tms_ty=>tt_lane.
   PRIVATE SECTION.
+    CLASS-METHODS invoice_totals
+      IMPORTING iv_vbeln TYPE vbeln_vf iv_werks TYPE werks_d OPTIONAL RETURNING VALUE(rs_inv) TYPE zcl_tms_ty=>ts_tripinvoice.
+    CLASS-METHODS norm_vehicle
+      IMPORTING iv_no TYPE csequence RETURNING VALUE(rv_no) TYPE string.
     CLASS-METHODS to_kg
       IMPORTING iv_val TYPE p iv_unit TYPE meins RETURNING VALUE(rv_kg) TYPE zcl_tms_ty=>ts_outdelivery-grossweightkg.
     CLASS-METHODS to_m3
@@ -416,6 +436,247 @@ CLASS zcl_tms_core IMPLEMENTATION.
       ENDIF.
       lv_n = lv_n + 1.
       <l>-priority = COND #( WHEN lv_n > 99 THEN '99' ELSE |{ lv_n }| ).
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD invoice_totals.
+    rs_inv-vbeln = iv_vbeln.
+    SELECT SINGLE vbeln, fkdat, fksto, kunag, waerk FROM vbrk INTO @DATA(ls_k) WHERE vbeln = @iv_vbeln.
+    IF sy-subrc <> 0.
+      rs_inv-message = |Billing document { iv_vbeln ALPHA = OUT } was not found in SAP.|.
+      RETURN.
+    ENDIF.
+    rs_inv-fkdat = ls_k-fkdat. rs_inv-kunnr = ls_k-kunag. rs_inv-waers = ls_k-waerk.
+    rs_inv-cancelled = COND #( WHEN ls_k-fksto IS NOT INITIAL THEN 'X' ).
+    SELECT SINGLE name1 FROM kna1 INTO @rs_inv-name1 WHERE kunnr = @ls_k-kunag.
+    SELECT posnr, matnr, fkimg, vrkme, netwr, mwsbp, brgew, ntgew, gewei, werks FROM vbrp INTO TABLE @DATA(lt_p) WHERE vbeln = @iv_vbeln.
+    IF lt_p IS INITIAL.
+      rs_inv-message = |Billing document { iv_vbeln ALPHA = OUT } has no items.|.
+      RETURN.
+    ENDIF.
+    rs_inv-werks = lt_p[ 1 ]-werks.
+    IF iv_werks IS NOT INITIAL.
+      DELETE lt_p WHERE werks <> iv_werks.
+      IF lt_p IS INITIAL.
+        rs_inv-message = |Billing document { iv_vbeln ALPHA = OUT } is for plant { rs_inv-werks }, not { iv_werks }.|.
+        RETURN.
+      ENDIF.
+      rs_inv-werks = iv_werks.
+    ENDIF.
+    LOOP AT lt_p INTO DATA(ls_p).
+      " same rule as ZSMART_VEH (CHK_INV): inside-pack scheme items carry no cartons; others billed qty -> KAR
+      SELECT SINGLE @abap_true FROM zmm_tradescheme INTO @DATA(lv_inside)
+        WHERE fr_matnr = @ls_p-matnr AND ( plant = @ls_p-werks OR plant = 'DP99' )
+          AND fr_date <= @ls_k-fkdat AND to_date >= @ls_k-fkdat AND inside_pack = 'X'.
+      IF sy-subrc <> 0.
+        SELECT SINGLE @abap_true FROM marm INTO @DATA(lv_kar) WHERE matnr = @ls_p-matnr AND meinh = 'KAR'.
+        IF sy-subrc = 0.
+          DATA lv_cases TYPE menge_pos.
+          CLEAR lv_cases.
+          CALL FUNCTION 'MATERIAL_UNIT_CONVERSION'
+            EXPORTING input = ls_p-fkimg matnr = ls_p-matnr meinh = 'KAR' meins = ls_p-vrkme
+            IMPORTING output = lv_cases
+            EXCEPTIONS OTHERS = 1.
+          IF sy-subrc = 0.
+            rs_inv-cases = rs_inv-cases + lv_cases.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+      rs_inv-value = rs_inv-value + ls_p-netwr + ls_p-mwsbp.
+      IF ls_p-gewei = 'G'.
+        rs_inv-grosskg = rs_inv-grosskg + ls_p-brgew / 1000.
+        rs_inv-netkg = rs_inv-netkg + ls_p-ntgew / 1000.
+      ELSE.
+        rs_inv-grosskg = rs_inv-grosskg + ls_p-brgew.
+        rs_inv-netkg = rs_inv-netkg + ls_p-ntgew.
+      ENDIF.
+    ENDLOOP.
+    SELECT SINGLE sin, vehicle_no FROM ztms_trip_inv INTO ( @rs_inv-ttsin, @rs_inv-ttvehicle ) WHERE vbeln = @iv_vbeln AND loekz = ''.
+    SELECT SINGLE sin, vehicle_no FROM zinsta_vehicle_i INTO ( @rs_inv-instasin, @rs_inv-instavehicle ) WHERE vbeln = @iv_vbeln AND loekz = ''.
+    IF rs_inv-cancelled = 'X'.
+      rs_inv-message = |Billing document { iv_vbeln ALPHA = OUT } is cancelled.|.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD get_trip_invoices.
+    DATA lt_bill TYPE STANDARD TABLE OF vbeln_vf WITH DEFAULT KEY.
+    DATA lt_src TYPE SORTED TABLE OF vbfa WITH NON-UNIQUE KEY vbeln.
+    LOOP AT it_vbeln INTO DATA(lv_b).
+      APPEND CONV vbeln_vf( |{ CONV vbeln_vf( lv_b ) ALPHA = IN }| ) TO lt_bill.
+    ENDLOOP.
+    IF it_vbelv IS NOT INITIAL.
+      DATA lr_dlv TYPE RANGE OF vbeln_von.
+      lr_dlv = VALUE #( FOR d IN it_vbelv ( sign = 'I' option = 'EQ' low = |{ CONV vbeln_von( d ) ALPHA = IN }| ) ).
+      SELECT * FROM vbfa INTO TABLE @lt_src WHERE vbelv IN @lr_dlv AND vbtyp_n = 'M'.
+      LOOP AT lt_src INTO DATA(ls_f).
+        APPEND CONV vbeln_vf( ls_f-vbeln ) TO lt_bill.
+      ENDLOOP.
+    ENDIF.
+    SORT lt_bill.
+    DELETE ADJACENT DUPLICATES FROM lt_bill.
+    LOOP AT lt_bill INTO DATA(lv_bill).
+      DATA(ls_inv) = invoice_totals( iv_vbeln = lv_bill iv_werks = iv_werks ).
+      READ TABLE lt_src INTO ls_f WITH KEY vbeln = lv_bill.
+      IF sy-subrc = 0.
+        ls_inv-vbelv = ls_f-vbelv.
+      ENDIF.
+      APPEND ls_inv TO rt_inv.
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD norm_vehicle.
+    rv_no = to_upper( condense( val = iv_no del = ` ` ) ).
+    REPLACE ALL OCCURRENCES OF REGEX `[^A-Z0-9]` IN rv_no WITH ``.
+  ENDMETHOD.
+
+  METHOD write_trip_vehicle.
+    rs_out = is_in.
+    CLEAR: rs_out-ok, rs_out-message, rs_out-count, rs_out-target.
+    IF is_in-sin IS INITIAL OR is_in-werks IS INITIAL OR is_in-vehicleno IS INITIAL.
+      rs_out-message = `Sin, Werks and VehicleNo are required.`.
+      RETURN.
+    ENDIF.
+    " the vehicle's complete invoice list
+    DATA lt_want TYPE STANDARD TABLE OF vbeln_vf WITH DEFAULT KEY.
+    SPLIT is_in-invoices AT ',' INTO TABLE DATA(lt_parts).
+    LOOP AT lt_parts INTO DATA(lv_part).
+      CONDENSE lv_part NO-GAPS.
+      IF lv_part IS INITIAL.
+        CONTINUE.
+      ENDIF.
+      IF lv_part CN '0123456789' OR strlen( lv_part ) > 10.
+        rs_out-message = |"{ lv_part }" is not a billing document number.|.
+        RETURN.
+      ENDIF.
+      APPEND CONV vbeln_vf( |{ CONV vbeln_vf( lv_part ) ALPHA = IN }| ) TO lt_want.
+    ENDLOOP.
+    SORT lt_want.
+    DELETE ADJACENT DUPLICATES FROM lt_want.
+    IF lines( lt_want ) > 50.
+      rs_out-message = `At most 50 billing documents per vehicle.`.
+      RETURN.
+    ENDIF.
+    " validate everything before writing anything
+    DATA lt_tot TYPE zcl_tms_ty=>tt_tripinvoice.
+    LOOP AT lt_want INTO DATA(lv_v).
+      DATA(ls_t) = invoice_totals( iv_vbeln = lv_v iv_werks = is_in-werks ).
+      IF ls_t-message IS NOT INITIAL.
+        rs_out-message = ls_t-message.
+        RETURN.
+      ENDIF.
+      IF ls_t-ttsin IS NOT INITIAL AND ls_t-ttsin <> is_in-sin.
+        rs_out-message = |Billing document { lv_v ALPHA = OUT } is already on Trip Trail vehicle { ls_t-ttvehicle } ({ ls_t-ttsin }).|.
+        RETURN.
+      ENDIF.
+      APPEND ls_t TO lt_tot.
+    ENDLOOP.
+
+    DATA(lv_user) = CONV ztms_trip_inv-hub_user( iv_user ).
+    " header
+    SELECT SINGLE * FROM ztms_trip_veh INTO @DATA(ls_h) WHERE sin = @is_in-sin AND werks = @is_in-werks.
+    IF sy-subrc <> 0.
+      ls_h = VALUE #( sin = is_in-sin werks = is_in-werks entry_date = sy-datum ).
+    ENDIF.
+    ls_h-shipment_id = is_in-shipmentid. ls_h-vehicle_no = is_in-vehicleno. ls_h-delivery = is_in-delivery.
+    ls_h-veh_exit = is_in-vehexit. ls_h-hub_user = lv_user. ls_h-chg_on = sy-datum. ls_h-chg_time = sy-uzeit.
+    MODIFY ztms_trip_veh FROM ls_h.
+    " items: refresh wanted ones, flag the rest
+    SELECT * FROM ztms_trip_inv INTO TABLE @DATA(lt_have) WHERE sin = @is_in-sin.
+    DATA lt_upd TYPE STANDARD TABLE OF ztms_trip_inv WITH DEFAULT KEY.
+    LOOP AT lt_have INTO DATA(ls_have) WHERE loekz = ''.
+      IF NOT line_exists( lt_want[ table_line = ls_have-vbeln ] ).
+        ls_have-loekz = 'X'. ls_have-chg_by = sy-uname. ls_have-chg_on = sy-datum. ls_have-hub_user = lv_user.
+        APPEND ls_have TO lt_upd.
+      ENDIF.
+    ENDLOOP.
+    LOOP AT lt_tot INTO ls_t.
+      READ TABLE lt_have INTO ls_have WITH KEY vbeln = ls_t-vbeln.
+      IF sy-subrc <> 0.
+        ls_have = VALUE #( sin = is_in-sin vbeln = ls_t-vbeln crt_by = sy-uname crt_on = sy-datum ).
+      ELSEIF ls_have-loekz = 'X'.
+        CLEAR ls_have-loekz.
+        ls_have-chg_by = sy-uname. ls_have-chg_on = sy-datum.
+      ENDIF.
+      ls_have-werks = is_in-werks. ls_have-vehicle_no = is_in-vehicleno. ls_have-nop = ls_t-cases. ls_have-material_value = ls_t-value.
+      ls_have-waers = ls_t-waers. ls_have-gross_weight = ls_t-grosskg. ls_have-net_weight = ls_t-netkg. ls_have-hub_user = lv_user.
+      APPEND ls_have TO lt_upd.
+    ENDLOOP.
+    IF lt_upd IS NOT INITIAL.
+      MODIFY ztms_trip_inv FROM TABLE lt_upd.
+    ENDIF.
+    rs_out-target = 'TRIPTRAIL'.
+
+    " cutover only: also the Instavans tables read by ZSTOCK_NEW / ZSTKTR_REP2 / ZPWC_BUDGET (truck number per invoice)
+    DATA(lv_insta) = COND abap_bool( WHEN iv_insta IS SUPPLIED THEN iv_insta ELSE xsdbool( get_param( 'ZTMS_INSTA_WRITE' ) = 'X' ) ).
+    IF lv_insta = abap_true.
+      DATA(lv_ship) = COND zinsta_vehicle_h-shipment_id( WHEN is_in-shipmentid IS NOT INITIAL THEN is_in-shipmentid ELSE is_in-sin ).
+      DATA(ls_ih) = VALUE zinsta_vehicle_h( sin = is_in-sin shipment_id = lv_ship werks = is_in-werks vehicle_no = is_in-vehicleno
+                                            delivery = is_in-delivery entry_date = ls_h-entry_date veh_exit = is_in-vehexit ).
+      MODIFY zinsta_vehicle_h FROM ls_ih.
+      DATA lt_ii TYPE STANDARD TABLE OF zinsta_vehicle_i WITH DEFAULT KEY.
+      LOOP AT lt_upd INTO ls_have.
+        APPEND VALUE zinsta_vehicle_i( sin = is_in-sin shipment_id = lv_ship vbeln = ls_have-vbeln werks = ls_have-werks vehicle_no = ls_have-vehicle_no
+          nop = ls_have-nop material_value = ls_have-material_value gross_weight = ls_have-gross_weight net_weight = ls_have-net_weight
+          loekz = ls_have-loekz crt_by = ls_have-crt_by crt_on = ls_have-crt_on chg_by = ls_have-chg_by chg_on = ls_have-chg_on ) TO lt_ii.
+      ENDLOOP.
+      IF lt_ii IS NOT INITIAL.
+        MODIFY zinsta_vehicle_i FROM TABLE lt_ii.
+      ENDIF.
+      rs_out-target = 'TRIPTRAIL+INSTAVANS'.
+    ENDIF.
+    rs_out-ok = 'X'.
+    rs_out-count = |{ lines( lt_want ) }|.
+    rs_out-message = |{ lines( lt_want ) } billing document(s) on vehicle { is_in-vehicleno } saved ({ rs_out-target }).|.
+  ENDMETHOD.
+
+  METHOD parallel_check.
+    DATA(lv_from) = CONV d( sy-datum - iv_days ).
+    DATA lr_w TYPE RANGE OF werks_d.
+    IF iv_werks IS NOT INITIAL.
+      lr_w = VALUE #( ( sign = 'I' option = 'EQ' low = iv_werks ) ( sign = 'I' option = 'EQ' low = '' ) ).
+    ENDIF.
+    SELECT vbeln, sin, vehicle_no, werks, crt_on FROM ztms_trip_inv INTO TABLE @DATA(lt_tt)
+      WHERE loekz = '' AND crt_on >= @lv_from AND werks IN @lr_w.
+    SELECT vbeln, sin, vehicle_no, werks, crt_on FROM zinsta_vehicle_i INTO TABLE @DATA(lt_in)
+      WHERE loekz = '' AND crt_on >= @lv_from AND werks IN @lr_w.
+    " complete each side for documents the other side has (any date)
+    IF lt_tt IS NOT INITIAL.
+      SELECT vbeln, sin, vehicle_no, werks, crt_on FROM zinsta_vehicle_i APPENDING TABLE @lt_in
+        FOR ALL ENTRIES IN @lt_tt WHERE vbeln = @lt_tt-vbeln AND loekz = ''.
+    ENDIF.
+    IF lt_in IS NOT INITIAL.
+      SELECT vbeln, sin, vehicle_no, werks, crt_on FROM ztms_trip_inv APPENDING TABLE @lt_tt
+        FOR ALL ENTRIES IN @lt_in WHERE vbeln = @lt_in-vbeln AND loekz = ''.
+    ENDIF.
+    SORT lt_tt BY vbeln. DELETE ADJACENT DUPLICATES FROM lt_tt COMPARING vbeln.
+    SORT lt_in BY vbeln. DELETE ADJACENT DUPLICATES FROM lt_in COMPARING vbeln.
+    DATA lt_all TYPE SORTED TABLE OF vbeln_vf WITH UNIQUE KEY table_line.
+    LOOP AT lt_tt INTO DATA(ls_tt).
+      INSERT ls_tt-vbeln INTO TABLE lt_all.
+    ENDLOOP.
+    LOOP AT lt_in INTO DATA(ls_in).
+      INSERT ls_in-vbeln INTO TABLE lt_all.
+    ENDLOOP.
+    LOOP AT lt_all INTO DATA(lv_v).
+      DATA(ls_c) = VALUE zcl_tms_ty=>ts_parallelcheck( vbeln = lv_v days = |{ iv_days }| ).
+      READ TABLE lt_tt INTO ls_tt WITH KEY vbeln = lv_v BINARY SEARCH.
+      DATA(lv_has_tt) = xsdbool( sy-subrc = 0 ).
+      IF lv_has_tt = abap_true.
+        ls_c-ttsin = ls_tt-sin. ls_c-ttvehicle = ls_tt-vehicle_no. ls_c-tton = ls_tt-crt_on. ls_c-werks = ls_tt-werks.
+      ENDIF.
+      READ TABLE lt_in INTO ls_in WITH KEY vbeln = lv_v BINARY SEARCH.
+      DATA(lv_has_in) = xsdbool( sy-subrc = 0 ).
+      IF lv_has_in = abap_true.
+        ls_c-instasin = ls_in-sin. ls_c-instavehicle = ls_in-vehicle_no. ls_c-instaon = ls_in-crt_on.
+        IF ls_c-werks IS INITIAL.
+          ls_c-werks = ls_in-werks.
+        ENDIF.
+      ENDIF.
+      ls_c-status = COND #( WHEN lv_has_tt = abap_true AND lv_has_in = abap_false THEN 'TT_ONLY'
+                            WHEN lv_has_tt = abap_false THEN 'INSTA_ONLY'
+                            WHEN norm_vehicle( ls_c-ttvehicle ) = norm_vehicle( ls_c-instavehicle ) THEN 'MATCH'
+                            ELSE 'DIFF' ).
+      APPEND ls_c TO rt_chk.
     ENDLOOP.
   ENDMETHOD.
 

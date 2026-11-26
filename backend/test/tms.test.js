@@ -760,3 +760,35 @@ test('lanes from SAP ZB00: mode-wise rates, offers follow the indent vehicle typ
     await run(w, w.u.ho, { type: 'syncLanes' }, d);
     assert.ok(w.db.lanes.find((l) => l.id === 'LN-GAU-CCU').vendors.some((v) => v.rate === 50000 && v.source === undefined));
 });
+
+test('trip invoices (Instavans replacement): checked in SAP, written as TT-<sin>, failures kept for retry, exit on departure, vendor refused', async () => {
+    const w = outwardWorld();
+    const writes = [];
+    const inv = (no, o = {}) => ({ no, delivery: '80001234', plant: 'UN13', date: '2026-11-26', customer: 'K1', customerName: 'Shop', cancelled: false, cases: 6.5, value: 22750, currency: 'INR', grossKg: 71.5, netKg: 65, ttSin: '', ttVehicle: '', instaSin: '', instaVehicle: '', message: '', ...o });
+    let sapDown = false;
+    const d = depsOf(w, { sap: { ...depsOf(w).sap,
+        async tripInvoices(q) { return { simulated: false, rows: [...(q.billing || []), ...(q.deliveries || []).map(() => '4280111664')].map((n) => n === '4280111666' ? inv(n, { message: 'Billing document 4280111666 is cancelled.' }) : n === '4280111667' ? inv(n, { ttSin: 'TT-SIN99', ttVehicle: 'XX01' }) : inv(n, n === '4280111664' ? { instaSin: 'AVQ01134', instaVehicle: 'KA57NC4857' } : {})) }; },
+        async writeTripVehicle(v) { if (sapDown) throw new sap.SapError('SAP is not reachable', 502); writes.push(v); return { ok: true, target: 'TRIPTRAIL', message: 'saved' }; } } });
+    const sin = await loaded(w, d);
+    const s = () => w.db.shipments.find((x) => x.sin === sin);
+    const f = await run(w, w.u.depot, { type: 'findTripInvoices', sin }, d);
+    assert.equal(f.result.rows[0].no, '4280111664');
+    await rejects(run(w, w.u.v1, { type: 'setTripInvoices', sin, invoices: ['4280111664'] }, d), 403);
+    await rejects(run(w, w.u.depot, { type: 'setTripInvoices', sin, invoices: ['4280111666'] }, d), 409, /cancelled/);
+    await rejects(run(w, w.u.depot, { type: 'setTripInvoices', sin, invoices: ['4280111667'] }, d), 409, /already on Trip Trail vehicle/);
+    await rejects(run(w, w.u.depot, { type: 'setTripInvoices', sin, invoices: ['12AB'] }, d), 400);
+    const r = await run(w, w.u.depot, { type: 'setTripInvoices', sin, invoices: ['4280111664', '4280111665'] }, d);
+    assert.equal(r.result.count, 2); assert.equal(r.result.sap.ok, true);
+    assert.equal(writes[0].sin, `TT-${sin}`); assert.deepEqual(writes[0].invoices, ['4280111664', '4280111665']); assert.equal(writes[0].exit, false); assert.equal(writes[0].plant, 'UN13');
+    assert.deepEqual(s().invoices[0].instavans, { sin: 'AVQ01134', vehicle: 'KA57NC4857' });
+    // SAP down: the list is kept on the trip, the failure is recorded, retry works once SAP is back
+    sapDown = true;
+    const r2 = await run(w, w.u.depot, { type: 'setTripInvoices', sin, invoices: ['4280111664'] }, d);
+    assert.equal(r2.result.sap.ok, false); assert.equal(s().invoices.length, 1);
+    sapDown = false;
+    await run(w, w.u.depot, { type: 'syncTripVehicle', sin }, d);
+    assert.equal(s().sapVehicle.ok, true); assert.deepEqual(writes[writes.length - 1].invoices, ['4280111664']);
+    // departure marks the vehicle exited in SAP
+    await run(w, w.u.v1, { type: 'vendorDepart', sin, lrNo: 'LR-9' }, d, NOW + H);
+    assert.equal(writes[writes.length - 1].exit, true);
+});

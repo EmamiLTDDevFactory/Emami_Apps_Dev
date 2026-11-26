@@ -15,6 +15,7 @@ const NAV = [
   { href: '/control-tower/', label: 'Control Tower', icon: Radar },
   { href: '/post-order/', label: 'Post Order', icon: PackagePlus },
   { href: '/indents/', label: 'Indents', icon: FileInput },
+  { href: '/vehicle-invoices/', label: 'Vehicle Invoices', icon: Receipt },
   { href: '/vendor/', label: 'Vendor Portal', icon: Handshake },
   { href: '/orders/', label: 'Orders', icon: ClipboardList },
   { href: '/shipments/', label: 'Shipments', icon: Truck },
