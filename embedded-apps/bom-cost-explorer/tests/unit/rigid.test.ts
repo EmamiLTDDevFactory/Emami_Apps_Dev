@@ -93,4 +93,21 @@ describe('finished good rigid split', () => {
     expect(x.other.toFixed(4)).toBe('0.0938'); expect(x.list).toHaveLength(1); expect(x.list[0].comp).toBe('151000753');
     expect(parseFgRigid([]).size).toBe(0);
   });
+  it('packing budget build-up: the item row and its cost elements, as on the packing budget screen; the old mislabelled rows are skipped', () => {
+    const b = parseBudget([
+      row({ Grain: 'P', Matnr: '000000000151026181', Werks: 'UN13', Infnr: '0000000007', CompTxt: 'PML-KK', Origin: 'PC', Mould: '000000000850002273', RSap: '5222', RUsed: '5222', Br: '5137.62', Total: '-84.38', VarPct: '-1.62', LandedRate: '5137.62', BomQty: '1000', Meins: 'PC', Waers: 'INR', Flag: 'NORATE' }),
+      row({ Grain: 'Q', Matnr: '000000000151026181', Werks: 'UN13', Infnr: '0000000007', Comp: '000000000850002287', CompTxt: 'ZBUDC - MATERIAL COST', DosPerc: '55', DosPercS: '-2.938', FUsed: '-2.938', Cbr: '2872.1', Cbud: '2787.7177', Flag: 'OK' }),
+      row({ Grain: 'Q', Matnr: '000000000151026181', Werks: 'UN13', Infnr: '0000000007', Comp: '000000000850002288', CompTxt: 'ZBUDC - CONVERSION COST', DosPerc: '45', Cbr: '2349.9', Cbud: '2349.9', Flag: 'OK' }),
+      row({ Grain: 'P', Matnr: '000000000151026181', Werks: 'UN13', Infnr: '0000000007', Comp: '000000000850002287' }),
+    ]);
+    expect(b.p).toHaveLength(1);
+    const h = b.p[0];
+    expect(h.zbudMatnr).toBe('850002273');
+    expect(h.budgeted.toString()).toBe('5137.62');
+    expect(h.priceUnit.toString()).toBe('1000');
+    expect(h.comps.map((c) => c.comp)).toEqual(['850002287', '850002288']);
+    expect(h.comps[0].zbudUsed.toString()).toBe('-2.938');
+    expect(h.pctTotal.toString()).toBe('100');
+    expect(h.budSum.toString()).toBe('5137.6177');
+  });
 });

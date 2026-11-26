@@ -1,6 +1,6 @@
 import type { XCol } from '../client/export';
 import type { WacSheet } from '../wac/export';
-import type { BudgetBreakup, HistoryLine, UtilLine, RigidAlert } from './analysis';
+import type { BudgetBreakup, HistoryLine, PkgComp, UtilLine, RigidAlert } from './analysis';
 import { buildUp, dd, strip0, type Mould, type VendorLine, type WhatIfResult } from './model';
 
 const n = (v: { toNumber(): number } | string | null | undefined): number | null => (v === null || v === undefined || v === '' ? null : typeof v === 'string' ? Number(dd(v).toFixed(6)) : Number(v.toNumber().toFixed(6)));
@@ -26,9 +26,12 @@ export function rigidSheets(o: { vendors: VendorLine[]; moulds: Mould[]; budget:
     { header: 'Year', width: 8, get: (r) => r.gjahr }, { header: 'Basic', dp: 4, width: 12, get: (r) => n(r.basic) }, { header: 'Discount', dp: 4, width: 12, get: (r) => n(r.discount) }, { header: 'Tax', dp: 4, width: 12, get: (r) => n(r.tax) },
     { header: 'Freight', dp: 4, width: 12, get: (r) => n(r.freight) }, { header: 'Landed', dp: 4, width: 12, get: (r) => n(r.landed) }, { header: 'Price unit', dp: 0, width: 10, get: (r) => n(r.priceUnit) }, { header: 'Budget quantity', dp: 0, width: 15, get: (r) => n(r.budqty) }, { header: 'UoM', width: 6, get: (r) => r.uom },
   ]));
-  if (o.budget?.p.length) out.push(sheet('Packing budget build-up', o.budget.p, [
-    { header: 'Component', width: 14, get: (r) => r.comp }, { header: 'Description', width: 40, get: (r) => r.compTxt }, { header: 'Origin', width: 8, get: (r) => r.origin }, { header: 'SAP rate', dp: 4, width: 12, get: (r) => n(r.rSap) }, { header: 'Used rate', dp: 4, width: 12, get: (r) => n(r.rUsed) },
-    { header: 'Freight', dp: 4, width: 10, get: (r) => n(r.fUsed) }, { header: 'Landed rate', dp: 4, width: 12, get: (r) => n(r.landedRate) }, { header: 'Budget rate', dp: 4, width: 12, get: (r) => n(r.br) }, { header: 'Variance %', dp: 2, width: 10, get: (r) => n(r.varPct) },
+  if (o.budget?.p.length) out.push(sheet('Packing budget build-up', o.budget.p.flatMap((h) => [{ h, c: null as PkgComp | null }, ...h.comps.map((c) => ({ h, c }))]), [
+    { header: 'Item', width: 12, get: (r) => r.h.item }, { header: 'Cost element', width: 12, get: (r) => r.c?.comp ?? '' }, { header: 'Description', width: 36, get: (r) => (r.c ? r.c.compTxt : r.h.maktx) },
+    { header: 'Basic (SAP)', dp: 4, width: 12, get: (r) => (r.c ? null : n(r.h.rSap)) }, { header: 'Basic (used)', dp: 4, width: 12, get: (r) => (r.c ? null : n(r.h.rUsed)) },
+    { header: '% used', dp: 3, width: 9, get: (r) => (r.c ? n(r.c.pctUsed) : null) }, { header: 'ZBUD % used', dp: 3, width: 11, get: (r) => (r.c ? n(r.c.zbudUsed) : null) }, { header: 'Base rate', dp: 4, width: 12, get: (r) => (r.c ? n(r.c.baseRate) : null) },
+    { header: 'Budgeted', dp: 4, width: 12, get: (r) => n(r.c ? r.c.budgeted : r.h.budgeted) }, { header: 'Variance %', dp: 2, width: 10, get: (r) => (r.c ? null : n(r.h.varPct)) }, { header: 'Landed', dp: 4, width: 12, get: (r) => (r.c ? null : n(r.h.landedRate)) },
+    { header: 'Per', dp: 0, width: 7, get: (r) => n(r.h.priceUnit) }, { header: 'UoM', width: 6, get: (r) => r.h.uom },
   ]));
   if (o.history.length) out.push(sheet('Saved by ZRIGID', o.history, [
     { header: 'Valid from', width: 11, get: (r) => r.validFrom ?? '' }, { header: 'Valid to', width: 11, get: (r) => r.validTo ?? '' }, { header: 'Mould', width: 12, get: (r) => r.mould }, { header: 'Vendor', width: 10, get: (r) => r.lifnr },

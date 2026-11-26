@@ -354,22 +354,31 @@ CLASS zcl_mm_rigid_cost IMPLEMENTATION.
       ls_r-tax_amt = ls_c-tax_amt + ls_c-vat_amt + ls_c-igst_amount + ls_c-cgst_amount + ls_c-sgst_utgst_amount.
       APPEND ls_r TO rt_rows.
     ENDLOOP.
-    " P: the packing budget rate build-up of the latest scenario (ZPKG_BUD_ITEM)
-    SELECT scen_id, matnr, werks, component_matnr, maktx, origin_grp, r_sap, r_used, f_used, cbr, cbud, br, variance_pct, landed_rate, frt_total, currency, base_uom,
-           flag_norate, flag_nobom
+    " P / Q: the packing budget rate build-up of the latest scenario (ZPKG_BUD_ITEM, as on the packing budget screen):
+    " P = the item row (ROW_LEVEL H): basic rate SAP / used, budget rate, variance, freight, landed; COMP_TXT = description, MOULD = ZBUD material, BOM_QTY = price unit, TOTAL = variance
+    " Q = its cost-element rows (ROW_LEVEL C): DOS_PERC = % SAP (= % used), DOS_PERC_S = ZBUD % SAP, F_USED = ZBUD % used, CBR = base rate, CBUD = budgeted
+    SELECT scen_id, matnr, werks, component_matnr, row_level, maktx, origin_grp, zbud_matnr, r_sap, r_used, p_sap, f_sap, f_used, cbr, cbud, br, variance, variance_pct,
+           landed_rate, frt_total, currency, price_unit, base_uom, flag_norate, flag_nobom, flag_nozbud, flag_pct100
       FROM zpkg_bud_item
-      WHERE ( matnr IN @mr_matnr OR component_matnr IN @mr_matnr ) AND werks IN @mr_werks
+      WHERE matnr IN @mr_matnr AND werks IN @mr_werks
       ORDER BY scen_id DESCENDING
       INTO TABLE @DATA(lt_p) UP TO 300 ROWS.
     IF lt_p IS NOT INITIAL.
       DATA(lv_scen) = lt_p[ 1 ]-scen_id.
       LOOP AT lt_p INTO DATA(ls_p) WHERE scen_id = lv_scen.
         CLEAR ls_r.
-        ls_r-grain = 'P'. ls_r-rowid = next_id( ). ls_r-matnr = ls_p-matnr. ls_r-werks = ls_p-werks. ls_r-comp = ls_p-component_matnr. ls_r-comp_txt = ls_p-maktx.
-        ls_r-origin = ls_p-origin_grp. ls_r-r_sap = ls_p-r_sap. ls_r-r_used = ls_p-r_used. ls_r-f_used = ls_p-f_used. ls_r-cbr = ls_p-cbr. ls_r-cbud = ls_p-cbud.
-        ls_r-br = ls_p-br. ls_r-var_pct = ls_p-variance_pct. ls_r-landed_rate = ls_p-landed_rate. ls_r-frt_total = ls_p-frt_total. ls_r-waers = ls_p-currency.
-        ls_r-meins = ls_p-base_uom. ls_r-infnr = |{ lv_scen }|.
-        ls_r-flag = COND #( WHEN ls_p-flag_nobom = 'X' THEN 'NOBOM' WHEN ls_p-flag_norate = 'X' THEN 'NORATE' ELSE 'OK' ).
+        ls_r-rowid = next_id( ). ls_r-matnr = ls_p-matnr. ls_r-werks = ls_p-werks. ls_r-comp_txt = ls_p-maktx. ls_r-infnr = |{ lv_scen }|.
+        ls_r-waers = ls_p-currency. ls_r-meins = ls_p-base_uom.
+        ls_r-flag = COND #( WHEN ls_p-flag_nobom = 'X' THEN 'NOBOM' WHEN ls_p-flag_norate = 'X' THEN 'NORATE' WHEN ls_p-flag_nozbud = 'X' THEN 'NOZBUD'
+                            WHEN ls_p-flag_pct100 = 'X' THEN 'PCT100' ELSE 'OK' ).
+        IF ls_p-row_level = 'C' OR ls_p-component_matnr IS NOT INITIAL.
+          ls_r-grain = 'Q'. ls_r-comp = ls_p-component_matnr.
+          ls_r-dos_perc = ls_p-p_sap. ls_r-dos_perc_s = ls_p-f_sap. ls_r-f_used = ls_p-f_used. ls_r-cbr = ls_p-cbr. ls_r-cbud = ls_p-cbud.
+        ELSE.
+          ls_r-grain = 'P'. ls_r-origin = ls_p-origin_grp. ls_r-mould = ls_p-zbud_matnr.
+          ls_r-r_sap = ls_p-r_sap. ls_r-r_used = ls_p-r_used. ls_r-br = ls_p-br. ls_r-total = ls_p-variance. ls_r-var_pct = ls_p-variance_pct.
+          ls_r-landed_rate = ls_p-landed_rate. ls_r-frt_total = ls_p-frt_total. ls_r-bom_qty = ls_p-price_unit.
+        ENDIF.
         APPEND ls_r TO rt_rows.
       ENDLOOP.
     ENDIF.

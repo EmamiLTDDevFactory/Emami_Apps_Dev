@@ -27,8 +27,9 @@ export function handleRigid(set: string, sp: URLSearchParams, d: Deps): Response
     if (mode === 'B') {
       rows.push(base('D', ++i, m, { Gjahr: '2026', ValidFrom: '2026-04-01', ValidTo: '2027-03-31', Category: 'PM', Meins: 'PC', Waers: 'INR', Basic: n(1.62), DiscAmt: n(0), TaxAmt: n(0.29), FrgAmt: n(0.04), Freight: n(0.04), Landed: n(1.95), Total: n(1.95), Budqty: n(4200000, 3), BomQty: n(1) }),
         base('D', ++i, m, { Gjahr: '2025', ValidFrom: '2025-04-01', ValidTo: '2026-03-31', Category: 'PM', Meins: 'PC', Waers: 'INR', Basic: n(1.55), TaxAmt: n(0.28), Freight: n(0.04), Landed: n(1.87), Total: n(1.87), Budqty: n(3900000, 3), BomQty: n(1) }),
-        base('P', ++i, m, { Comp: P('151002525'), CompTxt: 'PMP-PLASTIC GRANULES-KOYLENE-CP SRM100NC', Origin: 'DOM', Infnr: '000000017', Flag: 'OK', Waers: 'INR', Meins: 'KG', RSap: n(79.2), RUsed: n(79.2), FUsed: n(2.1), Cbr: n(81.3), Cbud: n(80), Br: n(78), VarPct: n(2.5, 2), LandedRate: n(81.3), FrtTotal: n(2.1) }),
-        base('P', ++i, m, { Comp: P('151002526'), CompTxt: 'PMM-MB POLYONE-3085-7125-GD-50BC GOLD PE', Origin: 'DOM', Infnr: '000000017', Flag: 'OK', Waers: 'INR', Meins: 'KG', RSap: n(602), RUsed: n(602), FUsed: n(3), Cbr: n(605), Cbud: n(600), Br: n(590), VarPct: n(2.5, 2), LandedRate: n(605), FrtTotal: n(3) }));
+        base('P', ++i, m, { CompTxt: 'PML-KK-AH-SH-200ML-PL CN+CO15EG -DTV', Origin: 'PC', Mould: P('850002273'), Infnr: '0000000007', Flag: 'NORATE', Waers: 'INR', Meins: 'PC', BomQty: n(1000, 3), RSap: n(5222), RUsed: n(5222), Br: n(5137.62), Total: n(-84.38), VarPct: n(-1.62, 2), LandedRate: n(5137.62), FrtTotal: n(0) }),
+        base('Q', ++i, m, { Comp: P('850002287'), CompTxt: 'ZBUDC - MATERIAL COST', Infnr: '0000000007', Flag: 'OK', Waers: 'INR', Meins: 'PC', DosPerc: n(55, 3), DosPercS: n(-2.938, 3), FUsed: n(-2.938, 3), Cbr: n(2872.1), Cbud: n(2787.7177) }),
+        base('Q', ++i, m, { Comp: P('850002288'), CompTxt: 'ZBUDC - CONVERSION COST', Infnr: '0000000007', Flag: 'OK', Waers: 'INR', Meins: 'PC', DosPerc: n(45, 3), DosPercS: n(0, 3), FUsed: n(0, 3), Cbr: n(2349.9), Cbud: n(2349.9) }));
       continue;
     }
     if (mode === 'H') {

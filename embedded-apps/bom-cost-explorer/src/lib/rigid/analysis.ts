@@ -5,14 +5,23 @@ import { dd, strip0, type RigidCalc } from './model';
 
 export interface BudgetBreakup {
   d: { gjahr: string; basic: Decimal; discount: Decimal; tax: Decimal; frgAmt: Decimal; freight: Decimal; landed: Decimal; total: Decimal; budqty: Decimal; priceUnit: Decimal; uom: string; curr: string; category: string; validFrom: string | null; validTo: string | null }[];
-  p: { comp: string; compTxt: string; origin: string; rSap: Decimal; rUsed: Decimal; fUsed: Decimal; cbr: Decimal; cbud: Decimal; br: Decimal; varPct: Decimal; landedRate: Decimal; frtTotal: Decimal; curr: string; uom: string; flag: string; scenario: string; item: string }[];
+  /** Packing budget build-up of the latest scenario (ZPKG_BUD_ITEM), as on the packing budget screen: the item row and its cost-element rows. Rates are per price unit. */
+  p: PkgItem[];
 }
+export interface PkgComp { comp: string; compTxt: string; pctSap: Decimal; pctUsed: Decimal; zbudSap: Decimal; zbudUsed: Decimal; baseRate: Decimal; budgeted: Decimal; flag: string }
+export interface PkgItem { item: string; maktx: string; scenario: string; origin: string; zbudMatnr: string; rSap: Decimal; rUsed: Decimal; budgeted: Decimal; variance: Decimal; varPct: Decimal; frtTotal: Decimal; landedRate: Decimal;
+  curr: string; priceUnit: Decimal; uom: string; flag: string; comps: PkgComp[]; pctTotal: Decimal; budSum: Decimal }
 export function parseBudget(rows: RigidRow[]): BudgetBreakup {
   return {
     d: rows.filter((r) => r.Grain === 'D').map((r) => ({ gjahr: r.Gjahr, basic: dd(r.Basic), discount: dd(r.DiscAmt), tax: dd(r.TaxAmt), frgAmt: dd(r.FrgAmt), freight: dd(r.Freight), landed: dd(r.Landed), total: dd(r.Total), budqty: dd(r.Budqty),
       priceUnit: dd(r.BomQty).gt(0) ? dd(r.BomQty) : new Decimal(1), uom: r.Meins, curr: r.Waers, category: r.Category, validFrom: r.ValidFrom, validTo: r.ValidTo })),
-    p: rows.filter((r) => r.Grain === 'P').map((r) => ({ comp: strip0(r.Comp), compTxt: r.CompTxt, origin: r.Origin, rSap: dd(r.RSap), rUsed: dd(r.RUsed), fUsed: dd(r.FUsed), cbr: dd(r.Cbr), cbud: dd(r.Cbud), br: dd(r.Br), varPct: dd(r.VarPct),
-      landedRate: dd(r.LandedRate), frtTotal: dd(r.FrtTotal), curr: r.Waers, uom: r.Meins, flag: r.Flag, scenario: r.Infnr, item: strip0(r.Matnr) })),
+    p: rows.filter((r) => r.Grain === 'P' && !r.Comp.trim()).map((r) => {   // a 'P' row with a component is the old (mislabelled) format: skipped
+      const comps = rows.filter((c) => c.Grain === 'Q' && strip0(c.Matnr) === strip0(r.Matnr) && c.Werks === r.Werks && c.Infnr === r.Infnr)
+        .map((c) => ({ comp: strip0(c.Comp), compTxt: c.CompTxt, pctSap: dd(c.DosPerc), pctUsed: dd(c.DosPerc), zbudSap: dd(c.DosPercS), zbudUsed: dd(c.FUsed), baseRate: dd(c.Cbr), budgeted: dd(c.Cbud), flag: c.Flag }));
+      return { item: strip0(r.Matnr), maktx: r.CompTxt, scenario: r.Infnr, origin: r.Origin, zbudMatnr: strip0(r.Mould), rSap: dd(r.RSap), rUsed: dd(r.RUsed), budgeted: dd(r.Br), variance: dd(r.Total), varPct: dd(r.VarPct),
+        frtTotal: dd(r.FrtTotal), landedRate: dd(r.LandedRate), curr: r.Waers, priceUnit: dd(r.BomQty).gt(0) ? dd(r.BomQty) : new Decimal(1), uom: r.Meins, flag: r.Flag, comps,
+        pctTotal: comps.reduce((s, c) => s.plus(c.pctUsed), new Decimal(0)), budSum: comps.reduce((s, c) => s.plus(c.budgeted), new Decimal(0)) };
+    }),
   };
 }
 /** Budget landed rate of the latest year per piece (the budget price is per price unit). */

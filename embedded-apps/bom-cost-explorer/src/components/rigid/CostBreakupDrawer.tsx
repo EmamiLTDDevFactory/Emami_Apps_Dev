@@ -53,21 +53,45 @@ export default function CostBreakupDrawer({ item, cockpit, onClose }: { item: Ri
               </div>
             </>
           )}
-          {data.p.length > 0 && (
-            <>
-              <h4 className="text-xs font-extrabold uppercase tracking-wide text-muted">Packing budget build-up (scenario {data.p[0].scenario.replace(/^0+/, '')})</h4>
+          {data.p.map((h) => (
+            <div key={`${h.item}-${h.scenario}`} className="flex flex-col gap-2">
+              <h4 className="text-xs font-extrabold uppercase tracking-wide text-muted">Packing budget build-up (scenario {h.scenario.replace(/^0+/, '')})</h4>
               <div className="overflow-auto rounded-xl border border-line">
-                <table className="w-full min-w-[820px] border-collapse">
-                  <thead><tr><th className={cx(thCls, '!text-left')}>Component</th><th className={cx(thCls, '!text-left')}>Origin</th><th className={thCls}>SAP rate</th><th className={thCls}>Used rate</th><th className={thCls}>Freight</th><th className={thCls}>Landed rate</th><th className={thCls}>Budget rate</th><th className={thCls}>Variance %</th><th className={cx(thCls, '!text-left')}>Flag</th></tr></thead>
-                  <tbody>{data.p.map((r, i) => (
-                    <tr key={`${r.comp}-${i}`} className="border-t border-line/60"><td className="px-2.5 py-1.5 text-left text-xs"><span className="font-bold">{r.comp}</span> <span className="text-muted">{r.compTxt}</span></td><td className="px-2.5 py-1.5 text-left text-xs">{r.origin}</td>
-                      <td className={tdCls}>{f(r.rSap)}</td><td className={tdCls}>{f(r.rUsed)}</td><td className={tdCls}>{f(r.fUsed)}</td><td className={cx(tdCls, 'font-bold')}>{f(r.landedRate)}</td><td className={tdCls}>{f(r.br)}</td>
-                      <td className={cx(tdCls, r.varPct.gt(0) ? 'text-bad' : r.varPct.lt(0) ? 'text-good' : '')}>{r.varPct.toFixed(1)} %</td><td className="px-2.5 py-1.5 text-left text-2xs">{r.flag === 'OK' ? '' : <span className="rounded-full bg-warn/15 px-1.5 py-0.5 font-bold text-warn">{r.flag}</span>}</td></tr>
-                  ))}</tbody>
+                <table className="w-full min-w-[880px] border-collapse">
+                  <thead><tr><th className={cx(thCls, '!text-left')}>Origin grp</th><th className={cx(thCls, '!text-left')}>ZBUD material</th><th className={thCls}>Basic (SAP)</th><th className={thCls}>Basic (used)</th><th className={thCls}>Budgeted</th><th className={thCls}>Variance</th><th className={thCls}>Var %</th><th className={thCls}>Freight / unit</th><th className={thCls}>Landed</th><th className={cx(thCls, '!text-left')}>Cur / per / UoM</th><th className={cx(thCls, '!text-left')}>Flag</th></tr></thead>
+                  <tbody><tr className="border-t border-line/60">
+                    <td className="px-2.5 py-1.5 text-left text-xs">{h.origin}</td><td className="px-2.5 py-1.5 text-left text-xs">{h.zbudMatnr}</td>
+                    <td className={tdCls}>{f(h.rSap)}</td><td className={tdCls}>{f(h.rUsed)}</td><td className={cx(tdCls, 'font-bold')}>{f(h.budgeted)}</td>
+                    <td className={cx(tdCls, h.variance.gt(0) ? 'text-bad' : h.variance.lt(0) ? 'text-good' : '')}>{f(h.variance)}</td>
+                    <td className={cx(tdCls, h.varPct.gt(0) ? 'text-bad' : h.varPct.lt(0) ? 'text-good' : '')}>{h.varPct.toFixed(2)} %</td>
+                    <td className={tdCls}>{h.frtTotal.gt(0) ? f(h.frtTotal) : '-'}</td><td className={tdCls}>{f(h.landedRate)}</td>
+                    <td className="px-2.5 py-1.5 text-left text-xs">{h.curr} / {h.priceUnit.toString()} / {h.uom}</td>
+                    <td className="px-2.5 py-1.5 text-left text-2xs">{h.flag === 'OK' ? '' : <span className="rounded-full bg-warn/15 px-1.5 py-0.5 font-bold text-warn">{h.flag}</span>}</td>
+                  </tr></tbody>
                 </table>
               </div>
-            </>
-          )}
+              {h.comps.length > 0 && (
+                <div className="overflow-auto rounded-xl border border-line">
+                  <table className="w-full min-w-[880px] border-collapse">
+                    <thead><tr><th className={cx(thCls, '!text-left')}>Component</th><th className={cx(thCls, '!text-left')}>Description</th><th className={thCls}>% SAP</th><th className={thCls}>% used</th><th className={thCls}>ZBUD % SAP</th><th className={thCls}>ZBUD % used</th><th className={thCls}>Base rate</th><th className={thCls}>Budgeted</th><th className={cx(thCls, '!text-left')}>Flags</th></tr></thead>
+                    <tbody>
+                      {h.comps.map((c) => (
+                        <tr key={c.comp} className="border-t border-line/60"><td className="px-2.5 py-1.5 text-left text-xs font-bold">{c.comp}</td><td className="px-2.5 py-1.5 text-left text-xs text-muted">{c.compTxt}</td>
+                          <td className={tdCls}>{c.pctSap.toFixed(3)}</td><td className={tdCls}>{c.pctUsed.toFixed(3)}</td><td className={tdCls}>{c.zbudSap.toFixed(3)}</td><td className={tdCls}>{c.zbudUsed.toFixed(3)}</td>
+                          <td className={tdCls}>{f(c.baseRate)}</td><td className={cx(tdCls, 'font-bold')}>{f(c.budgeted)}</td>
+                          <td className="px-2.5 py-1.5 text-left text-2xs">{c.flag === 'OK' ? '-' : <span className="rounded-full bg-warn/15 px-1.5 py-0.5 font-bold text-warn">{c.flag}</span>}</td></tr>
+                      ))}
+                      <tr className="border-t border-line bg-sunken/60 font-bold">
+                        <td colSpan={3} className="px-2.5 py-1.5 text-right text-xs">Total % used</td>
+                        <td className={cx(tdCls, h.pctTotal.minus(100).abs().lt(0.01) ? 'text-good' : 'text-bad')}>{h.pctTotal.toFixed(3)} {h.pctTotal.minus(100).abs().lt(0.01) ? '(OK)' : ''}</td>
+                        <td colSpan={2} /><td className="px-2.5 py-1.5 text-right text-xs">Sum budgeted</td><td className={tdCls}>{f(h.budSum)}</td><td />
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          ))}
           <p className="text-2xs text-muted">Read-only. The budget comes from the approved packing budget (ZCOMPONENT, written by the packing budget rate run) and its build-up (ZPKG_BUD_ITEM). Nothing is changed in SAP.</p>
         </div>
       )}
