@@ -64,8 +64,17 @@ ${n.body ? `<p style="white-space:pre-wrap;line-height:1.5;margin:0 0 16px">${es
 <p style="font-size:11px;color:#6b7280;margin-top:20px">You are receiving this because of your role in ${esc(app)} on Emami Apps.</p></div>`;
 }
 
-async function sendEmail(n) {
-    if (!EMAIL_ENABLED || !SENDER || !EMAIL_RE.test(n.email)) return;
+async function sendEmail(n, onMail) {
+    // onMail({ to, subject, status: 'sent' | 'failed' | 'skipped', error }) lets the caller keep its own mail log.
+    const report = (status, error = null) => {
+        if (typeof onMail === 'function') Promise.resolve().then(() => onMail({ to: n.email, subject: n.title, status, error })).catch((e) => console.error('[notifications] mail log callback failed:', e.message));
+    };
+    if (!EMAIL_ENABLED || !SENDER || !EMAIL_RE.test(n.email)) {
+        const why = !EMAIL_ENABLED ? 'email turned off (NOTIFY_EMAIL_ENABLED=false)' : !SENDER ? 'no sender mailbox (NOTIFY_MAIL_SENDER not set)' : 'invalid address';
+        console.log(`[notifications] Email NOT sent to ${n.email} ("${n.title}"): ${why}`);
+        report('skipped', why);
+        return;
+    }
     try {
         const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(SENDER)}/sendMail`, {
             method: 'POST',
@@ -84,8 +93,11 @@ async function sendEmail(n) {
                 : `Microsoft Graph ${res.status} ${code}: ${data?.error?.message || 'send failed'}`.slice(0, 400));
         }
         await pool.query('UPDATE emami_apps.notifications SET emailed_at = now(), email_error = NULL WHERE id = $1', [n.id]);
+        console.log(`[notifications] Email sent to ${n.email} ("${n.title}")`);
+        report('sent');
     } catch (err) {
-        console.error('[notifications] Email failed:', err.message);
+        console.error(`[notifications] Email to ${n.email} ("${n.title}") failed:`, err.message);
+        report('failed', err.message.slice(0, 500));
         await pool.query('UPDATE emami_apps.notifications SET email_error = $2 WHERE id = $1', [n.id, err.message.slice(0, 500)]).catch(() => {});
     }
 }
@@ -94,7 +106,7 @@ async function sendEmail(n) {
  * Records a notification (skipped if `refKey` was already sent to this person) and emails it in the
  * background. Never throws — a notification problem must not break the action that caused it.
  */
-async function notify({ email, appId, kind = 'info', title, body = '', link = null, refKey = null, sendMail = true }) {
+async function notify({ email, appId, kind = 'info', title, body = '', link = null, refKey = null, sendMail = true, onMail = null }) {
     const to = String(email || '').trim().toLowerCase();
     if (!EMAIL_RE.test(to) || !title) return null;
     try {
@@ -104,7 +116,7 @@ async function notify({ email, appId, kind = 'info', title, body = '', link = nu
              VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING RETURNING *`,
             [to, appId, kind, String(title).slice(0, 300), String(body || '').slice(0, 2000), link, refKey]
         );
-        if (rows[0] && sendMail) sendEmail(rows[0]);
+        if (rows[0] && sendMail) sendEmail(rows[0], onMail);
         return rows[0] || null;
     } catch (err) {
         console.error('[notifications] notify failed:', err.message);

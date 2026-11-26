@@ -53,11 +53,15 @@ export const EVENT_LABELS: Record<string, string> = {
   ITEM_REJECTED: 'Line rejected',
   REQUEST_DECIDED: 'Request decided',
   SENT_BACK: 'Sent back to requester',
+  MAIL_SENT: 'Mail sent',
+  MAIL_FAILED: 'Mail failed',
+  MAIL_SKIPPED: 'Mail not sent',
 };
 export const EVENT_COLORS: Record<string, string> = {
   SUBMITTED: colors.rust, FILE_ADDED: colors.inkSoft, FILE_DOWNLOADED: colors.inkSoft, VIEWED: colors.inkSoft,
   USER_CREATED: colors.green, GRANT_APPLIED: colors.green, ITEM_APPROVED: colors.green, ITEM_REJECTED: '#DC2626',
   REQUEST_DECIDED: colors.rust, SENT_BACK: '#DC2626',
+  MAIL_SENT: colors.green, MAIL_FAILED: '#DC2626', MAIL_SKIPPED: '#D97706',
 };
 
 export function formatBytes(n: number): string {
