@@ -54,7 +54,18 @@ function build(k) {
         upsertVehicleType(db, c, u) {
             ensure(db); need(u, 'lane.manage', 'maintain vehicle types');
             const code = str(c.code, 20).toUpperCase() || fail('Vehicle type code is required.');
-            const row = { code, name: str(c.name, 60) || code, maxWeightKg: num(c.maxWeightKg, 'Max weight (kg)', { min: 1, max: 100000 }), maxVolumeM3: num(c.maxVolumeM3, 'Max volume (m3)', { min: 0.1, max: 500 }) };
+            // internal cargo size (cm) for the Loading Optimizer: all three or none; a save without sizes keeps the ones already there
+            const dimOf = (k, label) => (c[k] === undefined || c[k] === '' || c[k] === null ? 0 : num(c[k], label, { min: 0, max: 2000 }));
+            const dims = [dimOf('lengthCm', 'Length (cm)'), dimOf('widthCm', 'Width (cm)'), dimOf('heightCm', 'Height (cm)')];
+            if (dims.some((d) => d > 0) && dims.some((d) => !(d > 0))) fail('Give the internal length, width and height together (cm), or leave all three empty.');
+            const prev = db.vehicleTypes.find((x) => x.code === code);
+            if (!dims.some((d) => d > 0) && prev && prev.lengthCm) dims.splice(0, 3, prev.lengthCm, prev.widthCm, prev.heightCm);
+            const hasDims = dims.every((d) => d > 0);
+            // volume not given but the size is: derive it from the size
+            const vol = c.maxVolumeM3 === undefined || c.maxVolumeM3 === '' || Number(c.maxVolumeM3) === 0
+                ? (hasDims ? Math.round((dims[0] * dims[1] * dims[2]) / 1e4) / 100 : num(c.maxVolumeM3, 'Max volume (m3)', { min: 0.1, max: 500 }))
+                : num(c.maxVolumeM3, 'Max volume (m3)', { min: 0.1, max: 500 });
+            const row = { code, name: str(c.name, 60) || code, maxWeightKg: num(c.maxWeightKg, 'Max weight (kg)', { min: 1, max: 100000 }), maxVolumeM3: vol, ...(hasDims ? { lengthCm: dims[0], widthCm: dims[1], heightCm: dims[2] } : {}) };
             const i = db.vehicleTypes.findIndex((x) => x.code === code);
             if (i >= 0) db.vehicleTypes[i] = row; else db.vehicleTypes.push(row);
             return { code };

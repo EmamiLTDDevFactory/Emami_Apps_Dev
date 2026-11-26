@@ -792,3 +792,18 @@ test('trip invoices (Instavans replacement): checked in SAP, written as TT-<sin>
     await run(w, w.u.v1, { type: 'vendorDepart', sin, lrNo: 'LR-9' }, d, NOW + H);
     assert.equal(writes[writes.length - 1].exit, true);
 });
+
+test('vehicle type: internal cargo size (cm) is all-or-nothing, derives the volume, and survives a save without it', async () => {
+    const w = outwardWorld();
+    const vt = (o) => ({ type: 'upsertVehicleType', code: 'FTL9MT', name: '9 MT truck', maxWeightKg: 9000, ...o });
+    await rejects(run(w, w.u.ho, vt({ maxVolumeM3: 30, lengthCm: 600 })), 400, /length, width and height together/);
+    await run(w, w.u.ho, vt({ lengthCm: 600, widthCm: 240, heightCm: 240 }));          // no volume given: 600*240*240 = 34.56 m3
+    const a = w.db.vehicleTypes.find((x) => x.code === 'FTL9MT');
+    assert.deepEqual([a.lengthCm, a.widthCm, a.heightCm, a.maxVolumeM3], [600, 240, 240, 34.56]);
+    await run(w, w.u.ho, vt({ maxVolumeM3: 33 }));                                      // a save without sizes keeps them
+    const b = w.db.vehicleTypes.find((x) => x.code === 'FTL9MT');
+    assert.deepEqual([b.lengthCm, b.widthCm, b.heightCm, b.maxVolumeM3], [600, 240, 240, 33]);
+    await rejects(run(w, w.u.ho, vt({ code: 'NOVOL' })), 400);                          // neither volume nor size
+    await run(w, w.u.ho, vt({ code: 'OLD', maxVolumeM3: 20 }));                         // sizes stay optional
+    assert.equal(w.db.vehicleTypes.find((x) => x.code === 'OLD').lengthCm, undefined);
+});

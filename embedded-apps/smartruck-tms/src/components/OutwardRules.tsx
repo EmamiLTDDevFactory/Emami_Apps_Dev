@@ -11,7 +11,7 @@ export default function OutwardRules() {
   const live = t.mode === 'live';
   const vts = t.db.vehicleTypes ?? [], lanes = t.db.lanes ?? [];
   const st: TmsSettings = { offerTimeoutH: 4, capacityMinPct: 80, invoiceTolerancePct: 2, delayMarginH: 2, unlinkedAlertH: 12, invoiceMailbox: '', consentVersion: 'v1', consentText: '', ...(t.db.settings ?? {}) };
-  const [vt, setVt] = useState({ code: '', name: '', maxWeightKg: '', maxVolumeM3: '' });
+  const [vt, setVt] = useState({ code: '', name: '', maxWeightKg: '', maxVolumeM3: '', lengthCm: '', widthCm: '', heightCm: '' });
   const [ln, setLn] = useState({ fromLocId: '', toLocId: '', distanceKm: '', transitH: '', vendors: [{ carrierId: '', rate: '', vehicleType: '', shippingType: '' }] });
   const [q, setQ] = useState('');
   const [open, setOpen] = useState('');
@@ -52,11 +52,12 @@ export default function OutwardRules() {
       </Card>
 
       <Card title="Vehicle types" pad={false}>
-        <Table rows={vts} rowKey={(v) => v.code} empty="No vehicle types yet" onRow={(v) => setVt({ code: v.code, name: v.name, maxWeightKg: String(v.maxWeightKg), maxVolumeM3: String(v.maxVolumeM3) })} cols={[{ h: 'Code', r: (v) => <b>{v.code}</b> }, { h: 'Name', r: (v) => v.name }, { h: 'Max weight (kg)', r: (v) => v.maxWeightKg.toLocaleString('en-IN'), align: 'right' }, { h: 'Max volume (m³)', r: (v) => v.maxVolumeM3, align: 'right' }]} />
-        {manage && <div className="grid gap-2 border-t border-border p-3 md:grid-cols-5">
+        <Table rows={vts} rowKey={(v) => v.code} empty="No vehicle types yet" onRow={(v) => setVt({ code: v.code, name: v.name, maxWeightKg: String(v.maxWeightKg), maxVolumeM3: String(v.maxVolumeM3), lengthCm: String(v.lengthCm ?? ''), widthCm: String(v.widthCm ?? ''), heightCm: String(v.heightCm ?? '') })} cols={[{ h: 'Code', r: (v) => <b>{v.code}</b> }, { h: 'Name', r: (v) => v.name }, { h: 'Cargo L × W × H (cm)', r: (v) => (v.lengthCm ? `${v.lengthCm} × ${v.widthCm} × ${v.heightCm}` : <span className="hint">not set</span>) }, { h: 'Max weight (kg)', r: (v) => v.maxWeightKg.toLocaleString('en-IN'), align: 'right' }, { h: 'Max volume (m³)', r: (v) => v.maxVolumeM3, align: 'right' }]} />
+        {manage && <div className="grid gap-2 border-t border-border p-3 md:grid-cols-4 lg:grid-cols-8">
           <input className="input" placeholder="Code" value={vt.code} onChange={(e) => setVt({ ...vt, code: e.target.value })} /><input className="input" placeholder="Name" value={vt.name} onChange={(e) => setVt({ ...vt, name: e.target.value })} />
-          <input className="input" placeholder="Max weight kg" value={vt.maxWeightKg} onChange={(e) => setVt({ ...vt, maxWeightKg: e.target.value })} /><input className="input" placeholder="Max volume m³" value={vt.maxVolumeM3} onChange={(e) => setVt({ ...vt, maxVolumeM3: e.target.value })} />
-          <button className="btn-primary" onClick={async () => { const r = await t.cmd({ type: 'upsertVehicleType', code: vt.code, name: vt.name, maxWeightKg: Number(vt.maxWeightKg), maxVolumeM3: Number(vt.maxVolumeM3) }); if (r) { t.toast('Vehicle type saved'); setVt({ code: '', name: '', maxWeightKg: '', maxVolumeM3: '' }); } }}>Save</button>
+          <input className="input" placeholder="Max weight kg" value={vt.maxWeightKg} onChange={(e) => setVt({ ...vt, maxWeightKg: e.target.value })} /><input className="input" placeholder="Max volume m³ (blank = from size)" value={vt.maxVolumeM3} onChange={(e) => setVt({ ...vt, maxVolumeM3: e.target.value })} />
+          <input className="input" placeholder="Cargo length cm" value={vt.lengthCm} onChange={(e) => setVt({ ...vt, lengthCm: e.target.value })} /><input className="input" placeholder="Cargo width cm" value={vt.widthCm} onChange={(e) => setVt({ ...vt, widthCm: e.target.value })} /><input className="input" placeholder="Cargo height cm" value={vt.heightCm} onChange={(e) => setVt({ ...vt, heightCm: e.target.value })} />
+          <button className="btn-primary" onClick={async () => { const r = await t.cmd({ type: 'upsertVehicleType', code: vt.code, name: vt.name, maxWeightKg: Number(vt.maxWeightKg), maxVolumeM3: Number(vt.maxVolumeM3), lengthCm: vt.lengthCm, widthCm: vt.widthCm, heightCm: vt.heightCm }); if (r) { t.toast('Vehicle type saved'); setVt({ code: '', name: '', maxWeightKg: '', maxVolumeM3: '', lengthCm: '', widthCm: '', heightCm: '' }); } }}>Save</button>
         </div>}
       </Card>
 

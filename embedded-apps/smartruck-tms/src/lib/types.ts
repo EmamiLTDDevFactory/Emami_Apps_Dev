@@ -50,7 +50,7 @@ export interface Delivery { no: string; plant?: string; shipTo: string; cartons:
 export interface Loading { weightKg: number; volumeM3: number; weightPct: number; volumePct: number; effectivePct: number; minPct: number; reason: string; approval: 'NotNeeded' | 'Pending' | 'Approved' | 'Rejected'; approvedBy?: string; at: string; by: string }
 export interface TrackEvent { at: string; source: 'ULIP' | 'Manual' | 'System'; place: string; lat: number; lon: number; note?: string; by?: string }
 export interface Receipt { arrivedAt: string; dispatched: number; cartonsReceived: number; damagedQty: number; shortage: number; unloadingCharge: number; detentionCharge: number; remarks: string; chargesApproval: 'NotNeeded' | 'Pending' | 'Approved' | 'Rejected'; by: string; approvedBy?: string }
-export interface VehicleType { code: string; name: string; maxWeightKg: number; maxVolumeM3: number; source?: 'sap' }
+export interface VehicleType { code: string; name: string; maxWeightKg: number; maxVolumeM3: number; /** internal cargo size in cm (for the Loading Optimizer) */ lengthCm?: number; widthCm?: number; heightCm?: number; source?: 'sap' }
 /** One transporter rate on a lane. SAP rows come from freight condition ZB00 (source 'sap'): mode = shippingType (VSART) + sapVehicle (ADD01);
  *  vehicleType is set only when ADD01 is a truck code, otherwise the rate applies to every vehicle. per = rate unit (KG = per kg gross weight). */
 export interface LaneVendor {

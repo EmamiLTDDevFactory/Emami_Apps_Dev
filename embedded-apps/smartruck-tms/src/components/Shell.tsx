@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, Radar, PackagePlus, ClipboardList, Truck, Gavel, Receipt, Users, Building2, Settings, FileBarChart, Bell, Menu, X, ArrowLeft, RotateCcw, ShieldCheck, FileInput, Handshake } from 'lucide-react';
+import { LayoutDashboard, Radar, PackagePlus, ClipboardList, Truck, Gavel, Receipt, Users, Building2, Settings, FileBarChart, Bell, Menu, X, ArrowLeft, RotateCcw, ShieldCheck, FileInput, Handshake, Boxes } from 'lucide-react';
 import { TmsProvider, useTms } from '../lib/store';
 import { goBack } from '../lib/goBack';
 import { hasHubSession } from '../lib/hubEmailLogin';
@@ -16,6 +16,7 @@ const NAV = [
   { href: '/post-order/', label: 'Post Order', icon: PackagePlus },
   { href: '/indents/', label: 'Indents', icon: FileInput },
   { href: '/vehicle-invoices/', label: 'Vehicle Invoices', icon: Receipt },
+  { href: '/loading-optimizer/', label: 'Loading Optimizer', icon: Boxes },
   { href: '/vendor/', label: 'Vendor Portal', icon: Handshake },
   { href: '/orders/', label: 'Orders', icon: ClipboardList },
   { href: '/shipments/', label: 'Shipments', icon: Truck },
