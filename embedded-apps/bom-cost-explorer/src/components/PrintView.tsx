@@ -17,7 +17,7 @@ export default function PrintView({ query, tree, pivot, sim, simOn, total, messa
   return (
     <div className="print-only p-2 text-black">
       <h1 className="text-lg font-bold">Costing Cockpit — {query.mode === 'C' ? 'Plant comparison' : 'BOM costing'}</h1>
-      <p className="mb-2 text-xs">Printed {new Date().toLocaleString('en-IN')} · Totals = sum of leaf lines (HasChild blank). {simOn && 'Columns marked SIM are client-side simulations, not SAP figures.'}</p>
+      <p className="mb-2 text-xs">Printed {new Date().toLocaleString('en-IN')} · Totals = sum of leaf lines (HasChild blank) and subcontracted assemblies (Sobsl 30). {simOn && 'Columns marked SIM are client-side simulations, not SAP figures.'}</p>
       <table className="print-table mb-3">
         <tbody>{describeQuery(query).map(([k, v]) => <tr key={k}><th className="text-left">{k}</th><td>{v}</td></tr>)}</tbody>
       </table>

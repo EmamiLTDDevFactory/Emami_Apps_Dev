@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { FileSpreadsheet, RefreshCw } from 'lucide-react';
 import type { CostLine } from '@/lib/sap/fields';
+import { isLeafRow } from '@/lib/cost/tree';
 import type { CostQuery } from '@/lib/query/schema';
 import type { RatesState } from '@/lib/rates/useRateOptions';
 import { buildSourcesModel, type SourceOptionRow } from '@/lib/rates/sources';
@@ -140,8 +141,8 @@ export default function RateSources({ rows, rates, query, onOpenRow, prio }: { r
   const scrollRef = useRef<HTMLDivElement>(null);
   const v = useVirtualizer({ count: items.length, getScrollElement: () => scrollRef.current, estimateSize: (i) => (items[i]?.kind === 'block' ? 40 : ROW_H), overscan: 20 });
 
-  const srcCounts = useMemo(() => rows.filter((r) => !r.HasChild?.trim()).map((r) => r.SrcCount || 0), [rows]);
-  const integrity = useMemo(() => (rates.status === 'ready' ? ratesIntegrity(rows.filter((r) => !r.HasChild?.trim())) : null), [rates.status, rows]);
+  const srcCounts = useMemo(() => rows.filter(isLeafRow).map((r) => r.SrcCount || 0), [rows]);
+  const integrity = useMemo(() => (rates.status === 'ready' ? ratesIntegrity(rows.filter(isLeafRow)) : null), [rates.status, rows]);
 
   if (rates.status === 'idle' || rates.status === 'loading') {
     return <div className="p-4"><p className="mb-3 text-sm text-muted">Loading rate options from SAP…</p><Skeleton rows={10} /></div>;

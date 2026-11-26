@@ -147,3 +147,11 @@ test('R10: a statistical outlier against the last 30 days (needs 8 snapshots, a 
   assert.ok(r10 && r10.direction === 'up' && r10.evidence.z > 3);
   void cur;
 });
+
+test('isLeaf: a subcontracted assembly (Sobsl 30) counts its own cost; other parents do not', () => {
+  const { isLeaf } = require('../costWatchCore');
+  assert.equal(isLeaf({ Haschild: '' }), true);
+  assert.equal(isLeaf({ Haschild: 'X', Sobsl: '' }), false);
+  assert.equal(isLeaf({ Haschild: 'X', Sobsl: '30' }), true);
+  assert.equal(isLeaf({ Haschild: 'X', Sobsl: '50' }), false);
+});

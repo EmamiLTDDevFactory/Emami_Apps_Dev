@@ -5,6 +5,7 @@
  */
 import { exportTable, type XCol } from '../client/export';
 import { D } from '../cost/decimal';
+import { isLeafRow } from '../cost/tree';
 import { FISCAL_MONTHS, monthKeys, type PlanCheck, type PlanCostLine, type PlanSummary, type PlanWip } from './fields';
 import { shortage } from './maths';
 import { budgetPlan, loadBudget, type ComponentQty } from './budgetSim';
@@ -53,7 +54,7 @@ export function breakupCols(rows: PlanCostLine[]): XCol[] {
     { header: 'Structure', width: 36, get: (i) => `${'  '.repeat(Math.max(0, rows[i].Level - 1))}${rows[i].Idnrk}` },
     { header: 'Description', width: 30, get: (i) => rows[i].Maktx },
     { header: 'Type', get: (i) => rows[i].Mtart },
-    { header: 'Leaf', get: (i) => (rows[i].HasChild?.trim() ? '' : 'X') },
+    { header: 'Leaf', get: (i) => (isLeafRow(rows[i]) ? 'X' : '') },
     { header: 'Unit', get: (i) => rows[i].Meins },
     { header: 'Plan qty (FG)', dp: 3, get: (i) => num(rows[i].PlanQty) },
     ...QTY.map((k, m) => ({ header: `${FISCAL_MONTHS[m]} qty`, dp: 3, get: (i: number) => num(get(rows[i], k)) })),
