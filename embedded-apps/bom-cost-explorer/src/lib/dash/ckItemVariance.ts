@@ -1,64 +1,18 @@
 /**
  * Item level comparison of a finished good: actual consumption of its process orders (DashCdrillSet production mode, per piece produced, WIP exploded to its own
- * components) against the CK13N standard cost estimate (CkItemSet), per piece.
- *
- * CK13N itemization is single level: the bulk / WIP is ONE line of the finished good's estimate. The actual side has no WIP line (SAP explodes it), so the bulk is
- * exploded here with ITS OWN current CK13N estimate in the item plant: child quantity and value per unit of bulk x the bulk quantity per piece of the finished good.
- * CkItemSet live (NWP, 26.11.2026): QtyUnit = quantity per 1 unit of the header, ValueUnit = value per 1 unit of the header (Losgr already divided out).
- * The bulk estimate may be newer than the price the finished good's estimate used for the bulk, so the exploded total can differ from the CK13N header total;
- * that difference is returned (bulkDiff) and shown, never hidden.
- * Activity items (Typps E: machine, labour, power, steam) are summed into one Conversion line and compared with the actual conversion per piece of the orders.
+ * components) against CK13N, per piece. The CK13N side is its costing structure down to the last level (lib/ck/structure.ts, explosionFromStructure), so the
+ * figures are the ones CK13N shows. Activities of every level are summed into one Conversion line and compared with the actual conversion per piece.
  */
 import Decimal from 'decimal.js';
-import type { CkItemRow } from '../ck/types';
 import { CAT_LABEL, type Cat, type CdrillComp } from './cdrill';
+import { lastLevel, type StructNode } from '../ck/structure';
 
 const ZERO = new Decimal(0);
 const d = (v: string | null | undefined): Decimal => { try { return v && v.trim() !== '' ? new Decimal(v) : ZERO; } catch { return ZERO; } };
 const strip = (m: string) => String(m ?? '').trim().replace(/^0+/, '');
 
-/** Material types exploded through their own estimate (bulk / semi-finished). */
-export const EXPLODE_MTART = new Set(['HALB', 'WIP']);
-const MAX_DEPTH = 3;
-
 export interface StdLine { matnr: string; text: string; mtart: string; uom: string; qtyPc: Decimal; valPc: Decimal; /** bulk it came from ('' = directly in the finished good) */ via: string }
-export interface StdExplosion { lines: StdLine[]; convPc: Decimal; otherPc: Decimal; /** bulk lines that could not be exploded (no estimate): kept as they are */ unexploded: string[]; /** exploded value - the bulk line value of the finished good's estimate */ bulkDiff: Decimal; bulks: { matnr: string; ownPc: Decimal; explodedPc: Decimal }[] }
-
-export type ItemFetcher = (matnr: string, werks: string) => Promise<CkItemRow[]>;
-/** Unit of the bulk's own estimate (CkHeaderSet Meeht); '' when unknown. A bulk used in another unit than its estimate is not exploded (no conversion here). */
-export type UnitFetcher = (matnr: string, werks: string) => Promise<string>;
-
-/** Per piece standard lines of the finished good, bulk exploded through its own CK13N estimate (recursively, max 3 levels). */
-export async function explodeCk(items: CkItemRow[], werks: string, fetchItems: ItemFetcher, fetchUnit?: UnitFetcher): Promise<StdExplosion> {
-  const out: StdExplosion = { lines: [], convPc: ZERO, otherPc: ZERO, unexploded: [], bulkDiff: ZERO, bulks: [] };
-  async function walk(rows: CkItemRow[], factor: Decimal, via: string, depth: number): Promise<Decimal> {
-    let total = ZERO;
-    for (const r of rows) {
-      const qty = d(r.QtyUnit).times(factor);
-      const val = d(r.ValueUnit).times(factor);
-      total = total.plus(val);
-      if (r.Typps === 'E') { out.convPc = out.convPc.plus(val); continue; }
-      if (r.Typps !== 'M' || !strip(r.Idnrk)) { out.otherPc = out.otherPc.plus(val); continue; }
-      if (EXPLODE_MTART.has(String(r.Mtart).toUpperCase()) && depth < MAX_DEPTH) {
-        let children: CkItemRow[] = [];
-        let unitOk = true;
-        if (fetchUnit) { try { const u = (await fetchUnit(strip(r.Idnrk), r.ItemWerks || werks)).trim().toUpperCase(); unitOk = !u || !r.Uom || u === r.Uom.trim().toUpperCase(); } catch { unitOk = true; } }
-        if (unitOk) { try { children = await fetchItems(strip(r.Idnrk), r.ItemWerks || werks); } catch { children = []; } }
-        if (children.length) {
-          const exploded = await walk(children, qty, strip(r.Idnrk), depth + 1);
-          out.bulks.push({ matnr: strip(r.Idnrk), ownPc: val, explodedPc: exploded });
-          out.bulkDiff = out.bulkDiff.plus(exploded.minus(val));
-          continue;
-        }
-        out.unexploded.push(strip(r.Idnrk));
-      }
-      out.lines.push({ matnr: strip(r.Idnrk), text: r.ItemTxt, mtart: r.Mtart, uom: r.QtyUnit ? (r.Uom || '') : r.Uom, qtyPc: qty, valPc: val, via });
-    }
-    return total;
-  }
-  await walk(items, new Decimal(1), '', 0);
-  return out;
-}
+export interface StdExplosion { lines: StdLine[]; convPc: Decimal; otherPc: Decimal; /** bulk lines that could not be exploded (no estimate): kept as they are */ unexploded: string[]; /** sum of the opened bulks' lines - their own values */ bulkDiff: Decimal; bulks: { matnr: string; ownPc: Decimal; explodedPc: Decimal }[] }
 
 export interface ItemVarRow {
   matnr: string; text: string; cat: string; via: string;
@@ -107,4 +61,27 @@ export function ckItemVariance(std: StdExplosion, actual: Record<Cat, CdrillComp
   const av = rows.reduce((t, r) => t.plus(r.actVal ?? ZERO), ZERO).plus(actualConvPc ?? ZERO);
   const total: ItemVarRow = { matnr: '', text: 'Total per piece', cat: '', via: '', stdUom: '', actUom: '', stdQty: null, actQty: null, qtyPct: null, stdVal: sv, actVal: av, variance: av.minus(sv), pct: pctOf(av, sv), status: 'both' };
   return { rows, conv, total };
+}
+
+/**
+ * The standard side from CK13N's costing structure (lib/ck/structure.ts, built per piece: scale 1): every last-level line as CK13N values it
+ * (components with an own estimate of the same costing date valued with it), activities of every level into conversion. Produced components that
+ * were opened are listed in `bulks` with their own value against the sum of their lines (CK13N shows both; they differ when lines were re-costed).
+ */
+export function explosionFromStructure(nodes: StructNode[]): StdExplosion {
+  const out: StdExplosion = { lines: [], convPc: ZERO, otherPc: ZERO, unexploded: [], bulkDiff: ZERO, bulks: [] };
+  const parentOf = new Map<string, string>();
+  const mark = (ns: StructNode[], via: string) => { for (const n of ns) { parentOf.set(n.id, via); if (n.children.length) mark(n.children, n.matnr); } };
+  mark(nodes, '');
+  for (const n of lastLevel(nodes)) {
+    if (n.item.Typps === 'E') { out.convPc = out.convPc.plus(n.value); continue; }
+    if (!n.matnr) { out.otherPc = out.otherPc.plus(n.value); continue; }
+    out.lines.push({ matnr: n.matnr, text: n.item.ItemTxt, mtart: n.item.Mtart, uom: n.item.Uom || '', qtyPc: n.qty, valPc: n.value, via: parentOf.get(n.id) ?? '' });
+  }
+  const sumLines = (n: StructNode): Decimal => lastLevel([n]).reduce((t, x) => t.plus(x.value), ZERO);
+  const opened: StructNode[] = [];
+  const walk = (ns: StructNode[]) => { for (const n of ns) if (n.children.length) { opened.push(n); walk(n.children); } };
+  walk(nodes.filter((n) => n.children.length));
+  for (const n of opened.filter((x) => x.depth === 1)) { const e = sumLines(n); out.bulks.push({ matnr: n.matnr, ownPc: n.value, explodedPc: e }); out.bulkDiff = out.bulkDiff.plus(e.minus(n.value)); }
+  return out;
 }

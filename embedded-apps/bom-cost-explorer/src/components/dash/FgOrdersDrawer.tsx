@@ -15,7 +15,8 @@ import { fetchCdrill } from '@/lib/dash/service';
 import { readGradually } from '@/lib/dash/cdrillProgressive';
 import { CAT_LABEL, parseCdrill, parseOrderItems, type Cat, type CdrillComp, type OrderItem } from '@/lib/dash/cdrill';
 import { ckVariance } from '@/lib/dash/ckVariance';
-import { ckItemVariance, explodeCk, type ItemVariance, type StdExplosion } from '@/lib/dash/ckItemVariance';
+import { ckItemVariance, explosionFromStructure, type ItemVariance, type StdExplosion } from '@/lib/dash/ckItemVariance';
+import { buildStructure } from '@/lib/ck/structure';
 import { loadFgRigid, type FgRigid } from '@/lib/rigid/fgRigid';
 import MouldDrawer from '../rigid/MouldDrawer';
 import type { WacCompRow, WacDocRow } from '@/lib/wac/types';
@@ -113,10 +114,20 @@ export default function FgOrdersDrawer({ target, onClose }: { target: FgTarget |
     if (!target) return;
     setBusyI(true); setErrorI('');
     const werks = target.werks;
-    const items = (matnr: string, w: string) => fetchCk('ITEM', { matnr, werks: w }).then((r) => r.rows);
-    const unit = (matnr: string, w: string) => fetchCk('HEADER', { matnr, werks: w }).then((r) => r.rows[0]?.Meeht ?? '');
+    // CK13N costing structure of the current standard estimate, every level, per piece (same rule as the Standard cost screen)
+    const std = async () => {
+      const k = { matnr: target.matnr.replace(/^0+/, ''), werks };
+      const [h, it] = await Promise.all([fetchCk('HEADER', k), fetchCk('ITEM', k)]);
+      const head = h.rows[0];
+      if (!head) return explosionFromStructure([]);
+      const r = await buildStructure(it.rows, { kadky: head.Kadky ?? '', tvers: head.Tvers, klvar: head.Klvar, bwvar: head.Bwvar }, werks, new Decimal(1), {
+        list: (matnr, w) => fetchCk('LIST', { matnr, werks: w }).then((x) => x.rows),
+        items: (key) => fetchCk('ITEM', { key }).then((x) => x.rows),
+      });
+      return explosionFromStructure(r.nodes);
+    };
     try {
-      const [exp] = await Promise.all([items(target.matnr.replace(/^0+/, ''), werks).then((rows) => explodeCk(rows, werks, items, unit)), act || !withActual ? Promise.resolve() : loadActual()]);
+      const [exp] = await Promise.all([std(), act || !withActual ? Promise.resolve() : loadActual()]);
       setCkItems(exp);
     } catch (e) { setErrorI(errorText(e)); }
     setBusyI(false);
@@ -258,14 +269,14 @@ export default function FgOrdersDrawer({ target, onClose }: { target: FgTarget |
             {(busyI || (busyA && !!ckItems)) && <Spinner className="h-4 w-4" />}
             {itemVar && <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={onlyDiff} onChange={(e) => setOnlyDiff(e.target.checked)} /> Only variance over 5 % or one side missing</label>}
           </div>
-          <p className="text-2xs text-muted">Every component per piece: actual consumption of the process orders of the period (as in Item level actual above) against the CK13N standard estimate of {target.werks}. The bulk / WIP line of the estimate is exploded through the bulk&apos;s own CK13N estimate, as SAP does for the actual. Variance = actual minus CK13N, % on CK13N; red costs more. Quantity % only when both sides use the same unit.</p>
+          <p className="text-2xs text-muted">Every component per piece: actual consumption of the process orders of the period (as in Item level actual above) against the CK13N standard estimate of {target.werks}. CK13N side = its costing structure down to the last level (as CK13N shows it: a component with its own estimate of the same costing date is valued with it, a bulk / WIP is opened). Variance = actual minus CK13N, % on CK13N; red costs more. Quantity % only when both sides use the same unit.</p>
           {errorI && <ErrorBox>{errorI}</ErrorBox>}
           {ckItems && !act && !busyA && !errorA && <p className="text-xs text-muted">Load the actual items to compare.</p>}
           {ckItems && ckItems.lines.length === 0 && ckItems.convPc.isZero() && <p className="text-xs text-muted">SAP has no CK13N items for this finished good in plant {target.werks}.</p>}
           {itemVar && (ckItems!.bulks.length > 0 || ckItems!.unexploded.length > 0) && (
             <p className="text-2xs text-muted">
-              {ckItems!.bulks.map((b) => `Bulk ${b.matnr}: ₹${money(b.ownPc, 4)} / pc in the finished good's estimate, ₹${money(b.explodedPc, 4)} / pc from its own estimate`).join(' · ')}
-              {!ckItems!.bulkDiff.isZero() && ` (difference ₹${money(ckItems!.bulkDiff, 4)} / pc: the bulk's own estimate is priced differently; the total below uses the exploded figures).`}
+              {ckItems!.bulks.map((b) => `Bulk ${b.matnr}: ₹${money(b.ownPc, 4)} / pc as its own estimate, ₹${money(b.explodedPc, 4)} / pc as the sum of its lines`).join(' · ')}
+              {!ckItems!.bulkDiff.isZero() && ` (difference ₹${money(ckItems!.bulkDiff, 4)} / pc: some of its lines were costed again after it; CK13N shows the same, and the total below uses the lines).`}
               {ckItems!.unexploded.length > 0 && ` Not exploded (no estimate of its own): ${ckItems!.unexploded.join(', ')}.`}
             </p>
           )}
