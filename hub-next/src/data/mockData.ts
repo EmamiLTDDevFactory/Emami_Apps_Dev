@@ -2,7 +2,7 @@ import {
   Landmark, Truck, Activity, Receipt, Home, LayoutGrid, Star,
   HelpCircle, CircleUserRound, ShieldCheck, ClipboardCheck, TrendingUp, Code2, PackageSearch, Wallet,
   CalendarClock, FileCheck2, HeartPulse, LineChart, ScanSearch, ShieldAlert, FileSpreadsheet, FileSearch, Gavel, Calculator, Hourglass,
-  Bot, DoorOpen, UserCog, LifeBuoy, Layers, Contact, MessageSquareReply, Route, Megaphone, KeyRound,
+  Bot, DoorOpen, UserCog, LifeBuoy, Layers, Contact, MessageSquareReply, Route, Megaphone, KeyRound, ShoppingCart,
 } from 'lucide-react';
 import type { AppItem, NavItem, CategoryFilter } from '../types';
 
@@ -55,6 +55,7 @@ export const EMBEDDED_APP_URLS: Record<string, string> = {
   'smartruck-tms': '/apps/smartruck-tms', // SmarTruck TMS (rebuild of Instavans SmarTruck Shipper — demo data)
   'auditee-response': '/apps/auditee-response', // Auditee Response (replaces WDs ZAUDIT_TOOL + ZMSD_MIS_OBSERVATION; open to all, see OPEN_TO_ALL_APPS in backend/server.js)
   'publicity-expenses': '/apps/publicity-expenses', // Publicity Expenses (ATL / BTL advertisement expenses MIS, SAP CDS ZC_ATLBTL_EXP_*)
+  'order-to-cash': '/apps/order-to-cash', // Order to Cash (JAVIS-style PO -> SO -> fulfilment -> cash; SAP RFC Z_SD_O2C_ACTION)
 };
 
 const RAW_APPS: AppItem[] = [
@@ -89,6 +90,7 @@ const RAW_APPS: AppItem[] = [
   { id: 'smartruck-tms', name: 'SmarTruck TMS', desc: 'Transport management — orders, reverse-auction bidding, live fleet tracking and control tower, ePOD, carrier invoicing and reports. Demo build on sample data.', cat: 'Supply Chain', icon: Route, uses: 0, stage: 'WIP' },
   { id: 'auditee-response', name: 'Auditee Response', desc: 'Answer the internal audit and MIS observations assigned to you and submit your response to the reviewer, with attachments.', cat: 'MSD', icon: MessageSquareReply, uses: 0, stage: 'WIP' },
   { id: 'publicity-expenses', name: 'Publicity Expenses', desc: 'ATL / BTL advertisement expenses MIS from SAP — brand-wise report with G/L drill-down to cost centre and SKU, A&P dashboards, media mix, budget vs actual and reconciliation.', cat: 'Finance', icon: Megaphone, uses: 0, stage: 'WIP' },
+  { id: 'order-to-cash', name: 'Order to Cash', desc: 'Customer POs from PDF, Excel, image or email read by AI, validated in SAP with auto amendment, sales orders created, then back orders, appointments, ASN, GRN, invoices, cash application, deductions and disputes.', cat: 'SD', icon: ShoppingCart, uses: 0, stage: 'WIP' },
 ];
 
 export const APPS: AppItem[] = RAW_APPS.map((app) => ({

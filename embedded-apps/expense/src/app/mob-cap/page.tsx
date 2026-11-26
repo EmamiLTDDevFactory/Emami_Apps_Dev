@@ -9,9 +9,10 @@ import { MobCapRow } from '../../types';
 import { Banner, Button, Card, Checkbox, cx, DateField, EmptyState, Field, Input, LoadingBlock, PageHeader, Select } from '../../components/ui';
 
 // SM30-style flat maintenance grid for ZEXP_MOB_CAP (MobCapSet) - same pattern as the DOA Chain
-// screen. One row = one monthly mobile-expense cap for a category + grade + level (and cost
-// centre, for sales categories); admins edit the whole table in place and save all changes
-// together.
+// screen. One row = one monthly mobile-expense cap for a category + grade + level; admins edit
+// the whole table in place and save all changes together. Cost centre is no longer part of this
+// screen (2026-11-26) - the category now comes from the cost centre's area, maintained separately
+// in Cost Centre Area Maintenance (CcAreaSet) - see that screen and MobCapRow.Kostl's comment.
 
 type GridRow = MobCapRow & {
   _cid: string;
@@ -62,9 +63,11 @@ const parseODataDateToIso = (value: any): string => {
   return new Date(ms).toISOString().split('T')[0];
 };
 
-const blankRow = (mcat: string, kostl: string): GridRow => ({
+// Cost centre is no longer part of this screen (2026-11-26: the category now comes from the Cost
+// Centre Area table, CcAreaSet) - every row is always sent with Kostl blank.
+const blankRow = (mcat: string): GridRow => ({
   Mcat: mcat || 'NS',
-  Kostl: (mcat || 'NS') === 'NS' ? '' : (kostl || ''),
+  Kostl: '',
   Trfgr: 'E1',
   Trfst: '',
   MaxAmt: 0,
@@ -84,8 +87,6 @@ function validateRow(row: GridRow): string | null {
   if (!row.Mcat) return 'Category is mandatory';
   if (!row.Trfgr) return 'Grade is mandatory';
   if (row.Trfst !== '' && row.Trfst !== 'A' && row.Trfst !== 'B') return 'Level must be A, B, or blank (any level)';
-  if (row.Mcat === 'NS' && row.Kostl.trim()) return 'NS (non-sales) must not have a cost centre';
-  if (row.Mcat !== 'NS' && !row.Kostl.trim()) return 'Cost centre is mandatory for a sales category';
   if (row.ValidTo && row.ValidFrom && row.ValidTo < row.ValidFrom) return 'Valid To cannot be before Valid From';
   if (!row.NoCap && !(row.MaxAmt > 0)) return 'Enter an amount or tick On Actuals';
   return null;
@@ -97,7 +98,6 @@ export default function MobCapPage() {
   const { fetchMobCaps, createMobCapRow, updateMobCapRow } = useClaim();
 
   const [mcatFilter, setMcatFilter] = useState('');
-  const [kostlFilter, setKostlFilter] = useState('');
   const [searchText, setSearchText] = useState('');
   const [showInactive, setShowInactive] = useState(false);
 
@@ -127,7 +127,6 @@ export default function MobCapPage() {
     try {
       const loadedRows = await fetchMobCaps({
         mcat: mcatFilter || undefined,
-        kostl: kostlFilter.trim() || undefined,
       });
       // NoCap/Active must always be explicit booleans on save, never missing. ValidFrom/ValidTo
       // arrive as SAP's /Date(ms)/ literal - normalize to plain 'YYYY-MM-DD' for the date inputs.
@@ -167,7 +166,7 @@ export default function MobCapPage() {
   };
 
   const handleAddRow = () => {
-    setRows((prev) => [...prev, blankRow(mcatFilter, kostlFilter)]);
+    setRows((prev) => [...prev, blankRow(mcatFilter)]);
   };
 
   // No real delete - Deactivate sets Active=false + ValidTo=today, Reactivate the opposite. Both
@@ -250,14 +249,12 @@ export default function MobCapPage() {
     if (searchText.trim()) {
       const q = searchText.trim().toLowerCase();
       list = list.filter((r) =>
-        r.Kostl.toLowerCase().includes(q) ||
         r.Trfgr.toLowerCase().includes(q) ||
         r.Mcat.toLowerCase().includes(q) ||
         r.Remark.toLowerCase().includes(q));
     }
     return [...list].sort((a, b) =>
       a.Mcat.localeCompare(b.Mcat) ||
-      a.Kostl.localeCompare(b.Kostl) ||
       a.Trfgr.localeCompare(b.Trfgr) ||
       a.Trfst.localeCompare(b.Trfst));
   }, [rows, showInactive, searchText]);
@@ -296,23 +293,15 @@ export default function MobCapPage() {
       />
 
       <Banner type="info">
-        Caps are checked by category and the employee's grade/level - NS (non-sales) rows have no cost centre; every sales category needs one.
+        Caps are checked by category and the employee's grade/level only - the category now comes from the cost centre's area (Cost Centre Area Maintenance), not a cost centre entered here.
       </Banner>
 
       <Card className="my-3">
-        <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-3">
-          <Field label="Category">
+        <div className="flex flex-col items-start gap-3 sm:flex-row">
+          <Field label="Category" className="w-full sm:flex-1">
             <Select value={mcatFilter} onChange={setMcatFilter} options={MCAT_FILTER_OPTIONS} />
           </Field>
-          <Field label="Cost Centre" hint="Blank = all">
-            <Input
-              value={kostlFilter}
-              onChange={(e) => setKostlFilter(e.target.value.toUpperCase())}
-              placeholder="e.g. CORP10"
-              onKeyDown={(e) => { if (e.key === 'Enter') handleLoad(); }}
-            />
-          </Field>
-          <Field label=" ">
+          <Field label=" " className="w-full shrink-0 sm:w-40">
             <Button variant="primary" icon={RefreshCw} loading={loading} onClick={handleLoad} className="w-full">
               Load
             </Button>
@@ -320,7 +309,7 @@ export default function MobCapPage() {
         </div>
 
         <div className="mt-3">
-          <Field label="Search" hint="Filters whatever's already loaded - category, cost centre, grade or remark">
+          <Field label="Search" hint="Filters whatever's already loaded - category, grade or remark">
             <div className="relative">
               <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-inkFaint" />
               <Input value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Search loaded rows…" className="pl-8" />
@@ -366,9 +355,8 @@ export default function MobCapPage() {
               <table className="w-full table-fixed border-separate [border-spacing:0] text-2xs">
                 <thead>
                   <tr className="text-left">
-                    <th className="sticky top-0 z-10 w-[9%] border-b border-border bg-appBg p-1.5">Category</th>
-                    <th className="sticky top-0 z-10 w-[10%] border-b border-border bg-appBg p-1.5">Cost Centre</th>
-                    <th className="sticky top-0 z-10 w-[7%] border-b border-border bg-appBg p-1.5">Grade</th>
+                    <th className="sticky top-0 z-10 w-[12%] border-b border-border bg-appBg p-1.5">Category</th>
+                    <th className="sticky top-0 z-10 w-[9%] border-b border-border bg-appBg p-1.5">Grade</th>
                     <th className="sticky top-0 z-10 w-[9%] border-b border-border bg-appBg p-1.5">Level</th>
                     <th className="sticky top-0 z-10 w-[10%] border-b border-border bg-appBg p-1.5">Max Amount</th>
                     <th className="sticky top-0 z-10 w-[8%] border-b border-border bg-appBg p-1.5">On Actuals</th>
@@ -388,20 +376,11 @@ export default function MobCapPage() {
                           {row._isNew ? (
                             <Select
                               value={row.Mcat}
-                              onChange={(v) => updateField(row._cid, { Mcat: v, Kostl: v === 'NS' ? '' : row.Kostl })}
+                              onChange={(v) => updateField(row._cid, { Mcat: v })}
                               options={MCAT_OPTIONS.map((o) => ({ value: o.value, label: o.fullName }))}
                               className="!h-7 !w-full !min-w-0 !py-0.5 !px-1 text-2xs"
                             />
                           ) : mcatFullName(row.Mcat)}
-                        </td>
-                        <td className="p-1 align-top">
-                          {row._isNew ? (
-                            row.Mcat === 'NS' ? (
-                              <span className="text-inkFaint">—</span>
-                            ) : (
-                              <Input value={row.Kostl} onChange={(e) => updateField(row._cid, { Kostl: e.target.value.toUpperCase() })} className={cellInputClass} />
-                            )
-                          ) : (row.Kostl || '—')}
                         </td>
                         <td className="p-1 align-top">
                           {row._isNew ? (
@@ -463,26 +442,15 @@ export default function MobCapPage() {
               const isKeyLocked = !row._isNew;
               return (
                 <div key={row._cid} className={cx('card p-3', (row._isNew || row._dirty) && 'border-l-4 border-l-amber bg-amberBg/20')}>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Field label="Category">
-                      {row._isNew ? (
-                        <Select
-                          value={row.Mcat}
-                          onChange={(v) => updateField(row._cid, { Mcat: v, Kostl: v === 'NS' ? '' : row.Kostl })}
-                          options={MCAT_OPTIONS.map((o) => ({ value: o.value, label: o.fullName }))}
-                        />
-                      ) : <p className="text-sm font-semibold text-ink">{mcatFullName(row.Mcat)}</p>}
-                    </Field>
-                    <Field label="Cost Centre">
-                      {row._isNew ? (
-                        row.Mcat === 'NS' ? (
-                          <p className="pt-2 text-sm text-inkFaint">—</p>
-                        ) : (
-                          <Input value={row.Kostl} onChange={(e) => updateField(row._cid, { Kostl: e.target.value.toUpperCase() })} />
-                        )
-                      ) : <p className="text-sm font-semibold text-ink">{row.Kostl || '—'}</p>}
-                    </Field>
-                  </div>
+                  <Field label="Category">
+                    {row._isNew ? (
+                      <Select
+                        value={row.Mcat}
+                        onChange={(v) => updateField(row._cid, { Mcat: v })}
+                        options={MCAT_OPTIONS.map((o) => ({ value: o.value, label: o.fullName }))}
+                      />
+                    ) : <p className="text-sm font-semibold text-ink">{mcatFullName(row.Mcat)}</p>}
+                  </Field>
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     <Field label="Grade">
                       {row._isNew ? (

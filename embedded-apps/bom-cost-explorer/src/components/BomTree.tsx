@@ -2,7 +2,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { CostLine } from '@/lib/sap/fields';
-import { allExpandableIds, visibleNodes, type CostTree, type TreeNode } from '@/lib/cost/tree';
+import { allExpandableIds, isSubcontractAssembly, visibleNodes, type CostTree, type TreeNode } from '@/lib/cost/tree';
 import type { SimRow } from '@/lib/cost/simulate';
 import { minCover, UNLIMITED_COVER } from '@/lib/cost/analytics';
 import { D, ZERO, type Decimal } from '@/lib/cost/decimal';
@@ -483,6 +483,7 @@ const TreeRow = memo(function TreeRow({
         )}
         <span className={cx('shrink-0 font-mono text-xs', n.kind !== 'line' && 'text-ink')}>{n.kind === 'country' ? n.sub : n.label}</span>
         <span className="min-w-0 truncate text-xs text-muted">{n.kind === 'country' ? n.label : n.sub}</span>
+        {r && isSubcontractAssembly(r) && <span className="ml-1 shrink-0 rounded bg-accent/15 px-1 text-[10px] font-bold text-accent" title="Subcontracted assembly (special procurement 30): its own cost (the subcontracting charge) is included on top of its components">Subcontracting · cost included</span>}
         {r?.Donor && <span className="ml-1 shrink-0 rounded bg-warn/15 px-1 text-[10px] font-bold text-warn" title={`Rate from donor plant ${r.Donor}`}>Donor plant {r.Donor}</span>}
         {s?.overridden && <span className="ml-1 shrink-0 rounded bg-sim/15 px-1 text-[10px] font-bold text-sim">OVERRIDE</span>}
       </div>

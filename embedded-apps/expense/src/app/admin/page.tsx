@@ -129,6 +129,24 @@ export default function AdminPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand/10 text-brand">
+              <Settings2 size={18} />
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-bold text-ink">Cost Centre Area Maintenance</p>
+              <p className="text-xs text-inkSoft">Map each cost centre to its sales channel area (NS / CCD / HCD) - used by Mobile Expense Cap Maintenance.</p>
+            </div>
+          </div>
+          <Button variant="primary" onClick={() => router.push('/cc-area/')} className="shrink-0">
+            Open Cost Centre Area Maintenance
+            <ChevronRight size={14} />
+          </Button>
+        </div>
+      </Card>
+
+      <Card className="mb-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand/10 text-brand">
               <IndianRupee size={18} />
             </span>
             <div className="min-w-0">

@@ -2,11 +2,11 @@
 
 import React, { useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, ChevronLeft, ChevronRight, Copy, Info, Plus, Power, PowerOff, RefreshCw, Save, Search, ShieldAlert, Upload, X } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, Copy, Download, Info, Plus, Power, PowerOff, RefreshCw, Save, Search, ShieldAlert, Upload, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useClaim } from '../../context/ClaimContext';
 import { DoaChainRow } from '../../types';
-import { Banner, Button, Card, Checkbox, cx, DateField, EmptyState, Field, Input, LoadingBlock, MessageModal, type MessageModalState, PageHeader, Select } from '../../components/ui';
+import { Banner, Button, Card, Checkbox, cx, DateField, EmptyState, Field, Input, LoadingBlock, MessageModal, type MessageModalState, PageHeader } from '../../components/ui';
 
 // SM30-style flat maintenance grid for ZEXP_DOA_CHAIN (DoaChainSet) - replaces the earlier
 // slab-by-slab card editor per the rebuild spec. One row = one approver in one amount slab of one
@@ -23,17 +23,25 @@ type GridRow = DoaChainRow & {
   _saving: boolean;
 };
 
-const DOA_CTYPE_OPTIONS = [
-  { value: 'ADM', label: 'ADM — Other Administrative Expenses' },
-  { value: 'MBN', label: 'MBN — Mobile (non-sales)' },
-];
-const DOA_CTYPE_FILTER_OPTIONS = [{ value: '', label: 'All types' }, ...DOA_CTYPE_OPTIONS];
-
 const PAGE_SIZE = 20;
 
 const todayIso = () => new Date().toISOString().split('T')[0];
 const FAR_FUTURE = '9999-12-31';
 const newCid = () => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `cid-${Math.random().toString(36).slice(2)}-${Date.now()}`);
+
+// DoaChainSet's ValidFrom/ValidTo come back as SAP's /Date(ms)/ literal on at least one landscape
+// (confirmed: switching the active SAP_BASE_URL landscape made every loaded row's Validity fields
+// go blank - the raw literal string isn't a value <input type="date"> can parse) - same gotcha
+// MobCapSet already works around. Falls back to parsing a plain date string too, so this is safe
+// regardless of which exact format a given landscape's gateway serializes it as.
+const parseODataDateToIso = (value: any): string => {
+  if (!value) return '';
+  const str = String(value);
+  const m = str.match(/\/Date\((\d+)\)\//);
+  const ms = m ? parseInt(m[1], 10) : new Date(str).getTime();
+  if (Number.isNaN(ms)) return '';
+  return new Date(ms).toISOString().split('T')[0];
+};
 
 const blankRow = (doaCtype: string, kostl: string): GridRow => ({
   DoaCtype: doaCtype || 'ADM',
@@ -117,7 +125,6 @@ export default function DoaChainPage() {
   const { currentUser } = useAuth();
   const { fetchDoaChain, createDoaChainRow, updateDoaChainRow } = useClaim();
 
-  const [doaCtypeFilter, setDoaCtypeFilter] = useState('');
   const [kostlFilter, setKostlFilter] = useState('');
   const [searchText, setSearchText] = useState('');
   const [showInactive, setShowInactive] = useState(false);
@@ -150,7 +157,6 @@ export default function DoaChainPage() {
     setLoadError(null);
     try {
       const loadedRows = await fetchDoaChain({
-        doaCtype: doaCtypeFilter || undefined,
         kostl: kostlFilter.trim() || undefined,
       });
       // Hod/Active must always be explicit booleans on save, never missing - coerce right on load
@@ -159,7 +165,20 @@ export default function DoaChainPage() {
       // real numbers - without this coercion, AmtFrom/AmtTo stay strings for any row the admin
       // doesn't manually retype, and row.AmtFrom.toFixed(2) throws on save (silently caught,
       // nothing actually saves, reload shows the unchanged original - looks like the edit "reverted").
-      const gridRows: GridRow[] = loadedRows.map((r) => ({ ...r, AmtFrom: parseFloat(r.AmtFrom as any) || 0, AmtTo: parseFloat(r.AmtTo as any) || 0, Hod: !!r.Hod, Active: !!r.Active, _cid: newCid(), _isNew: false, _dirty: false, _rowError: null, _saving: false }));
+      const gridRows: GridRow[] = loadedRows.map((r) => ({
+        ...r,
+        AmtFrom: parseFloat(r.AmtFrom as any) || 0,
+        AmtTo: parseFloat(r.AmtTo as any) || 0,
+        ValidFrom: parseODataDateToIso(r.ValidFrom) || todayIso(),
+        ValidTo: parseODataDateToIso(r.ValidTo) || FAR_FUTURE,
+        Hod: !!r.Hod,
+        Active: !!r.Active,
+        _cid: newCid(),
+        _isNew: false,
+        _dirty: false,
+        _rowError: null,
+        _saving: false,
+      }));
       originalsRef.current = Object.fromEntries(gridRows.map((r) => [r._cid, { ...r }]));
       setRows(gridRows);
       setLoaded(true);
@@ -179,7 +198,10 @@ export default function DoaChainPage() {
   };
 
   const handleAddRow = () => {
-    setRows((prev) => [...prev, blankRow(doaCtypeFilter, kostlFilter)]);
+    // Type is always 'ADM' now (confirmed: every new row is ADM going forward) - ignore the
+    // current Type filter rather than seed a new row from it, same reasoning as blankRow's own
+    // default below.
+    setRows((prev) => [...prev, blankRow('ADM', kostlFilter)]);
   };
 
   const handleCopyRow = (row: GridRow) => {
@@ -270,7 +292,16 @@ export default function DoaChainPage() {
         const saved = row._isNew
           ? await createDoaChainRow(plain, adminPernr)
           : await updateDoaChainRow(plain, adminPernr);
-        setRows((prev) => prev.map((r) => (r._cid === row._cid ? { ...r, ...(saved as DoaChainRow), _isNew: false, _dirty: false, _rowError: null, _saving: false } : r)));
+        setRows((prev) => prev.map((r) => (r._cid === row._cid ? {
+          ...r,
+          ...(saved as DoaChainRow),
+          ValidFrom: parseODataDateToIso((saved as any).ValidFrom) || r.ValidFrom,
+          ValidTo: parseODataDateToIso((saved as any).ValidTo) || r.ValidTo,
+          _isNew: false,
+          _dirty: false,
+          _rowError: null,
+          _saving: false,
+        } : r)));
       } catch (err: any) {
         // Shown verbatim - the DOA handover's business-error table (e.g. "Slab overlaps existing
         // slab ...", "No employee found for e-mail ...") should reach the admin unmodified.
@@ -281,6 +312,19 @@ export default function DoaChainPage() {
     // Always re-fetch after saving, so the grid shows what's really in SAP (e.g. AmtTo aligned
     // across a slab, ApprPernr/ApprName resolved) rather than our own optimistic local state.
     await handleLoad();
+  };
+
+  // Blank workbook with just the header row Import CSV/Excel actually reads (see handleImportFile's
+  // column lookups below) - an admin downloads this, fills it in a normal spreadsheet app, and
+  // re-uploads through the same Import CSV/Excel button, so the two stay in lockstep by construction.
+  const handleDownloadTemplate = async () => {
+    const XLSX = await import('xlsx');
+    const headers = ['Type', 'Cost Centre', 'Amount From', 'Amount To', 'Department', 'Approver Email', 'Rule', 'HoD', 'Valid From', 'Valid To'];
+    const sheet = XLSX.utils.aoa_to_sheet([headers]);
+    sheet['!cols'] = headers.map(() => ({ wch: 16 }));
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, sheet, 'DOA Chain');
+    XLSX.writeFile(workbook, 'doa_chain_import_template.xlsx');
   };
 
   const handleImportFile = async (file: File) => {
@@ -307,7 +351,9 @@ export default function DoaChainPage() {
       });
 
       const imported: GridRow[] = parsed.map((line) => {
-        const doaCtype = String(line['Type'] || line['DoaCtype'] || 'ADM').trim();
+        // Type is always 'ADM' now - the file's Type/DoaCtype column (if present) is ignored, same
+        // as Rule below.
+        const doaCtype = 'ADM';
         const kostl = String(line['Cost Centre'] || line['Kostl'] || '').trim().toUpperCase();
         const amtFrom = parseFloat(line['Amount From'] || line['AmtFrom']) || 0;
         const key = slabKey(doaCtype, kostl, amtFrom);
@@ -321,7 +367,8 @@ export default function DoaChainPage() {
           AmtTo: parseFloat(line['Amount To'] || line['AmtTo']) || 0,
           DeptTxt: String(line['Department'] || line['DeptTxt'] || ''),
           ApprEmail: String(line['Approver Email'] || line['ApprEmail'] || '').trim(),
-          ApprRule: (String(line['Rule'] || line['ApprRule'] || 'O').trim().toUpperCase() === 'A') ? 'A' : 'O',
+          // Rule is always 'O' now (no longer a choice) - blankRow already defaults to it, so the
+          // imported file's Rule column (if any) is ignored rather than honoured.
           Hod: ['x', 'true', '1', 'yes'].includes(String(line['HoD'] || line['Hod'] || '').trim().toLowerCase()),
           ValidFrom: String(line['Valid From'] || line['ValidFrom'] || todayIso()),
           ValidTo: String(line['Valid To'] || line['ValidTo'] || FAR_FUTURE),
@@ -404,14 +451,11 @@ export default function DoaChainPage() {
 
       <Card className="my-3">
         {/* Every field below shares the same label+input top line regardless of whether it also
-            has a hint line under it (Cost Centre does, Type/Load don't) - items-start keeps all
-            three aligned on that shared top line instead of Load drifting to the bottom of the
+            has a hint line under it (Cost Centre does, Load doesn't) - items-start keeps both
+            aligned on that shared top line instead of Load drifting to the bottom of the
             tallest cell. */}
-        <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-3">
-          <Field label="Type">
-            <Select value={doaCtypeFilter} onChange={setDoaCtypeFilter} options={DOA_CTYPE_FILTER_OPTIONS} />
-          </Field>
-          <Field label="Cost Centre" hint="Blank = all">
+        <div className="flex flex-col items-start gap-3 sm:flex-row">
+          <Field label="Cost Centre" hint="Blank = all" className="w-full sm:flex-1">
             <Input
               value={kostlFilter}
               onChange={(e) => setKostlFilter(e.target.value.toUpperCase())}
@@ -419,7 +463,7 @@ export default function DoaChainPage() {
               onKeyDown={(e) => { if (e.key === 'Enter') handleLoad(); }}
             />
           </Field>
-          <Field label=" ">
+          <Field label=" " className="w-full shrink-0 sm:w-40">
             <Button variant="primary" icon={RefreshCw} loading={loading} onClick={handleLoad} className="w-full">
               Load
             </Button>
@@ -438,13 +482,16 @@ export default function DoaChainPage() {
         <div className="mt-3 flex flex-wrap items-center gap-4">
           <Checkbox checked={showInactive} onChange={setShowInactive} label="Show inactive rows" />
           <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImportFile(f); }} />
+          <Button variant="secondary" size="sm" icon={Download} onClick={handleDownloadTemplate}>
+            Download Template
+          </Button>
           <Button variant="secondary" size="sm" icon={Upload} onClick={() => fileInputRef.current?.click()}>
             Import CSV/Excel
           </Button>
         </div>
         {importError && <div className="mt-2"><Banner type="error" onClose={() => setImportError(null)}>{importError}</Banner></div>}
         <p className="mt-2 text-2xs text-inkFaint">
-          Import columns: Type, Cost Centre, Amount From, Amount To, Department, Approver Email, Rule, HoD, Valid From, Valid To. Imported rows land in the grid for review — nothing is sent to SAP until you click Save.
+          Import columns: Type (always ADM, not read from the file), Cost Centre, Amount From, Amount To, Department, Approver Email, Rule (always O, not read from the file), HoD, Valid From, Valid To. Imported rows land in the grid for review — nothing is sent to SAP until you click Save.
         </p>
       </Card>
 
@@ -520,9 +567,7 @@ export default function DoaChainPage() {
                   return (
                     <tr key={row._cid} className={row._isNew || row._dirty ? 'bg-amberBg/40' : 'border-b border-line'}>
                       <td className="p-1 align-top">
-                        {row._isNew ? (
-                          <Select value={row.DoaCtype} onChange={(v) => updateField(row._cid, { DoaCtype: v })} options={DOA_CTYPE_OPTIONS.map((o) => ({ value: o.value, label: o.value }))} className="!h-7 !w-full !min-w-0 !py-0.5 !px-1 text-2xs" />
-                        ) : row.DoaCtype}
+                        ADM
                       </td>
                       <td className="p-1 align-top">
                         {row._isNew ? (
@@ -552,8 +597,8 @@ export default function DoaChainPage() {
                         <div className="truncate">{row.ApprName || '—'}</div>
                         {row.ApprPernr && <div className="truncate text-inkFaint">{row.ApprPernr}</div>}
                       </td>
-                      <td className="p-1 align-top">
-                        <Select value={row.ApprRule} onChange={(v) => updateField(row._cid, { ApprRule: v as 'O' | 'A' })} options={[{ value: 'O', label: 'O' }, { value: 'A', label: 'A' }]} className="!h-7 !w-full !min-w-0 !py-0.5 !px-1.5 text-2xs" />
+                      <td className="p-1 align-top text-inkSoft">
+                        O
                       </td>
                       <td className="p-1 align-top">
                         <Checkbox checked={!!row.Hod} onChange={(v) => updateField(row._cid, { Hod: v })} />
@@ -599,9 +644,7 @@ export default function DoaChainPage() {
                 <div key={row._cid} className={cx('card p-3', (row._isNew || row._dirty) && 'border-l-4 border-l-amber bg-amberBg/20')}>
                   <div className="grid grid-cols-2 gap-2">
                     <Field label="Type">
-                      {row._isNew ? (
-                        <Select value={row.DoaCtype} onChange={(v) => updateField(row._cid, { DoaCtype: v })} options={DOA_CTYPE_OPTIONS.map((o) => ({ value: o.value, label: o.value }))} />
-                      ) : <p className="text-sm font-semibold text-ink">{row.DoaCtype}</p>}
+                      <p className="text-sm font-semibold text-ink">ADM</p>
                     </Field>
                     <Field label="Cost Centre">
                       {row._isNew ? (
@@ -637,7 +680,7 @@ export default function DoaChainPage() {
                   )}
                   <div className="mt-2 grid grid-cols-3 gap-2">
                     <Field label="Rule">
-                      <Select value={row.ApprRule} onChange={(v) => updateField(row._cid, { ApprRule: v as 'O' | 'A' })} options={[{ value: 'O', label: 'O — any one' }, { value: 'A', label: 'A — all' }]} />
+                      <p className="pt-2 text-sm text-ink">O</p>
                     </Field>
                     <Field label="HoD">
                       <div className="pt-2"><Checkbox checked={!!row.Hod} onChange={(v) => updateField(row._cid, { Hod: v })} /></div>

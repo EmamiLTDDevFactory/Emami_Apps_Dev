@@ -10,6 +10,8 @@
 import { handleHier } from './hier';
 import { handleWac } from './wac';
 import { handleDash } from './dash';
+import { handleRigid } from './rigid';
+import { handleMatDocs } from './matdocs';
 import { handleBudget } from './budget';
 import {
   COST_LINE, ENTITY_TYPE_RATE_OPTION, FIELDS_BY_SET, FREIGHT_ROW, MATERIAL, PLANT, RATE_OPTION, RATE_ROW, RMPM_ROW,
@@ -413,7 +415,7 @@ function freightAll(p: Params, msgs: Msg[]): Raw[] {
  * the old row's full quantity and amount, so keeping only IsMaxDate postings gives back exactly the old answer; earlier postings are
  * extra receipts / invoices. Vgabe 1 = goods receipt = standard side, 2 / 3 = invoice = actual side; an actual posting carries only
  * actual quantity / amount, a standard posting only standard ones. The first PO line with an actual delivery has exactly 2 actual and
- * 2 standard postings, and one posting is a credit (Shkzg H). IsLatestPo marks the newest PO line of each material, plant and condition.
+ * 2 standard postings; standard postings are H (as NWP), actual S, and one actual posting is a credit (Shkzg H). IsLatestPo marks the newest PO line of each material, plant and condition.
  */
 function postingRows(lines: Raw[]): Raw[] {
   const out: Raw[] = [];
@@ -453,7 +455,7 @@ function postingRows(lines: Raw[]): Raw[] {
           ...l, __metadata: { ...(l.__metadata as object) } as never,
           Rowid: 1_000_000 + seq,
           Cpudt: d(new Date(poMs + offset * 86400000).toISOString().slice(0, 10)),
-          Vgabe: vgabe, Buzei: String(j + 1).padStart(3, '0'), Gjahr: '2026', Shkzg: isCredit ? 'H' : 'S',
+          Vgabe: vgabe, Buzei: String(j + 1).padStart(3, '0'), Gjahr: '2026', Shkzg: side === 'standard' ? 'H' : isCredit ? 'H' : 'S', // as on NWP: goods receipt H, invoice S
           Belnr: `5${vgabe === '1' ? '0' : '1'}${String(hash(`${id}${side}${j}b`) % 1e8).padStart(8, '0')}`,
           Actualdelvquantity: n(side === 'actual' ? qty : 0, 3), Actualdelvcostamount: n(side === 'actual' ? amt : 0, 2), ActRate: n(side === 'actual' ? Number(l.ActRate) : 0, 6),
           Stddelvquantity: n(side === 'standard' ? qty : 0, 3), Stddelvcostamount: n(side === 'standard' ? amt : 0, 2), StdRate: n(side === 'standard' ? Number(l.StdRate) : 0, 6),
@@ -597,6 +599,10 @@ export async function mockSapFetch(input: string | URL | Request, init?: Request
   // Costing dashboard sets (mock/dash.ts): invented figures for local design review.
   const dashRes = handleDash(set, sp, { json, odataError, parseFilter });
   if (dashRes) { await sleep(60, signal); return dashRes; }
+  const rigidRes = handleRigid(set, sp, { json, odataError, parseFilter });
+  if (rigidRes) { await sleep(60, signal); return rigidRes; }
+  const docRes = handleMatDocs(set, sp, { json, odataError, parseFilter });
+  if (docRes) { await sleep(60, signal); return docRes; }
   // BomPlantSet: the plants that have a BOM of the materials (every mock material has one in the first two mock plants).
   if (set === 'BomPlantSet') {
     await sleep(60, signal);

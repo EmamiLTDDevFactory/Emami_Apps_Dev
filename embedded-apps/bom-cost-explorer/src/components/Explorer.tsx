@@ -29,7 +29,7 @@ import { ls } from '@/lib/client/storage';
 import { useRun } from '@/lib/client/useRun';
 import { MAX_SCENARIOS, scenarioResults, useScenarios, type Scenario, type ScenarioResult } from '@/lib/client/scenarios';
 import { D } from '@/lib/cost/decimal';
-import { buildTree, leafPrefix, nodeTotals, grandTotal, rowKey } from '@/lib/cost/tree';
+import { buildTree, leafPrefix, nodeTotals, grandTotal, rowKey, isLeafRow } from '@/lib/cost/tree';
 import { localTotals } from '@/lib/cost/localTotals';
 import { buildPivot } from '@/lib/cost/pivot';
 import { EMPTY_SIM, isIdentity, simulate, type SimSettings } from '@/lib/cost/simulate';
@@ -182,7 +182,7 @@ export default function Explorer() {
   /** Rate options are loaded (mode B): the re-pick what-ifs and the drawer's options table can use them. */
   const rateOptions = mode === 'B' && rates.status === 'ready';
   // KPI: leaf rows SAP costed with rates from the donor plant (Donor set on the line).
-  const donorRows = useMemo(() => (result?.rows ?? []).filter((r) => !r.HasChild?.trim() && !!r.Donor).length, [result]);
+  const donorRows = useMemo(() => (result?.rows ?? []).filter((r) => isLeafRow(r) && !!r.Donor).length, [result]);
   const { request: requestRates } = rates;
   useEffect(() => {
     if (drawer !== null && mode === 'B') requestRates();

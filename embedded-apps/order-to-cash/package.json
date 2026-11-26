@@ -1,0 +1,33 @@
+{
+  "name": "order-to-cash",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "node scripts/copy-pdf-worker.js && next dev -p 3320",
+    "build": "node scripts/copy-pdf-worker.js && next build && node scripts/rename-export.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "next": "^15.5.28",
+    "pdfjs-dist": "4.10.38",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "autoprefixer": "^10.6.1",
+    "postcss": "^8.5.31",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
+  },
+  "overrides": {
+    "next": {
+      "postcss": "^8.5.31"
+    }
+  }
+}

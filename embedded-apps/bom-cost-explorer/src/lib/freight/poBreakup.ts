@@ -4,7 +4,7 @@
  * opening it never calls SAP. The name breakup.ts is taken (freight break-up of a cost line by condition type).
  *
  * Quantity and amount follow poLines (lib/freight/analysis.ts postingFigures): INR = document amount x FxInr (1 when missing), an amount
- * counts only together with a positive quantity, a credit posting keeps its quantity. Subtotal rate = sum of amounts / sum of quantities
+ * and quantity are signed by the side (Standard: Dr minus, Actual: Cr minus). Subtotal rate = sum of amounts / sum of quantities
  * (never an average of the row rates).
  */
 import { D, ZERO, type Decimal } from '../cost/decimal';
@@ -52,8 +52,8 @@ export interface PoLineBreakup {
 
 const sub = (items: BreakupItem[]): Subtotal => {
   const qty = items.reduce((a, i) => a.plus(i.qty), ZERO);
-  // the subtotal of a side is the ABSOLUTE of its net (S minus H), the same figure as on the PO line
-  const amount = items.reduce((a, i) => a.plus(i.amount), ZERO).abs();
+  // the subtotal of a side is its signed net, the same figure as on the PO line
+  const amount = items.reduce((a, i) => a.plus(i.amount), ZERO);
   return { qty, amount, rate: qty.gt(0) ? amount.div(qty) : null, count: items.length };
 };
 

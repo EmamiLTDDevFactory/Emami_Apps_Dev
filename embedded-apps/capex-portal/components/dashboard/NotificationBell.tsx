@@ -5,11 +5,12 @@ import { fn } from '@/lib/api';
 import { useList } from '@/lib/useData';
 import { fmtDateTime } from '@/lib/format';
 import { useAction } from '@/components/ui';
+import { notificationPath } from '@/lib/notifyRoute';
 import type { Notification1 } from '@/lib/entities';
 
 /**
  * Header bell: unread count + dropdown of Notification1Set rows (newest first). Clicking a row marks it read
- * (function import MarkNotificationsRead { NotifId }) and opens its Route. Mount it in the Shell header next to the user chips.
+ * (function import MarkNotificationsRead { NotifId }) and opens the screen it is about (see lib/notifyRoute.ts). Mount it in the Shell header next to the user chips.
  */
 export default function NotificationBell() {
   const router = useRouter();
@@ -30,7 +31,7 @@ export default function NotificationBell() {
   const openItem = async (n: Notification1) => {
     if (n.IsRead !== 'X') await markRead(n.Notifid);
     setOpen(false);
-    if (n.Route) router.push(n.Route.startsWith('/') ? n.Route : `/${n.Route}`);
+    router.push(notificationPath(n));
   };
 
   return (

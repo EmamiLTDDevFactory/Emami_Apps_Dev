@@ -1,0 +1,22 @@
+@EndUserText.label : 'Material documents (SPEC_ / ARTWORK_ PDFs): read-only row'
+@AbapCatalog.enhancementCategory : #NOT_EXTENSIBLE
+define type zmatdoc_s_row {
+  rowid      : abap.char(12);
+  mode       : abap.char(1);
+  matnr      : matnr;
+  maktx      : maktx;
+  mtart      : mtart;
+  doc_type   : abap.char(4);
+  doc_id     : abap.char(46);
+  title      : abap.char(50);
+  file_ext   : abap.char(10);
+  created_by : abap.char(12);
+  att_ts     : abap.char(14);
+  msg        : abap.char(120);
+  crdat      : dats;
+  doc_size   : abap.int4;
+  versions   : abap.int4;
+  chunk      : abap.int4;
+  chunks     : abap.int4;
+  content    : abap.string(0);
+}

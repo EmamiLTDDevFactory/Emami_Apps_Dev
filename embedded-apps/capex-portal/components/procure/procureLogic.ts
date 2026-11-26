@@ -6,7 +6,7 @@ export const isFlag = (v: unknown) => v === 'X' || v === true;
 const has = (hay: string | undefined, needle: string) => (hay || '').toLowerCase().includes(needle.toLowerCase());
 
 /** SAP CreateCWIP (live metadata 2026-11-24) has no AssetDesc parameter: the description is NOT sent until SAP adds it (log #77). */
-export const CREATE_CWIP_HAS_ASSET_DESC = false;
+export const CREATE_CWIP_HAS_ASSET_DESC = true;
 
 /** CWIPCreate: no backend picklist for these (log #50 / Component.js), kept as in Fiori. */
 export const EXEC_PROCESSES = [

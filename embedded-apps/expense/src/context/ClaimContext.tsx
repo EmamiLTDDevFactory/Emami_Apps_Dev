@@ -3,7 +3,7 @@
 import axios from 'axios';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { API_BASE_URL, SAP_BASE_URL } from '../config/api';
-import { AreaCode, Attachment, ClaimKPIs, ClaimStatus, ConfigLogRow, ConfigVarName, ConfigVarRow, DoaChainRow, ExpenseClaim, MobCapRow, MobileMonthItem, SAPError, TaxCode } from '../types';
+import { AreaCode, Attachment, CcAreaRow, ClaimKPIs, ClaimStatus, ConfigLogRow, ConfigVarName, ConfigVarRow, DoaChainRow, ExpenseClaim, MobCapRow, MobileMonthItem, SAPError, TaxCode } from '../types';
 import { getClaimCreatedTimestamp } from '../utils/claim-date';
 import { getHubToken } from '../lib/hubEmailLogin';
 import { useAuth } from './AuthContext';
@@ -66,8 +66,12 @@ interface ClaimContextType {
   fetchMobCaps: (filters?: { mcat?: string; kostl?: string; trfgr?: string; trfst?: string; active?: boolean }) => Promise<MobCapRow[]>;
   createMobCapRow: (row: MobCapRow, adminPernr: string) => Promise<MobCapRow>;
   updateMobCapRow: (row: MobCapRow, adminPernr: string) => Promise<MobCapRow>;
+  // Cost Centre Area Maintenance Actions — CRUD against the new CcAreaSet entity.
+  fetchCcAreas: (filters?: { kostl?: string; area?: string; active?: boolean }) => Promise<CcAreaRow[]>;
+  createCcAreaRow: (row: CcAreaRow, adminPernr: string) => Promise<CcAreaRow>;
+  updateCcAreaRow: (row: CcAreaRow, adminPernr: string) => Promise<CcAreaRow>;
   // Configuration Maintenance Actions — CRUD against the new ConfigVarSet/ConfigLogSet entities,
-  // replacing the former STVARV-maintained variables (ZEXP_ADMIN, ZEXP_DOA_ADMIN, ZEXP_FINANCE,
+  // replacing the former STVARV-maintained variables (ZEXP_ADMIN, ZEXP_FINANCE,
   // ZEXP_EXPTYPE_SET, ZEXP_MOBILE_SET, ZEXP_NON_CTC_GO_LIVE, ZFI_EXPENCE_CLAIM).
   fetchConfigVars: (adminPernr: string, name?: ConfigVarName) => Promise<ConfigVarRow[]>;
   addConfigVar: (row: { Name: ConfigVarName; Low: string; High?: string }, adminPernr: string) => Promise<ConfigVarRow>;
@@ -1444,6 +1448,59 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return handleSapWriteResponse(response, 'Failed to update mobile cap row');
   };
 
+  // Cost Centre Area Maintenance (SM30-style grid) — new CcAreaSet entity, live on dev 2026-11-26.
+  // Same optional-filters/no-filter-returns-everything pattern as DoaChainSet/MobCapSet. Unlike
+  // those, the key is a single field (Kostl), not composite.
+  const fetchCcAreas = async (filters?: { kostl?: string; area?: string; active?: boolean }): Promise<CcAreaRow[]> => {
+    const parts: string[] = [];
+    if (filters?.kostl) parts.push(`Kostl eq '${filters.kostl.toUpperCase()}'`);
+    if (filters?.area) parts.push(`Area eq '${filters.area}'`);
+    if (filters?.active !== undefined) parts.push(`Active eq ${filters.active}`);
+    const filterQuery = parts.length ? `$filter=${encodeURIComponent(parts.join(' and '))}&` : '';
+    const response = await sapClient.get(`${SAP_BASE_URL}/CcAreaSet?${filterQuery}$format=json`);
+    if (response.status < 200 || response.status >= 300) {
+      const errData = response.data;
+      const errMsg = errData?.error?.message?.value || errData?.error || errData?.d?.Message || errData?.Message || 'Failed to fetch cost centre areas';
+      throw new Error(errMsg);
+    }
+    return extractSapResults(response.data) as CcAreaRow[];
+  };
+
+  // ValidFrom/ValidTo must go as SAP's /Date(ms)/ literal on write, same gotcha toODataDate already
+  // works around for DoaChainSet/MobCapSet above.
+  const buildCcAreaPayload = (row: CcAreaRow, adminPernr: string) => ({
+    ...row,
+    Kostl: row.Kostl.toUpperCase(),
+    ValidFrom: toODataDate(row.ValidFrom),
+    ValidTo: toODataDate(row.ValidTo),
+    Aenam: adminPernr,
+  });
+
+  const createCcAreaRow = async (row: CcAreaRow, adminPernr: string): Promise<CcAreaRow> => {
+    const postData = buildCcAreaPayload(row, adminPernr);
+    const response = await sapClient.post(`${SAP_BASE_URL}/CcAreaSet`, postData, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    return handleSapWriteResponse(response, 'Failed to create cost centre area row') as CcAreaRow;
+  };
+
+  // PUT must resend every field (whole-row replace, including Active); Kostl can't change once
+  // created. Falls back to POST if the gateway rejects PUT-with-key-predicates, same as
+  // DoaChainSet/MobCapSet. No DELETE - deactivate via Active=false instead.
+  const updateCcAreaRow = async (row: CcAreaRow, adminPernr: string): Promise<CcAreaRow> => {
+    const putData = buildCcAreaPayload(row, adminPernr);
+    const keyUrl = `CcAreaSet('${row.Kostl.toUpperCase()}')`;
+    let response = await sapClient.put(`${SAP_BASE_URL}/${keyUrl}`, putData, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (response.status === 405) {
+      response = await sapClient.post(`${SAP_BASE_URL}/CcAreaSet`, putData, {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    return handleSapWriteResponse(response, 'Failed to update cost centre area row');
+  };
+
   // Configuration Maintenance (ConfigVarSet/ConfigLogSet, live on dev 2026-11-24) — replaces the
   // former STVARV variables. Aenam (the logged-in admin's PERNR) is mandatory on every call, same
   // identity mechanism as DoaChainSet/MobCapSet above; the backend returns "Not authorised to
@@ -1651,6 +1708,9 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         fetchMobCaps,
         createMobCapRow,
         updateMobCapRow,
+        fetchCcAreas,
+        createCcAreaRow,
+        updateCcAreaRow,
         fetchConfigVars,
         addConfigVar,
         updateConfigVar,

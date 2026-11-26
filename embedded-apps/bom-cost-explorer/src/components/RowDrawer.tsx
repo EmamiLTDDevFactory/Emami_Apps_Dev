@@ -4,7 +4,7 @@ import type { CostLine } from '@/lib/sap/fields';
 import { selectedOptionIndex, type SimRow } from '@/lib/cost/simulate';
 import { D } from '@/lib/cost/decimal';
 import { minCover } from '@/lib/cost/analytics';
-import { rowKey } from '@/lib/cost/tree';
+import { isSubcontractAssembly, rowKey } from '@/lib/cost/tree';
 import { fmtDate, fmtNum, fmtQty, fmtRate, fmtSigned } from '@/lib/format';
 import { Button, cx, Drawer, inputBase, inputCls, Pill, SimTag, SourceBadge } from './ui';
 import { FreightBreakupSection } from './freight/FreightValue';
@@ -13,6 +13,10 @@ import { hasFreightColumns, rateWithFreight, vendorOf, vendorText } from '@/lib/
 import { type FreightTagged } from '@/lib/cost/freightIncluded';
 import { componentFreightInr, componentFreightLoc } from '@/lib/cost/freightIncluded';
 import { sourceLabel } from '@/lib/rates/sourceLabel';
+import RigidIcons, { type RigidPanel } from './rigid/RigidIcons';
+import DocButtons from './matdocs/DocButtons';
+import CostBreakupDrawer from './rigid/CostBreakupDrawer';
+import MouldDrawer from './rigid/MouldDrawer';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -48,6 +52,8 @@ export default function RowDrawer({
 }) {
   const [ov, setOv] = useState(override ?? '');
   useEffect(() => setOv(override ?? ''), [override, row]);
+  const [panel, setPanel] = useState<RigidPanel>(null);
+  useEffect(() => setPanel(null), [row?.Idnrk, row?.Hwerks]);
   if (!row || !sim) return <Drawer open={false} onClose={onClose} title="">{null}</Drawer>;
   const r = row;
   const opts = r.RateOptions ?? [];
@@ -64,7 +70,10 @@ export default function RowDrawer({
   const cov = minCover(r);
 
 
+  const rigidItem = { matnr: r.Idnrk, maktx: r.Maktx, werks: r.Werks || r.Hwerks };
+  const rigidRate = { ratePc: r.SelSource ? D(r.SelRatePcInr) : null, sourceLabel: r.SelSource ? sourceLabel(r.SelSource) : '' };
   return (
+    <>
     <Drawer
       open
       onClose={onClose}
@@ -75,8 +84,11 @@ export default function RowDrawer({
             <span className="font-mono text-sm font-semibold">{r.Idnrk}</span>
             <span className="text-sm">{r.Maktx}</span>
             <SourceBadge source={sim.source} sim={sim.repicked || sim.overridden} />
+            {isSubcontractAssembly(r) && <Pill title="Special procurement 30: the subcontracting charge counts in the product cost, on top of the components below it">Subcontracting (SOBSL 30) · cost included</Pill>}
             {r.Donor && <Pill tone="warn" title="Rate taken from the donor plant">Donor plant {r.Donor}</Pill>}
             {sim.changed && <SimTag />}
+            <RigidIcons matnr={r.Idnrk} active={panel} onOpen={setPanel} />
+            <DocButtons matnr={r.Idnrk} />
           </div>
           <div className="mt-0.5 text-2xs text-muted">
             {r.Headmat} {r.Headtxt} · plant {r.Hwerks}{r.Werks && r.Werks !== r.Hwerks ? ` (component plant ${r.Werks})` : ''} · level {r.Level} · {r.Mtart} · {r.Matkl}
@@ -270,5 +282,8 @@ export default function RowDrawer({
         </Section>
       )}
     </Drawer>
+    {panel === 'cost' && <CostBreakupDrawer item={rigidItem} cockpit={rigidRate} onClose={() => setPanel(null)} />}
+    {panel === 'mould' && <MouldDrawer item={rigidItem} cockpit={rigidRate} onApply={(v) => { onOverride(key, v); setPanel(null); }} onClose={() => setPanel(null)} />}
+    </>
   );
 }

@@ -51,3 +51,19 @@ export function parseBudget(rows: CdrillRow[]): BudGroup[] {
   }
   return Array.from(by.values()).map((g) => ({ ...g, items: g.items.sort((a, b) => b.costPc.comparedTo(a.costPc)) })).sort((a, b) => a.bwtar.localeCompare(b.bwtar));
 }
+
+/** Production mode (grain O): the components of every process order, per piece of that order (SAP: ZCL_AUFM_UTILITY3). Key = order number without leading zeros. */
+export interface OrderItem { aufnr: string; charg: string; matnr: string; maktx: string; mtart: string; cat: Cat; meins: string; qty: Decimal; val: Decimal; qtyPc: Decimal; costPc: Decimal; prod: Decimal }
+export function parseOrderItems(rows: CdrillRow[]): Map<string, OrderItem[]> {
+  const m = new Map<string, OrderItem[]>();
+  for (const r of rows) {
+    if (r.Grain !== 'O') continue;
+    const aufnr = r.Msg.replace(/^0+/, '');
+    const cat = (['R', 'P', 'F'].includes(r.Cat) ? r.Cat : 'O') as Cat;
+    const list = m.get(aufnr) ?? [];
+    list.push({ aufnr, charg: r.Charg, matnr: r.Idnrk, maktx: r.Maktx, mtart: r.Mtart, cat, meins: r.Meins, qty: d(r.Qty), val: d(r.Val), qtyPc: d(r.AvgQtyPc), costPc: d(r.AvgCostPc), prod: d(r.ProdQty) });
+    m.set(aufnr, list);
+  }
+  for (const l of m.values()) l.sort((a, b) => b.costPc.comparedTo(a.costPc));
+  return m;
+}

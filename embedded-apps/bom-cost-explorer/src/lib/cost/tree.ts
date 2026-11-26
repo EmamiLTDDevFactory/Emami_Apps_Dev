@@ -26,11 +26,17 @@ export interface TreeNode {
 export interface CostTree {
   rows: CostLine[];
   nodes: TreeNode[];
-  isLeaf: boolean[]; // per row: HasChild blank
+  isLeaf: boolean[]; // per row: costed on its own (isLeafRow)
 }
 
 export const rowKey = (r: Pick<CostLine, 'Hwerks' | 'Werks' | 'Headmat' | 'Seqnr'>) => `${r.Hwerks}|${r.Werks}|${r.Headmat}|${r.Seqnr}`;
-export const isLeafRow = (r: Pick<CostLine, 'HasChild'>) => !r.HasChild || r.HasChild.trim() === '';
+/** Special procurement key (MARC-SOBSL) of a subcontracted component. */
+export const SUBCONTRACT_SOBSL = '30';
+/** A parent row (it has a sub-tree) that is a subcontracted assembly (Sobsl 30): its own cost (the subcontractor's charge) counts ON TOP of its components. */
+export const isSubcontractAssembly = (r: Pick<CostLine, 'HasChild'> & Partial<Pick<CostLine, 'Sobsl'>>) => !!r.HasChild?.trim() && (r.Sobsl ?? '').trim() === SUBCONTRACT_SOBSL;
+/** A row whose own cost counts in every total: a leaf (HasChild blank) or a subcontracted assembly (Sobsl 30, user rule 26.11.2026). Any other parent
+ * (WIP / semi-finished) is only the roll-up of what is below it and is left out, as before. */
+export const isLeafRow = (r: Pick<CostLine, 'HasChild'> & Partial<Pick<CostLine, 'Sobsl'>>) => !r.HasChild || r.HasChild.trim() === '' || isSubcontractAssembly(r);
 
 /** Rows arrive depth-first. Group them country > plant > header without disturbing the order
  * inside a header (stable sort, Seqnr as the tiebreaker). */

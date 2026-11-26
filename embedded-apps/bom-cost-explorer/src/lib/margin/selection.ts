@@ -15,7 +15,7 @@ export interface MarginSel {
 }
 export const DEFAULT_SEL: MarginSel = {
   materials: [], plants: [], market: '', channel: '', prodha: '', brand: '', source: 'L', priceDate: '', freight: true, explQty: '', priceSrc: 'O',
-  vkorg: [], vtweg: [], segment: '', days: 90, auart: EMPTY_LIST, pstyv: EMPTY_LIST, kdgrp: EMPTY_LIST, kunnr: EMPTY_LIST,
+  vkorg: [], vtweg: [], segment: '', days: 365, auart: EMPTY_LIST, pstyv: EMPTY_LIST, kdgrp: EMPTY_LIST, kunnr: EMPTY_LIST,
 };
 
 /** SAP's live costing costs a finished good IN A PLANT: without a plant, or without finished goods / a hierarchy / a brand, it answers with an empty list and no message.

@@ -25,7 +25,6 @@ interface VarConfig {
 
 const VAR_CONFIGS: VarConfig[] = [
   { name: 'ZEXP_ADMIN', label: 'Admins', lowLabel: 'Employee ID (PERNR)', lowPlaceholder: 'e.g. 90001020', hasHigh: false, singleLine: false },
-  { name: 'ZEXP_DOA_ADMIN', label: 'DOA Admins', lowLabel: 'Employee ID (PERNR)', lowPlaceholder: 'e.g. 90001020', hasHigh: false, singleLine: false },
   { name: 'ZEXP_FINANCE', label: 'Finance Users', lowLabel: 'Employee ID (PERNR)', lowPlaceholder: 'e.g. 90001020', hasHigh: true, highOptions: [{ value: 'POST', label: 'POST' }, { value: 'PARK', label: 'PARK' }], singleLine: false },
   { name: 'ZEXP_EXPTYPE_SET', label: 'Expense Type Sets', lowLabel: 'GL Set Name', lowPlaceholder: 'e.g. EMA_CAREXP', hasHigh: false, singleLine: false },
   { name: 'ZEXP_MOBILE_SET', label: 'Mobile Expense Sets', lowLabel: 'GL Set Name', lowPlaceholder: 'e.g. EMA_MOBILE', hasHigh: false, singleLine: false },
@@ -43,7 +42,7 @@ type EditableRow = ConfigVarRow & { _draftLow: string; _draftHigh: string; _savi
 function validateLow(cfg: VarConfig, value: string): string | null {
   const v = value.trim();
   if (!v) return 'This field is required';
-  if ((cfg.name === 'ZEXP_ADMIN' || cfg.name === 'ZEXP_DOA_ADMIN' || cfg.name === 'ZEXP_FINANCE') && !/^\d+$/.test(v)) {
+  if ((cfg.name === 'ZEXP_ADMIN' || cfg.name === 'ZEXP_FINANCE') && !/^\d+$/.test(v)) {
     return 'Enter a numeric value';
   }
   if (cfg.name === 'ZEXP_NON_CTC_GO_LIVE' && !/^\d{8}$/.test(v)) return 'Enter the date as YYYYMMDD';

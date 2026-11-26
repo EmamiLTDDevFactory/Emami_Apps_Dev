@@ -6,7 +6,7 @@
  *   list     GET  DocumentSet?$filter=Doctype eq .. and Docid eq ..                  (metadata only, no bytes)
  * SAP applies the same rules as the Fiori upload (status, one file per fixed slot, size/type limits, plant visibility).
  */
-import { create, list, q, ApiError } from './api';
+import { create, fn, list, q, ApiError } from './api';
 
 export interface CapexDocument {
   Doctype: string; Docid: string; Docseq: string; Filename: string; Category: string; CategoryText: string;
@@ -61,6 +61,11 @@ export async function uploadDocument(i: UploadInput): Promise<CapexDocument> {
   };
   const r = await create<DocXfer>('DocXferSet', body);
   return { ...r, Docseq: r.Docseq, Doctype: r.Doctype, Docid: i.docid, Filename: i.file.name, Category: i.category, DocTitle: body.DocTitle, Note: body.Note, Mimetype: body.Mimetype } as unknown as CapexDocument;
+}
+
+/** Remove a saved attachment (SAP allows it only while the record is Draft, Blocked or Under Evaluation). POST function import: the proxy drops DELETE. */
+export async function removeDocument(d: Pick<CapexDocument, 'Doctype' | 'Docid' | 'Docseq'>): Promise<void> {
+  await fn('RemoveDocument', { Doctype: d.Doctype, Docid: d.Docid, Docseq: String(d.Docseq) });
 }
 
 /** The file's bytes as a Blob (for preview or save). */

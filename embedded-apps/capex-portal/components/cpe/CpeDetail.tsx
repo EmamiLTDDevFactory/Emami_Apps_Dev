@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { PageHeader, Card, Button, Chip, DataTable, Empty, ErrorBox, Field, Input, Modal, Select, Spinner, Tabs, TextArea, useAction, useToast, type Column } from '@/components/ui';
 import { fn, get, isOk, odataKey, type FnResult } from '@/lib/api';
 import { useSession } from '@/lib/session';
-import { DOC_CATEGORIES, DOC_EXTENSIONS, DOC_MAX_MB, documentsEnabled, listDocuments, uploadDocument, validateFile, type CapexDocument } from '@/lib/documents';
+import { DOC_CATEGORIES, DOC_EXTENSIONS, DOC_MAX_MB, listDocuments, uploadDocument, validateFile, type CapexDocument } from '@/lib/documents';
 import type { CPE } from '@/lib/entities';
 import DocActions from '@/components/documents/DocActions';
 import { fmtDate, fmtDays, inLakhs, num, orDash, statusLabel, statusTone } from '@/lib/format';
@@ -44,7 +44,7 @@ export default function CpeDetail() {
   const [tab, setTab] = useState('overview');
   const [tick, setTick] = useState(0);
   const [confirmSubmit, setConfirmSubmit] = useState(false);
-  const [revise, setRevise] = useState<null | { amount: string; reason: string }>(null);
+  const [revise, setRevise] = useState<null | { amount: string; reason: string; file: File | null }>(null);
   const [vendorCode, setVendorCode] = useState('');
   const [upload, setUpload] = useState<null | { category: string; title: string; note: string; file: File | null }>(null);
 
@@ -69,6 +69,8 @@ export default function CpeDetail() {
   const vendors = useMemo(() => (cpe ? sortedVendors(cpe) : []), [cpe]);
   const saving = useMemo(() => savingVsL1(vendors), [vendors]);
   const status = cpe?.Status ?? '';
+  const selectedLifnr = vendors.find((v) => v.selected)?.lifnr ?? '';
+  useEffect(() => { setVendorCode(selectedLifnr); }, [selectedLifnr]);
   const chain = useApprovalChain('CPE', id, cpe?.Doaid ?? '', cpe?.CurrLevel ?? '', status, tick);
 
   const resubmit = () => { setConfirmSubmit(false); return run(async () => {
@@ -99,9 +101,12 @@ export default function CpeDetail() {
     const errs: string[] = [];
     if (!(num(revise.amount) > 0)) errs.push('Enter a new amount greater than zero.');
     if (!revise.reason.trim()) errs.push('Reason is required.');
-    // The supporting document must be uploaded first (T8); while uploads are off the whole action is unavailable.
-    if (!documentsEnabled()) errs.push('Document upload is not available.');
+    // The supporting document (category AMT_REV) goes up first, the revision only once that worked.
+    if (!revise.file) errs.push('Attach the supporting document.');
     if (errs.length) throw new Error(errs.join(' '));
+    const bad = validateFile(revise.file!, { extensions: (session.config.DOC_EXTENSIONS || DOC_EXTENSIONS.join(',')).split(',').map((e) => e.trim().replace(/^\./, '').toLowerCase()), maxMb: session.cfgNum('DOC_MAX_MB', DOC_MAX_MB) });
+    if (bad) throw new Error(bad);
+    await uploadDocument({ doctype: 'CPE', docid: id, category: 'AMT_REV', file: revise.file!, title: 'Amount revision', note: revise.reason.trim().slice(0, 255) });
     assertOk(await fn('ReviseCpeAmount', { CpeId: id, NewAmount: num(revise.amount), Reason: revise.reason }), 'SAP could not revise the amount.');
     setRevise(null);
     await load();
@@ -113,15 +118,15 @@ export default function CpeDetail() {
 
   const isDraft = status === 'DRAFT';
   const days = Number(cpe.DaysPending) || 0;
-  const showVendorCode = canSetVendorCode() && POST_APPROVAL.includes(status) && session.isAdmin;
-  const showRevise = canReviseAmount() && session.isAdmin;
+  const showVendorCode = canSetVendorCode() && POST_APPROVAL.includes(status) && session.hubAdmin;
+  const showRevise = canReviseAmount() && session.hubAdmin && status === 'APPROVED';
   const docCols: Column<CapexDocument>[] = [
     { key: 'file', header: 'File', render: (d) => <><div className="font-semibold">{d.DocTitle || d.Filename}</div>{d.DocTitle && d.DocTitle !== d.Filename && <div className="text-[11px] text-sap-muted">{d.Filename}</div>}</> },
     { key: 'cat', header: 'Category', hideBelow: 'sm', render: (d) => <Chip tone="info">{d.CategoryText || d.Category}</Chip> },
     { key: 'note', header: 'Note', hideBelow: 'lg', render: (d) => orDash(d.Note) },
     { key: 'size', header: 'Size', align: 'right', hideBelow: 'md', render: (d) => d.SizeText },
     { key: 'by', header: 'Uploaded', align: 'right', hideBelow: 'md', render: (d) => <><div>{d.UploadedByName || d.UploadedBy}</div><div className="text-[11px] text-sap-muted">{fmtDate(d.UploadedOn)}</div></> },
-    { key: 'act', header: '', align: 'right', render: (d) => <DocActions doc={d} /> },
+    { key: 'act', header: '', align: 'right', render: (d) => <DocActions doc={d} onRemoved={canUploadDocs(status) ? () => setDocs((x) => x.filter((y) => y.Docseq !== d.Docseq || y.Doctype !== d.Doctype || y.Docid !== d.Docid)) : undefined} /> },
   ];
 
   return (
@@ -138,7 +143,7 @@ export default function CpeDetail() {
         {days > 3 && <Strip tone="warning">{slaBanner(days, cpe.CurrLevel, fmtDays)}</Strip>}
 
         {showVendorCode && (
-          <Card title="Actual Vendor Code">
+          <Card title="Actual Vendor Code" hint="The SAP vendor number the purchase order will be raised on. Letters or digits, up to 10; numbers are padded with zeros. Locked once a PO exists.">
             <div className="flex flex-wrap items-end gap-3">
               <Input className="w-48" maxLength={10} placeholder="Actual vendor code is not yet set for this CPE." value={vendorCode} onChange={(e) => setVendorCode(e.target.value)} aria-label="Actual vendor code" />
               <Button variant="primary" disabled={busy} onClick={saveVendorCode}>Save</Button>
@@ -218,7 +223,7 @@ export default function CpeDetail() {
         {isDraft && <Button variant="primary" disabled={busy} onClick={() => setConfirmSubmit(true)}>Submit</Button>}
         {canEvaluate(status, isUnitTechnicalRole(session.role), session.isAdmin) && <Link href={`/evaluation/?id=${encodeURIComponent(cpe.Cpeid)}`} className="btn btn-secondary">Evaluation</Link>}
         {status === 'APPROVED' && <Link href={`/cwip/create/?cpe=${encodeURIComponent(cpe.Cpeid)}`} className="btn btn-primary">Create CWIP</Link>}
-        {showRevise && <Button onClick={() => setRevise({ amount: String(num(cpe.Amount)), reason: '' })}>Revise Amount</Button>}
+        {showRevise && <Button onClick={() => setRevise({ amount: String(num(cpe.Amount)), reason: '', file: null })}>Revise Amount</Button>}
         <Button onClick={() => window.print()}>Print</Button>
         <Link href="/cpe/" className="btn btn-secondary">Back</Link>
       </div>
@@ -232,7 +237,7 @@ export default function CpeDetail() {
           <div className="space-y-3">
             <Field label="Category *" hint="A fixed slot (RFQ, Quotation, TCC, Negotiation, Justification) replaces the file already in it; General adds another.">
               <Select value={upload.category} onChange={(e) => setUpload({ ...upload, category: e.target.value })}>
-                {uploadCategories(DOC_CATEGORIES, session.isAdmin).map((c) => <option key={c} value={c}>{categoryLabel(c)}</option>)}
+                {uploadCategories(DOC_CATEGORIES, session.hubAdmin).map((c) => <option key={c} value={c}>{categoryLabel(c)}</option>)}
               </Select>
             </Field>
             <Field label="Title"><Input maxLength={120} value={upload.title} onChange={(e) => setUpload({ ...upload, title: e.target.value })} /></Field>
@@ -247,7 +252,7 @@ export default function CpeDetail() {
           <div className="space-y-3">
             <Field label="New amount (₹) *"><Input type="number" min="0" value={revise.amount} onChange={(e) => setRevise({ ...revise, amount: e.target.value })} /></Field>
             <Field label="Reason *"><TextArea rows={3} value={revise.reason} onChange={(e) => setRevise({ ...revise, reason: e.target.value })} /></Field>
-            <Field label="Supporting document *"><input type="file" disabled={!documentsEnabled()} className="text-[11px]" /></Field>
+            <Field label="Supporting document *" hint="Uploaded first (category Amount Revision), then the amount is revised. Only an approved CPE with no purchase order yet can be revised."><input type="file" aria-label="Supporting document" className="text-[11px]" onChange={(e) => setRevise({ ...revise, file: e.target.files?.[0] ?? null })} /></Field>
           </div>
         )}
       </Modal>

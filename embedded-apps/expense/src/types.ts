@@ -145,7 +145,10 @@ export interface DoaChainRow {
 // MobBusSet idea; the sales channel now comes from the employee's cost centre, not an HR mapping.
 export interface MobCapRow {
   Mcat: string; // category: 'NS' (non-sales) | 'SC' | 'SH' | 'SM' | 'SE' | 'SG' (sales channels)
-  Kostl: string; // cost centre - must be blank for NS, mandatory for every sales category
+  // Cost centre is no longer entered here (2026-11-26: the category now comes from the Cost
+  // Centre Area table, CcAreaSet, keyed by cost centre) - always sent blank; the backend refuses
+  // a non-blank value. Kept as a field only because the SAP entity still has it.
+  Kostl: string;
   Trfgr: string; // grade: E1, E2 (executive), M1..M5 (managerial)
   Trfst: string; // level: 'A', 'B', or blank = any level
   MaxAmt: number; // cap amount; ignored/cleared when NoCap is set
@@ -163,12 +166,29 @@ export interface MobCapRow {
   Aezet?: string;
 }
 
+// Cost Centre Area Maintenance (CcAreaSet, live on dev 2026-11-26) - maps each cost centre to its
+// sales channel area, which Mobile Expense Cap Maintenance now reads instead of a per-row cost
+// centre (see MobCapRow.Kostl's comment).
+export interface CcAreaRow {
+  Kostl: string; // cost centre - the entity's only key
+  Area: 'NS' | 'CCD' | 'HCD';
+  Active: boolean;
+  ValidFrom: string;
+  ValidTo: string;
+  Aenam?: string; // logged-in admin's PERNR - UI must send this on every POST/PUT
+  // Audit fields - all backend-filled, read-only. Do not send Ernam/Erdat/Erzet/Aedat/Aezet.
+  Ernam?: string;
+  Erdat?: string;
+  Erzet?: string;
+  Aedat?: string;
+  Aezet?: string;
+}
+
 // Admin configuration maintenance (ConfigVarSet/ConfigLogSet, live on dev 2026-11-24) - replaces
 // the former STVARV variables. Each variable is a list of lines (Numb = line number, backend-
 // assigned on create); High is only meaningful for ZEXP_FINANCE ('POST' | 'PARK').
 export type ConfigVarName =
   | 'ZEXP_ADMIN'
-  | 'ZEXP_DOA_ADMIN'
   | 'ZEXP_FINANCE'
   | 'ZEXP_EXPTYPE_SET'
   | 'ZEXP_MOBILE_SET'
