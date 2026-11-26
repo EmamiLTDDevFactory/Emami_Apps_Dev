@@ -207,7 +207,7 @@ async function requireUser(req, res, next) {
             pool.query('SELECT role FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = $2', [email, APP_ID]),
             pool.query('SELECT is_active FROM emami_apps.authorized_users WHERE email = $1', [email]),
         ]);
-        if (!grant.rows.length || (user.rows[0] && user.rows[0].is_active === false)) return res.status(403).json({ error: 'You do not have access to SmarTruck TMS. Ask an Emami Apps admin for it in Admin Center.' });
+        if (!grant.rows.length || (user.rows[0] && user.rows[0].is_active === false)) return res.status(403).json({ error: 'You do not have access to Trip Trail. Ask an Emami Apps admin for it in Admin Center.' });
         req.caller = { email, hubRole: grant.rows[0].role };
         next();
     } catch (e) { console.error('[tms] access check', e.message); res.status(500).json({ error: 'Could not verify your access.' }); }

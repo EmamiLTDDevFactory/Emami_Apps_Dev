@@ -84,7 +84,7 @@ export function TmsProvider({ children }: { children: React.ReactNode }) {
       const [m, d] = await Promise.all([liveApi.me(), liveApi.db(all)]);
       setLiveMe(m); setDb(d.db); setMeId(m.user.id); setLiveErr(''); setLiveReady(true);
       if (!m.user.units.includes(unitId) && m.user.units[0]) setUnitId(m.user.units[0]);
-    } catch (e) { setLiveErr(e instanceof ApiError ? e.message : 'Could not load SmarTruck TMS.'); setLiveReady(true); }
+    } catch (e) { setLiveErr(e instanceof ApiError ? e.message : 'Could not load Trip Trail.'); setLiveReady(true); }
   }, [unitId]);
   useEffect(() => { if (!live) return; loadLive(allUnits); const t = setInterval(() => { if (inflight.current === 0) liveApi.db(allUnits).then((d) => setDb(d.db)).catch(() => null); }, 5000); return () => clearInterval(t); }, [live, allUnits]); // eslint-disable-line react-hooks/exhaustive-deps
 

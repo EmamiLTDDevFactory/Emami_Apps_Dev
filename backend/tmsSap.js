@@ -26,7 +26,7 @@ const toSapDate = (iso) => `/Date(${Date.parse(`${String(iso).slice(0, 10)}T00:0
 
 function url(path, caller) {
     const { base, client } = config();
-    if (!base) throw new SapError('The SAP connection for SmarTruck TMS is not configured (TMS_SAP_ODATA_BASE).', 503);
+    if (!base) throw new SapError('The SAP connection for Trip Trail is not configured (TMS_SAP_ODATA_BASE).', 503);
     let u = `${base}/${path}`;
     const add = (k, v) => { u += `${u.includes('?') ? '&' : '?'}${k}=${encodeURIComponent(v)}`; };
     if (client) add('sap-client', client);

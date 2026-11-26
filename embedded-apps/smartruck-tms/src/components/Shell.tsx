@@ -51,7 +51,7 @@ function Chrome({ children }: { children: React.ReactNode }) {
           <a href="/" title="Back to Emami Apps" aria-label="Back to Emami Apps">{/* eslint-disable-next-line @next/next/no-img-element */}<img src={`${BASE}/emami-apps-logo.png`} alt="Emami Apps" width={120} height={99} /></a>
           {!wide && <button onClick={() => setOpen(false)} aria-label="Close menu"><X size={20} /></button>}
         </div>
-        <div className="px-4 pb-1 pt-3 text-[11px] font-extrabold uppercase tracking-wider text-inkSoft">SmarTruck TMS</div>
+        <div className="px-4 pb-1 pt-3 text-[11px] font-extrabold uppercase tracking-wider text-inkSoft">Trip Trail</div>
         <nav className="flex flex-col gap-0.5 p-3 pt-1">
           {nav.map((n) => { const I = n.icon; const a = active(n.href); return (
             <Link key={n.href} href={n.href} onClick={() => setOpen(false)} className={`flex items-center gap-3 rounded-xl px-3.5 py-2 text-sm font-bold ${a ? 'bg-rust/10 text-rust' : 'text-inkSoft hover:bg-appBg hover:text-ink'}`}><I size={17} />{n.label}</Link>
@@ -106,11 +106,11 @@ function Gate({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<boolean | null>(null);
   useEffect(() => { setSession(hasHubSession()); }, []);
   const msg = (m: string, sub?: string) => <div className="flex min-h-screen items-center justify-center bg-appBg p-6"><div className="card max-w-md p-6 text-center"><div className="text-base font-extrabold text-ink">{m}</div>{sub && <p className="hint mt-2">{sub}</p>}</div></div>;
-  if (!t.modeKnown) return msg('Loading SmarTruck TMS…');
+  if (!t.modeKnown) return msg('Loading Trip Trail…');
   if (t.mode !== 'live') return <Chrome>{children}</Chrome>;
-  if (session === false) return msg('Please open SmarTruck TMS from Emami Apps', 'Your Emami Apps session was not found. Sign in to the hub and open the tile again.');
-  if (!t.liveState.ready) return msg('Loading SmarTruck TMS…');
-  if (t.liveState.error) return msg('SmarTruck TMS is not available', t.liveState.error);
+  if (session === false) return msg('Please open Trip Trail from Emami Apps', 'Your Emami Apps session was not found. Sign in to the hub and open the tile again.');
+  if (!t.liveState.ready) return msg('Loading Trip Trail…');
+  if (t.liveState.error) return msg('Trip Trail is not available', t.liveState.error);
   return <Chrome>{children}</Chrome>;
 }
 

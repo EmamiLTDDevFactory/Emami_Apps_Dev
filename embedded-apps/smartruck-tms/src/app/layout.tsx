@@ -3,7 +3,7 @@ import './globals.css';
 import Shell from '../components/Shell';
 
 export const metadata: Metadata = {
-  title: 'SmarTruck TMS — Emami Apps',
+  title: 'Trip Trail — Emami Apps',
   description: 'Transport management: orders, bidding, live tracking, ePOD, carrier invoicing and reports.',
   icons: { icon: '/apps/smartruck-tms/emami-apps-logo.png' },
 };
