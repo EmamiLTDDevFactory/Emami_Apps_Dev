@@ -43,7 +43,7 @@ const row = (p: Partial<FreightRow>): FreightRow => ({
   Cpudt: null, Vgabe: '2', Buzei: '001', Gjahr: '2026', Shkzg: 'S', IsMaxDate: false, IsLatestPo: false, ...p,
 });
 const act = (date: string, qty: string, amt: string, p: Partial<FreightRow> = {}) => row({ Cpudt: date, Vgabe: '2', Actualdelvquantity: qty, Actualdelvcostamount: amt, ...p });
-const std = (date: string, qty: string, amt: string, p: Partial<FreightRow> = {}) => row({ Cpudt: date, Vgabe: '1', Stddelvquantity: qty, Stddelvcostamount: amt, ...p });
+const std = (date: string, qty: string, amt: string, p: Partial<FreightRow> = {}) => row({ Cpudt: date, Vgabe: '1', Shkzg: 'H', Stddelvquantity: qty, Stddelvcostamount: amt, ...p });
 
 // PO 1 line 10: 2 actual + 2 standard postings; PO 2 line 10 (older PO date): 1 actual + 1 standard
 const rows: FreightRow[] = [
@@ -149,10 +149,10 @@ describe('(g) PO line breakup', () => {
     expect(poLineBreakup(rows, key).items).toHaveLength(4);
     expect(inputs[1].rows.length).toBeLessThan(rows.length);
   });
-  it('a credit posting keeps its quantity', () => {
+  it('an actual credit (Cr) posting takes its quantity off (shown minus)', () => {
     const c = poLineBreakup([act('2026-09-20', '10', '12'), act('2026-09-21', '4', '5', { Shkzg: 'H', Vgabe: '3' })], { plant: '1000', material: 'RM1', po: '4500000001', line: '00010' });
-    expect(c.actual.qty.toFixed(3)).toBe('14.000');
-    expect(c.items.find((i) => i.drCr === 'Cr')!.qty.toFixed(3)).toBe('4.000');
+    expect(c.actual.qty.toFixed(3)).toBe('6.000');
+    expect(c.items.find((i) => i.drCr === 'Cr')!.qty.toFixed(3)).toBe('-4.000');
   });
 });
 

@@ -25,6 +25,7 @@ import { normalizeEntity } from '../sap/normalize';
 import { FREIGHT_ROW, type CostLine, type FreightRow } from '../sap/fields';
 import { componentFreightLoc, type FreightTagged } from '../cost/freightIncluded';
 import { odataString } from '../sap/filter';
+import { isMinus, sideOf } from './analysis';
 
 /** FREIGHT_BREAKUP_ENABLED (default true). NEXT_PUBLIC_ name referenced literally so Next inlines it in the browser. */
 export const FREIGHT_BREAKUP_ENABLED = String(process.env.NEXT_PUBLIC_FREIGHT_BREAKUP_ENABLED ?? process.env.FREIGHT_BREAKUP_ENABLED ?? 'true').toLowerCase() !== 'false';
@@ -86,8 +87,12 @@ export interface BreakupTotals { qty: Decimal; amount: Decimal; pcLoc: Decimal; 
 /** Columns for the chosen view (display only: the cost line's values never change). */
 export function breakupLines(rows: FreightRow[], view: FreightView): { lines: BreakupLine[]; totals: BreakupTotals } {
   const lines = rows.map((row) => {
-    const qty = D(view === 'ACTUAL' ? row.Actualdelvquantity : row.Stddelvquantity);
-    const amount = D(view === 'ACTUAL' ? row.Actualdelvcostamount : row.Stddelvcostamount);
+    // Standard Dr (S) and Actual Cr (H) are minus, quantity and value; only on a row of the viewed side (a row that carries the other side keeps its figures)
+    const side = view === 'ACTUAL' ? 'actual' : 'standard';
+    const minus = !!String(row.Shkzg ?? '').trim() && sideOf(row) === side && isMinus(side, row.Shkzg);
+    const sign = (v: Decimal) => (minus ? v.abs().neg() : v);
+    const qty = sign(D(view === 'ACTUAL' ? row.Actualdelvquantity : row.Stddelvquantity));
+    const amount = sign(D(view === 'ACTUAL' ? row.Actualdelvcostamount : row.Stddelvcostamount));
     const rate = D(view === 'ACTUAL' ? row.ActRate : row.StdRate);
     const pcLoc = D(row.UsedPcLoc);
     const pcInr = D(row.UsedPcInr);

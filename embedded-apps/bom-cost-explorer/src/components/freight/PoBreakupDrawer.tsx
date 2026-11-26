@@ -43,7 +43,7 @@ export default function PoBreakupDrawer({ rows, target, text, onClose }: { rows:
           <div className="flex items-center gap-2">
             <Button size="sm" onClick={() => doExport('xlsx')} disabled={!b.items.length}><FileSpreadsheet size={14} /> Excel</Button>
             <Button size="sm" variant="ghost" onClick={() => doExport('csv')} disabled={!b.items.length}>CSV</Button>
-            <span className="ml-auto text-xs text-faint">All postings of the line, whatever the Basis and Latest only choices.</span>
+            <span className="ml-auto text-xs text-faint">All postings of the line, whatever the Basis and Latest only choices. Standard Dr and Actual Cr are minus (quantity and value).</span>
           </div>
           <div className="overflow-x-auto rounded-2xl border border-line bg-panel shadow-card">
             <table className="w-full text-sm">

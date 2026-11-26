@@ -17,7 +17,7 @@ const row = (p: Partial<FreightRow>): FreightRow => ({
   Cpudt: '2026-09-12', Vgabe: '2', Buzei: '001', Gjahr: '2026', Shkzg: 'S', IsMaxDate: false, IsLatestPo: false, ...p,
 });
 const act = (qty: string, amt: string, p: Partial<FreightRow> = {}) => row({ Vgabe: '2', Actualdelvquantity: qty, Actualdelvcostamount: amt, ...p });
-const std = (qty: string, amt: string, p: Partial<FreightRow> = {}) => row({ Vgabe: '1', Stddelvquantity: qty, Stddelvcostamount: amt, ...p });
+const std = (qty: string, amt: string, p: Partial<FreightRow> = {}) => row({ Vgabe: '1', Shkzg: 'H', Stddelvquantity: qty, Stddelvcostamount: amt, ...p }); // goods receipt = H (as SAP)
 const range = { from: '2026-08-01', to: '2026-10-31' };
 
 describe('debit / credit netting', () => {
@@ -28,16 +28,17 @@ describe('debit / credit netting', () => {
     expect(signedAmount(D('100'), '').toFixed(2)).toBe('100.00');
     expect(signedAmount(D('100'), undefined).toFixed(2)).toBe('100.00');
   });
-  it('a PO line sums debit minus credit for the actual AND the standard side', () => {
-    const lines = groupPoLines([act('100', '130', { Shkzg: 'S' }), act('0', '20', { Shkzg: 'H', Vgabe: '3' }), std('100', '90', { Shkzg: 'S' }), std('10', '5', { Shkzg: 'H' })]);
+  it('a PO line nets the actual side (Cr minus) AND the standard side (Dr minus)', () => {
+    const lines = groupPoLines([act('100', '130', { Shkzg: 'S' }), act('0', '20', { Shkzg: 'H', Vgabe: '3' }), std('100', '90', { Shkzg: 'H' }), std('10', '5', { Shkzg: 'S' })]);
     expect(lines).toHaveLength(1);
     expect(lines[0].Actualdelvcostamount).toBe('110');
     expect(lines[0].Stddelvcostamount).toBe('85');
+    expect(lines[0].Stddelvquantity).toBe('90'); // 100 - 10: the standard Dr takes its quantity off too
     const [l] = poLines(comps, lines, range);
     expect(l.actualAmount.toFixed(2)).toBe('110.00');
     expect(l.standardAmount.toFixed(2)).toBe('85.00');
     expect(l.actual!.toFixed(4)).toBe('1.1000'); // 110 / 100 delivered
-    expect(l.standard!.toFixed(4)).toBe('0.7727'); // 85 / 110
+    expect(l.standard!.toFixed(4)).toBe('0.9444'); // 85 / 90
   });
   it('a subsequent credit (Vgabe 3) with no quantity of its own still counts', () => {
     const lines = groupPoLines([act('50', '100'), act('0', '30', { Shkzg: 'H', Vgabe: '3' })]);
@@ -49,7 +50,7 @@ describe('debit / credit netting', () => {
     const rows = [act('100', '110'), act('20', '22', { Shkzg: 'H' })];
     expect(analyseFreight([comps[0]], rows, range)[0].actual!.toFixed(4)).toBe('1.1000'); // unsummed: 132 / 120 (each row absolute)
     const g = groupPoLines(rows);
-    expect(analyseFreight([comps[0]], g, range)[0].actual!.toFixed(4)).toBe('0.7333'); // summed: (110 - 22) / 120
+    expect(analyseFreight([comps[0]], g, range)[0].actual!.toFixed(4)).toBe('1.1000'); // summed: (110 - 22) / (100 - 20), the Cr takes quantity and value off
   });
   it('the PO-line breakup subtotals are net too', () => {
     const b = poLineBreakup([act('100', '130'), act('0', '20', { Shkzg: 'H', Vgabe: '3' })], { plant: '1000', material: 'RM1', po: '4500000001', line: '00010' });
@@ -140,7 +141,7 @@ describe('purchase organisation selection', () => {
 describe('standard and actual on ONE line per PO, item and condition; condition value absolute', () => {
   // SAP posting rows WITHOUT IsMaxDate (the backend returns Vgabe and Shkzg first): standard = Vgabe 1, actual = Vgabe 2 and 3
   const rows = [
-    std('100', '1000', { Shkzg: 'S' }), // standard condition value at PO creation
+    std('100', '1000', { Shkzg: 'H' }), // standard condition value at PO creation
     act('100', '800', { Shkzg: 'S' }),  // invoice
     act('0', '-50', { Shkzg: 'S', Vgabe: '3' }), // subsequent debit sent with a negative sign: the value is absolute, S adds
     act('0', '-100', { Shkzg: 'H', Vgabe: '3' }), // credit: takes off, whatever sign SAP puts on it
@@ -176,7 +177,7 @@ describe('standard and actual on ONE line per PO, item and condition; condition 
     expect(breachesLine(l, { kind: 'any_above', threshold: '' })).toBe(false);
   });
   it('a value that lands on the other side\'s field (backend quirk) is still read for its Vgabe', () => {
-    const [l] = poLines(comps, groupPoLines([row({ Vgabe: '1', Actualdelvquantity: '10', Actualdelvcostamount: '55', Stddelvquantity: '0', Stddelvcostamount: '0' })]), range);
+    const [l] = poLines(comps, groupPoLines([row({ Vgabe: '1', Shkzg: 'H', Actualdelvquantity: '10', Actualdelvcostamount: '55', Stddelvquantity: '0', Stddelvcostamount: '0' })]), range);
     expect(l.standardAmount.toFixed(2)).toBe('55.00');
   });
   it('signedAmount: absolute value, H negative', () => {
@@ -185,28 +186,40 @@ describe('standard and actual on ONE line per PO, item and condition; condition 
   });
 });
 
-describe('a side that is netted to a negative reads as its absolute (standard showed negative)', () => {
-  it('standard postings that carry H come out positive; the actual side stays as netted', () => {
-    const rows = [
-      std('100', '1000', { Shkzg: 'H' }), // standard (Vgabe 1) posted as credit
-      std('0', '200', { Shkzg: 'S' }),    // part of it reversed
-      act('100', '900', { Shkzg: 'S' }),
-    ];
+describe('sign rule: Standard Dr (S) minus, Actual Cr (H) minus, quantity and value', () => {
+  it('signedAmount by side', () => {
+    expect(signedAmount(D('100'), 'S', 'standard').toFixed(2)).toBe('-100.00');
+    expect(signedAmount(D('-100'), 'H', 'standard').toFixed(2)).toBe('100.00');
+    expect(signedAmount(D('100'), 'H', 'actual').toFixed(2)).toBe('-100.00');
+    expect(signedAmount(D('-100'), 'S', 'actual').toFixed(2)).toBe('100.00');
+    expect(signedAmount(D('100'), '', 'standard').toFixed(2)).toBe('100.00');
+  });
+  it('a standard reversal (Dr) and an actual credit note (Cr) take quantity and value off the line', () => {
+    const rows = [std('100', '1000'), std('20', '200', { Shkzg: 'S' }), act('100', '900'), act('10', '90', { Shkzg: 'H' })];
     const [l] = poLines(comps, groupPoLines(rows), range);
-    expect(l.standardAmount.toFixed(2)).toBe('800.00'); // |200 - 1000|
-    expect(l.actualAmount.toFixed(2)).toBe('900.00');
-    expect(l.amountVariance!.toFixed(2)).toBe('100.00'); // Actual - Standard
-    expect(l.standard!.toFixed(4)).toBe('8.0000');
+    expect(l.standardQty.toFixed(3)).toBe('80.000');
+    expect(l.standardAmount.toFixed(2)).toBe('800.00');
+    expect(l.actualQty.toFixed(3)).toBe('90.000');
+    expect(l.actualAmount.toFixed(2)).toBe('810.00');
+    expect(l.standard!.toFixed(4)).toBe('10.0000');
+    expect(l.actual!.toFixed(4)).toBe('9.0000');
   });
-  it('the breakup subtotal is the same absolute net as the PO line', () => {
-    const b = poLineBreakup([std('100', '1000', { Shkzg: 'H' }), act('100', '900')], { plant: '1000', material: 'RM1', po: '4500000001', line: '00010' });
-    expect(b.standard.amount.toFixed(2)).toBe('1000.00');
-    expect(b.standard.rate!.toFixed(4)).toBe('10.0000');
+  it('the posting rows and the PO-line breakup show the minus on quantity and value', () => {
+    const b = poLineBreakup([std('100', '1000'), std('20', '200', { Shkzg: 'S' }), act('10', '90', { Shkzg: 'H' })], { plant: '1000', material: 'RM1', po: '4500000001', line: '00010' });
+    const dr = b.items.find((i) => i.side === 'standard' && i.drCr === 'Dr')!;
+    expect(dr.qty.toFixed(3)).toBe('-20.000');
+    expect(dr.amount.toFixed(2)).toBe('-200.00');
+    const cr = b.items.find((i) => i.side === 'actual')!;
+    expect(cr.qty.toFixed(3)).toBe('-10.000');
+    expect(cr.amount.toFixed(2)).toBe('-90.00');
+    expect(b.standard.amount.toFixed(2)).toBe('800.00');
+    expect(b.standard.qty.toFixed(3)).toBe('80.000');
   });
-  it('the material weighted average uses the absolute nets too', () => {
-    const m = materialWeighted(comps, groupPoLines([std('100', '1000', { Shkzg: 'H' }), act('100', '900')]), range).find((r) => r.material === 'RM1')!;
-    expect(m.standard!.toFixed(4)).toBe('10.0000');
-    expect(m.actual!.toFixed(4)).toBe('9.0000');
+  it('a side whose reversals outweigh it reads negative (no longer forced positive)', () => {
+    const [l] = poLines(comps, groupPoLines([std('10', '100', { Shkzg: 'S' })]), range);
+    expect(l.standardAmount.toFixed(2)).toBe('-100.00');
+    expect(l.standardQty.toFixed(3)).toBe('-10.000');
+    expect(l.standard).toBeNull();
   });
 });
 
@@ -241,5 +254,18 @@ describe('the live NWP answer (HAR 5 Nov 2026): Vgabe empty, Standard row = Shkz
     const r = normalizeEntity<FreightRow>({ Ismaxdate: 'X', Islatestpo: '', Shkzg: 'H' }, FREIGHT_ROW as never);
     expect(r.IsMaxDate).toBe(true);
     expect(r.IsLatestPo).toBe(false);
+  });
+});
+
+describe('cost-line freight breakup (BOM drawer): same sign rule', () => {
+  it('Standard view: a Dr row is minus; Actual view: a Cr row is minus; rows of the other side untouched', async () => {
+    const { breakupLines } = await import('@/lib/freight/breakup');
+    const rows = [std('100', '1000'), std('20', '200', { Shkzg: 'S' }), act('50', '600'), act('5', '60', { Shkzg: 'H' })];
+    const s = breakupLines(rows, 'STANDARD');
+    expect(s.lines.map((l) => l.amount.toFixed(0))).toEqual(['1000', '-200', '0', '0']);
+    expect(s.totals.qty.toFixed(0)).toBe('80');
+    const a = breakupLines(rows, 'ACTUAL');
+    expect(a.lines.map((l) => l.qty.toFixed(0))).toEqual(['0', '0', '50', '-5']);
+    expect(a.totals.amount.toFixed(0)).toBe('540');
   });
 });
