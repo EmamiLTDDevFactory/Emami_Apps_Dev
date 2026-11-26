@@ -22,8 +22,12 @@ export function buildRigidFilter(q: RigidQuery): string {
   return parts.join(' and ');
 }
 
-export const fetchRigid = (q: RigidQuery, signal?: AbortSignal): Promise<Read<RigidRow>> =>
-  readSet<RigidRow>(RIGID_SET, RIGID_FIELDS, NONE, buildRigidFilter(q), signal);
+/** A gateway that has the new service code but not (yet) the entity type answers 500 "Data object 'Rigid' not found": the same as "not published yet". */
+const NOT_READY = /Data object 'Rigid' not found/i;
+export async function fetchRigid(q: RigidQuery, signal?: AbortSignal): Promise<Read<RigidRow>> {
+  try { return await readSet<RigidRow>(RIGID_SET, RIGID_FIELDS, NONE, buildRigidFilter(q), signal); }
+  catch (e) { throw e instanceof Error && NOT_READY.test(`${e.message} ${(e as { details?: { message?: string }[] }).details?.map((d) => d.message).join(' ') ?? ''}`) ? new Error('ZRIGID is not available in this SAP system yet (the RigidSet service objects are not active on the gateway).') : e; }
+}
 
 /** Which of the materials are rigid packing items (have a current mould relation). Cached per material for the session; never throws (no icon on any error). */
 const flagCache = new Map<string, Promise<number>>();

@@ -7,6 +7,7 @@ import type { MisFgRow } from '@/lib/dash/types';
 import { BAND, lakh, tdCls, thCls } from './parts';
 import { bandOf } from '@/lib/dash/logic';
 import { useFgRigid } from '@/lib/rigid/useFgRigid';
+import DocButtons from '../matdocs/DocButtons';
 
 const D = (v: string) => { try { return new Decimal(v || 0); } catch { return new Decimal(0); } };
 const n4 = (d: Decimal) => d.toNumber().toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -56,7 +57,7 @@ export function MisFgTable({ rows, showBrand = false, bn, pn, byProduct = false,
                 return (
                   <tr key={`${r.Matnr}-${r.Zbrand}`} className={cx('border-t border-line/60', !has && 'bg-warn/[0.06]', onOpen && 'cursor-pointer hover:bg-sunken')} onClick={onOpen ? () => onOpen(r) : undefined} title={onOpen ? 'Open the production (process orders, documents, components) of this finished good' : undefined}>
                     {showBrand && <td className="px-2.5 py-1.5 text-left text-xs font-bold">{bn ? bn(r.Zbrand) || r.Zbrand : r.Zbrand}</td>}
-                    <td className={cx('px-2.5 py-1.5 text-left text-xs', byProduct && 'pl-6')}><span className="font-bold">{r.Matnr.replace(/^0+/, '')}</span> <span className="text-muted">{r.Maktx}</span></td>
+                    <td className={cx('px-2.5 py-1.5 text-left text-xs', byProduct && 'pl-6')}><span className="font-bold">{r.Matnr.replace(/^0+/, '')}</span> <span className="text-muted">{r.Maktx}</span> <DocButtons matnr={r.Matnr} compact /></td>
                     <td className={tdCls}>{D(r.YtmQty).toNumber().toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
                     <td className={tdCls}>{D(r.ActPc).gt(0) ? n4(D(r.ActPc)) : '-'}</td>
                     <td className={tdCls}>{has && D(r.BudPc).gt(0) ? n4(D(r.BudPc)) : <span className="font-semibold text-warn">no budget</span>}</td>

@@ -14,6 +14,7 @@ import { type FreightTagged } from '@/lib/cost/freightIncluded';
 import { componentFreightInr, componentFreightLoc } from '@/lib/cost/freightIncluded';
 import { sourceLabel } from '@/lib/rates/sourceLabel';
 import RigidIcons, { type RigidPanel } from './rigid/RigidIcons';
+import DocButtons from './matdocs/DocButtons';
 import CostBreakupDrawer from './rigid/CostBreakupDrawer';
 import MouldDrawer from './rigid/MouldDrawer';
 
@@ -86,6 +87,7 @@ export default function RowDrawer({
             {r.Donor && <Pill tone="warn" title="Rate taken from the donor plant">Donor plant {r.Donor}</Pill>}
             {sim.changed && <SimTag />}
             <RigidIcons matnr={r.Idnrk} active={panel} onOpen={setPanel} />
+            <DocButtons matnr={r.Idnrk} />
           </div>
           <div className="mt-0.5 text-2xs text-muted">
             {r.Headmat} {r.Headtxt} · plant {r.Hwerks}{r.Werks && r.Werks !== r.Hwerks ? ` (component plant ${r.Werks})` : ''} · level {r.Level} · {r.Mtart} · {r.Matkl}

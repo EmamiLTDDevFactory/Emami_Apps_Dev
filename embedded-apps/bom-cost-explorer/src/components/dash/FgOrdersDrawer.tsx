@@ -19,6 +19,7 @@ import { loadFgRigid, type FgRigid } from '@/lib/rigid/fgRigid';
 import MouldDrawer from '../rigid/MouldDrawer';
 import type { WacCompRow, WacDocRow } from '@/lib/wac/types';
 import { money, tdCls, thCls } from './parts';
+import DocButtons from '../matdocs/DocButtons';
 
 export interface FgTarget { matnr: string; maktx: string; werks: string; brand: string; from: string; to: string }
 const D = (v: string | null | undefined) => { try { return new Decimal(v && v !== '' ? v : 0); } catch { return new Decimal(0); } };
@@ -107,7 +108,7 @@ export default function FgOrdersDrawer({ target, onClose }: { target: FgTarget |
   const itemTotal = items.reduce((s, c) => s.plus(D(c.CostSel)), new Decimal(0));
   return (
     <>
-    <Drawer open={!!target} onClose={onClose} title={target ? `Process orders: ${target.matnr.replace(/^0+/, '')} ${target.maktx}` : ''} width={1180}>
+    <Drawer open={!!target} onClose={onClose} title={target ? <span className="flex flex-wrap items-center gap-2">{`Process orders: ${target.matnr.replace(/^0+/, '')} ${target.maktx}`}<DocButtons matnr={target.matnr} /></span> : ''} width={1180}>
       {busy && <p className="flex items-center gap-2 text-sm text-muted"><Spinner className="h-4 w-4" /> Reading the process orders of the period</p>}
       {error && <ErrorBox>{error}</ErrorBox>}
       {target && docs && (

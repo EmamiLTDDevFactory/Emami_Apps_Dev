@@ -11,6 +11,7 @@ import { handleHier } from './hier';
 import { handleWac } from './wac';
 import { handleDash } from './dash';
 import { handleRigid } from './rigid';
+import { handleMatDocs } from './matdocs';
 import { handleBudget } from './budget';
 import {
   COST_LINE, ENTITY_TYPE_RATE_OPTION, FIELDS_BY_SET, FREIGHT_ROW, MATERIAL, PLANT, RATE_OPTION, RATE_ROW, RMPM_ROW,
@@ -600,6 +601,8 @@ export async function mockSapFetch(input: string | URL | Request, init?: Request
   if (dashRes) { await sleep(60, signal); return dashRes; }
   const rigidRes = handleRigid(set, sp, { json, odataError, parseFilter });
   if (rigidRes) { await sleep(60, signal); return rigidRes; }
+  const docRes = handleMatDocs(set, sp, { json, odataError, parseFilter });
+  if (docRes) { await sleep(60, signal); return docRes; }
   // BomPlantSet: the plants that have a BOM of the materials (every mock material has one in the first two mock plants).
   if (set === 'BomPlantSet') {
     await sleep(60, signal);

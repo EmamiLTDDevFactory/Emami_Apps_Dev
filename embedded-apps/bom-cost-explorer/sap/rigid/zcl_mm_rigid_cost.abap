@@ -401,7 +401,7 @@ CLASS zcl_mm_rigid_cost IMPLEMENTATION.
           lv_land TYPE decfloat34, lv_mat TYPE decfloat34, lv_conv TYPE decfloat34.
     DATA(lv_werks) = COND werks_d( WHEN lines( mr_werks ) > 0 THEN mr_werks[ 1 ]-low ).
     IF lv_werks IS INITIAL OR zcl_mm_bom_cost_auth=>check_plant( lv_werks ) = abap_false. RETURN. ENDIF.
-    " ---- 1. level 1 BOM components of every finished good (production BOM, plant, today)
+    " ---- 1. BOM components of every finished good on all levels (production BOM, plant, today; quantities per FG piece)
     LOOP AT mr_matnr INTO DATA(ls_m) WHERE sign = 'I' AND option = 'EQ'.
       " BOM application PP01 (production, as in BOM costing); a system without it: the default application
       DATA lv_cap TYPE c LENGTH 4.
@@ -410,7 +410,7 @@ CLASS zcl_mm_rigid_cost IMPLEMENTATION.
         lv_cap = COND #( WHEN sy-index = 1 THEN 'PP01' ELSE space ).
         CLEAR lt_stb.
         CALL FUNCTION 'CS_BOM_EXPL_MAT_V2'
-          EXPORTING aumgb = 'X' mktls = 'X' capid = lv_cap datuv = sy-datum emeng = 1 auskz = 'X' mehrs = space rndkz = '1' mtnrv = ls_m-low stlan = '1' svwvo = 'X' vrsvo = 'X' werks = lv_werks
+          EXPORTING aumgb = 'X' mktls = 'X' capid = lv_cap datuv = sy-datum emeng = 1 auskz = 'X' mehrs = 'X' rndkz = '1' mtnrv = ls_m-low stlan = '1' svwvo = 'X' vrsvo = 'X' werks = lv_werks
           TABLES stb = lt_stb
           EXCEPTIONS OTHERS = 1.
         lv_rc = sy-subrc.
