@@ -40,8 +40,32 @@ CLASS ZCL_MM_COGM_ACT IMPLEMENTATION.
         SORT ls_wp-matnr BY low. DELETE ADJACENT DUPLICATES FROM ls_wp-matnr COMPARING low.
         NEW zcl_mm_wac_actual( mo_util )->read( EXPORTING is_par = ls_wp IMPORTING et_act = lt_wa et_msg = lt_wm ).
         SELECT matnr, meins FROM mara FOR ALL ENTRIES IN @it_keys WHERE matnr = @it_keys-matnr INTO TABLE @DATA(lt_mu).
+        " finished goods without production in the last 90 days: look back a year (the period is shown in the PERIOD field)
+        DATA ls_mu LIKE LINE OF lt_mu.
+        DATA(lt_k2) = VALUE zif_mm_bom_cost_types=>ty_head_tab( ).
+        LOOP AT it_keys INTO DATA(ls_k).
+          READ TABLE lt_wa TRANSPORTING NO FIELDS WITH KEY matnr = ls_k-matnr werks = ls_k-werks.
+          IF sy-subrc <> 0 OR line_exists( lt_wa[ matnr = ls_k-matnr werks = ls_k-werks qty = 0 ] ).
+            APPEND ls_k TO lt_k2.
+          ENDIF.
+        ENDLOOP.
+        DATA lt_wb TYPE zif_mm_wac_types=>ty_t_act.
+        IF lt_k2 IS NOT INITIAL.
+          ls_wp-date_from = sy-datum - 365.
+          ls_wp-werks = VALUE #( FOR k IN lt_k2 ( sign = 'I' option = 'EQ' low = k-werks ) ).
+          ls_wp-matnr = VALUE #( FOR k IN lt_k2 ( sign = 'I' option = 'EQ' low = k-matnr ) ).
+          SORT ls_wp-werks BY low. DELETE ADJACENT DUPLICATES FROM ls_wp-werks COMPARING low.
+          SORT ls_wp-matnr BY low. DELETE ADJACENT DUPLICATES FROM ls_wp-matnr COMPARING low.
+          NEW zcl_mm_wac_actual( mo_util )->read( EXPORTING is_par = ls_wp IMPORTING et_act = lt_wb et_msg = lt_wm ).
+        ENDIF.
+        LOOP AT lt_wb INTO DATA(ls_wb) WHERE qty > 0.
+          READ TABLE lt_mu INTO ls_mu WITH KEY matnr = ls_wb-matnr.
+          APPEND VALUE #( matnr = ls_wb-matnr werks = ls_wb-werks curr = mo_util->mv_group_curr uom = ls_mu-meins
+                          cogm  = ( ls_wb-rm + ls_wb-pm + ls_wb-perf + ls_wb-conv ) / ls_wb-qty
+                          period = 'last 365d' ok = abap_true ) TO rt_act.
+        ENDLOOP.
         LOOP AT lt_wa INTO DATA(ls_wa) WHERE qty > 0.
-          READ TABLE lt_mu INTO DATA(ls_mu) WITH KEY matnr = ls_wa-matnr.
+          READ TABLE lt_mu INTO ls_mu WITH KEY matnr = ls_wa-matnr.
           APPEND VALUE #( matnr = ls_wa-matnr werks = ls_wa-werks
                           curr  = mo_util->mv_group_curr
                           uom   = ls_mu-meins

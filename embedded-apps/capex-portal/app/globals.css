@@ -19,8 +19,7 @@
 }
 
 html { -webkit-text-size-adjust: 100%; color-scheme: light; }
-/* Whole screen a little zoomed out so more fits (the shell is position:fixed, so it still fills the window). */
-body { zoom: 0.9; }
+html, body { height: 100%; }
 body { font-family: Manrope, Inter, -apple-system, "Segoe UI", Roboto, sans-serif; background: #F3F5FB; color: rgb(var(--ink)); }
 :focus-visible { outline: 2px solid rgb(var(--plum)); outline-offset: 1px; border-radius: 3px; }
 ::selection { background: rgba(67, 56, 202, 0.18); }
@@ -71,6 +70,10 @@ body { font-family: Manrope, Inter, -apple-system, "Segoe UI", Roboto, sans-seri
   .glass-table tbody tr { transition: background-color 0.12s ease; }
   .glass-table tbody tr:hover { background: #EEF1FB !important; }
 
+  .app-canvas { background-image: radial-gradient(900px 420px at 92% -10%, rgb(var(--plum) / 0.06), transparent 62%), radial-gradient(700px 380px at -8% 40%, rgb(37 99 235 / 0.04), transparent 60%); }
+  .scroll-thin::-webkit-scrollbar { width: 10px; height: 10px; }
+  .scroll-thin::-webkit-scrollbar-thumb { background: #CBD2E6; border-radius: 999px; border: 2px solid transparent; background-clip: content-box; }
+  .brand-hairline { background-image: linear-gradient(90deg, rgb(var(--orange)), rgb(var(--plum)) 45%, transparent); }
   .nav-glow { box-shadow: 0 6px 18px rgba(67, 56, 202, 0.30); }
   .fade-up { animation: fade-up 0.3s cubic-bezier(0.16, 1, 0.3, 1) both; }
 }
@@ -86,3 +89,5 @@ body { font-family: Manrope, Inter, -apple-system, "Segoe UI", Roboto, sans-seri
 .scroll-glass::-webkit-scrollbar { width: 10px; height: 10px; }
 .scroll-glass::-webkit-scrollbar-thumb { background: #D3D9EC; border-radius: 9999px; border: 2px solid #fff; }
 .scroll-glass::-webkit-scrollbar-thumb:hover { background: #AAB4DC; }
+
+@media print { .no-print { display: none !important; } }

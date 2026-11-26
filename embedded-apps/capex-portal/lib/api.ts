@@ -109,6 +109,11 @@ export async function update<T = Record<string, unknown>>(setWithKey: string, bo
 /** Did a function import succeed? SAP sends Success as true or "X". */
 export const isOk = (r: FnResult | null | undefined) => !!r && (r.Success === true || r.Success === 'X' || r.Success === 'true');
 
+/** What the Emami Apps grant allows here (Admin role of the CAPEX Portal app = maintenance). Independent of SAP. */
+export async function access(): Promise<{ role: string; isAdmin: boolean }> {
+  return call('GET', '/access');
+}
+
 export async function health(): Promise<{ ok: boolean; system?: string; user?: unknown; error?: string }> {
   return call('GET', '/health');
 }

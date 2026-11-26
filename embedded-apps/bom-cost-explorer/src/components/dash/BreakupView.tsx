@@ -82,7 +82,7 @@ export default function BreakupView() {
                 <option value="">All brands</option>{brands.map((b) => <option key={b.brand} value={b.brand}>{hn.brand(b.brand) || '(none)'}</option>)}
               </select>
             </div>
-            <Table rows={shown} first="SKU" scroll bn={hn.brand} onOpen={(r) => setFg({ matnr: r.matnr, maktx: r.maktx, werks: r.werks, brand: r.brand, from, to })} />
+            <Table rows={shown} first="SKU" scroll rigid bn={hn.brand} onOpen={(r) => setFg({ matnr: r.matnr, maktx: r.maktx, werks: r.werks, brand: r.brand, from, to })} />
           </Card>
         </>
       )}
@@ -100,7 +100,10 @@ export default function BreakupView() {
   );
 }
 
-function Table({ rows, first, title, scroll, bn, label, onOpen }: { rows: BreakupView[]; first: string; title?: string; scroll?: boolean; bn: (c: string) => string; label?: (r: BreakupView) => string; onOpen?: (r: BreakupView) => void }) {
+import { useFgRigid } from '@/lib/rigid/useFgRigid';
+
+function Table({ rows, first, title, scroll, bn, label, onOpen, rigid }: { rows: BreakupView[]; first: string; title?: string; scroll?: boolean; bn: (c: string) => string; label?: (r: BreakupView) => string; onOpen?: (r: BreakupView) => void; /** finished-good table only: adds the rigid packing columns when ZRIGID returns something */ rigid?: boolean }) {
+  const rg = useFgRigid(rows.filter((r) => r.matnr).map((r) => ({ matnr: r.matnr, werks: r.werks })), !!rigid);
   const cell = (v: BreakupView['rm'], p: BreakupView['shareRm']) => (<><td className={tdCls}>{money(v, 4)}</td><td className={cx(tdCls, 'text-muted')}>{pct(p)}</td></>);
   return (
     <div className={cx('overflow-auto rounded-2xl border border-line bg-panel', scroll ? 'max-h-[60vh]' : 'shadow-card')}>
@@ -108,7 +111,7 @@ function Table({ rows, first, title, scroll, bn, label, onOpen }: { rows: Breaku
       <table className="w-full min-w-[960px] border-collapse">
         <thead className="sticky top-0"><tr>
           <th className={cx(thCls, '!text-left')}>{first}</th><th className={thCls}>Produced qty</th>
-          <th className={thCls}>RM / pc</th><th className={thCls}>%</th><th className={thCls}>PM / pc</th><th className={thCls}>%</th><th className={thCls}>Perfume / pc</th><th className={thCls}>%</th><th className={thCls}>Conversion / pc</th><th className={thCls}>%</th><th className={thCls}>COGM / pc</th>
+          <th className={thCls}>RM / pc</th><th className={thCls}>%</th><th className={thCls}>PM / pc</th><th className={thCls}>%</th><th className={thCls}>Perfume / pc</th><th className={thCls}>%</th><th className={thCls}>Conversion / pc</th><th className={thCls}>%</th><th className={thCls}>COGM / pc</th>{rg.any && <><th className={thCls} title="Rigid packing cost per piece from the last saved ZRIGID rates (part of PM)">Rigid / pc</th><th className={thCls}>Resin</th><th className={thCls}>Conv.</th></>}
         </tr></thead>
         <tbody>
           {rows.map((r) => (
@@ -117,6 +120,7 @@ function Table({ rows, first, title, scroll, bn, label, onOpen }: { rows: Breaku
               <td className={tdCls}>{r.qty.toNumber().toLocaleString('en-IN')}</td>
               {cell(r.rm, r.shareRm)}{cell(r.pm, r.sharePm)}{cell(r.perf, r.sharePerf)}{cell(r.conv, r.shareConv)}
               <td className={cx(tdCls, 'font-bold')}>{money(r.cogm, 4)}</td>
+              {rg.any && (() => { const x = r.matnr ? rg.get(r.matnr, r.werks) : undefined; return <><td className={tdCls} title={x ? `${x.items} rigid item(s)${x.flag === 'OK' ? '' : ` (${x.flag})`}` : undefined}>{x ? money(x.perPc, 4) : '-'}</td><td className={tdCls}>{x ? money(x.resin, 4) : '-'}</td><td className={tdCls}>{x ? money(x.conv, 4) : '-'}</td></>; })()}
             </tr>
           ))}
         </tbody>

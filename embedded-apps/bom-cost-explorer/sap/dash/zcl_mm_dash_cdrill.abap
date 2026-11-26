@@ -13,6 +13,8 @@ CLASS zcl_mm_dash_cdrill DEFINITION PUBLIC FINAL CREATE PUBLIC.
     "  Category: VERP / PKGN = PM (P), ROH with material group 106 = perfume (F), other ROH = RM (R), anything else = O.
     "  Rows: S = summary of the material (cost per piece by category), B = one per sold batch, C = one per component (average over the batches).
     "  A batch without a process order is flagged NBC (no budget / trading goods); every batch with a process order is costed (mc_max_orders is only a safety cap).
+    "  PRODUCTION MODE (Vkorg filter = 'PROD', the plant is the production plant): instead of the sold batches, the batches of the goods receipts (MSEG 101, 102 reverses) of the plant and period are taken,
+    "  no budget rows, and one grain O row per process order and component (MSG = order number, CHARG = its batch, AVG_QTY_PC / AVG_COST_PC per piece of that order) is added to the S / B / C rows.
     CONSTANTS mc_max_orders TYPE i VALUE 100000.   "no practical limit (was 150)
     CONSTANTS mc_chunk      TYPE i VALUE 25.
     METHODS constructor IMPORTING is_par   TYPE zif_mm_wac_types=>ty_par
@@ -75,7 +77,8 @@ CLASS zcl_mm_dash_cdrill DEFINITION PUBLIC FINAL CREATE PUBLIC.
           mv_matnr TYPE matnr,
           mr_vkorg TYPE ty_r_vkorg,
           mr_vtweg TYPE ty_r_vtweg,
-          mr_vbeln TYPE ty_r_vbeln.
+          mr_vbeln TYPE ty_r_vbeln,
+          mv_prod  TYPE abap_bool.
     METHODS category IMPORTING iv_mtart TYPE mtart iv_matkl TYPE matkl RETURNING VALUE(rv_cat) TYPE char1.
 ENDCLASS.
 
@@ -85,6 +88,9 @@ CLASS zcl_mm_dash_cdrill IMPLEMENTATION.
   METHOD constructor.
     ms_par = is_par. mv_matnr = iv_matnr.
     mr_vkorg = it_vkorg. mr_vtweg = it_vtweg. mr_vbeln = it_vbeln.
+    IF lines( mr_vkorg ) = 1 AND mr_vkorg[ 1 ]-low = 'PROD'.
+      mv_prod = abap_true. CLEAR mr_vkorg.
+    ENDIF.
     IF ms_par-date_to IS INITIAL. ms_par-date_to = sy-datum. ENDIF.
     IF ms_par-date_from IS INITIAL.
       ms_par-date_from = ms_par-date_to.
@@ -107,6 +113,7 @@ CLASS zcl_mm_dash_cdrill IMPLEMENTATION.
 
   METHOD budget_rows.
     DATA: lv_yr TYPE gjahr, ls_r TYPE zdash_s_cdrill.
+    IF mv_prod = abap_true. RETURN. ENDIF.
     SELECT SINGLE zskugrcodecrs, zbusiness, zscheme, mtart FROM mara WHERE matnr = @mv_matnr INTO @DATA(ls_m).
     IF sy-subrc <> 0. RETURN. ENDIF.
     SELECT DISTINCT p~bwtar AS bwtar
@@ -179,20 +186,36 @@ CLASS zcl_mm_dash_cdrill IMPLEMENTATION.
     FIELD-SYMBOLS: <b> TYPE ty_b, <oq> TYPE ty_oq, <oc> TYPE ty_oc, <bc> TYPE ty_bc, <ac> TYPE ty_ac.
 
     " ---- 1. sold batches of the material (the selection of the Margin report)
-    SELECT p~charg AS charg, h~vbtyp AS vbtyp, p~umvkz AS umvkz, p~umvkn AS umvkn, SUM( p~fkimg ) AS qty
-      FROM vbrk AS h
-        INNER JOIN vbrp AS p ON p~vbeln = h~vbeln
-      WHERE p~matnr = @mv_matnr
-        AND h~fkdat BETWEEN @ms_par-date_from AND @ms_par-date_to
-        AND h~vbtyp IN ( 'M', 'N', 'O', 'P', 'S' )
-        AND h~waerk = 'INR'
-        AND p~werks IN @ms_par-werks
-        AND h~vbeln IN @mr_vbeln
-        AND h~vkorg IN @mr_vkorg
-        AND h~vtweg IN @mr_vtweg
-        AND p~umvkn > 0
-      GROUP BY p~charg, h~vbtyp, p~umvkz, p~umvkn
-      INTO TABLE @lt_q.
+    IF mv_prod = abap_true.
+      SELECT g~charg AS charg, g~bwart AS bwart, SUM( g~menge ) AS qty
+        FROM mseg AS g
+          INNER JOIN mkpf AS k ON k~mblnr = g~mblnr AND k~mjahr = g~mjahr
+        WHERE g~matnr = @mv_matnr
+          AND g~werks IN @ms_par-werks
+          AND g~bwart IN ( '101', '102' )
+          AND g~aufnr <> @space
+          AND k~budat BETWEEN @ms_par-date_from AND @ms_par-date_to
+        GROUP BY g~charg, g~bwart
+        INTO TABLE @DATA(lt_gr).
+      LOOP AT lt_gr ASSIGNING FIELD-SYMBOL(<gr>).
+        APPEND VALUE #( charg = <gr>-charg vbtyp = COND #( WHEN <gr>-bwart = '102' THEN 'N' ELSE 'M' ) umvkz = 1 umvkn = 1 qty = <gr>-qty ) TO lt_q.
+      ENDLOOP.
+    ELSE.
+      SELECT p~charg AS charg, h~vbtyp AS vbtyp, p~umvkz AS umvkz, p~umvkn AS umvkn, SUM( p~fkimg ) AS qty
+        FROM vbrk AS h
+          INNER JOIN vbrp AS p ON p~vbeln = h~vbeln
+        WHERE p~matnr = @mv_matnr
+          AND h~fkdat BETWEEN @ms_par-date_from AND @ms_par-date_to
+          AND h~vbtyp IN ( 'M', 'N', 'O', 'P', 'S' )
+          AND h~waerk = 'INR'
+          AND p~werks IN @ms_par-werks
+          AND h~vbeln IN @mr_vbeln
+          AND h~vkorg IN @mr_vkorg
+          AND h~vtweg IN @mr_vtweg
+          AND p~umvkn > 0
+        GROUP BY p~charg, h~vbtyp, p~umvkz, p~umvkn
+        INTO TABLE @lt_q.
+    ENDIF.
     IF lt_q IS INITIAL. RETURN. ENDIF.
     LOOP AT lt_q ASSIGNING FIELD-SYMBOL(<q>).
       lv_sgn = COND #( WHEN <q>-vbtyp = 'N' OR <q>-vbtyp = 'O' THEN -1 ELSE 1 ).
@@ -363,6 +386,26 @@ CLASS zcl_mm_dash_cdrill IMPLEMENTATION.
       ENDCASE.
       APPEND ls_r TO rt_rows.
     ENDLOOP.
+    IF mv_prod = abap_true.
+      LOOP AT lt_oc ASSIGNING <oc>.
+        READ TABLE lt_oq ASSIGNING <oq> WITH TABLE KEY aufnr = <oc>-aufnr.
+        CHECK sy-subrc = 0 AND <oq>-qty > 0.
+        CLEAR ls_r.
+        ls_r-grain = 'O'. ls_r-matnr = mv_matnr. ls_r-msg = |{ <oc>-aufnr ALPHA = OUT }|. ls_r-idnrk = <oc>-idnrk. ls_r-mtart = <oc>-mtart. ls_r-meins = <oc>-meins.
+        LOOP AT lt_ord ASSIGNING <o> WHERE aufnr = <oc>-aufnr.
+          ls_r-charg = <o>-charg. EXIT.
+        ENDLOOP.
+        READ TABLE lt_mk INTO ls_mk WITH KEY matnr = <oc>-idnrk BINARY SEARCH.
+        IF sy-subrc = 0. ls_r-matkl = ls_mk-matkl. ENDIF.
+        READ TABLE lt_tx INTO ls_tx WITH KEY matnr = <oc>-idnrk BINARY SEARCH.
+        IF sy-subrc = 0. ls_r-maktx = ls_tx-maktx. ENDIF.
+        ls_r-cat = category( iv_mtart = <oc>-mtart iv_matkl = ls_r-matkl ).
+        ls_r-qty = <oc>-qty. ls_r-val = <oc>-val. ls_r-prod_qty = <oq>-qty.
+        ls_r-avg_qty_pc = <oc>-qty / <oq>-qty. ls_r-avg_cost_pc = <oc>-val / <oq>-qty.
+        ls_r-date_from = ms_par-date_from. ls_r-date_to = ms_par-date_to.
+        APPEND ls_r TO rt_rows.
+      ENDLOOP.
+    ENDIF.
     ls_s-sold_qty = lv_w_tot.
     LOOP AT lt_b ASSIGNING <b>.
       ls_s-orders = ls_s-orders + <b>-orders.

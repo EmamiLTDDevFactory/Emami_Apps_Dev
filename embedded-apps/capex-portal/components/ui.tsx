@@ -25,14 +25,18 @@ export function Card({ title, hint, actions, children, className = '' }: { title
 }
 
 export function PageHeader({ title, subtitle, actions, back }: { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode; back?: { href: string; label: string } }) {
+  // The shell's banner already names the screen; this is the in-page heading row with the screen's actions (brand hairline underneath).
   return (
-    <div className="page-banner mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl px-5 py-3.5">
-      <div>
-        {back && <a href={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ''}${back.href}`} className="mb-0.5 inline-block text-[11px] font-semibold text-white/75 hover:text-white">{'←'} {back.label}</a>}
-        <h1 className="font-display text-lg font-extrabold leading-tight">{title}</h1>
-        {subtitle && <p className="text-[12px] text-white/75">{subtitle}</p>}
+    <div className="mb-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          {back && <a href={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ''}${back.href}`} className="mb-0.5 inline-block text-[11px] font-semibold text-plum hover:underline">{'←'} {back.label}</a>}
+          <h2 className="font-display text-[17px] font-extrabold leading-tight text-sap-ink">{title}</h2>
+          {subtitle && <p className="text-[12px] text-sap-muted">{subtitle}</p>}
+        </div>
+        {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      <div aria-hidden className="brand-hairline mt-2 h-[2px] rounded-full" />
     </div>
   );
 }

@@ -22,6 +22,13 @@ CLASS zcl_mm_cogm_service DEFINITION PUBLIC CREATE PUBLIC.
           mo_price     TYPE REF TO zcl_mm_cogm_price,
           mo_watch     TYPE REF TO zcl_mm_cogm_watch.
 
+    TYPES: BEGIN OF ty_bv,
+             matnr TYPE matnr,
+             vbtyp TYPE vbtyp,
+             umvkz TYPE umvkz,
+             umvkn TYPE umvkn,
+             qty   TYPE p LENGTH 15 DECIMALS 3,
+           END OF ty_bv.
     METHODS select_fgs
       RETURNING VALUE(rt_fg) TYPE zif_mm_bom_cost_types=>ty_head_tab.
     METHODS rows_live
@@ -140,6 +147,16 @@ CLASS ZCL_MM_COGM_SERVICE IMPLEMENTATION.
       WHERE matnr = @lt_fg-matnr
       INTO TABLE @DATA(lt_vol).
 
+    " billed quantity of the last 12 months in the material base unit: used for the volume of a finished good that has no row in ZMM_COGM_VOL
+    DATA: lt_bv TYPE STANDARD TABLE OF ty_bv, lv_bf TYPE d.
+    lv_bf = ms_par-price_date - 365.
+    DATA(lr_bm) = VALUE zif_mm_cogm_types=>ty_r_matnr( FOR f2 IN lt_fg ( sign = 'I' option = 'EQ' low = f2-matnr ) ).
+    SELECT p~matnr AS matnr, h~vbtyp AS vbtyp, p~umvkz AS umvkz, p~umvkn AS umvkn, SUM( p~fkimg ) AS qty
+      FROM vbrk AS h INNER JOIN vbrp AS p ON p~vbeln = h~vbeln
+      WHERE p~matnr IN @lr_bm AND h~fkdat BETWEEN @lv_bf AND @ms_par-price_date
+        AND h~vbtyp IN ( 'M', 'N', 'O', 'P', 'S' ) AND h~waerk = 'INR' AND p~umvkn > 0
+      GROUP BY p~matnr, h~vbtyp, p~umvkz, p~umvkn
+      INTO TABLE @lt_bv.
     DATA(lr_matnr) = VALUE zif_mm_cogm_types=>ty_r_matnr( FOR f IN lt_fg ( sign = 'I' option = 'EQ' low = f-matnr ) ).
     mo_price = NEW #( ms_par-price_date ).
     mo_price->load( ir_matnr = lr_matnr ir_market = ms_par-market ir_channel = ms_par-channel ).
@@ -148,12 +165,26 @@ CLASS ZCL_MM_COGM_SERVICE IMPLEMENTATION.
     DATA lt_so TYPE zmm_cogm_tt_soprice.
     IF ms_par-price_src = 'O'.
       NEW zcl_mm_cogm_soprice( mo_util )->read(
-        EXPORTING is_in = VALUE #( matnr = lr_matnr vkorg = ms_par-vkorg vtweg = ms_par-vtweg segment = ms_par-segment
+        EXPORTING is_in = VALUE #( matnr = lr_matnr werks = ms_par-werks vkorg = ms_par-vkorg vtweg = ms_par-vtweg segment = ms_par-segment
                                    auart = ms_par-so_auart pstyv = ms_par-so_pstyv
                                    kdgrp = ms_par-so_kdgrp kunnr = ms_par-so_kunnr
                                    days = ms_par-so_days date_to = ms_par-price_date )
         IMPORTING et_price = lt_so et_msg = DATA(lt_sm) ).
       APPEND LINES OF lt_sm TO mt_msg.
+      " plant only selection (no sales organisation): one price per finished good, the newest order that has a price
+      IF ms_par-vkorg IS INITIAL AND lt_so IS NOT INITIAL.
+        DATA lt_so1 TYPE zmm_cogm_tt_soprice.
+        SORT lt_so BY matnr audat DESCENDING.
+        LOOP AT lt_so INTO DATA(ls_sx) WHERE sp > 0.
+          READ TABLE lt_so1 TRANSPORTING NO FIELDS WITH KEY matnr = ls_sx-matnr.
+          IF sy-subrc <> 0. APPEND ls_sx TO lt_so1. ENDIF.
+        ENDLOOP.
+        LOOP AT lt_so INTO ls_sx WHERE sp <= 0.
+          READ TABLE lt_so1 TRANSPORTING NO FIELDS WITH KEY matnr = ls_sx-matnr.
+          IF sy-subrc <> 0. APPEND ls_sx TO lt_so1. ENDIF.
+        ENDLOOP.
+        lt_so = lt_so1.
+      ENDIF.
     ENDIF.
 
     DATA: ls_b LIKE LINE OF lt_bud,
@@ -254,6 +285,14 @@ CLASS ZCL_MM_COGM_SERVICE IMPLEMENTATION.
           ENDIF.
           lv_vol = lv_vol + lv_vq.
         ENDLOOP.
+        IF lv_vol = 0 AND lines( lt_pr ) = 1.
+          LOOP AT lt_bv ASSIGNING FIELD-SYMBOL(<bv>) WHERE matnr = ls_fg-matnr.
+            lv_vol = lv_vol + COND decfloat34( WHEN <bv>-vbtyp = 'N' OR <bv>-vbtyp = 'O' THEN -1 ELSE 1 ) * <bv>-qty * <bv>-umvkz / <bv>-umvkn.
+          ENDLOOP.
+          IF lv_vol <> 0 AND ls_row-sell_uom <> ls_m-meins AND ls_m-meins IS NOT INITIAL.
+            lv_vol = lv_vol * mo_util->get_uom_factor( iv_matnr = ls_fg-matnr iv_from = ls_m-meins iv_to = ls_row-sell_uom ).
+          ENDIF.
+        ENDIF.
         ls_row-volume_yr = lv_vol.
 
         " status

@@ -135,3 +135,29 @@ export function freightSpec(o: { totals: AnalysisTotals; materials: MaterialWeig
     template: () => listTemplate(`Freight analysis, ${o.period}:`, b.list(), 18),
   };
 }
+
+/* ---------- Rigid packing rate (ZRIGID, read-only) ---------- */
+import type { VendorLine } from '../../rigid/model';
+import type { RigidAlert } from '../../rigid/analysis';
+export function rigidSpec(o: { item: string; plant: string; vendors: VendorLine[]; alerts: RigidAlert[]; cockpitRatePc: Decimal | null; budgetPc: Decimal | null; lastSaved: Decimal | null; resinShare: Decimal | null; convShare: Decimal | null }): NarrateSpec {
+  const b = new FactBook(); const s = 'rigid';
+  const best = o.vendors[0];
+  if (best) {
+    b.add('Cheapest ZRIGID landed rate per 1000 pieces', best.landed, { unit: 'INR', source: `${s}.best.landed`, dp: 0 });
+    b.add('Cheapest ZRIGID landed rate per piece', best.landed.div(1000), { unit: 'INR/pc', source: `${s}.best.landedPc`, dp: 4 });
+    b.add('Output per day of the cheapest mould and vendor', best.output, { unit: 'pcs', source: `${s}.best.output` });
+    if (o.resinShare) b.add('Share of resin in the landed rate', o.resinShare, { unit: '%', source: `${s}.best.resinShare`, dp: 1 });
+    if (o.convShare) b.add('Share of conversion in the landed rate', o.convShare, { unit: '%', source: `${s}.best.convShare`, dp: 1 });
+    if (o.vendors.length > 1) b.add('Landed rate difference per 1000 pieces between the dearest and the cheapest mould or vendor', o.vendors[o.vendors.length - 1].diff, { unit: 'INR', source: `${s}.spread`, dp: 0 });
+  }
+  b.add('Mould and vendor combinations calculated', o.vendors.length, { unit: 'count', source: `${s}.count` });
+  if (o.cockpitRatePc) b.add('Rate per piece used in this costing', o.cockpitRatePc, { unit: 'INR/pc', source: `${s}.cockpit`, dp: 4 });
+  if (o.budgetPc) b.add('Budget landed rate per piece', o.budgetPc, { unit: 'INR/pc', source: `${s}.budget`, dp: 4 });
+  if (o.lastSaved) b.add('Last rate per 1000 pieces saved by ZRIGID', o.lastSaved, { unit: 'INR', source: `${s}.lastSaved`, dp: 0 });
+  b.add('Alerts raised', o.alerts.length, { unit: 'count', source: `${s}.alerts` });
+  return {
+    feature: 'rigid', title: `Rigid packing rate ${o.item}, plant ${o.plant}`, facts: b, ignore: [o.item, o.plant],
+    task: `Explain the ZRIGID bottom-up rate of the rigid packing item ${o.item} in plant ${o.plant}: the cheapest mould and vendor, how much of the rate is resin and how much conversion, how it compares with the rate used in this costing, the budget and the last saved rate, and what the alerts mean. Say plainly that this is a simulation and nothing is posted to SAP.`,
+    template: () => listTemplate(`Rigid packing rate ${o.item}, plant ${o.plant}:`, b.list(), 16),
+  };
+}

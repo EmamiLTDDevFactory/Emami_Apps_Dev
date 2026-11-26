@@ -96,3 +96,14 @@ Under the materials of the selection, "BOM exists in these plants (click to sele
 2. Several active alternatives: the latest active one is used.
 3. No active alternative but an inactive one exists: the latest alternative is used without BOM status filter (info message).
 4. **Production version on a locked alternative:** an active alternative exists, but the production version(s) valid on the date name an alternative that is not active (locked / inactive), or are locked themselves. The automatic selection then finds no BOM, so the latest active alternative is exploded, with the info message "the production version names alternative X, which is not active (locked); active alternative Y used". When a valid production version points to an active alternative nothing changes.
+
+
+## Rigid packing: Cost breakup and Mould details (BOM costing line drawer)
+
+Click a component in BOM costing: two icons sit in the drawer header.
+- **Cost breakup** (always): the approved budget rate of the material (ZCOMPONENT: basic, discount, tax, freight, landed, price unit, budget quantity, per year) and the packing budget build-up (ZPKG_BUD_ITEM, latest scenario: SAP / used rate, freight, landed, budget rate, variance %), beside the rate used in this costing.
+- **Mould details** (only when ZRIGID has a mould for the material, A819): the output of transaction ZRIGID, read-only, per mould and vendor: build-up per 1000 pieces (resin, conversion, box, add-ons, ITC, margin, freight), comparison with the costing rate, the budget and the last saved rate; tabs Vendors (cheapest first), Components, Utilisation (output per day, days of output for the budget), Saved rates (ZMM_RIGID_COST), What-if (resin, machine-day rate, cycle time, cavities, hours, efficiency, scrap, ITC / margin ... with the ZRIGID formulas; resin sensitivity -20..+20 %; items that use the same polymer; "Apply to BOM simulation" fills the manual override), Alerts, Excel and "Explain with AI".
+- Nothing is posted: no info record, no ZMM_RIGID_COST write. SAP: `ZCL_MM_RIGID_COST` + `RigidSet` (see sap/rigid/README.md, transport EDSK9B0EPN).
+
+### Rigid packing column (dashboard Cost breakup and MIS)
+Finished-good tables get **Rigid / pc** (with resin and conversion) from the last saved ZRIGID rates of the rigid packing items in the finished good's BOM (RigidSet Mode G). The process-orders drawer lists the rigid items with a **Mould details** button. Everything is additive: without ZRIGID data (not imported yet, no saved rate, error) nothing changes on these screens.

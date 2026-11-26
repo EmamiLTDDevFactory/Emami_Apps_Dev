@@ -1,6 +1,6 @@
 'use client';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { list, ApiError } from './api';
+import { access, list, ApiError } from './api';
 import type { Config, CurrentUser, UserPlant } from './entities';
 
 /** Who is signed in, as SAP sees them (role, plants, admin) + the live ConfigSet. Loaded once, shared by every screen. */
@@ -9,6 +9,8 @@ export interface Session {
   error: string;
   userId: string; fullName: string; email: string; role: string; unit: string;
   isAdmin: boolean; isGlobal: boolean; active: boolean;
+  /** Admin role of this app in Emami Apps (Admin Center): sees and uses the maintenance screens. Not the SAP IsAdmin flag. */
+  hubAdmin: boolean;
   /** SAP plant codes this person may see (empty + isGlobal = every plant) */
   plants: { code: string; name: string }[];
   fiscalYear: string;
@@ -22,7 +24,7 @@ export interface Session {
 }
 
 const empty: Session = {
-  loading: true, error: '', userId: '', fullName: '', email: '', role: '', unit: '', isAdmin: false, isGlobal: false, active: false,
+  loading: true, error: '', userId: '', fullName: '', email: '', role: '', unit: '', isAdmin: false, isGlobal: false, active: false, hubAdmin: false,
   plants: [], fiscalYear: '', config: {}, cfgNum: (_p, f) => f, canSeePlant: () => false, reload: () => undefined,
 };
 const Ctx = createContext<Session>(empty);
@@ -37,20 +39,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     let live = true;
     (async () => {
       try {
-        const [u, p, c] = await Promise.all([
+        const hubAdmin = await access().then((a) => a.isAdmin).catch(() => false);
+        const [u, p, c] = await Promise.allSettled([
           list<CurrentUser>('CurrentUserSet'),
           list<UserPlant>('UserPlantSet'),
           list<Config>('ConfigSet'),
         ]);
+        // A hub administrator may not be a CAPEX user yet (that is what Maintenance is for), so SAP errors do not block them.
+        const bad = [u, p, c].find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined;
+        if (bad && !hubAdmin) throw bad.reason;
+        const ok = <T,>(r: PromiseSettledResult<{ rows: T[] }>) => (r.status === 'fulfilled' ? r.value : { rows: [] as T[] });
         if (!live) return;
-        const me = u.rows[0];
+        const me = ok(u).rows[0];
         const config: Record<string, string> = {};
-        c.rows.forEach((r) => { config[r.Param] = r.Value; });
+        ok(c).rows.forEach((r) => { config[r.Param] = r.Value; });
         setState({
           loading: false, error: '',
           userId: me?.Userid ?? '', fullName: me?.Fullname ?? '', email: me?.Email ?? '', role: me?.Role ?? '', unit: me?.Unit ?? '',
-          isAdmin: me?.IsAdmin === 'X', isGlobal: me?.IsGlobal === 'X', active: me?.Active === 'X',
-          plants: p.rows.map((r) => ({ code: r.Werks, name: r.PlantName })), fiscalYear: me?.Fiscalyear ?? '', config,
+          isAdmin: me?.IsAdmin === 'X', isGlobal: me?.IsGlobal === 'X', active: me?.Active === 'X', hubAdmin,
+          plants: ok(p).rows.map((r) => ({ code: r.Werks, name: r.PlantName })), fiscalYear: me?.Fiscalyear ?? '', config,
         });
       } catch (e) {
         if (live) setState({ ...empty, loading: false, error: e instanceof ApiError ? e.message : 'Could not load your CAPEX profile.' });
