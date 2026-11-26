@@ -49,6 +49,8 @@ const { APP_URL } = require('./ccbTeams');
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const APP_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
+/** Who gets the "needs your approval" mail for a new access request (only these two, not every Super Admin). */
+const APPROVAL_MAIL_TO = ['indranil.banerjee@emamigroup.com', 'sayontan.das@emamigroup.com'];
 const MAX_ITEMS = 60;
 const MAX_FILES = 5;
 /** Request bodies are capped at 6 MB by server.js's JSON parser and base64 adds a third, so ~4 MB of files. */
@@ -387,16 +389,17 @@ function accessRequestsRouter({ requireAccessManager, validRolesForApp, defaultG
                 title: `Access request ${ref} received`,
                 body: `Hi ${firstName}, we have received your request for ${items.length} role(s). A Super Admin will review it and you will get an email with the outcome. Keep this reference: ${ref}.`,
             });
-            pool.query(`SELECT email FROM emami_apps.authorized_users WHERE access_level = 'Super Admin' AND is_active = true`).then(({ rows }) => {
-                for (const a of rows) {
+            // The approval mail goes only to the fixed approvers below, not to every Super Admin.
+            try {
+                for (const approver of APPROVAL_MAIL_TO) {
                     notify({
-                        email: a.email, appId: 'access-requests', kind: 'action', refKey: `access-req:${request.id}:new`,
+                        email: approver, appId: 'access-requests', kind: 'action', refKey: `access-req:${request.id}:new`,
                         title: `Access request ${ref} needs your approval`,
                         body: `${firstName} ${lastName} (${email}${session ? '' : ', not signed in — email unverified'}) asked for ${items.length} role(s): ${items.map((i) => `${i.appId} / ${i.role}`).join(', ')}.`,
                         link: `/manage-access/?tab=requests&request=${request.id}`,
                     });
                 }
-            }).catch((err) => console.error('[access-requests] Could not notify Super Admins:', err.message));
+            } catch (err) { console.error('[access-requests] Could not notify approvers:', err.message); }
             res.json({ success: true, id: Number(request.id), ref, status: request.status });
         } catch (err) {
             console.error('[access-requests] Submit failed:', err.message);
