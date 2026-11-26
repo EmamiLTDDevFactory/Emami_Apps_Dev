@@ -124,6 +124,13 @@ const ticket = (who, body) => call(who, 'POST', '/tickets', { requesterName: 'Of
     check(r.body.ticket.escalationLevel === 2, 'a non-Urgent ticket does not reach the Urgent-only level 3', r.body.ticket.escalationLevel);
     r = await call(A1, 'POST', `/tickets/${t1.id}/escalate`, { reason: 'Still blocked after the manager call' });
     check(r.status === 400 && /highest/.test(r.body.error), 'no higher level for this ticket', r.body);
+    // Vendor-side levels are only for tickets a vendor works: the SAP ticket (vendor removed) skips L1 / L2.
+    await call(A1, 'PUT', `/tickets/${sapT.id}/support-vendor`, { supportPartnerId: null });
+    await db.query(`UPDATE samadhan.tickets SET "resolutionDueAt" = now() - interval '30 hours', priority = 4 WHERE id = $1`, [sapT.id]);
+    await call(ADMIN, 'POST', '/jobs/run', {});
+    r = await call(A1, 'GET', `/tickets/${sapT.id}/escalations`);
+    check(r.body.items.length === 1 && r.body.items[0].level === 3, 'no vendor on the ticket -> only client levels (L3 for Urgent)', r.body.items?.map((e) => e.level));
+    await call(A1, 'PUT', `/tickets/${sapT.id}/support-vendor`, { supportPartnerId: testVendor });
     r = await call(ADMIN, 'DELETE', `/admin/escalation-contacts/${l2}`);
     check(r.status === 200, 'remove a contact');
     meta = (await call(A1, 'GET', '/meta')).body;

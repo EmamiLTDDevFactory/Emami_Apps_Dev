@@ -211,11 +211,15 @@ async function deleteContact(id) {
     if (!r.rows.length) throw fail(404, 'Not found.');
 }
 
-/** Contacts that apply to a ticket (its desk or every desk; its priority or every priority), by level. */
+/**
+ * Contacts that apply to a ticket (its desk or every desk; its priority or every priority), by level. Vendor-side
+ * levels apply only to tickets a support vendor works (supportPartnerId set); client-side levels to every ticket.
+ */
 async function contactsFor(t) {
     const rows = await quiet(async () => (await pool.query(
         `SELECT * FROM samadhan.escalation_contacts WHERE active AND ("workspaceId" IS NULL OR "workspaceId" = $1)
-           AND (cardinality(priorities) = 0 OR $2 = ANY(priorities)) ORDER BY level, id`, [t.workspaceId ?? null, t.priority])).rows, []);
+           AND (cardinality(priorities) = 0 OR $2 = ANY(priorities)) AND (party = 'CLIENT' OR $3::boolean) ORDER BY level, id`,
+        [t.workspaceId ?? null, t.priority, Boolean(t.supportPartnerId)])).rows, []);
     const byLevel = new Map();
     for (const r of rows) byLevel.set(r.level, [...(byLevel.get(r.level) || []), r]);
     return byLevel;
