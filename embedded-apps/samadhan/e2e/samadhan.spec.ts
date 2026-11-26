@@ -520,6 +520,14 @@ test('Admin > Integrations (all off) and the SAP / change / infra analytics', as
 
 // ---------- ITSM support model (migration 7.11) ----------
 test('ITSM: support model, ticket migration templates, support & escalation card, vendor scorecard', async ({ page }) => {
+  test.setTimeout(240_000); // may wait out one rate-limit window
+  // The Admin persona may have used its writes-per-minute in the tests before: wait out the window once (429).
+  const write = async (method: string, path: string, body?: unknown) => {
+    let r = await api(data.admin, method, path, body);
+    if (r.status === 429) { await new Promise((ok) => setTimeout(ok, 61_000)); r = await api(data.admin, method, path, body); }
+    expect(r.status, `${method} ${path}: ${JSON.stringify(r.body)}`).toBeLessThan(300);
+    return r;
+  };
   const problems = watch(page);
   await signIn(page, data.admin);
   const ws = await api(data.admin, 'GET', '/admin/workspaces');
@@ -535,23 +543,25 @@ test('ITSM: support model, ticket migration templates, support & escalation card
     await page.getByRole('tab', { name: 'Ticket migration' }).click();
     await expect(page.getByTestId('migration-itsm')).toContainText('Download template');
     await expect(page.getByTestId('migration-sales')).toContainText('Upload');
-    await api(data.admin, 'PUT', `/admin/workspaces/${infra.id}`, { enabled: true });
-    await api(data.admin, 'PUT', '/admin/workspaces/flag', { enabled: true });
-    const made = await api(data.admin, 'POST', '/tickets', {
-      subject: `Laptop fan noise ${test.info().project.name}`, requesterName: 'E2E Requester', requesterEmail: 'e2e.req@test.samadhan.local', applicationId: euc.id, category: 'End-user IT',
-    });
-    expect(made.status).toBe(201);
+    await write('PUT', `/admin/workspaces/${infra.id}`, { enabled: true });
+    await write('PUT', '/admin/workspaces/flag', { enabled: true });
+    const body = {
+      subject: `Laptop fan noise ${test.info().project.name}`, requesterName: 'E2E Requester', requesterEmail: 'e2e.req@test.samadhan.local', applicationId: euc.id, category: 'End-user IT', function: 'Laptop / Desktop', impact: 4, urgency: 3,
+    };
+    // The Admin persona may have used its writes-per-minute in the tests before: wait out the window once (Retry-After).
+    const made = await write('POST', '/tickets', body);
+    expect(made.status, JSON.stringify(made.body)).toBe(201);
     await page.goto(`/apps/samadhan/?ticket=${made.body.ticket.id}`);
-    await expect(page.getByTestId('support-card')).toContainText('Support & escalation');
+    await expect(page.getByTestId('support-card')).toContainText('Support vendor');
     await expect(page.getByTestId('support-vendor')).toHaveValue(String(made.body.ticket.supportPartnerId));
     await expect(page.getByTestId('incident-lifecycle')).toContainText('Categorised');
     await page.goto('/apps/samadhan/?screen=analytics');
     await page.getByRole('tab', { name: 'Support vendors' }).click();
     await expect(page.getByTestId('vendor-scorecard')).toContainText('Allied Digital Services');
   } finally {
-    await api(data.admin, 'PUT', '/admin/workspaces/flag', { enabled: false });
-    if (infra) await api(data.admin, 'PUT', `/admin/workspaces/${infra.id}`, { enabled: false });
-    await api(data.admin, 'PUT', '/me/preferences', { workspace: null });
+    await write('PUT', '/admin/workspaces/flag', { enabled: false });
+    if (infra) await write('PUT', `/admin/workspaces/${infra.id}`, { enabled: false });
+    await write('PUT', '/me/preferences', { workspace: null });
   }
   expect(problems).toEqual([]);
 });
