@@ -15,6 +15,7 @@ import { fetchCdrill } from '@/lib/dash/service';
 import { readGradually } from '@/lib/dash/cdrillProgressive';
 import { CAT_LABEL, parseCdrill, parseOrderItems, type Cat, type OrderItem } from '@/lib/dash/cdrill';
 import { ckVariance } from '@/lib/dash/ckVariance';
+import { ckItemVariance, explodeCk, type StdExplosion } from '@/lib/dash/ckItemVariance';
 import { loadFgRigid, type FgRigid } from '@/lib/rigid/fgRigid';
 import MouldDrawer from '../rigid/MouldDrawer';
 import type { WacCompRow, WacDocRow } from '@/lib/wac/types';
@@ -55,12 +56,16 @@ export default function FgOrdersDrawer({ target, onClose }: { target: FgTarget |
   const [mould, setMould] = useState<{ matnr: string; maktx: string; werks: string } | null>(null);
   const [busyK, setBusyK] = useState(false);
   const [errorK, setErrorK] = useState('');
+  const [ckItems, setCkItems] = useState<StdExplosion | null>(null);
+  const [busyI, setBusyI] = useState(false);
+  const [errorI, setErrorI] = useState('');
+  const [onlyDiff, setOnlyDiff] = useState(false);
   const [error, setError] = useState('');
   const [open, setOpen] = useState('');
   const [grp, setGrp] = useState<'ALL' | 'RM' | 'PM' | 'PERF'>('ALL');
   const q = useMemo(() => (target ? { plants: [target.werks], materials: [target.matnr.replace(/^0+/, '')], dateFrom: target.from, dateTo: target.to } : null), [target]);
   useEffect(() => {
-    setDocs(null); setComps(null); setCk(null); setErrorK(''); setAct(null); setErrorA(''); setError(''); setOpen('');
+    setDocs(null); setComps(null); setCk(null); setErrorK(''); setCkItems(null); setErrorI(''); setAct(null); setErrorA(''); setError(''); setOpen('');
     if (!q) return;
     const c = new AbortController(); setBusy(true);
     fetchWac('DOCS', q, { signal: c.signal }).then((r) => setDocs(r.rows)).catch((e) => { if (!c.signal.aborted) setError(errorText(e)); }).finally(() => { if (!c.signal.aborted) setBusy(false); });
@@ -101,9 +106,22 @@ export default function FgOrdersDrawer({ target, onClose }: { target: FgTarget |
     } catch (e) { setErrorK(errorText(e)); }
     setBusyK(false);
   }
+  /** Item level actual vs CK13N: CK13N items of the finished good (bulk exploded through its own estimate) and, when not read yet, the actual items. */
+  async function loadCkItems() {
+    if (!target) return;
+    setBusyI(true); setErrorI('');
+    const werks = target.werks;
+    const items = (matnr: string, w: string) => fetchCk('ITEM', { matnr, werks: w }).then((r) => r.rows);
+    try {
+      const [exp] = await Promise.all([items(target.matnr.replace(/^0+/, ''), werks).then((rows) => explodeCk(rows, werks, items)), act ? Promise.resolve() : loadActual()]);
+      setCkItems(exp);
+    } catch (e) { setErrorI(errorText(e)); }
+    setBusyI(false);
+  }
   const orders = useMemo(() => (docs ? byOrder(docs) : []), [docs]);
   const tot = useMemo(() => orders.reduce((t, o) => ({ qty: t.qty.plus(o.qty), landed: t.landed.plus(o.landed) }), { qty: new Decimal(0), landed: new Decimal(0) }), [orders]);
   const ckRows = useMemo(() => (ck ? ckVariance({ qty: tot.qty, rm: orders.reduce((t, o) => t.plus(o.rm), new Decimal(0)), pm: orders.reduce((t, o) => t.plus(o.pm), new Decimal(0)), perf: orders.reduce((t, o) => t.plus(o.perf), new Decimal(0)), conv: orders.reduce((t, o) => t.plus(o.conv), new Decimal(0)), landed: tot.landed }, ck.comps) : []), [ck, orders, tot]);
+  const itemVar = useMemo(() => (ckItems && act ? ckItemVariance(ckItems, act.comps, tot.qty.gt(0) ? orders.reduce((t, o) => t.plus(o.conv), new Decimal(0)).div(tot.qty) : null) : null), [ckItems, act, orders, tot]);
   const items = (comps ?? []).filter((c) => grp === 'ALL' || c.Grp === grp);
   const itemTotal = items.reduce((s, c) => s.plus(D(c.CostSel)), new Decimal(0));
   return (
@@ -220,6 +238,52 @@ export default function FgOrdersDrawer({ target, onClose }: { target: FgTarget |
                 </table>
               </div>
             </>
+          )}
+          <div className="flex flex-wrap items-center gap-3">
+            <h4 className="text-xs font-extrabold uppercase tracking-wide text-muted">Item level: actual vs CK13N</h4>
+            <Button onClick={() => void loadCkItems()} disabled={busyI || busyA}>{busyI ? 'Reading…' : ckItems ? 'Refresh item comparison' : 'Compare items with CK13N'}</Button>
+            {(busyI || (busyA && !!ckItems)) && <Spinner className="h-4 w-4" />}
+            {itemVar && <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={onlyDiff} onChange={(e) => setOnlyDiff(e.target.checked)} /> Only variance over 5 % or one side missing</label>}
+          </div>
+          <p className="text-2xs text-muted">Every component per piece: actual consumption of the process orders of the period (as in Item level actual above) against the CK13N standard estimate of {target.werks}. The bulk / WIP line of the estimate is exploded through the bulk&apos;s own CK13N estimate, as SAP does for the actual. Variance = actual minus CK13N, % on CK13N; red costs more. Quantity % only when both sides use the same unit.</p>
+          {errorI && <ErrorBox>{errorI}</ErrorBox>}
+          {ckItems && !act && !busyA && !errorA && <p className="text-xs text-muted">Load the actual items to compare.</p>}
+          {ckItems && ckItems.lines.length === 0 && ckItems.convPc.isZero() && <p className="text-xs text-muted">SAP has no CK13N items for this finished good in plant {target.werks}.</p>}
+          {itemVar && (ckItems!.bulks.length > 0 || ckItems!.unexploded.length > 0) && (
+            <p className="text-2xs text-muted">
+              {ckItems!.bulks.map((b) => `Bulk ${b.matnr}: ₹${money(b.ownPc, 4)} / pc in the finished good's estimate, ₹${money(b.explodedPc, 4)} / pc from its own estimate`).join(' · ')}
+              {!ckItems!.bulkDiff.isZero() && ` (difference ₹${money(ckItems!.bulkDiff, 4)} / pc: the bulk's own estimate is priced differently; the total below uses the exploded figures).`}
+              {ckItems!.unexploded.length > 0 && ` Not exploded (no estimate of its own): ${ckItems!.unexploded.join(', ')}.`}
+            </p>
+          )}
+          {itemVar && (
+            <div className="max-h-[50vh] overflow-auto rounded-xl border border-line">
+              <table className="w-full min-w-[1000px] border-collapse">
+                <thead className="sticky top-0"><tr><th className={cx(thCls, '!text-left')}>Component</th><th className={cx(thCls, '!text-left')}>Group</th><th className={thCls}>CK13N qty / pc</th><th className={thCls}>Actual qty / pc</th><th className={thCls}>Qty var %</th><th className={thCls}>CK13N ₹ / pc</th><th className={thCls}>Actual ₹ / pc</th><th className={thCls}>Variance ₹ / pc</th><th className={thCls}>Variance %</th></tr></thead>
+                <tbody>
+                  {[...itemVar.rows.filter((r) => !onlyDiff || r.status !== 'both' || (r.pct && r.pct.abs().gte(5)) || (r.qtyPct && r.qtyPct.abs().gte(5))), itemVar.conv, itemVar.total].map((r, i) => {
+                    const tone = !r.variance || r.variance.isZero() || (r.pct && r.pct.abs().lt(0.5)) ? '' : r.variance.gt(0) ? 'text-bad' : 'text-good';
+                    const qtone = !r.qtyPct || r.qtyPct.abs().lt(0.5) ? '' : r.qtyPct.gt(0) ? 'text-bad' : 'text-good';
+                    const sign = (v: Decimal) => `${v.gt(0) ? '+' : ''}`;
+                    const isTot = r === itemVar.total; const isConv = r === itemVar.conv;
+                    return (
+                      <tr key={r.matnr || `x${i}`} className={cx('border-t border-line/60', isTot && 'bg-line/20 font-extrabold', isConv && 'bg-line/10')}>
+                        <td className="px-2.5 py-1.5 text-left text-xs">{r.matnr && <span className="font-bold">{r.matnr} </span>}<span className={r.matnr ? 'text-muted' : ''} title={r.text}>{r.text}</span>
+                          {r.status === 'ck-only' && r.matnr && <span className="ml-1 rounded bg-warn/15 px-1 text-2xs text-warn">not consumed</span>}
+                          {r.status === 'actual-only' && <span className="ml-1 rounded bg-warn/15 px-1 text-2xs text-warn">not in CK13N</span>}
+                          {r.via && <span className="ml-1 text-2xs text-faint">via bulk {r.via}</span>}</td>
+                        <td className="px-2.5 py-1.5 text-left text-xs">{r.cat}</td>
+                        <td className={tdCls}>{r.stdQty ? `${money(r.stdQty, 5)} ${r.stdUom}` : '-'}</td><td className={tdCls}>{r.actQty ? `${money(r.actQty, 5)} ${r.actUom}` : '-'}</td>
+                        <td className={cx(tdCls, qtone)}>{r.qtyPct ? `${sign(r.qtyPct)}${r.qtyPct.toFixed(1)} %` : '-'}</td>
+                        <td className={tdCls}>{r.stdVal ? money(r.stdVal, 4) : '-'}</td><td className={tdCls}>{r.actVal ? money(r.actVal, 4) : '-'}</td>
+                        <td className={cx(tdCls, 'font-bold', tone)}>{r.variance ? `${sign(r.variance)}${money(r.variance, 4)}` : '-'}</td>
+                        <td className={cx(tdCls, tone)}>{r.pct ? `${sign(r.pct)}${r.pct.toFixed(1)} %` : '-'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
           <div className="flex flex-wrap items-center gap-3">
             <h4 className="text-xs font-extrabold uppercase tracking-wide text-muted">Item level: components per piece</h4>
