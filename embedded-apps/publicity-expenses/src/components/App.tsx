@@ -32,8 +32,11 @@ const VIEWS = new Set<View>(NAV.map((n) => n.id));
 
 // ---------------------------------------------------------------- URL state (?v=report&fy=2026&pp=1-8&cc=1000|EM01&site=HO ...)
 
-/** The app opens on company 1000 and the current period only (one SAP read, so it opens fast). */
-const DEFAULT_COMPANIES = ['1000'];
+/**
+ * The app opens on companies 1000 + EM01, the current fiscal year and the current period only. All companies come
+ * from one SAP read per period (filtered on the server), so two companies open as fast as one.
+ */
+const DEFAULT_COMPANIES = ['1000', 'EM01'];
 const LIST_KEYS = ['site', 'groups', 'categories', 'brands', 'gls'] as const;
 function readUrl(): { view: View; filters: Filters; unit: Unit } {
   const cur = currentPeriod();

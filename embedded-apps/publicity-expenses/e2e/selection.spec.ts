@@ -15,16 +15,20 @@ const kpiTotal = async (page: Page) => {
   return (await card.locator('.num').first().innerText()).trim();
 };
 
-test('opens on company 1000 and the current period only; YTD, quarters and companies are one click away', async ({ page }, info) => {
+test('opens on companies 1000 + EM01, the current year and the current period only; YTD, quarters and companies are one click away', async ({ page }, info) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await signIn(page);
   await page.goto(BASE);
   await expect(page.getByText('Total A&P spend').first()).toBeVisible({ timeout: 60_000 });
-  // Defaults written to the URL: one period, company 1000.
-  await expect.poll(() => new URL(page.url()).searchParams.get('pp')).toMatch(/^\d{1,2}$/);
-  expect(new URL(page.url()).searchParams.get('cc')).toBe('1000');
-  await expect(page.getByTestId('selection-line')).toContainText('company 1000');
+  // Defaults written to the URL: the current fiscal year (April start, IST), one period = this month, companies 1000 + EM01.
+  const now = new Date(Date.now() + 5.5 * 3600_000);
+  const fyNow = now.getUTCMonth() >= 3 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
+  const pNow = ((now.getUTCMonth() + 9) % 12) + 1;
+  await expect.poll(() => new URL(page.url()).searchParams.get('pp')).toBe(String(pNow));
+  expect(new URL(page.url()).searchParams.get('fy')).toBe(String(fyNow));
+  expect(new URL(page.url()).searchParams.get('cc')).toBe('1000|EM01');
+  await expect(page.getByTestId('selection-line')).toContainText('company 1000, EM01');
   const single = await kpiTotal(page);
 
   // One click to the YTD of the current period.
@@ -49,13 +53,13 @@ test('opens on company 1000 and the current period only; YTD, quarters and compa
   await expect(page.getByTestId('selection-line')).toContainText(/Q2 FY'\d\d vs Q2 FY'\d\d/);
   const q2 = await kpiTotal(page);
 
-  // Add company EM01 (phones: open the filters first).
+  // Take company EM01 out (phones: open the filters first).
   if (info.project.name === 'mobile-360') await page.getByRole('button', { name: /^Filters/ }).click();
   await page.getByRole('button', { name: /^Company/ }).click();
   await page.getByRole('option', { name: 'EM01' }).click();
   await page.keyboard.press('Escape');
-  await expect.poll(() => new URL(page.url()).searchParams.get('cc')).toBe('1000|EM01');
-  await expect(page.getByTestId('selection-line')).toContainText('company 1000, EM01');
+  await expect.poll(() => new URL(page.url()).searchParams.get('cc')).toBe('1000');
+  await expect(page.getByTestId('selection-line')).toContainText('company 1000');
   await expect.poll(() => kpiTotal(page)).not.toBe(q2);
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/${info.project.name === 'mobile-360' ? 'm' : 'd'}-selection.png` });
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

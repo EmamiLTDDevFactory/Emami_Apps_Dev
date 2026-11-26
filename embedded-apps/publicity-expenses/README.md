@@ -59,7 +59,7 @@ Fiscal year and unit (₹ lakh default, crore, rupees) pick one value; every oth
   a single period is that period's amount - so a YTD always equals SAP's own YTD. Budget "YTD" = the budget of the
   picked months; projections = average of the picked periods x 12. Exclusion rules in force for the latest picked
   period apply. Links from before (`p=7`) still open as YTD up to P07.
-- **Company codes** (`cc=1000|EM01`, `cc=all`): default **1000**. SAP is read once per period for all companies and
+- **Company codes** (`cc=1000|EM01`, `cc=all`): default **1000 + EM01** (with the current fiscal year and the current period). SAP is read once per period for all companies and
   filtered on the server, so switching companies does not read SAP again; the list offers every company with data.
 - Site, report header, category, brand family, **G/L account** (new; budget-only lines have no G/L, so a G/L filter
   leaves them out).
