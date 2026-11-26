@@ -38,6 +38,15 @@ describe('CK13N item explosion', () => {
   });
 });
 
+describe('bulk unit guard', () => {
+  it('a bulk whose own estimate is in another unit is not exploded', async () => {
+    const e = await explodeCk(fg, 'UN13', fetch, async () => 'L');
+    expect(e.unexploded).toEqual(['250003153']);
+    const ok = await explodeCk(fg, 'UN13', fetch, async () => 'KG');
+    expect(ok.unexploded).toEqual([]);
+  });
+});
+
 describe('actual vs CK13N per item', () => {
   it('matches by material, sums duplicates, gives value and quantity variance %', async () => {
     const e = await explodeCk(fg, 'UN13', fetch);
@@ -49,6 +58,8 @@ describe('actual vs CK13N per item', () => {
     expect(r['100001813'].stdVal!.toFixed(6)).toBe('0.032746'); // 2 x 0.072768 x 0.225
     expect(r['100001813'].status).toBe('ck-only');
     expect(r['100009999'].status).toBe('actual-only');
+    expect(r['100001813'].actTotQty).toBeNull(); // nothing consumed
+    expect(r['151025162'].actTotVal!.isZero()).toBe(true); // fixture value 0, carried through
     expect(v.rows[0].matnr).toBe('100000078'); // biggest absolute variance first
     expect(v.conv.actVal!.toString()).toBe('3');
     expect(v.total.stdVal!.toFixed(4)).toBe(e.lines.reduce((t, l) => t.plus(l.valPc), new Decimal(0)).plus(e.convPc).toFixed(4));

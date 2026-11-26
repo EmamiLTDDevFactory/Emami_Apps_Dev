@@ -25,9 +25,11 @@ export interface StdLine { matnr: string; text: string; mtart: string; uom: stri
 export interface StdExplosion { lines: StdLine[]; convPc: Decimal; otherPc: Decimal; /** bulk lines that could not be exploded (no estimate): kept as they are */ unexploded: string[]; /** exploded value - the bulk line value of the finished good's estimate */ bulkDiff: Decimal; bulks: { matnr: string; ownPc: Decimal; explodedPc: Decimal }[] }
 
 export type ItemFetcher = (matnr: string, werks: string) => Promise<CkItemRow[]>;
+/** Unit of the bulk's own estimate (CkHeaderSet Meeht); '' when unknown. A bulk used in another unit than its estimate is not exploded (no conversion here). */
+export type UnitFetcher = (matnr: string, werks: string) => Promise<string>;
 
 /** Per piece standard lines of the finished good, bulk exploded through its own CK13N estimate (recursively, max 3 levels). */
-export async function explodeCk(items: CkItemRow[], werks: string, fetchItems: ItemFetcher): Promise<StdExplosion> {
+export async function explodeCk(items: CkItemRow[], werks: string, fetchItems: ItemFetcher, fetchUnit?: UnitFetcher): Promise<StdExplosion> {
   const out: StdExplosion = { lines: [], convPc: ZERO, otherPc: ZERO, unexploded: [], bulkDiff: ZERO, bulks: [] };
   async function walk(rows: CkItemRow[], factor: Decimal, via: string, depth: number): Promise<Decimal> {
     let total = ZERO;
@@ -39,7 +41,9 @@ export async function explodeCk(items: CkItemRow[], werks: string, fetchItems: I
       if (r.Typps !== 'M' || !strip(r.Idnrk)) { out.otherPc = out.otherPc.plus(val); continue; }
       if (EXPLODE_MTART.has(String(r.Mtart).toUpperCase()) && depth < MAX_DEPTH) {
         let children: CkItemRow[] = [];
-        try { children = await fetchItems(strip(r.Idnrk), r.ItemWerks || werks); } catch { children = []; }
+        let unitOk = true;
+        if (fetchUnit) { try { const u = (await fetchUnit(strip(r.Idnrk), r.ItemWerks || werks)).trim().toUpperCase(); unitOk = !u || !r.Uom || u === r.Uom.trim().toUpperCase(); } catch { unitOk = true; } }
+        if (unitOk) { try { children = await fetchItems(strip(r.Idnrk), r.ItemWerks || werks); } catch { children = []; } }
         if (children.length) {
           const exploded = await walk(children, qty, strip(r.Idnrk), depth + 1);
           out.bulks.push({ matnr: strip(r.Idnrk), ownPc: val, explodedPc: exploded });
@@ -61,6 +65,8 @@ export interface ItemVarRow {
   stdUom: string; actUom: string;
   stdQty: Decimal | null; actQty: Decimal | null; qtyPct: Decimal | null;
   stdVal: Decimal | null; actVal: Decimal | null; variance: Decimal | null; pct: Decimal | null;
+  /** actual quantity and value consumed (not per piece); null without actual */
+  actTotQty?: Decimal | null; actTotVal?: Decimal | null;
   status: 'both' | 'ck-only' | 'actual-only';
 }
 export interface ItemVariance { rows: ItemVarRow[]; conv: ItemVarRow; total: ItemVarRow }
@@ -91,7 +97,7 @@ export function ckItemVariance(std: StdExplosion, actual: Record<Cat, CdrillComp
     rows.push({
       matnr: k, text: ac?.maktx || st?.text || '', cat: ac ? CAT_LABEL[ac.cat] : catOfMtart(st!.mtart), via: st ? [...st.vias].join(', ') : '',
       stdUom: st?.uom ?? '', actUom: ac?.meins ?? '', stdQty, actQty, qtyPct: sameUnit ? pctOf(actQty, stdQty) : null,
-      stdVal, actVal, variance, pct: pctOf(actVal, stdVal), status: st && ac ? 'both' : st ? 'ck-only' : 'actual-only',
+      stdVal, actVal, variance, pct: pctOf(actVal, stdVal), actTotQty: ac ? ac.qty : null, actTotVal: ac ? ac.val : null, status: st && ac ? 'both' : st ? 'ck-only' : 'actual-only',
     });
   }
   rows.sort((x, y) => y.variance!.abs().comparedTo(x.variance!.abs()) || x.matnr.localeCompare(y.matnr));
