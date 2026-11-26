@@ -269,14 +269,14 @@ export default function FgOrdersDrawer({ target, onClose }: { target: FgTarget |
             {(busyI || (busyA && !!ckItems)) && <Spinner className="h-4 w-4" />}
             {itemVar && <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={onlyDiff} onChange={(e) => setOnlyDiff(e.target.checked)} /> Only variance over 5 % or one side missing</label>}
           </div>
-          <p className="text-2xs text-muted">Every component per piece: actual consumption of the process orders of the period (as in Item level actual above) against the CK13N standard estimate of {target.werks}. CK13N side = its costing structure down to the last level (as CK13N shows it: a component with its own estimate of the same costing date is valued with it, a bulk / WIP is opened). Variance = actual minus CK13N, % on CK13N; red costs more. Quantity % only when both sides use the same unit.</p>
+          <p className="text-2xs text-muted">Every component per piece: actual consumption of the process orders of the period (as in Item level actual above) against the CK13N standard estimate of {target.werks}. CK13N side = the released estimate down to the last level (values as stored in the released estimates; a bulk / WIP is opened with its own estimate of the same costing date). Variance = actual minus CK13N, % on CK13N; red costs more. Quantity % only when both sides use the same unit.</p>
           {errorI && <ErrorBox>{errorI}</ErrorBox>}
           {ckItems && !act && !busyA && !errorA && <p className="text-xs text-muted">Load the actual items to compare.</p>}
           {ckItems && ckItems.lines.length === 0 && ckItems.convPc.isZero() && <p className="text-xs text-muted">SAP has no CK13N items for this finished good in plant {target.werks}.</p>}
           {itemVar && (ckItems!.bulks.length > 0 || ckItems!.unexploded.length > 0) && (
             <p className="text-2xs text-muted">
-              {ckItems!.bulks.map((b) => `Bulk ${b.matnr}: ₹${money(b.ownPc, 4)} / pc as its own estimate, ₹${money(b.explodedPc, 4)} / pc as the sum of its lines`).join(' · ')}
-              {!ckItems!.bulkDiff.isZero() && ` (difference ₹${money(ckItems!.bulkDiff, 4)} / pc: some of its lines were costed again after it; CK13N shows the same, and the total below uses the lines).`}
+              {ckItems!.bulks.map((b) => `Bulk ${b.matnr}: ₹${money(b.ownPc, 4)} / pc in the released finished good, ₹${money(b.explodedPc, 4)} / pc as the sum of its lines in its own estimate`).join(' · ')}
+              {!ckItems!.bulkDiff.isZero() && ` (difference ₹${money(ckItems!.bulkDiff, 4)} / pc: the bulk's own estimate was costed separately; the total below uses its lines).`}
               {ckItems!.unexploded.length > 0 && ` Not exploded (no estimate of its own): ${ckItems!.unexploded.join(', ')}.`}
             </p>
           )}

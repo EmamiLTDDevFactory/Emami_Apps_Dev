@@ -70,18 +70,18 @@ export function compareSheet(rows: CompareRow[], labelA: string, labelB: string)
   return { name: 'Compare', cols, count: rows.length };
 }
 
-/** CK13N costing structure, every level (lib/ck/structure.ts): one row per line, indented by level, with the value CK13N shows and the parent's itemization value. */
+/** Released CK13N estimate, every level (lib/ck/structure.ts): one row per line, indented by level, with the released value and, for information, a newer value of a component costed again after the release. */
 export function structureSheet(rows: import('./structure').StructNode[], curr: string): WacSheet {
   const num = (v: import('decimal.js').default | null) => (v ? Number(v.toFixed(6)) : null);
   const cols: XCol[] = [
     { header: 'Level', width: 6, get: (i) => rows[i].depth },
     { header: 'Costing structure', width: 46, get: (i) => `${'  '.repeat(rows[i].depth - 1)}${rows[i].item.Typps === 'E' ? `${rows[i].item.Lstar} ${rows[i].item.KstarTxt}` : `${rows[i].matnr} ${rows[i].item.ItemTxt}`}`.trimEnd() },
     { header: 'Type', width: 8, get: (i) => rows[i].item.Typps }, { header: 'Material type', width: 9, get: (i) => rows[i].item.Mtart },
-    { header: `Total value (${curr})`, dp: 2, curr, width: 15, get: (i) => num(rows[i].value) },
+    { header: `Total value released (${curr})`, dp: 2, curr, width: 15, get: (i) => num(rows[i].itemValue) },
     { header: 'Quantity', dp: 3, width: 13, get: (i) => num(rows[i].qty) }, { header: 'Unit', width: 7, get: (i) => rows[i].item.Uom },
     { header: 'Plant', width: 7, get: (i) => rows[i].item.ItemWerks }, { header: 'Resource / cost centre', width: 18, get: (i) => [rows[i].item.Kostl, rows[i].item.Lstar].filter(Boolean).join(' ') },
-    { header: `In the parent's itemization (${curr})`, dp: 2, curr, width: 17, get: (i) => num(rows[i].itemValue) },
-    { header: 'Valued with', width: 26, get: (i) => (rows[i].basis === 'own' && rows[i].own ? `own estimate ${rows[i].own!.Kadky ?? ''} ${rows[i].own!.Status}` : 'itemization') },
+    { header: `Costed again after release (${curr})`, dp: 2, curr, width: 17, get: (i) => (rows[i].basis === 'own' && !rows[i].value.minus(rows[i].itemValue).abs().lt('0.005') ? num(rows[i].value) : null) },
+    { header: 'Own estimate status', width: 22, get: (i) => (rows[i].own ? `${rows[i].own!.StatusTxt || rows[i].own!.Status} ${rows[i].own!.Kadky ?? ''}`.trim() : '') },
   ];
   return { name: 'Costing structure', cols, count: rows.length };
 }

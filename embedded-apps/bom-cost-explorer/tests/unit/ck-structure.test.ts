@@ -15,7 +15,7 @@ const deps = {
 };
 const build = (scale: string) => buildStructure(look('ITEM|{"matnr":"400016966","werks":"UN13"}') as CkItemRow[], { kadky: head.Kadky, tvers: head.Tvers, klvar: head.Klvar, bwvar: head.Bwvar }, 'UN13', new Decimal(scale), deps);
 
-describe('CK13N costing structure, all levels (400016966 @ UN13)', () => {
+describe('CK13N released estimate, all levels (400016966 @ UN13)', () => {
   it('first level matches CK13N, components valued with their own estimate of the same costing date', async () => {
     const r = await build(head.Losgr);
     const v = Object.fromEntries(r.nodes.map((n) => [n.item.Typps === 'E' ? n.item.Lstar : n.matnr, n.value.toFixed(2)]));
@@ -23,6 +23,15 @@ describe('CK13N costing structure, all levels (400016966 @ UN13)', () => {
     expect(r.nodes.find((n) => n.matnr === '151029143')!.itemValue.toFixed(2)).toBe('1467.40'); // what the finished good's own itemization stored
     expect(head.TotalLot.startsWith('5557.97')).toBe(true); // SAP header total; the lines add up to less (re-costed components), as in CK13N
     expect(r.total.toFixed(2)).toBe('5533.05');
+  });
+  it('released view: every line as stored in the released estimate, first level adds up to the released total', async () => {
+    const r = await build(head.Losgr);
+    const rel = Object.fromEntries(r.nodes.map((n) => [n.item.Typps === 'E' ? n.item.Lstar : n.matnr, n.itemValue.toFixed(2)]));
+    expect(rel).toMatchObject({ '151029143': '1467.40', '250005237': '2906.76', '151001693': '2.56' });
+    expect(r.itemTotal.minus(head.TotalLot).abs().lte('0.02')).toBe(true); // 5,557.98 vs SAP 5,557.97 (item values come rounded)
+    // components costed again after the release are recognisable (own estimate value differs from the released one)
+    const again = r.nodes.filter((n) => n.basis === 'own' && !n.value.minus(n.itemValue).abs().lt('0.005')).map((n) => n.matnr);
+    expect(again).toEqual(expect.arrayContaining(['151029143', '250005237', '151001693']));
   });
   it('the bulk is opened to the last level with CK13N values', async () => {
     const r = await build(head.Losgr);
@@ -33,13 +42,13 @@ describe('CK13N costing structure, all levels (400016966 @ UN13)', () => {
     expect(r.nodes.filter((n) => n.matnr !== '250005237').every((n) => n.children.length === 0)).toBe(true); // bought parts are not opened
     expect(flatten(r.nodes)).toHaveLength(39);
   });
-  it('per piece for the MIS comparison: last-level lines, activities of every level as conversion', async () => {
+  it('per piece for the MIS comparison: released last-level lines, activities of every level as conversion', async () => {
     const r = await build('1');
     const e = explosionFromStructure(r.nodes);
     expect(lastLevel(r.nodes).length).toBe(e.lines.length + 3 + 4);
     expect(e.convPc.toFixed(4)).toBe('0.9269'); // ~(369.51 + 109.60 + 8.41 + 300.36 + 18.76 + 99.46 + 20.85) / 1000
-    expect(e.lines.find((l) => l.matnr === '151029143')!.valPc.toFixed(4)).toBe('1.4775');
+    expect(e.lines.find((l) => l.matnr === '151029143')!.valPc.toFixed(4)).toBe('1.4674'); // released, not the later 1.46 re-costing
     expect(e.lines.find((l) => l.matnr === '100000158')!.via).toBe('250005237');
-    expect(e.bulks[0].ownPc.toFixed(4)).toBe('2.8720');
+    expect(e.bulks[0].ownPc.toFixed(4)).toBe('2.9068'); // the bulk as the released finished good holds it
   });
 });

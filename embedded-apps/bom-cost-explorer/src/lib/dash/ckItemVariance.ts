@@ -64,9 +64,9 @@ export function ckItemVariance(std: StdExplosion, actual: Record<Cat, CdrillComp
 }
 
 /**
- * The standard side from CK13N's costing structure (lib/ck/structure.ts, built per piece: scale 1): every last-level line as CK13N values it
- * (components with an own estimate of the same costing date valued with it), activities of every level into conversion. Produced components that
- * were opened are listed in `bulks` with their own value against the sum of their lines (CK13N shows both; they differ when lines were re-costed).
+ * The standard side from the RELEASED CK13N estimate (lib/ck/structure.ts, built per piece: scale 1): every last-level line with the value stored in the
+ * estimate it belongs to (never a newer, not-released re-costing), activities of every level into conversion. Opened bulks are listed in `bulks` with their
+ * released value in the finished good against the sum of their lines from the bulk's own estimate (they differ when the bulk was costed again).
  */
 export function explosionFromStructure(nodes: StructNode[]): StdExplosion {
   const out: StdExplosion = { lines: [], convPc: ZERO, otherPc: ZERO, unexploded: [], bulkDiff: ZERO, bulks: [] };
@@ -74,14 +74,14 @@ export function explosionFromStructure(nodes: StructNode[]): StdExplosion {
   const mark = (ns: StructNode[], via: string) => { for (const n of ns) { parentOf.set(n.id, via); if (n.children.length) mark(n.children, n.matnr); } };
   mark(nodes, '');
   for (const n of lastLevel(nodes)) {
-    if (n.item.Typps === 'E') { out.convPc = out.convPc.plus(n.value); continue; }
-    if (!n.matnr) { out.otherPc = out.otherPc.plus(n.value); continue; }
-    out.lines.push({ matnr: n.matnr, text: n.item.ItemTxt, mtart: n.item.Mtart, uom: n.item.Uom || '', qtyPc: n.qty, valPc: n.value, via: parentOf.get(n.id) ?? '' });
+    if (n.item.Typps === 'E') { out.convPc = out.convPc.plus(n.itemValue); continue; }
+    if (!n.matnr) { out.otherPc = out.otherPc.plus(n.itemValue); continue; }
+    out.lines.push({ matnr: n.matnr, text: n.item.ItemTxt, mtart: n.item.Mtart, uom: n.item.Uom || '', qtyPc: n.qty, valPc: n.itemValue, via: parentOf.get(n.id) ?? '' });
   }
-  const sumLines = (n: StructNode): Decimal => lastLevel([n]).reduce((t, x) => t.plus(x.value), ZERO);
+  const sumLines = (n: StructNode): Decimal => lastLevel([n]).reduce((t, x) => t.plus(x.itemValue), ZERO);
   const opened: StructNode[] = [];
   const walk = (ns: StructNode[]) => { for (const n of ns) if (n.children.length) { opened.push(n); walk(n.children); } };
   walk(nodes.filter((n) => n.children.length));
-  for (const n of opened.filter((x) => x.depth === 1)) { const e = sumLines(n); out.bulks.push({ matnr: n.matnr, ownPc: n.value, explodedPc: e }); out.bulkDiff = out.bulkDiff.plus(e.minus(n.value)); }
+  for (const n of opened.filter((x) => x.depth === 1)) { const e = sumLines(n); out.bulks.push({ matnr: n.matnr, ownPc: n.itemValue, explodedPc: e }); out.bulkDiff = out.bulkDiff.plus(e.minus(n.itemValue)); }
   return out;
 }
