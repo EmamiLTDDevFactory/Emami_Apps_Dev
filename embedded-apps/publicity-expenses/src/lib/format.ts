@@ -32,6 +32,28 @@ export function growth(cy: number, py: number): number | null {
   return ((cy - py) / Math.abs(py)) * 100;
 }
 
+/**
+ * CY against PY for the report's variance columns, with a RAG status for spend:
+ *  - new:     no PY at all, spend in CY -> counted as +100 % (the rule), shown as "New"
+ *  - stopped: PY spend, nothing in CY   -> -100 %
+ *  - up / down / flat: % change on |PY| (flat = within +-0.5 %)
+ * RAG (spend against last year): red = up more than RAG_AMBER_UPTO %, amber = up to that, green = down or flat,
+ * blue = new (no PY to compare with), none = nothing in either year.
+ */
+export const RAG_AMBER_UPTO = 10;
+export type TrendKind = 'none' | 'new' | 'stopped' | 'up' | 'down' | 'flat';
+export interface Trend { kind: TrendKind; pct: number | null; rag: 'red' | 'amber' | 'green' | 'new' | 'none'; label: string }
+export function trendOf(cy: number, py: number): Trend {
+  const nil = (x: number) => Math.abs(x) < 0.5; // below half a rupee
+  if (nil(cy) && nil(py)) return { kind: 'none', pct: null, rag: 'none', label: 'No spend in either year' };
+  if (nil(py)) return { kind: 'new', pct: 100, rag: 'new', label: 'New this year - no spend in PY (counted as +100 %)' };
+  if (nil(cy)) return { kind: 'stopped', pct: -100, rag: 'green', label: 'Stopped - spend in PY, none this year (-100 %)' };
+  const p = ((cy - py) / Math.abs(py)) * 100;
+  if (Math.abs(p) <= 0.5) return { kind: 'flat', pct: p, rag: 'green', label: 'About the same as PY' };
+  if (p < 0) return { kind: 'down', pct: p, rag: 'green', label: 'Lower than PY' };
+  return { kind: 'up', pct: p, rag: p > RAG_AMBER_UPTO ? 'red' : 'amber', label: p > RAG_AMBER_UPTO ? `Higher than PY by more than ${RAG_AMBER_UPTO} %` : `Higher than PY by up to ${RAG_AMBER_UPTO} %` };
+}
+
 export const pct = (v: number | null, digits = 1) => (v === null || !Number.isFinite(v) ? '–' : `${v > 0 ? '+' : ''}${v.toFixed(digits)}%`);
 export const share = (part: number, whole: number) => (whole ? (part / whole) * 100 : 0);
 export const pctPlain = (v: number, digits = 1) => (Number.isFinite(v) ? `${v.toFixed(digits)}%` : '–');

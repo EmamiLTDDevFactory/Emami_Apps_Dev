@@ -10,9 +10,9 @@
  * Rows: category > range > product type > reporting row with sub-totals, sorted by SerialNo, T1, T2, T3.
  */
 import { Fragment, startTransition, useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, Columns3, Download, Minus, Plus } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, ChevronDown, ChevronRight, Columns3, Download, Equal, Minus, Plus, Sparkles } from 'lucide-react';
 import { useApp } from '@/lib/context';
-import { fyLabel, growth, pct, UNIT_LABEL } from '@/lib/format';
+import { fyLabel, growth, pct, RAG_AMBER_UPTO, trendOf, UNIT_LABEL, type Trend } from '@/lib/format';
 import { buildTree, cyOf, groupColumns, isZero, keysOf, nodeMeasures, zero, type GroupCol, type Measures, type Node } from '@/lib/model';
 import DetailDrawer, { type Cell } from './DetailDrawer';
 import { Button, Card, Empty, Tabs, cx } from './ui';
@@ -31,7 +31,35 @@ interface Col {
   pct?: boolean;
   /** What a click on the figure drills into (header group(s), site, G/L; measure = which total it must equal). */
   drill?: Omit<Cell, 'label' | 'keys' | 'value'>;
+  /** var = CY - PY (signed, coloured); trend = % variance with direction icon and RAG colour (value = the %). */
+  kind?: 'var' | 'trend';
+  /** CY and PY of the cell, for the variance columns. */
+  pair?: (n: Node, nm: ReturnType<typeof nodeMeasures>) => [number, number];
 }
+
+type Pair = NonNullable<Col['pair']>;
+/** Variance (CY - PY) and % variance with RAG of a CY / PY pair - the compact view's comparison columns. */
+function varCols(base: Pick<Col, 'band' | 'bandKey' | 'tone'>, id: string, pair: Pair): Col[] {
+  return [
+    { ...base, id: `${id}|var`, label: 'Variance', sub: 'CY - PY', kind: 'var', pair, value: (n, nm) => { const [cy, py] = pair(n, nm); return cy - py; } },
+    { ...base, id: `${id}|vpct`, label: '% Var', sub: 'CY vs PY', kind: 'trend', pair, value: (n, nm) => trendOf(...pair(n, nm)).pct },
+  ];
+}
+
+const TREND_ICON = { up: ArrowUpRight, down: ArrowDownRight, flat: Equal, stopped: ArrowDownRight, new: Sparkles } as const;
+const RAG_CLS = { red: 'bg-bad/15 text-bad', amber: 'bg-warn/15 text-warn', green: 'bg-good/15 text-good', new: 'bg-accent/15 text-accent', none: '' } as const;
+/** % variance as a chip: direction icon, the %, RAG colour; "New" where PY had nothing (counted as +100 %). */
+function TrendChip({ t }: { t: Trend }) {
+  if (t.kind === 'none') return <span className="text-faint">–</span>;
+  const Icon = TREND_ICON[t.kind];
+  const text = t.kind === 'new' ? 'New' : t.kind === 'stopped' ? 'Stopped' : `${(t.pct ?? 0) > 0 ? '+' : ''}${(t.pct ?? 0).toFixed(1)}%`;
+  return (
+    <span className={cx('inline-flex items-center gap-0.5 whitespace-nowrap rounded-md px-1.5 py-px text-[11px] font-bold', RAG_CLS[t.rag])} title={t.label} data-trend={t.kind}>
+      <Icon size={12} strokeWidth={2.5} aria-hidden />{text}
+    </span>
+  );
+}
+const STATUS: Record<Trend['kind'], string> = { none: '', new: 'New (no PY = +100%)', stopped: 'Stopped (-100%)', up: 'Increase', down: 'Decrease', flat: 'No change' };
 
 /** G/L x site columns with no amount in the current selection are left out (the sheet's hidden columns). */
 type GlTotals = Map<string, { ho: number; un: number }>;
@@ -43,6 +71,7 @@ function groupCols(g: GroupCol, mode: Mode, open: boolean, fy: string, ytd: stri
     return [
       { ...base, id: `${g.id}|cy`, label: 'CY Total', sub: ytd, tone: 'total', value: (n) => cyOf(m(n)), drill: { group: g.id } },
       { ...base, id: `${g.id}|py`, label: 'PY Total', sub: pyYtd, value: (n) => m(n).py, drill: { group: g.id, measure: 'py' } },
+      ...varCols(base, g.id, (n) => [cyOf(m(n)), m(n).py]),
     ];
   }
   const has = (gl: string, site: 'HO' | 'UN') => { const t = glTotals.get(`${g.id}|${gl}`); return !!t && Math.abs(site === 'HO' ? t.ho : t.un) >= 0.5; };
@@ -75,9 +104,10 @@ function totalCols(id: 'mis' | 'lr', label: string, mode: Mode, fy: string, ytd:
     { ...base, id: `${id}|gr`, label: 'Growth', sub: 'CY vs PY', pct: true, value: (_n, nm) => growth(cyOf(pick(nm)), pick(nm).py) },
   ];
   if (mode === 'compact') {
+    const cmp: Col[] = [...cyPy.slice(0, 2), ...varCols(base, id, (_n, nm) => [cyOf(pick(nm)), pick(nm).py])];
     return id === 'lr'
-      ? [...cyPy, { ...base, id: 'lr|rby', label: 'RB', sub: ytd, value: (_n, nm) => nm.lr.rby }, { ...base, id: 'lr|ut', label: 'Utilised', sub: 'CY / RB', pct: true, value: (_n, nm) => (nm.lr.rby ? (cyOf(nm.lr) / nm.lr.rby) * 100 : null) }]
-      : cyPy;
+      ? [...cmp, { ...base, id: 'lr|rby', label: 'RB', sub: ytd, value: (_n, nm) => nm.lr.rby }, { ...base, id: 'lr|ut', label: 'Utilised', sub: 'CY / RB', pct: true, value: (_n, nm) => (nm.lr.rby ? (cyOf(nm.lr) / nm.lr.rby) * 100 : null) }]
+      : cmp;
   }
   return [
     { ...base, id: `${id}|rba`, label: 'RB', sub: fy, value: (_n, nm) => pick(nm).rba },
@@ -154,18 +184,24 @@ export default function Report() {
 
   async function exportXlsx() {
     const XLSX = await import('xlsx');
-    const head1 = ['Details Of Advertisement Expenses', ...cols.map((c) => c.band)];
-    const head2 = ['ITEM', ...cols.map((c) => c.label)];
-    const head3 = [`${ytd} · ${UNIT_LABEL[unit]}`, ...cols.map((c) => c.sub ?? '')];
+    // A % Var column is followed by its status in words (Increase / Decrease / New (no PY = +100%) ...), as the chip shows it.
+    const xc = cols.flatMap((c) => (c.kind === 'trend' ? [c, { ...c, id: `${c.id}|st`, label: 'Status', sub: 'CY vs PY' }] : [c]));
+    const head1 = ['Details Of Advertisement Expenses', ...xc.map((c) => c.band)];
+    const head2 = ['ITEM', ...xc.map((c) => c.label)];
+    const head3 = [`${ytd} · ${UNIT_LABEL[unit]}`, ...xc.map((c) => c.sub ?? '')];
     const div = unit === 'lakh' ? 1e5 : unit === 'crore' ? 1e7 : 1;
     const body = lines.map((l) => {
       const nm = nodeMeasures(l.node, groups);
       const label = `${'  '.repeat(l.depth)}${l.label}`;
       if (l.kind === 'header') return [label];
-      return [label, ...cols.map((c) => { const v = c.value(l.node, nm); return v === null ? '' : c.pct ? Math.round(v * 10) / 10 : Math.round((v / div) * 100) / 100; })];
+      return [label, ...xc.map((c) => {
+        if (c.id.endsWith('|st') && c.pair) return STATUS[trendOf(...c.pair(l.node, nm)).kind];
+        const v = c.value(l.node, nm);
+        return v === null ? '' : c.pct || c.kind === 'trend' ? Math.round(v * 10) / 10 : Math.round((v / div) * 100) / 100;
+      })];
     });
     const ws = XLSX.utils.aoa_to_sheet([head1, head2, head3, ...body]);
-    ws['!cols'] = [{ wch: 42 }, ...cols.map(() => ({ wch: 13 }))];
+    ws['!cols'] = [{ wch: 42 }, ...xc.map((c) => ({ wch: c.id.endsWith('|st') ? 19 : 13 }))];
     ws['!freeze'] = { xSplit: 1, ySplit: 3 };
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, mode === 'mis' ? 'Summary' : 'Compact');
@@ -202,6 +238,15 @@ export default function Report() {
           tabs={[{ id: '0', label: 'Categories' }, { id: '1', label: 'Ranges' }, { id: '2', label: 'Brands' }, { id: '3', label: 'All rows' }]} />
         <label className="flex items-center gap-1.5 text-xs font-semibold text-muted"><input type="checkbox" checked={showZero} onChange={(e) => setShowZero(e.target.checked)} className="accent-[rgb(var(--accent))]" /> Zero rows</label>
         <label className="flex items-center gap-1.5 text-xs font-semibold text-muted"><input type="checkbox" checked={showHidden} onChange={(e) => setShowHidden(e.target.checked)} className="accent-[rgb(var(--accent))]" /> Rows hidden in MIS</label>
+        {mode === 'compact' && (
+          <div className="flex flex-wrap items-center gap-1.5 text-2xs text-muted" data-testid="rag-legend">
+            <span className="font-semibold">% Var vs PY:</span>
+            <TrendChip t={{ kind: 'up', pct: RAG_AMBER_UPTO + 5, rag: 'red', label: `Higher than PY by more than ${RAG_AMBER_UPTO} %` }} /><span>more than {RAG_AMBER_UPTO}% up</span>
+            <TrendChip t={{ kind: 'up', pct: RAG_AMBER_UPTO / 2, rag: 'amber', label: `Higher than PY by up to ${RAG_AMBER_UPTO} %` }} /><span>up to {RAG_AMBER_UPTO}% up</span>
+            <TrendChip t={{ kind: 'down', pct: -8, rag: 'green', label: 'Lower than or the same as PY' }} /><span>lower / same</span>
+            <TrendChip t={{ kind: 'new', pct: 100, rag: 'new', label: 'New this year - no spend in PY (counted as +100 %)' }} /><span>no spend in PY (= +100%)</span>
+          </div>
+        )}
         <div className="ml-auto flex items-center gap-3">
           <span className="hidden text-2xs text-muted min-[1760px]:inline">Click a group heading for its G/L columns · any figure for the posting lines behind it</span>
           <Button size="sm" onClick={exportXlsx} title={`${ytd} vs ${pyYtd} · ${UNIT_LABEL[unit]}`}><Download size={14} /> Excel</Button>
@@ -257,10 +302,14 @@ export default function Report() {
                       const v = c.value(l.node, nm);
                       const first = i === 0 || cols[i - 1].bandKey !== c.bandKey;
                       const isUt = c.id.endsWith('|ut');
-                      const shown = v === null ? '–' : c.pct ? (isUt ? `${v.toFixed(1)}%` : pct(v)) : fmt(v);
+                      if (c.kind === 'trend' && c.pair) {
+                        return <td key={c.id} data-col="trend" className={cx('px-2 py-1 text-right', first && 'border-l border-line')}><TrendChip t={trendOf(...c.pair(l.node, nm))} /></td>;
+                      }
+                      const shown = v === null ? '–' : c.pct ? (isUt ? `${v.toFixed(1)}%` : pct(v)) : c.kind === 'var' && v >= 0.5 ? `+${fmt(v)}` : fmt(v);
                       const drill = c.drill && v ? c.drill : null;
+                      const varTone = c.kind === 'var' && l.kind !== 'grand' && v !== null ? (v >= 0.5 ? 'text-bad' : v <= -0.5 ? 'text-good' : '') : '';
                       return (
-                        <td key={c.id} data-col={c.tone === 'gl' ? 'gl' : undefined} className={cx('num px-2 py-1.5 text-right', first && 'border-l border-line', c.tone === 'total' && l.kind !== 'grand' && 'font-semibold', c.tone === 'budget' && l.kind !== 'grand' && 'text-muted', c.pct && v !== null && l.kind !== 'grand' && isUt && (v > 100 ? 'text-bad' : 'text-good'))}>
+                        <td key={c.id} data-col={c.tone === 'gl' ? 'gl' : c.kind === 'var' ? 'var' : undefined} className={cx('num px-2 py-1.5 text-right', first && 'border-l border-line', c.tone === 'total' && l.kind !== 'grand' && 'font-semibold', c.tone === 'budget' && l.kind !== 'grand' && 'text-muted', c.pct && v !== null && l.kind !== 'grand' && isUt && (v > 100 ? 'text-bad' : 'text-good'), varTone)}>
                           {drill ? (
                             <button type="button" data-drill={l.kind} title="Posting lines behind this figure" className={cx('rounded px-0.5 hover:underline', l.kind === 'grand' ? 'hover:bg-white/15' : 'hover:bg-accent/10 hover:text-accent')} onClick={() => drillInto(l, drill, v ?? 0)}>{shown}</button>
                           ) : shown}

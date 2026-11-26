@@ -104,9 +104,17 @@ test('Overview total equals the GR Total LR of the report', async ({ page }, inf
   await page.getByRole('tab', { name: 'Compact' }).click();
   const grand = grid.locator('tbody tr').last();
   const head = await grid.locator('thead tr').nth(1).locator('th').allInnerTexts();
-  const lrCy = head.length - 5; // GR Total LR: CY, PY, Growth, RB, Utilised
+  const lrCy = head.length - 6; // GR Total LR: CY, PY, Variance, % Var, RB, Utilised
   expect(head[lrCy]).toMatch(/^CY Total/);
+  expect(head[lrCy + 2]).toMatch(/^Variance/);
+  expect(head[lrCy + 3]).toMatch(/^% Var/);
   const lrText = (await grand.locator('td').nth(lrCy + 1).innerText()).replace(/,/g, '');
+  const pyText = (await grand.locator('td').nth(lrCy + 2).innerText()).replace(/,/g, '');
+  const varText = (await grand.locator('td').nth(lrCy + 3).innerText()).replace(/[,+]/g, '');
+  expect(Math.abs(Number(lrText) - Number(pyText) - Number(varText))).toBeLessThan(0.05); // Variance = CY - PY
+  // % Var: a RAG chip with a direction icon on every line with spend; the legend explains the colours and "New".
+  await expect(page.getByTestId('rag-legend')).toContainText('no spend in PY (= +100%)');
+  await expect(grid.locator('td[data-col="trend"] [data-trend]').first()).toBeVisible();
   await page.getByRole('button', { name: /Overview/ }).click();
   const kpi = page.getByText(/^₹ [\d.,]+ Cr$/).first();
   await expect(kpi).toBeVisible();
