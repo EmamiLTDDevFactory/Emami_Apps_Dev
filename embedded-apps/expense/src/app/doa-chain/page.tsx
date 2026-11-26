@@ -2,7 +2,7 @@
 
 import React, { useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, ChevronLeft, ChevronRight, Copy, Info, Plus, Power, PowerOff, RefreshCw, Save, Search, ShieldAlert, Upload, X } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, Copy, Download, Info, Plus, Power, PowerOff, RefreshCw, Save, Search, ShieldAlert, Upload, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useClaim } from '../../context/ClaimContext';
 import { DoaChainRow } from '../../types';
@@ -283,6 +283,19 @@ export default function DoaChainPage() {
     await handleLoad();
   };
 
+  // Blank workbook with just the header row Import CSV/Excel actually reads (see handleImportFile's
+  // column lookups below) - an admin downloads this, fills it in a normal spreadsheet app, and
+  // re-uploads through the same Import CSV/Excel button, so the two stay in lockstep by construction.
+  const handleDownloadTemplate = async () => {
+    const XLSX = await import('xlsx');
+    const headers = ['Type', 'Cost Centre', 'Amount From', 'Amount To', 'Department', 'Approver Email', 'Rule', 'HoD', 'Valid From', 'Valid To'];
+    const sheet = XLSX.utils.aoa_to_sheet([headers]);
+    sheet['!cols'] = headers.map(() => ({ wch: 16 }));
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, sheet, 'DOA Chain');
+    XLSX.writeFile(workbook, 'doa_chain_import_template.xlsx');
+  };
+
   const handleImportFile = async (file: File) => {
     setImportError(null);
     try {
@@ -438,6 +451,9 @@ export default function DoaChainPage() {
         <div className="mt-3 flex flex-wrap items-center gap-4">
           <Checkbox checked={showInactive} onChange={setShowInactive} label="Show inactive rows" />
           <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImportFile(f); }} />
+          <Button variant="secondary" size="sm" icon={Download} onClick={handleDownloadTemplate}>
+            Download Template
+          </Button>
           <Button variant="secondary" size="sm" icon={Upload} onClick={() => fileInputRef.current?.click()}>
             Import CSV/Excel
           </Button>
