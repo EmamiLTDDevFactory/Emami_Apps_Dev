@@ -71,6 +71,13 @@ async function main() {
         await client.query('UPDATE samadhan.groups SET "workspaceId" = NULL WHERE id = ANY($1::int[])', [v7a.groupIds || []]);
     }
     await client.query(`DELETE FROM samadhan.settings WHERE key = 'demo.v7apps.manifest'`);
+    // ITSM support-model demo (load-v7-itsm.js): demo escalation people, demo assets, the DEMO contract fields. Its
+    // migrated tickets went above (tag demo).
+    if ((await client.query("SELECT to_regclass('samadhan.escalation_contacts') AS t")).rows[0].t) {
+        await client.query('DELETE FROM samadhan.escalation_contacts WHERE email LIKE ANY($1::text[])', [DOMAINS]);
+        await client.query(`UPDATE samadhan.support_partners SET "contractRef" = NULL, "contractStart" = NULL, "contractEnd" = NULL, "slaTargetPct" = NULL WHERE "contractRef" = 'DEMO contract'`);
+    }
+    if ((await client.query("SELECT to_regclass('samadhan.ref_masters') AS t")).rows[0].t) await client.query(`DELETE FROM samadhan.ref_masters WHERE kind = 'ASSET' AND description LIKE '%(demo)'`);
     await client.query('COMMIT');
     console.log(`Removed: ${tickets.rowCount} demo tickets, ${contacts.rowCount} demo contacts, ${agents.rowCount} demo agents, ${dists.rowCount} demo distributors, ${canned.rowCount} demo canned replies, ${articles.rowCount} articles and ${companies.rowCount} companies from PulseDesk, ${choices.rowCount} field choices and ${rules.rowCount} severity rules added by the demo, ${notes.rowCount} demo notifications; v7 demo: ${v7groups.rowCount} groups, ${v7choices.rowCount} category choices, ${v7log.rowCount} cockpit change-log rows.`);
   } catch (e) {

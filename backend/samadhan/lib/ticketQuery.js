@@ -195,12 +195,14 @@ function ticketFilter(qy, agentId, scope = null) {
             // A number: the ticket, a distributor / MR code, or the start of an external case or IDoc number.
             const lead = p(`${term}%`);
             where.push(`(t.id = ${p(Number(term) <= 2147483647 ? Number(term) : 0)} OR t."distributorCode" = ${p(term)} OR t."mrUid" = ${p(term)}`
+                + ` OR lower(t."legacyRef") = lower(${p(String(qy.q).trim().slice(0, 200))}) OR t."legacyRef" LIKE ${p(`%${term}`)}`
                 + ` OR EXISTS (SELECT 1 FROM samadhan.ticket_external_refs qx WHERE qx."ticketId" = t.id AND qx.ref LIKE ${lead})`
                 + ` OR EXISTS (SELECT 1 FROM samadhan.ticket_sap_details qd WHERE qd."ticketId" = t.id AND qd."idocNumber" LIKE ${lead}))`);
         }
         else if (term) {
             const like = p(`%${term}%`);
             where.push(`(t.subject ILIKE ${like} OR c.name ILIKE ${like} OR c.email ILIKE ${like} OR t."distributorName" ILIKE ${like} OR t."distributorCode" ILIKE ${like} OR t."mrUid" ILIKE ${like}`
+                + ` OR t."legacyRef" ILIKE ${like}`
                 + ` OR EXISTS (SELECT 1 FROM samadhan.ticket_sap_details qd WHERE qd."ticketId" = t.id AND (qd.tcode ILIKE ${like} OR qd."errorText" ILIKE ${like} OR qd."idocNumber" ILIKE ${like} OR qd."shortDumpId" ILIKE ${like}))`
                 + ` OR EXISTS (SELECT 1 FROM samadhan.ticket_external_refs qx WHERE qx."ticketId" = t.id AND qx.ref ILIKE ${like})`
                 + ` OR EXISTS (SELECT 1 FROM samadhan.ticket_transports qt WHERE qt."ticketId" = t.id AND qt."trNumber" ILIKE ${like})`

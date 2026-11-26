@@ -257,6 +257,8 @@ async function workspaceMeta(c, byWorkspace) {
         statusWorkspaces: statusWs.rows,
         groupWorkspaces: Object.fromEntries(groupWs.rows.filter((g) => g.workspaceId).map((g) => [g.id, g.workspaceId])),
         byWorkspace,
+        // ITSM support model (7.11): vendors, hyperscalers, current choices, escalation levels in use.
+        itsm: await require('../lib/itsm').meta().catch(() => null),
     };
 }
 
@@ -268,3 +270,5 @@ router.get('/distributors/lookup', wrap(async (req, res) => {
 }));
 
 module.exports = router;
+// Ticket migration builds its template lists from the same per-desk fields.
+module.exports.loadFields = loadFields;

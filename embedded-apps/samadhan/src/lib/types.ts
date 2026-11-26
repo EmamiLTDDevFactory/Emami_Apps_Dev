@@ -167,6 +167,8 @@ export interface Meta {
   changeLists?: ChangeLists;
   catalogItems?: CatalogItem[];
   refMasterKinds?: string[];
+  /** ITSM support model (migration 7.11); null before it. */
+  itsm?: ItsmMeta | null;
 }
 
 export interface ScenarioRef {
@@ -237,6 +239,11 @@ export interface TicketRow {
 
 export interface Ticket extends TicketRow, Record<EditableField, string | null> {
   description: string;
+  /** ITSM support model (7.11): the support vendor, the old tool's number, the escalation level reached. */
+  supportPartnerId?: number | null;
+  legacyRef?: string | null;
+  escalationLevel?: number;
+  escalationLevelAt?: string | null;
   requesterId: number;
   requesterPhone: string | null;
   requesterMobile: string | null;
@@ -902,4 +909,106 @@ export interface DashboardInsights {
   risks: { title: string; detail: string; severity: 'high' | 'medium' | 'low' }[];
   actionPoints: ActionPoint[];
   checks: ActionPoint[];
+}
+
+// ---------- ITSM support model (migration 7.11) ----------
+export type PartnerKind = 'CLIENT' | 'ITSM_VENDOR' | 'HYPERSCALER';
+export interface PartnerRef { id: number; name: string; shortName: string | null }
+export interface ItsmMeta {
+  vendors: PartnerRef[];
+  hyperscalers: PartnerRef[];
+  clients: PartnerRef[];
+  clientId: number | null;
+  vendorId: number | null;
+  hyperscalerId: number | null;
+  vendorDesks: string[];
+  autoEscalate: boolean;
+  escalationLevels: number[];
+  hostingExtra: string[];
+}
+export interface SupportPartner extends PartnerRef {
+  kind: PartnerKind;
+  active: boolean;
+  contactName: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  contractRef: string | null;
+  contractStart: string | null;
+  contractEnd: string | null;
+  slaTargetPct: number | null;
+  notes: string | null;
+  position: number;
+}
+export interface EscalationContact {
+  id: number;
+  level: number;
+  party: 'VENDOR' | 'CLIENT';
+  workspaceId: number | null;
+  workspaceName?: string | null;
+  name: string;
+  designation: string | null;
+  email: string;
+  phone: string | null;
+  afterHours: number;
+  priorities: number[];
+  active: boolean;
+}
+export interface SupportModelData {
+  partners: SupportPartner[];
+  model: { clientId: number | null; vendorId: number | null; hyperscalerId: number | null; vendorDesks: string[]; autoEscalate: boolean };
+  contacts: EscalationContact[];
+  desks: { id: number; key: string; name: string }[];
+  kinds: Record<PartnerKind, string>;
+  suggestions: { level: number; party: 'VENDOR' | 'CLIENT'; designation: string; afterHours: number }[];
+  openByVendor: { id: number | null; n: number }[];
+}
+export interface TicketEscalation {
+  id: number;
+  level: number;
+  manual: boolean;
+  reason: string | null;
+  notified: string[];
+  createdAt: string;
+  byName: string | null;
+}
+export interface VendorScore {
+  id: number | null;
+  name: string;
+  contractEnd: string | null;
+  total: number;
+  open: number;
+  resolved: number;
+  openBreached: number;
+  frPct: number | null;
+  resPct: number | null;
+  mttrHours: number | null;
+  escalated: number;
+  escalatedPct: number | null;
+  major: number;
+  csatCount: number;
+  csatPct: number | null;
+  fcr: number;
+  fcrPct: number | null;
+  slaTargetPct: number | null;
+  targetMet: boolean | null;
+}
+export type MigrationKind = 'itsm' | 'sales';
+export interface MigrationColumn { key: string; header: string; required?: boolean; hint: string; example: string; list?: string }
+export interface MigrationTemplate {
+  kind: MigrationKind;
+  title: string;
+  sheet: string;
+  file: string;
+  intro: string;
+  columns: MigrationColumn[];
+  values: Record<string, string[]>;
+  currentVendor: string | null;
+}
+export interface MigrationResult {
+  dryRun: boolean;
+  total: number;
+  ok: number;
+  skipped: number;
+  errors: { line: number; legacyRef: string | null; error: string }[];
+  created: { line: number; legacyRef: string; id: number; ref: string }[];
 }

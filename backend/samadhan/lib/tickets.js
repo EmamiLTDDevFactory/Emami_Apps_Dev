@@ -213,10 +213,13 @@ async function createTicket(input) {
     if (input.it && typeof input.it === 'object') await require('./it').saveIt(id, input.it);
     // v7 Phase 8: programme details given with the ticket (defect severity sets the priority).
     if (input.program && typeof input.program === 'object') await require('./program').saveProgram(id, input.program, input.actorAgentId ? { id: input.actorAgentId } : null);
-    // v7 Phase 7: Urgent + Production outside Secondary Sales becomes a major incident.
-    await require('./problem').autoMajor(id);
+    // ITSM support model (7.11): the support vendor (given, or the current vendor of the ticket's desk) and a legacy number.
+    await require('./itsm').afterCreate(id, input);
+    // v7 Phase 7: Urgent + Production outside Secondary Sales becomes a major incident (not for tickets moved from
+    // another tool - `quiet` - which were already handled there).
+    if (!input.quiet) await require('./problem').autoMajor(id);
     // v7 Phase 9: a new Urgent ticket outside Secondary Sales -> Teams card (when the Teams integration is on).
-    if (data.priority === 4 && cls && (await catalog()).wsById.get(cls.workspaceId)?.key !== 'SEC_SALES') {
+    if (!input.quiet && data.priority === 4 && cls && (await catalog()).wsById.get(cls.workspaceId)?.key !== 'SEC_SALES') {
         const { loadTicket } = require('./notify');
         loadTicket(id).then((tt) => require('./integrations').teamsNotify('urgent', tt, tt.subject)).catch(() => {});
     }
@@ -232,6 +235,8 @@ async function createTicket(input) {
     await touchActivity(id, 'created', data.lastActivityBy, data.lastActivityDetail, createdAt);
 
     const t = await loadTicket(id);
+    // A ticket moved from another tool (migration import) is created silently: no acknowledgement, no assignment mails.
+    if (input.quiet) return t;
     // Acknowledgement: always for email; for other channels when asked (portal, an agent logging it on someone's behalf).
     if (t.source === 'Email' || input.notifyRequester) await emailRequester(t, 'requester.ticket_received');
     if (t.groupId) await notifyAgents(t, 'agent.assigned_group', 'group');

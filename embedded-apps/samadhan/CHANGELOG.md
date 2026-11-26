@@ -1,5 +1,17 @@
 # Samadhan changelog
 
+## v7.11 — ITSM support model, escalation matrix, vendor scorecard, ticket migration (2026-11-26)
+
+- Admin > Support model: client (Emami), ITSM support vendor (Allied Digital) and hyperscaler (Azure) picked from lists
+  of likely candidates; desks the vendor supports; contract and SLA target per vendor; vendor change can move open tickets.
+- Escalation matrix (hierarchical escalation): levels emailed when a ticket is overdue by their hours, or by hand with a
+  reason; ladder and history on the ticket's new "Support & escalation" card (with the support vendor).
+- Analytics > Support vendors: SLA, contract target met / missed, first contact resolution, MTTR, escalations, CSAT;
+  Excel report card. Ticket lifecycle strip. Save a resolved ticket's fix as a knowledge article.
+- Admin > Ticket migration: Excel templates for the ITSM vendor's open tickets and for Secondary Sales open tickets
+  (download, check, import, old number kept and searchable). IT asset master, more hyperscalers / cloud categories.
+- Migration `7.11-itsm` with down. Details: `docs/v7/ITSM-NOTES.md`.
+
 ## v7.2 — service desks, applications, references, mail classification (Phase 3, schema v10)
 
 - Every ticket has an application (29 seeded, incl. RMSFA, CDMS and SCB2B per the approved mapping) and a readable

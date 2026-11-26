@@ -19,8 +19,10 @@ import { ApplicationsTab, MailClassificationTab, WorkspacesTab } from './Workspa
 import { RefMastersTab } from './RefMasters';
 import { ApprovalChainsTab, CatalogTab, ChangeWindowsTab } from './ChangeAdmin';
 import { IntegrationsTab } from './Integrations';
+import { SupportModelTab } from './SupportModel';
+import { MigrationTab } from './Migration';
 
-type TabId = 'general' | 'authz' | 'workspaces' | 'applications' | 'mailclass' | 'refmasters' | 'catalog' | 'chains' | 'windows' | 'integrations' | 'access' | 'statuses' | 'agents' | 'groups' | 'sla' | 'hours' | 'severity' | 'fields' | 'templates' | 'canned' | 'scenarios' | 'distributors' | 'settings' | 'channels' | 'automations' | 'contacts' | 'audit' | 'parked';
+type TabId = 'general' | 'support' | 'migration' | 'authz' | 'workspaces' | 'applications' | 'mailclass' | 'refmasters' | 'catalog' | 'chains' | 'windows' | 'integrations' | 'access' | 'statuses' | 'agents' | 'groups' | 'sla' | 'hours' | 'severity' | 'fields' | 'templates' | 'canned' | 'scenarios' | 'distributors' | 'settings' | 'channels' | 'automations' | 'contacts' | 'audit' | 'parked';
 const TABS: { id: TabId; label: string }[] = [
   { id: 'general', label: 'General' },
   { id: 'agents', label: 'Agents' },
@@ -35,6 +37,8 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'chains', label: 'Approval chains' },
   { id: 'windows', label: 'Change windows' },
   { id: 'integrations', label: 'Integrations' },
+  { id: 'support', label: 'Support model' },
+  { id: 'migration', label: 'Ticket migration' },
   { id: 'groups', label: 'Groups' },
   { id: 'sla', label: 'SLA' },
   { id: 'hours', label: 'Business hours' },
@@ -99,6 +103,8 @@ export default function Admin() {
         {tab === 'chains' && <ApprovalChainsTab />}
         {tab === 'windows' && <ChangeWindowsTab />}
         {tab === 'integrations' && <IntegrationsTab />}
+        {tab === 'support' && <SupportModelTab />}
+        {tab === 'migration' && <MigrationTab />}
         {tab === 'statuses' && <StatusesTab />}
         {tab === 'groups' && <GroupsTab />}
         {tab === 'sla' && <SlaTab />}

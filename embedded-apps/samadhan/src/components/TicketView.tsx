@@ -22,6 +22,7 @@ import { ItCard } from './ItDetails';
 import { ApprovalsCard, ChangeCard, TransportsCard } from './Change';
 import { DeclareMajorButton, MajorIncidentBanner, PirCard, ProblemCard } from './Problem';
 import { ProgramCard } from './Program';
+import { IncidentLifecycle, SupportCard } from './Itsm';
 import { sizeOf } from '@/lib/files';
 
 /**
@@ -139,6 +140,7 @@ function TicketScreen({ data, reload }: { data: TicketDetail; reload: () => Prom
         <div className="space-y-4">
           <TicketAssist ticket={t} reload={reload} />
           <Properties ticket={t} reload={reload} />
+          <SupportCard ticket={t} reload={reload} />
           {showSap && <SapCard ticketId={t.id} sap={data.sap} reload={reload} />}
           {showProgram && <ProgramCard ticketId={t.id} program={data.program} isDefect={t.recordClass === 'DEFECT'} reload={reload} />}
           {showPir && <PirCard ticket={t} pir={data.pir} reload={reload} />}
@@ -224,7 +226,8 @@ function TicketHeader({ ticket: t, reload }: Props & { reload: () => Promise<voi
             {t.applicationName && <span className={cx('rounded-md border px-1.5 py-0.5 font-bold', wsTone(workspaceById(meta, t.workspaceId)))}>{t.applicationName}</span>}
             <span>· {t.source}</span>
             <span title={fmtDateTime(t.createdAt)}>· created {relative(t.createdAt)}</span>
-            {t.escalatedAt && <Pill tone="bad">Escalated</Pill>}
+            {t.escalatedAt && <Pill tone="bad">Escalated{t.escalationLevel ? ` · L${t.escalationLevel}` : ''}</Pill>}
+            {t.legacyRef && <Pill title="Ticket number in the old tool (moved by the ticket migration)">Old no. {t.legacyRef}</Pill>}
             {t.confidential && <span data-testid="confidential-pill"><Pill tone="bad" title="Only people allowed to see confidential tickets can open this one"><Lock size={11} className="mr-0.5 inline" />Confidential</Pill></span>}
             {workspaceById(meta, t.workspaceId)?.key && workspaceById(meta, t.workspaceId)?.key !== 'SEC_SALES' && <DeclareMajorButton ticket={t} reload={reload} />}
             {can('ticket.setConfidential') && (
@@ -259,6 +262,7 @@ function TicketHeader({ ticket: t, reload }: Props & { reload: () => Promise<voi
         <div><div className="font-bold uppercase tracking-wide text-muted">Resolution due</div><span className={cx('num font-semibold', t.resViolated && 'text-bad')}>{fmtDateTime(t.resolutionDueAt)}</span></div>
         <div><div className="font-bold uppercase tracking-wide text-muted">{t.resolvedAt ? 'Resolved' : 'SLA paused so far'}</div><span className="num font-semibold">{t.resolvedAt ? fmtDateTime(t.resolvedAt) : fmtMins(t.slaPausedMins)}</span></div>
       </div>
+      <IncidentLifecycle ticket={t} />
     </Card>
   );
 }

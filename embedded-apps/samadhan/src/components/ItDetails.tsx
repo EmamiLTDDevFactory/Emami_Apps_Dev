@@ -25,7 +25,7 @@ const DIGITAL: Spec[] = [
 ];
 const INFRA: Spec[] = [
   { key: 'environment', label: 'Environment', list: 'environment' }, { key: 'hosting', label: 'Hosting', list: 'hosting' }, { key: 'serverName', label: 'Server', master: 'SERVER' },
-  { key: 'ipOrHost', label: 'IP / host' }, { key: 'assetTag', label: 'Asset tag' }, { key: 'siteLocation', label: 'Site / location', master: 'SITE' },
+  { key: 'ipOrHost', label: 'IP / host' }, { key: 'assetTag', label: 'Asset tag', master: 'ASSET' }, { key: 'siteLocation', label: 'Site / location', master: 'SITE' },
   { key: 'deviceModel', label: 'Device model' }, { key: 'os', label: 'Operating system', list: 'os' }, { key: 'database', label: 'Database', list: 'database' },
 ];
 export const itSpecFor = (deskKey?: string | null) => (deskKey === 'INFRA_IT' ? INFRA : DIGITAL);
@@ -47,7 +47,8 @@ export function parseItText(raw: string): Partial<ItDetails> {
 
 export function ItFields({ value, onChange, deskKey, compact = false }: { value: Partial<ItDetails>; onChange: (v: Partial<ItDetails>) => void; deskKey?: string | null; compact?: boolean }) {
   const { meta } = useSamadhan();
-  const L = meta.itLists;
+  // Hosting also lists the hyperscalers kept in Admin > Support model (ITSM support model, 7.11).
+  const L = meta.itLists && meta.itsm?.hostingExtra?.length ? { ...meta.itLists, hosting: [...meta.itLists.hosting, ...meta.itsm.hostingExtra] } : meta.itLists;
   const [paste, setPaste] = useState(false);
   const [text, setText] = useState('');
   const s = (k: Key) => (value[k] as string | null | undefined) ?? '';

@@ -65,6 +65,8 @@ router.use(require('./routes/program'));
 // v7 Phase 9: Admin > Integrations; analytics extras per desk (routes/integrations.js, routes/analyticsDesks.js).
 router.use(require('./routes/integrations').router);
 router.use(require('./routes/analyticsDesks'));
+// ITSM support model (7.11): Admin > Support model, ticket support vendor / escalations, vendor scorecard, ticket migration.
+router.use(require('./routes/itsm'));
 
 // ---------- Transport route ----------
 // The dev web server forwards only one older route name to this backend until its own /api/samadhan block is added

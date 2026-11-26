@@ -1,5 +1,9 @@
 # Samadhan v7 — Progress
 
+## 2026-11-26 — ITSM support model (migration 7.11-itsm)
+- Branch `feature/samadhan-itsm`. Support model, escalation matrix, vendor scorecard, ticket migration templates, asset master. Details: `ITSM-NOTES.md`.
+- Shared files: none changed (Samadhan-owned paths only).
+
 Resume here in a new session: read this file and `docs/SAMADHAN_MASTER_PROMPT_FINAL.md`, then continue at **Next**.
 
 ## Status

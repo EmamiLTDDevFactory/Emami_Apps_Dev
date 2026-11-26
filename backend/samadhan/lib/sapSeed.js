@@ -54,9 +54,13 @@ const LISTS = {
     sapCasePriority: ['Very High', 'High', 'Medium', 'Low'],
     externalStatus: ['Open', 'In Process', 'Customer Action', 'Solution Provided', 'Confirmed', 'Closed'],
     rootCause: ['Configuration', 'Custom code', 'Standard SAP bug (Note)', 'Master data', 'User / transactional error', 'Authorization', 'Interface', 'Infrastructure / Basis',
-        'Network', 'Cloud provider', 'Third-party vendor', 'Training gap', 'Requirement gap', 'Duplicate / not an issue'],
+        'Network', 'Cloud provider', 'Third-party vendor', 'Training gap', 'Requirement gap', 'Duplicate / not an issue',
+        // ITSM support model (7.11): an incident caused by a person (wrong patch / change) - fed back to change management.
+        'Human error (change / patch)'],
     resolutionCode: ['Fixed – configuration', 'Fixed – code', 'SAP Note applied', 'Data corrected', 'Workaround provided', 'User guided', 'Access granted', 'Hardware replaced',
-        'Restarted / restored', 'Vendor fix', 'No fault found', 'Duplicate', 'Cancelled'],
+        'Restarted / restored', 'Vendor fix', 'No fault found', 'Duplicate', 'Cancelled',
+        // ITSM support model (7.11): how the service desk resolved it (first-call vs deskside).
+        'Resolved on call / remote session', 'Deskside / on-site visit'],
 };
 
 // New statuses (§O), offered only in the non-sales desks (Secondary Sales keeps exactly today's list).

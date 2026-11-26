@@ -31,7 +31,9 @@ const ACTIVITY_KINDS = ['created', 'status', 'assigned', 'agent_reply', 'request
 const BELL_EVENTS = ['requester_reply', 'new_ticket', 'assigned', 'note', 'mention', 'status_changed', 'escalated', 'sla_warning', 'sla_breach', 'csat', 'watching', 'external_ref', 'approval'];
 // Agent notifications by email / hub inbox that each agent can switch off for themselves (agents.prefs.emailMuted).
 const AGENT_EMAIL_TEMPLATES = ['agent.assigned_agent', 'agent.assigned_group', 'agent.requester_replied', 'agent.note_added', 'agent.first_response_reminder',
-    'agent.resolution_reminder', 'agent.first_response_violated', 'agent.resolution_violated', 'agent.escalation_l3'];
+    'agent.resolution_reminder', 'agent.first_response_violated', 'agent.resolution_violated', 'agent.escalation_l3',
+    // ITSM support model (7.11): a ticket reached a level of the escalation matrix.
+    'agent.escalation_level'];
 const BELL_SCOPES = ['assignee', 'group', 'all'];
 const CALL_OUTCOMES = ['Connected', 'No answer', 'Busy', 'Switched off', 'Wrong number', 'Call back later'];
 const CALL_MODES = ['tel', 'teams'];
