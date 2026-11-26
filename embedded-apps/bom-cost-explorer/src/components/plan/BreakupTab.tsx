@@ -20,6 +20,11 @@ import { FISCAL_MONTHS, type PlanCostLine } from '@/lib/plan/fields';
 import { componentRate, fgSources, type FgSources, type PlanLineWithOptions } from '@/lib/plan/sources';
 import FgPerPiece from './FgPerPiece';
 import ComponentSimulator from './ComponentSimulator';
+import RateDetail from './RateDetail';
+import type { PlanLine } from '@/lib/plan/rateDetail';
+import type { RateOptionRow } from '@/lib/rates/fields';
+import type { PlanCostQuery } from '@/lib/plan/requests';
+import type { PlanCall } from '@/lib/plan/batchRun';
 import RateCoverage from '../rates/RateCoverage';
 import { parsePrio, prioLabel } from '@/lib/rates/priority';
 import { usePlanRateOptions } from '@/lib/plan/useRates';
@@ -268,7 +273,7 @@ export default function BreakupTab({ ws }: { ws: PlanWorkspace }) {
         </>
       )}
       {pcDlg && <FgPcDialog fgKey={pcDlg.key} lines={withRates as unknown as PlanLineWithOptions[]} basis={pcDlg.basis} optionsReady={optionsLoaded} onClose={() => setPcDlg(null)} />}
-      <LineDrawer line={drawer === null ? null : (withRates[drawer] as unknown as PlanCostLine & { RateOptions?: CostLine['RateOptions'] })} onClose={() => setDrawer(null)} />
+      <LineDrawer line={drawer === null ? null : (withRates[drawer] as unknown as PlanCostLine & { RateOptions?: CostLine['RateOptions'] })} onClose={() => setDrawer(null)} ranQuery={cost.ranQuery} calls={cost.calls} />
     </div>
   );
 }
@@ -369,7 +374,7 @@ function LineRow({ l, months, onOpen, optionsLoaded }: { l: PlanLineWithOptions;
   );
 }
 
-function LineDrawer({ line, onClose }: { line: (PlanCostLine & { RateOptions?: CostLine['RateOptions'] }) | null; onClose: () => void }) {
+function LineDrawer({ line, onClose, ranQuery, calls }: { line: (PlanCostLine & { RateOptions?: CostLine['RateOptions'] }) | null; onClose: () => void; ranQuery: PlanCostQuery | null; calls: PlanCall[] }) {
   if (!line) return <Drawer open={false} onClose={onClose} title="">{null}</Drawer>;
   const l = line;
   const facts: [string, ReactNode][] = [
@@ -395,7 +400,7 @@ function LineDrawer({ line, onClose }: { line: (PlanCostLine & { RateOptions?: C
   ];
   const opts = l.RateOptions ?? [];
   return (
-    <Drawer open onClose={onClose} width={760} title={<div><p className="font-mono text-sm font-bold">{l.Idnrk}</p><p className="text-xs text-muted">{l.Maktx}</p></div>}>
+    <Drawer open onClose={onClose} width={1280} title={<div><p className="font-mono text-sm font-bold">{l.Idnrk}</p><p className="text-xs text-muted">{l.Maktx}</p></div>}>
       <dl className="grid grid-cols-[160px_1fr] gap-x-3 gap-y-1.5 text-sm">
         {facts.map(([k, v]) => (<Fragment key={k}><dt className="text-muted">{k}</dt><dd className="num">{v}</dd></Fragment>))}
       </dl>
@@ -407,13 +412,7 @@ function LineDrawer({ line, onClose }: { line: (PlanCostLine & { RateOptions?: C
           <tr><td className={tdCls}>Cost INR</td>{monthlyCost(l).map((q, i) => <td key={i} className={tdNum}>{fmtNum(q, 0)}</td>)}</tr>
         </tbody>
       </table>
-      <h4 className="mt-4 text-xs font-bold uppercase tracking-wide text-muted">Rate options</h4>
-      {opts.length ? (
-        <table className="mt-1 w-full text-xs">
-          <thead><tr><th className={thCls}>Source</th><th className={thCls}>Plant</th><th className={thCls}>Curr</th><th className={thNum}>Rate/pc INR</th><th className={thCls}>Valid from</th></tr></thead>
-          <tbody>{opts.map((o, i) => <tr key={i} className={cx('border-t border-line/50', o.Source === l.SelSource && 'bg-good/10')}><td className={tdCls}><SourceBadge source={o.Source} /></td><td className={tdCls}>{o.Plant}</td><td className={tdCls}>{o.Curr}</td><td className={tdNum}>{fmtRate(o.RatePcInr)}</td><td className={tdCls}>{fmtDate(o.ValidFrom)}</td></tr>)}</tbody>
-        </table>
-      ) : <p className="mt-1 flex items-center gap-1 text-xs text-muted"><Info size={12} /> Open the Rate sources view to load the options SAP considered.</p>}
+      <RateDetail key={`${l.Hwerks}|${l.Headmat}|${l.Seqnr}`} line={l as PlanLine} ranQuery={ranQuery} calls={calls} loadedOptions={l.RateOptions?.length ? (l.RateOptions as RateOptionRow[]) : undefined} />
     </Drawer>
   );
 }
