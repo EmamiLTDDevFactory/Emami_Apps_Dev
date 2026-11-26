@@ -4,7 +4,7 @@ import type { CostLine } from '@/lib/sap/fields';
 import { selectedOptionIndex, type SimRow } from '@/lib/cost/simulate';
 import { D } from '@/lib/cost/decimal';
 import { minCover } from '@/lib/cost/analytics';
-import { rowKey } from '@/lib/cost/tree';
+import { isSubcontractAssembly, rowKey } from '@/lib/cost/tree';
 import { fmtDate, fmtNum, fmtQty, fmtRate, fmtSigned } from '@/lib/format';
 import { Button, cx, Drawer, inputBase, inputCls, Pill, SimTag, SourceBadge } from './ui';
 import { FreightBreakupSection } from './freight/FreightValue';
@@ -84,6 +84,7 @@ export default function RowDrawer({
             <span className="font-mono text-sm font-semibold">{r.Idnrk}</span>
             <span className="text-sm">{r.Maktx}</span>
             <SourceBadge source={sim.source} sim={sim.repicked || sim.overridden} />
+            {isSubcontractAssembly(r) && <Pill title="Special procurement 30: the subcontracting charge counts in the product cost, on top of the components below it">Subcontracting (SOBSL 30) · cost included</Pill>}
             {r.Donor && <Pill tone="warn" title="Rate taken from the donor plant">Donor plant {r.Donor}</Pill>}
             {sim.changed && <SimTag />}
             <RigidIcons matnr={r.Idnrk} active={panel} onOpen={setPanel} />

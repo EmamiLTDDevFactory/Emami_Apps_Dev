@@ -6,6 +6,7 @@
 import { fetchBudget } from '../budgetRatesApi';
 import type { BudCompDom, BudCompIntl } from '../budgetRatesTypes';
 import type { PlanCostLine } from './fields';
+import { isLeafRow } from '../cost/tree';
 import { priorKey, type PriorRates, type PriorStatus } from './analysis';
 
 const LIMIT = 3;
@@ -14,7 +15,7 @@ export async function fetchPriorRates(lines: PlanCostLine[], budgetYr: string, s
   const year = String(Number(budgetYr) - 1);
   const rates: PriorRates = new Map();
   const status: PriorStatus = { year, asked: 0, found: 0, notes: [] };
-  const leaves = lines.filter((l) => !l.HasChild?.trim());
+  const leaves = lines.filter(isLeafRow);
   // one request per component plant (India) or plant + country (zcomponent_n)
   const asks = new Map<string, { werks: string; land1: string }>();
   for (const l of leaves) { if (!l.Werks) continue; const intl = l.Land1 && l.Land1 !== 'IN'; asks.set(`${l.Werks}|${intl ? l.Land1 : 'IN'}`, { werks: l.Werks, land1: intl ? l.Land1 : 'IN' }); }
@@ -54,7 +55,7 @@ export async function fetchPriorRates(lines: PlanCostLine[], budgetYr: string, s
 export function priorWithFx(lines: PlanCostLine[], rates: PriorRates, fxOf: (l: PlanCostLine) => number | null): PriorRates {
   const out: PriorRates = new Map(rates);
   for (const l of lines) {
-    if (l.HasChild?.trim()) continue;
+    if (!isLeafRow(l)) continue;
     const k = priorKey(l.Land1, l.Werks, l.Idnrk);
     const r = out.get(k);
     if (!r || r.inr !== null) continue;

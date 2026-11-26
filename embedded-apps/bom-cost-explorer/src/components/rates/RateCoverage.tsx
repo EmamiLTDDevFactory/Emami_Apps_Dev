@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, Info } from 'lucide-react';
 import type { CostLine } from '@/lib/sap/fields';
+import { isLeafRow } from '@/lib/cost/tree';
 import type { RatesState } from '@/lib/rates/useRateOptions';
 import { MBEW_ONLY_HINT, rateCoverage } from '@/lib/rates/coverage';
 import { ratesIntegrity } from '@/lib/rates/integrity';
@@ -24,7 +25,7 @@ export default function RateCoverage({ lines, rates, prio, lookback, onAddDonor,
   useEffect(() => { request(); }, [request]);
   const ready = rates.status === 'ready';
   const cov = useMemo(() => rateCoverage(lines, prio, ready), [lines, prio, ready]);
-  const integrity = useMemo(() => (ready ? ratesIntegrity(lines.filter((l) => !l.HasChild?.trim())) : null), [lines, ready]);
+  const integrity = useMemo(() => (ready ? ratesIntegrity(lines.filter(isLeafRow)) : null), [lines, ready]);
   const [open, setOpen] = useState<Set<string>>(new Set());
   const maxShare = Math.max(0.0001, ...cov.sources.map((s) => s.share));
 

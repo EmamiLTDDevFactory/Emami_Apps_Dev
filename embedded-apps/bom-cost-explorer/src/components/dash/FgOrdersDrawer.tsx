@@ -13,8 +13,10 @@ import { fetchCk } from '@/lib/ck/service';
 import type { CkCompRow, CkHeaderRow } from '@/lib/ck/types';
 import { fetchCdrill } from '@/lib/dash/service';
 import { readGradually } from '@/lib/dash/cdrillProgressive';
-import { CAT_LABEL, parseCdrill, parseOrderItems, type Cat, type OrderItem } from '@/lib/dash/cdrill';
+import { CAT_LABEL, parseCdrill, parseOrderItems, type Cat, type CdrillComp, type OrderItem } from '@/lib/dash/cdrill';
 import { ckVariance } from '@/lib/dash/ckVariance';
+import { ckItemVariance, explosionFromStructure, type ItemVariance, type StdExplosion } from '@/lib/dash/ckItemVariance';
+import { buildStructure } from '@/lib/ck/structure';
 import { loadFgRigid, type FgRigid } from '@/lib/rigid/fgRigid';
 import MouldDrawer from '../rigid/MouldDrawer';
 import type { WacCompRow, WacDocRow } from '@/lib/wac/types';
@@ -32,7 +34,9 @@ function byOrder(rows: WacDocRow[]): Order[] {
   for (const r of rows) {
     const k = r.Aufnr || '(no order)';
     const o = m.get(k) ?? { aufnr: k, docs: [], qty: new Decimal(0), rm: new Decimal(0), pm: new Decimal(0), perf: new Decimal(0), conv: new Decimal(0), landed: new Decimal(0), batches: [], first: '', uom: r.Uom };
-    o.docs.push(r); o.qty = o.qty.plus(D(r.Qty)); o.rm = o.rm.plus(D(r.Rm)); o.pm = o.pm.plus(D(r.Pm)); o.perf = o.perf.plus(D(r.Perf)); o.conv = o.conv.plus(D(r.Conv)); o.landed = o.landed.plus(D(r.Landed));
+    o.docs.push(r); o.qty = o.qty.plus(D(r.Qty)); o.rm = o.rm.plus(D(r.Rm)); o.pm = o.pm.plus(D(r.Pm)); o.perf = o.perf.plus(D(r.Perf)); o.conv = o.conv.plus(D(r.Conv));
+    // SAP's Landed on WacDocSet is PER PIECE (live NWP 26.11.2026: 5.64 on a 3,360 pc document) while Rm / Pm / Perf / Conv are document values: the landed value is their sum
+    o.landed = o.landed.plus(D(r.Rm)).plus(D(r.Pm)).plus(D(r.Perf)).plus(D(r.Conv));
     if (r.Charg && !o.batches.includes(r.Charg)) o.batches.push(r.Charg);
     if (r.Budat && (!o.first || r.Budat < o.first)) o.first = r.Budat;
     m.set(k, o);
@@ -55,12 +59,16 @@ export default function FgOrdersDrawer({ target, onClose }: { target: FgTarget |
   const [mould, setMould] = useState<{ matnr: string; maktx: string; werks: string } | null>(null);
   const [busyK, setBusyK] = useState(false);
   const [errorK, setErrorK] = useState('');
+  const [ckItems, setCkItems] = useState<StdExplosion | null>(null);
+  const [busyI, setBusyI] = useState(false);
+  const [errorI, setErrorI] = useState('');
+  const [onlyDiff, setOnlyDiff] = useState(false);
   const [error, setError] = useState('');
   const [open, setOpen] = useState('');
   const [grp, setGrp] = useState<'ALL' | 'RM' | 'PM' | 'PERF'>('ALL');
   const q = useMemo(() => (target ? { plants: [target.werks], materials: [target.matnr.replace(/^0+/, '')], dateFrom: target.from, dateTo: target.to } : null), [target]);
   useEffect(() => {
-    setDocs(null); setComps(null); setCk(null); setErrorK(''); setAct(null); setErrorA(''); setError(''); setOpen('');
+    setDocs(null); setComps(null); setCk(null); setErrorK(''); setCkItems(null); setErrorI(''); setAct(null); setErrorA(''); setError(''); setOpen('');
     if (!q) return;
     const c = new AbortController(); setBusy(true);
     fetchWac('DOCS', q, { signal: c.signal }).then((r) => setDocs(r.rows)).catch((e) => { if (!c.signal.aborted) setError(errorText(e)); }).finally(() => { if (!c.signal.aborted) setBusy(false); });
@@ -101,9 +109,35 @@ export default function FgOrdersDrawer({ target, onClose }: { target: FgTarget |
     } catch (e) { setErrorK(errorText(e)); }
     setBusyK(false);
   }
+  /** Item level actual vs CK13N: CK13N items of the finished good (bulk exploded through its own estimate) and, when not read yet, the actual items. */
+  async function loadCkItems(withActual = true) {
+    if (!target) return;
+    setBusyI(true); setErrorI('');
+    const werks = target.werks;
+    // CK13N costing structure of the current standard estimate, every level, per piece (same rule as the Standard cost screen)
+    const std = async () => {
+      const k = { matnr: target.matnr.replace(/^0+/, ''), werks };
+      const [h, it] = await Promise.all([fetchCk('HEADER', k), fetchCk('ITEM', k)]);
+      const head = h.rows[0];
+      if (!head) return explosionFromStructure([]);
+      const r = await buildStructure(it.rows, { kadky: head.Kadky ?? '', tvers: head.Tvers, klvar: head.Klvar, bwvar: head.Bwvar }, werks, new Decimal(1), {
+        list: (matnr, w) => fetchCk('LIST', { matnr, werks: w }).then((x) => x.rows),
+        items: (key) => fetchCk('ITEM', { key }).then((x) => x.rows),
+      });
+      return explosionFromStructure(r.nodes);
+    };
+    try {
+      const [exp] = await Promise.all([std(), act || !withActual ? Promise.resolve() : loadActual()]);
+      setCkItems(exp);
+    } catch (e) { setErrorI(errorText(e)); }
+    setBusyI(false);
+  }
   const orders = useMemo(() => (docs ? byOrder(docs) : []), [docs]);
   const tot = useMemo(() => orders.reduce((t, o) => ({ qty: t.qty.plus(o.qty), landed: t.landed.plus(o.landed) }), { qty: new Decimal(0), landed: new Decimal(0) }), [orders]);
   const ckRows = useMemo(() => (ck ? ckVariance({ qty: tot.qty, rm: orders.reduce((t, o) => t.plus(o.rm), new Decimal(0)), pm: orders.reduce((t, o) => t.plus(o.pm), new Decimal(0)), perf: orders.reduce((t, o) => t.plus(o.perf), new Decimal(0)), conv: orders.reduce((t, o) => t.plus(o.conv), new Decimal(0)), landed: tot.landed }, ck.comps) : []), [ck, orders, tot]);
+  const itemVar = useMemo(() => (ckItems && act ? ckItemVariance(ckItems, act.comps, tot.qty.gt(0) ? orders.reduce((t, o) => t.plus(o.conv), new Decimal(0)).div(tot.qty) : null) : null), [ckItems, act, orders, tot]);
+  /** One order's items against CK13N (per piece of that order); conversion = the order's goods receipt conversion / its quantity. */
+  const orderVar = (o: Order, list: OrderItem[]) => (ckItems ? ckItemVariance(ckItems, toComps(list), o.qty.gt(0) ? o.conv.div(o.qty) : null) : null);
   const items = (comps ?? []).filter((c) => grp === 'ALL' || c.Grp === grp);
   const itemTotal = items.reduce((s, c) => s.plus(D(c.CostSel)), new Decimal(0));
   return (
@@ -130,15 +164,23 @@ export default function FgOrdersDrawer({ target, onClose }: { target: FgTarget |
                       {open === o.aufnr && o.docs.map((d) => (
                         <tr key={`${o.aufnr}-${d.Mblnr}-${d.Rowid}`} className="border-t border-line/40 bg-line/10 text-2xs">
                           <td className="px-2.5 py-1 text-left" colSpan={2}>Document {d.Mblnr}/{d.Mjahr} · {day(d.Budat ?? '')}</td><td className="px-2.5 py-1 text-left">{d.Charg || '-'} · {d.Via}</td>
-                          <td className={tdCls}>{D(d.Qty).toNumber().toLocaleString('en-IN')} {d.Uom}</td><td className={tdCls}>{money(D(d.Rm), 0)}</td><td className={tdCls}>{money(D(d.Pm), 0)}</td><td className={tdCls}>{money(D(d.Perf), 0)}</td><td className={tdCls}>{money(D(d.Conv), 0)}</td><td className={tdCls}>{money(D(d.Landed), 0)}</td><td className={tdCls} />
+                          <td className={tdCls}>{D(d.Qty).toNumber().toLocaleString('en-IN')} {d.Uom}</td><td className={tdCls}>{money(D(d.Rm), 0)}</td><td className={tdCls}>{money(D(d.Pm), 0)}</td><td className={tdCls}>{money(D(d.Perf), 0)}</td><td className={tdCls}>{money(D(d.Conv), 0)}</td><td className={tdCls}>{money(D(d.Rm).plus(D(d.Pm)).plus(D(d.Perf)).plus(D(d.Conv)), 0)}</td><td className={tdCls}>{D(d.Qty).gt(0) ? money(D(d.Rm).plus(D(d.Pm)).plus(D(d.Perf)).plus(D(d.Conv)).div(D(d.Qty)), 4) : ''}</td>
                         </tr>
                       ))}
                       {open === o.aufnr && act && (
                         <tr className="border-t border-line/40 bg-line/10"><td colSpan={10} className="px-2.5 py-2">
-                          {(act.byOrder.get(o.aufnr.replace(/^0+/, '')) ?? []).length === 0 ? <span className="text-2xs text-muted">No item level consumption read for this order (not a post type 01 order, or outside the period read).</span> : (
-                            <table className="w-full border-collapse text-2xs"><thead><tr><th className="text-left">Component</th><th className="text-left">Group</th><th className="text-right">Qty / pc</th><th className="text-right">Cost / pc ₹</th><th className="text-right">Qty</th><th className="text-right">Value ₹</th></tr></thead>
-                              <tbody>{(act.byOrder.get(o.aufnr.replace(/^0+/, '')) ?? []).map((i) => <tr key={i.matnr} className="border-t border-line/30"><td className="text-left"><span className="font-bold">{i.matnr.replace(/^0+/, '')}</span> {i.maktx}</td><td className="text-left">{CAT_LABEL[i.cat]}</td><td className="text-right">{money(i.qtyPc, 5)} {i.meins}</td><td className="text-right">{money(i.costPc, 4)}</td><td className="text-right">{money(i.qty, 2)}</td><td className="text-right">{money(i.val, 2)}</td></tr>)}</tbody></table>
-                          )}
+                          {(act.byOrder.get(o.aufnr.replace(/^0+/, '')) ?? []).length === 0 ? <span className="text-2xs text-muted">No item level consumption read for this order (not a post type 01 order, or outside the period read).</span> : (() => {
+                            const list = act.byOrder.get(o.aufnr.replace(/^0+/, '')) ?? [];
+                            const v = orderVar(o, list);
+                            if (v) return <><p className="mb-1 text-2xs text-muted">Order {o.aufnr.replace(/^0+/, '')} against the CK13N standard of {target.werks}, per piece of this order. Variance = actual minus CK13N, % on CK13N; red costs more.</p><CkItemTable v={v} onlyDiff={false} small /></>;
+                            return (
+                              <>
+                                <div className="mb-1 flex items-center gap-2"><Button size="sm" onClick={() => void loadCkItems(false)} disabled={busyI}>{busyI ? 'Reading CK13N…' : 'Compare with CK13N'}</Button>{errorI && <span className="text-2xs text-bad">{errorI}</span>}</div>
+                                <table className="w-full border-collapse text-2xs"><thead><tr><th className="text-left">Component</th><th className="text-left">Group</th><th className="text-right">Qty / pc</th><th className="text-right">Cost / pc ₹</th><th className="text-right">Qty</th><th className="text-right">Value ₹</th></tr></thead>
+                                  <tbody>{list.map((i) => <tr key={i.matnr} className="border-t border-line/30"><td className="text-left"><span className="font-bold">{i.matnr.replace(/^0+/, '')}</span> {i.maktx}</td><td className="text-left">{CAT_LABEL[i.cat]}</td><td className="text-right">{money(i.qtyPc, 5)} {i.meins}</td><td className="text-right">{money(i.costPc, 4)}</td><td className="text-right">{money(i.qty, 2)}</td><td className="text-right">{money(i.val, 2)}</td></tr>)}</tbody></table>
+                              </>
+                            );
+                          })()}
                         </td></tr>
                       )}
                     </Fragment>
@@ -222,6 +264,24 @@ export default function FgOrdersDrawer({ target, onClose }: { target: FgTarget |
             </>
           )}
           <div className="flex flex-wrap items-center gap-3">
+            <h4 className="text-xs font-extrabold uppercase tracking-wide text-muted">Item level: actual vs CK13N</h4>
+            <Button onClick={() => void loadCkItems()} disabled={busyI || busyA}>{busyI ? 'Reading…' : ckItems ? 'Refresh item comparison' : 'Compare items with CK13N'}</Button>
+            {(busyI || (busyA && !!ckItems)) && <Spinner className="h-4 w-4" />}
+            {itemVar && <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={onlyDiff} onChange={(e) => setOnlyDiff(e.target.checked)} /> Only variance over 5 % or one side missing</label>}
+          </div>
+          <p className="text-2xs text-muted">Every component per piece: actual consumption of the process orders of the period (as in Item level actual above) against the CK13N standard estimate of {target.werks}. CK13N side = the released estimate down to the last level (values as stored in the released estimates; a bulk / WIP is opened with its own estimate of the same costing date). Variance = actual minus CK13N, % on CK13N; red costs more. Quantity % only when both sides use the same unit.</p>
+          {errorI && <ErrorBox>{errorI}</ErrorBox>}
+          {ckItems && !act && !busyA && !errorA && <p className="text-xs text-muted">Load the actual items to compare.</p>}
+          {ckItems && ckItems.lines.length === 0 && ckItems.convPc.isZero() && <p className="text-xs text-muted">SAP has no CK13N items for this finished good in plant {target.werks}.</p>}
+          {itemVar && (ckItems!.bulks.length > 0 || ckItems!.unexploded.length > 0) && (
+            <p className="text-2xs text-muted">
+              {ckItems!.bulks.map((b) => `Bulk ${b.matnr}: ₹${money(b.ownPc, 4)} / pc in the released finished good, ₹${money(b.explodedPc, 4)} / pc as the sum of its lines in its own estimate`).join(' · ')}
+              {!ckItems!.bulkDiff.isZero() && ` (difference ₹${money(ckItems!.bulkDiff, 4)} / pc: the bulk's own estimate was costed separately; the total below uses its lines).`}
+              {ckItems!.unexploded.length > 0 && ` Not exploded (no estimate of its own): ${ckItems!.unexploded.join(', ')}.`}
+            </p>
+          )}
+          {itemVar && <CkItemTable v={itemVar} onlyDiff={onlyDiff} />}
+          <div className="flex flex-wrap items-center gap-3">
             <h4 className="text-xs font-extrabold uppercase tracking-wide text-muted">Item level: components per piece</h4>
             <Button onClick={() => void loadItems()} disabled={busyC}>{busyC ? 'Costing…' : comps ? 'Refresh items' : 'Load items (live costing)'}</Button>
             {busyC && <Spinner className="h-4 w-4" />}
@@ -255,3 +315,48 @@ export default function FgOrdersDrawer({ target, onClose }: { target: FgTarget |
     </>
   );
 }
+
+/** CK13N item comparison table (period or one order): actual vs standard per piece, variance and variance %, with the actual quantity and value consumed. */
+function CkItemTable({ v, onlyDiff, small }: { v: ItemVariance; onlyDiff: boolean; small?: boolean }) {
+  const td = small ? 'px-1.5 py-1 text-right tabular-nums' : tdCls;
+  const tdl = small ? 'px-1.5 py-1 text-left' : 'px-2.5 py-1.5 text-left text-xs';
+  const th = small ? 'px-1.5 py-1 text-right' : thCls;
+  const sign = (x: Decimal) => (x.gt(0) ? '+' : '');
+  const rows = [...v.rows.filter((r) => !onlyDiff || r.status !== 'both' || (r.pct && r.pct.abs().gte(5)) || (r.qtyPct && r.qtyPct.abs().gte(5))), v.conv, v.total];
+  return (
+    <div className={cx('overflow-auto rounded-xl border border-line', !small && 'max-h-[50vh]')}>
+      <table className={cx('w-full border-collapse', small ? 'min-w-[1100px] text-2xs' : 'min-w-[1150px]')}>
+        <thead className="sticky top-0"><tr><th className={cx(th, '!text-left')}>Component</th><th className={cx(th, '!text-left')}>Group</th><th className={th}>CK13N qty / pc</th><th className={th}>Actual qty / pc</th><th className={th}>Qty var %</th><th className={th}>CK13N ₹ / pc</th><th className={th}>Actual ₹ / pc</th><th className={th}>Variance ₹ / pc</th><th className={th}>Variance %</th><th className={th}>Actual qty</th><th className={th}>Actual value ₹</th></tr></thead>
+        <tbody>
+          {rows.map((r, i) => {
+            const tone = !r.variance || r.variance.isZero() || (r.pct && r.pct.abs().lt(0.5)) ? '' : r.variance.gt(0) ? 'text-bad' : 'text-good';
+            const qtone = !r.qtyPct || r.qtyPct.abs().lt(0.5) ? '' : r.qtyPct.gt(0) ? 'text-bad' : 'text-good';
+            const isTot = r === v.total; const isConv = r === v.conv;
+            return (
+              <tr key={r.matnr || `x${i}`} className={cx('border-t border-line/60', isTot && 'bg-line/20 font-extrabold', isConv && 'bg-line/10')}>
+                <td className={tdl}>{r.matnr && <span className="font-bold">{r.matnr} </span>}<span className={r.matnr ? 'text-muted' : ''} title={r.text}>{r.text}</span>
+                  {r.status === 'ck-only' && r.matnr && <span className="ml-1 rounded bg-warn/15 px-1 text-2xs text-warn">not consumed</span>}
+                  {r.status === 'actual-only' && <span className="ml-1 rounded bg-warn/15 px-1 text-2xs text-warn">not in CK13N</span>}
+                  {r.via && <span className="ml-1 text-2xs text-faint">via bulk {r.via}</span>}</td>
+                <td className={tdl}>{r.cat}</td>
+                <td className={td}>{r.stdQty ? `${money(r.stdQty, 5)} ${r.stdUom}` : '-'}</td><td className={td}>{r.actQty ? `${money(r.actQty, 5)} ${r.actUom}` : '-'}</td>
+                <td className={cx(td, qtone)}>{r.qtyPct ? `${sign(r.qtyPct)}${r.qtyPct.toFixed(1)} %` : '-'}</td>
+                <td className={td}>{r.stdVal ? money(r.stdVal, 4) : '-'}</td><td className={td}>{r.actVal ? money(r.actVal, 4) : '-'}</td>
+                <td className={cx(td, 'font-bold', tone)}>{r.variance ? `${sign(r.variance)}${money(r.variance, 4)}` : '-'}</td>
+                <td className={cx(td, tone)}>{r.pct ? `${sign(r.pct)}${r.pct.toFixed(1)} %` : '-'}</td>
+                <td className={td}>{r.actTotQty ? money(r.actTotQty, 2) : ''}</td><td className={td}>{r.actTotVal ? money(r.actTotVal, 2) : ''}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** One order's items in the shape the comparison takes. */
+const toComps = (list: OrderItem[]): Record<Cat, CdrillComp[]> => {
+  const out: Record<Cat, CdrillComp[]> = { R: [], P: [], F: [], O: [] };
+  for (const i of list) out[i.cat].push({ matnr: i.matnr, maktx: i.maktx, mtart: i.mtart, matkl: '', cat: i.cat, meins: i.meins, qty: i.qty, val: i.val, qtyPc: i.qtyPc, costPc: i.costPc, share: null });
+  return out;
+};

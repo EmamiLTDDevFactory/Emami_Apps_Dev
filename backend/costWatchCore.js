@@ -75,7 +75,8 @@ function costLineFilter(skus, plant, qty, s = {}) {
 const queryString = (params) => Object.entries(params).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
 
 /* ---------- snapshots ---------- */
-const isLeaf = (r) => !r.Haschild || String(r.Haschild).trim() === '';
+// a row whose own cost counts: a leaf, or a subcontracted assembly (MARC-SOBSL 30: the subcontractor's charge on top of its components), same as the app's isLeafRow
+const isLeaf = (r) => !r.Haschild || String(r.Haschild).trim() === '' || String(r.Sobsl ?? '').trim() === '30';
 const wavg = (a, aq, b, bq) => (aq + bq === 0n ? b : Dec.div(Dec.mul(a, aq) + Dec.mul(b, bq), aq + bq));
 
 function paramsHash(p) {

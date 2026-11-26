@@ -41,9 +41,12 @@ const tx = (v: string | null | undefined) => String(v ?? '').trim();
 const n = (v: Decimal | null, dp = 6): number | null => (v ? Number(v.toFixed(dp)) : null);
 const day = (v: string | null | undefined) => String(v ?? '').slice(0, 10);
 
-/** The condition value is taken as ABSOLUTE; only the Shkzg indicator gives the sign: H (credit) takes the amount off, S (debit, or no Shkzg) adds it. So the
- * netting is the same whatever sign SAP puts on the value. */
-export const signedAmount = (x: Decimal, shkzg: string | null | undefined): Decimal => (tx(shkzg).toUpperCase() === 'H' ? x.abs().neg() : x.abs());
+/** Sign of a posting from its side and Shkzg (user rule, 26.11.2026): on the STANDARD side a debit (Dr, S) is the minus, on the ACTUAL side a credit (Cr, H) is
+ * the minus; the other indicator (and no Shkzg) is plus. This matches SAP: the goods receipt credits the freight clearing (Standard = H) and the invoice debits it
+ * (Actual = S), so a reversal or credit note comes out negative. */
+export const isMinus = (side: Side, shkzg: string | null | undefined): boolean => tx(shkzg).toUpperCase() === (side === 'standard' ? 'S' : 'H');
+/** The value is taken as ABSOLUTE; only the side and the Shkzg give the sign (isMinus), whatever sign SAP puts on the value. Quantity and amount alike. */
+export const signedAmount = (x: Decimal, shkzg: string | null | undefined, side: Side = 'actual'): Decimal => (isMinus(side, shkzg) ? x.abs().neg() : x.abs());
 /** A summed PO line (groupPoLines, IsNet) already holds the net amount and passes through unchanged. A row that is NOT summed is read as an absolute value: on a
  * live answer (NWP) the Standard side comes as its own row with Shkzg H, so the indicator only gives a sign when postings of the same side are netted. */
 const netAmount = (x: Decimal, r: Pick<FreightRow, 'Shkzg' | 'IsNet'>): Decimal => (r.IsNet ? x : x.abs());
@@ -184,6 +187,7 @@ export function poLines(components: Component[], freight: FreightRow[], range: D
     const sa = sq.gt(0) || r.IsNet ? netAmount(D(r.Stddelvcostamount), r).times(fx) : ZERO;
     const actual = aq.gt(0) ? aa.div(aq) : null;
     const standard = sq.gt(0) ? sa.div(sq) : null;
+    // a summed PO line keeps its signed net quantity (reversals minus); an unsummed row counts a positive quantity only
     const variance = actual && standard ? actual.minus(standard) : null;
     out.push({
       key: `${k}|${r.Purchasedocument}|${r.Purchaseline}|${r.Conditiontype}|${i}`, plant: c.plant, material: c.material, text: c.text, mtart: c.mtart,
@@ -191,7 +195,7 @@ export function poLines(components: Component[], freight: FreightRow[], range: D
       vendor: tx(r.Lifnr), vendorName: tx(r.Name1), gstPartner: tx(r.GstPart), placeOfSupply: tx(r.PlcSup), transportMode: tx(r.Ztmode), purchOrg: tx(r.Ekorg), shkzg: tx(r.Shkzg).toUpperCase(),
       accDoc: tx(r.Belnr), reference: tx(r.Xblnr), companyCode: tx(r.Bukrs), fgMaterial: tx(r.FgMatnr),
       unit: r.Baseunit || r.Matuom || '', src: String(r.UsedSrc ?? '').trim().toUpperCase(),
-      actualQty: aq.gt(0) ? aq : ZERO, actualAmount: aa, standardQty: sq.gt(0) ? sq : ZERO, standardAmount: sa,
+      actualQty: r.IsNet || aq.gt(0) ? aq : ZERO, actualAmount: aa, standardQty: r.IsNet || sq.gt(0) ? sq : ZERO, standardAmount: sa,
       actual, standard, variance, variancePct: variance && standard && !standard.isZero() ? variance.div(standard).times(100) : null,
       amountVariance: aq.gt(0) && sq.gt(0) ? aa.minus(sa) : null, amountVariancePct: aq.gt(0) && sq.gt(0) && !sa.isZero() ? aa.minus(sa).div(sa).times(100) : null,
     });
@@ -288,16 +292,16 @@ export function sideOf(r: Pick<FreightRow, 'Vgabe' | 'Actualdelvquantity'> & Par
   return D(r.Actualdelvquantity).gt(0) || !D(r.Actualdelvcostamount ?? 0).isZero() ? 'actual' : 'standard';
 }
 
-/** Quantity and INR amount of one posting on its side. The amount is NET of debit and credit (a credit, Shkzg H, is negative). Same rule as poLines: an amount
- * counts together with a positive quantity; a subsequent debit / credit (Vgabe 3) has no quantity of its own and its amount counts all the same. */
+/** Quantity and INR amount of one posting on its side, both signed by isMinus: Standard Dr (S) and Actual Cr (H) are negative. A subsequent debit / credit
+ * (Vgabe 3) has no quantity of its own and its amount counts all the same. */
 export function postingFigures(r: FreightRow): { side: Side; qty: Decimal; amount: Decimal } {
   const side = sideOf(r);
   const own = (s: Side) => ({ q: D(s === 'actual' ? r.Actualdelvquantity : r.Stddelvquantity), a: D(s === 'actual' ? r.Actualdelvcostamount : r.Stddelvcostamount) });
   let { q, a } = own(side);
   // A posting row (Vgabe given) whose own side is empty but the other side holds the value (the backend filled the "wrong" pair): use that pair.
   if (tx(r.Vgabe) && q.isZero() && a.isZero()) { const o = own(side === 'actual' ? 'standard' : 'actual'); if (!o.q.isZero() || !o.a.isZero()) { q = o.q; a = o.a; } }
-  // A posting's value always counts (a reversal or a subsequent debit / credit may carry no quantity of its own); its quantity counts when positive.
-  return { side, qty: q.gt(0) ? q : ZERO, amount: signedAmount(a, r.Shkzg).times(fxOf(r)) };
+  // A posting's value always counts (a reversal or a subsequent debit / credit may carry no quantity of its own); quantity and value carry the same sign.
+  return { side, qty: signedAmount(q, r.Shkzg, side), amount: signedAmount(a, r.Shkzg, side).times(fxOf(r)) };
 }
 
 /** The rows are postings (one per posting, with Vgabe 1 / 2 / 3 and / or Shkzg), not one row per PO line. NWP sends Shkzg but leaves Vgabe empty, so either one counts. */
@@ -317,7 +321,7 @@ export function applyBasis(rows: FreightRow[], opt: { basis: Basis; latestOnly: 
 const postingStamp = (r: Pick<FreightRow, 'Cpudt' | 'Belnr'>) => `${day(r.Cpudt)}|${tx(r.Belnr)}`;
 
 /** One row per PO line (plant + material + purchase document + line + condition type): the Standard side (Vgabe 1) and the Actual side (Vgabe 2, 3) summed
- * into the SAME row, each NET of debit and credit on the absolute condition value (S adds, H takes off). Descriptive fields come from the newest posting, PO date
+ * into the SAME row, each the net of its signed postings (Standard: Dr S minus, Actual: Cr H minus; quantity and value). Descriptive fields come from the newest posting, PO date
  * unchanged. A line with a standard but no invoice yet stays (no actual figure). The result is marked IsNet and its amounts are already INR (FxInr = 1), so poLines /
  * analyseFreight give the same figures as for a one-row-per-line answer. */
 export function groupPoLines(rows: FreightRow[]): FreightRow[] {
@@ -338,8 +342,8 @@ export function groupPoLines(rows: FreightRow[]): FreightRow[] {
   const out: FreightRow[] = [];
   for (const g of groups.values()) {
     out.push({
-      // each side is the ABSOLUTE of its net (S minus H): a side whose postings are mostly credits still reads as a positive condition value
-      ...g.newest, IsNet: true, Actualdelvquantity: g.aq.toFixed(), Actualdelvcostamount: g.aa.abs().toFixed(), Stddelvquantity: g.sq.toFixed(), Stddelvcostamount: g.sa.abs().toFixed(),
+      // each side is its signed net (postingFigures): a side whose reversals outweigh its postings reads negative
+      ...g.newest, IsNet: true, Actualdelvquantity: g.aq.toFixed(), Actualdelvcostamount: g.aa.toFixed(), Stddelvquantity: g.sq.toFixed(), Stddelvcostamount: g.sa.toFixed(),
       FxInr: '1', IsMaxDate: g.max, IsLatestPo: g.latest, Shkzg: [...g.shkzg].sort().join('/'),
     });
   }

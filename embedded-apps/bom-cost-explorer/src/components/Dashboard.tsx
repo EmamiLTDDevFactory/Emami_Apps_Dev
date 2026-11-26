@@ -43,7 +43,7 @@ export default function Dashboard({
       </div>
 
       <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
-        <Stat label={`Total ${groupCurr}`} sim={sim} value={fmtNum(k.total, 2)} sub={`${k.leafCount.toLocaleString('en-IN')} leaf lines`} title="Sum of TotCostInr over leaf rows (HasChild blank)" />
+        <Stat label={`Total ${groupCurr}`} sim={sim} value={fmtNum(k.total, 2)} sub={`${k.leafCount.toLocaleString('en-IN')} leaf lines`} title="Sum of TotCostInr over leaf rows (HasChild blank) and subcontracted assemblies (Sobsl 30)" />
         <Stat label="Freight share" sim={sim} value={fmtPct(k.freightShare)} sub={`${fmtNum(k.freight, 2)} ${groupCurr}`} />
         <Stat label="Rows without rate" value={k.noRate} tone={k.noRate ? 'bad' : 'good'} sub={k.noRate ? 'costed with freight only' : 'every line has a rate'} />
         <Stat label="From donor plant" value={k.donor} tone={k.donor ? 'warn' : undefined} sub="rate borrowed from another plant" />

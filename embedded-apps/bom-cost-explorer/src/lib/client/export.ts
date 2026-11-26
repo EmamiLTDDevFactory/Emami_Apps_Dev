@@ -6,6 +6,7 @@ import { COST_LINE, type CostLine, type RateOption } from '../sap/fields';
 import { currencyOf, type ColDef } from '../views';
 import type { SimRow, SimSettings } from '../cost/simulate';
 import { isIdentity } from '../cost/simulate';
+import { isLeafRow } from '../cost/tree';
 import type { Pivot } from '../cost/pivot';
 import type { TableTotals } from '../cost/table';
 import type { SapMessage } from '../sap/messages';
@@ -142,7 +143,7 @@ export function costLineSheets({ query: _q, rows, sim, settings }: { query: Cost
   });
   cols.splice(keys.indexOf('Idnrk') + 1, 0, { header: 'Structure', width: 40, get: (i) => `${'  '.repeat(Math.max(0, rows[i].Level - 1))}${rows[i].Idnrk}` });
   cols.push({ header: 'RateOptions (count)', width: 10, get: (i) => rows[i].RateOptions?.length ?? 0 });
-  cols.push({ header: 'Freight added', width: 12, get: (i) => (!rows[i].HasChild?.trim() ? ((rows[i] as FreightTagged).FrtIncluded ? 'No (included in rate)' : 'Yes') : '') });
+  cols.push({ header: 'Freight added', width: 12, get: (i) => (isLeafRow(rows[i]) ? ((rows[i] as FreightTagged).FrtIncluded ? 'No (included in rate)' : 'Yes') : '') });
   if (simOn) {
     cols.push(
       { header: 'SIM Source', width: 12, get: (i) => sim[i].source },
@@ -153,7 +154,7 @@ export function costLineSheets({ query: _q, rows, sim, settings }: { query: Cost
       { header: 'SIM Overridden', width: 10, get: (i) => (sim[i].overridden ? 'X' : '') },
     );
   }
-  const extra: [string, string][] = [['Rows', String(rows.length)], ['Totals', 'Sum TotCostInr over rows with HasChild blank (leaf rows)']];
+  const extra: [string, string][] = [['Rows', String(rows.length)], ['Totals', 'Sum TotCostInr over leaf rows (HasChild blank) and subcontracted assemblies (Sobsl 30, own cost on top of their components)']];
   if (simOn) extra.push(['Simulation (client-side, not SAP)', JSON.stringify(settings)]);
   // Rate options as their own sheet (one row per option).
   const flat: { r: CostLine; o: RateOption }[] = [];
