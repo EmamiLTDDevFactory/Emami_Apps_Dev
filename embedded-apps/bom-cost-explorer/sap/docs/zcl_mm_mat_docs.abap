@@ -1,6 +1,6 @@
 CLASS zcl_mm_mat_docs DEFINITION PUBLIC FINAL CREATE PUBLIC.
   PUBLIC SECTION.
-    "! Read-only: the SPECIFICATION (title SPEC_...) and ARTWORK (title ARTWORK_...) PDFs attached (GOS, BUS1001006) to RM / PM / FG materials (ROH, VERP, PKGN, FERT).
+    "! Read-only: the SPECIFICATION (title SPEC / SPEC_ / SPEC- / SPECIFICATION...) and ARTWORK (title ARTWORK / ARTWORK_ / ARTWORK-...) PDFs attached (GOS, BUS1001006) to RM / PM / FG materials (ROH, VERP, PKGN, FERT).
     "! Rows (ZMATDOC_S_ROW): L = latest document per material and type (VERSIONS = how many), V = every version, newest first,
     "! C = one base64 chunk (CHUNK of CHUNKS) of a document's content. A document is only read for a material it is attached to.
     TYPES tt_row TYPE STANDARD TABLE OF zmatdoc_s_row WITH DEFAULT KEY.
@@ -11,6 +11,9 @@ CLASS zcl_mm_mat_docs DEFINITION PUBLIC FINAL CREATE PUBLIC.
     METHODS latest   RETURNING VALUE(rt_rows) TYPE tt_row.
     METHODS versions RETURNING VALUE(rt_rows) TYPE tt_row.
     METHODS chunk    IMPORTING iv_doc_id TYPE csequence iv_chunk TYPE i RETURNING VALUE(rt_rows) TYPE tt_row.
+    "! SPEC / ART from an attachment title, '' when it is neither: the word SPEC / SPECIFICATION / ARTWORK at the start, alone or followed by a space,
+    "! '_' or '-', any case ('SPEC LBL FOR ...', 'ARTWORK', 'SPEC_123', 'Artwork-v2'); 'SPECIAL ...' or 'ARTWORKS' are not.
+    CLASS-METHODS title_type IMPORTING iv_title TYPE csequence RETURNING VALUE(rv) TYPE char4.
 
   PRIVATE SECTION.
     DATA: mr_matnr TYPE ty_r_matnr,
@@ -32,6 +35,13 @@ CLASS zcl_mm_mat_docs IMPLEMENTATION.
     mv_type = to_upper( iv_type ).
   ENDMETHOD.
 
+  METHOD title_type.
+    DATA(lv_t) = to_upper( condense( CONV string( iv_title ) ) ).
+    rv = COND #(
+      WHEN lv_t = 'SPEC' OR lv_t CP 'SPEC *' OR lv_t CP 'SPEC_*' OR lv_t CP 'SPEC-*' OR lv_t CP 'SPECIFICATION*' THEN 'SPEC'
+      WHEN lv_t = 'ARTWORK' OR lv_t CP 'ARTWORK *' OR lv_t CP 'ARTWORK_*' OR lv_t CP 'ARTWORK-*' THEN 'ART' ).
+  ENDMETHOD.
+
   METHOD next_id.
     mv_id = mv_id + 1.
     rv = |{ mv_id WIDTH = 12 ALIGN = RIGHT PAD = '0' }|.
@@ -49,7 +59,14 @@ CLASS zcl_mm_mat_docs IMPLEMENTATION.
       WHERE m~matnr IN @mr_matnr AND m~mtart IN ('ROH','VERP','PKGN','FERT') INTO TABLE @DATA(lt_m).
     IF lt_m IS INITIAL. RETURN. ENDIF.
     SORT lt_m BY matnr.
+    " the material key of a GOS link is either the material number (18) or the same number zero-padded to the full 70 characters (some uploads): read both
     lt_k = VALUE #( FOR m IN lt_m ( instid = m-matnr ) ).
+    LOOP AT lt_m INTO DATA(ls_mk).
+      DATA(lv_mk) = condense( CONV string( ls_mk-matnr ) ).
+      IF strlen( lv_mk ) < 70.
+        APPEND VALUE #( instid = |{ repeat( val = `0` occ = 70 - strlen( lv_mk ) ) }{ lv_mk }| ) TO lt_k.
+      ENDIF.
+    ENDLOOP.
     " ---- 2. their GOS attachments
     SELECT instid_a, instid_b, utctime FROM srgbtbrel FOR ALL ENTRIES IN @lt_k
       WHERE instid_a = @lt_k-instid AND typeid_a = 'BUS1001006' AND catid_a = 'BO' AND reltype = 'ATTA'
@@ -61,15 +78,15 @@ CLASS zcl_mm_mat_docs IMPLEMENTATION.
     SELECT objtp, objyr, objno, objdes, file_ext, objlen, crdat, cronam FROM sood FOR ALL ENTRIES IN @lt_o
       WHERE objtp = @lt_o-objtp AND objyr = @lt_o-objyr AND objno = @lt_o-objno INTO TABLE @DATA(lt_sood).
     SORT lt_sood BY objtp objyr objno.
-    " ---- 3. keep the SPEC_ / ARTWORK_ PDFs
+    " ---- 3. keep the SPEC / ARTWORK PDFs
     LOOP AT lt_rel INTO ls_rel.
       READ TABLE lt_sood INTO DATA(ls_s) WITH KEY objtp = ls_rel-instid_b+17(3) objyr = ls_rel-instid_b+20(2) objno = ls_rel-instid_b+22(12) BINARY SEARCH.
       IF sy-subrc <> 0. CONTINUE. ENDIF.
-      DATA(lv_t) = to_upper( condense( CONV string( ls_s-objdes ) ) ).
-      DATA(lv_type) = COND char4( WHEN lv_t CP 'SPEC_*' THEN 'SPEC' WHEN lv_t CP 'ARTWORK_*' THEN 'ART' ).
+      DATA(lv_type) = title_type( ls_s-objdes ).
       IF lv_type IS INITIAL OR to_upper( condense( CONV string( ls_s-file_ext ) ) ) <> 'PDF'. CONTINUE. ENDIF.
       IF mv_type IS NOT INITIAL AND mv_type <> lv_type. CONTINUE. ENDIF.
-      READ TABLE lt_m INTO DATA(ls_m) WITH KEY matnr = ls_rel-instid_a(18) BINARY SEARCH.
+      DATA(lv_key) = COND matnr( WHEN ls_rel-instid_a+18 IS INITIAL THEN ls_rel-instid_a(18) ELSE ls_rel-instid_a+52(18) ).
+      READ TABLE lt_m INTO DATA(ls_m) WITH KEY matnr = lv_key BINARY SEARCH.
       IF sy-subrc <> 0. CONTINUE. ENDIF.
       CLEAR ls_r.
       ls_r-matnr = ls_m-matnr. ls_r-maktx = ls_m-maktx. ls_r-mtart = ls_m-mtart. ls_r-doc_type = lv_type.
@@ -105,7 +122,7 @@ CLASS zcl_mm_mat_docs IMPLEMENTATION.
     DATA: ls_doc TYPE sofolenti1,
           lt_hex TYPE STANDARD TABLE OF solix,
           ls_r   TYPE zmatdoc_s_row.
-    " the document must be a SPEC_ / ARTWORK_ PDF of one of the given materials
+    " the document must be a SPEC / ARTWORK PDF of one of the given materials
     DATA(lt_docs) = docs( ).
     READ TABLE lt_docs INTO ls_r WITH KEY doc_id = iv_doc_id.
     IF sy-subrc <> 0.
