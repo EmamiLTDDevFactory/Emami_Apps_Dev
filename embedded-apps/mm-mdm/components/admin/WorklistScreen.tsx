@@ -24,7 +24,7 @@ function exportCsv(items: UwlItem[]) {
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 
-/** Workflow visibility: my open work items, and (admins) every open work item of the MDM workflows. Live from SAP, read only. */
+/** Work Inbox: my open work items, and (admins) every open work item of the MDM workflows. Live from SAP, read only. */
 export default function WorklistScreen() {
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [tab, setTab] = useState<'my' | 'all'>('my');
@@ -81,7 +81,7 @@ export default function WorklistScreen() {
     <>
       <section className="card">
         <div className="card-bar">
-          <div className="block-head"><span className="block-icon"><IconInbox size={16} /></span><h2>Workflow visibility</h2></div>
+          <div className="block-head"><span className="block-icon"><IconInbox size={16} /></span><h2>Work Inbox</h2></div>
           <div className="wl-actions">
             {page && page.items.length > 0 && <button type="button" className="btn btn-ghost btn-sm" onClick={() => exportCsv(page.items)} title="Exports the rows of this page"><IconFile size={14} /> Export page (CSV)</button>}
             <button type="button" className="btn btn-ghost btn-sm" onClick={load}><IconRefresh size={14} /> Refresh</button>
