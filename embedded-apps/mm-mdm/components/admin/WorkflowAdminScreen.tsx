@@ -81,8 +81,8 @@ export default function WorkflowAdminScreen() {
 
       {top === 'groups' && (
         <div className="wf-board">
-          <section className="card wf-list wf-pane" aria-label="General details">
-            <div className="wf-pane-bar"><h2>General Details</h2><span className="muted">{list ? `${list.length} found` : ''}</span></div>
+          <details className="card wf-list wf-pane wf-fold" aria-label="General details" open>
+            <summary className="wf-pane-bar"><h2>General Details</h2><span className="muted">{list ? `${list.length} found` : ''}</span></summary>
             <MessageBox error={err} />
             {!appId && <div className="empty"><p>Choose an application to see its combinations.</p></div>}
             {busy && <LoadingState text="Reading the combinations from SAP…" />}
@@ -109,7 +109,7 @@ export default function WorkflowAdminScreen() {
                 <p className="muted wf-note">{list.length} combination(s){truncated ? ' (list cut at 3000, narrow the search)' : ''}. Hover an issue badge for details.</p>
               </div>
             )}
-          </section>
+          </details>
           <div className="wf-edit">
             {target ? (
               <GroupEditor key={target.kind === 'new' ? `new-${target.appId}` : keyText(target.key)} target={target} cfg={cfg} meta={meta} onDirty={setDirty}

@@ -8,7 +8,7 @@ import { IconCopy, IconPlus, IconRefresh, IconSave, IconTrash, IconUndo } from '
 import { ErrorState, LoadingState } from '../../ui';
 import { AgentTable, LevelTable } from './LevelGrid';
 import LogPanel from './LogPanel';
-import PreviewPanel, { FlowStrip } from './PreviewPanel';
+import PreviewPanel from './PreviewPanel';
 import ViewsPanel from './ViewsPanel';
 import { ConfirmDialog, MessageBox, OkBox, VhInput } from './parts';
 
@@ -190,13 +190,12 @@ export default function GroupEditor({ target, cfg, meta, onDirty, onSaved, onDel
         <AgentTable base={baseGroup} level={group.levels.find((l) => l.lvl === scope)} appId={appId} levelTexts={meta.levelTexts} departments={meta.departments} cfg={cfg} flagged={flagged}
           onChange={(nl) => setLevel(group.levels.findIndex((l) => l.lvl === scope), nl)} />
       </div>
-      <section className="card wf-pane wf-right" aria-label="View visibility">
-        <div className="wf-pane-bar"><h2>View Visibility<span className="wf-pane-sub"> · {scope === 'L0' ? 'Initiator L0' : scope}</span></h2></div>
+      <details className="card wf-pane wf-right wf-fold" aria-label="View visibility" open>
+        <summary className="wf-pane-bar"><h2>View Visibility<span className="wf-pane-sub"> · {scope === 'L0' ? 'Initiator L0' : scope}</span></h2></summary>
         <div className="wf-pane-body"><ViewsPanel base={baseGroup} group={group} cfg={cfg} onChange={update} scope={scope} setScope={setScope} /></div>
-      </section>
+      </details>
 
       <div className="wf-more">
-        <FlowStrip group={group} />
         <div className="wf-more-tabs" role="tablist" aria-label="More">
           <button type="button" role="tab" aria-selected={tab === 'routing'} className={`btn btn-sm ${tab === 'routing' ? 'btn-primary' : ''}`} onClick={() => setTab(tab === 'routing' ? '' : 'routing')}>Routing preview</button>
           {saved && <button type="button" role="tab" aria-selected={tab === 'log'} className={`btn btn-sm ${tab === 'log' ? 'btn-primary' : ''}`} onClick={() => setTab(tab === 'log' ? '' : 'log')}>Change History</button>}
