@@ -1998,3 +1998,10 @@ h1 { font-size: 22px; } h2 { font-size: 16px; } h3 { font-size: 14px; margin-bot
 .wf-sapid { display: block; font-family: var(--mono); font-size: 11px; }
 .nav-home { padding: 8px 10px 0; flex: none; position: relative; }
 .nav-home .nav-item { background: rgba(255, 255, 255, 0.08); }
+
+/* ---- round 4: General Details shows every column in full (pane sizes to its table) ---- */
+.wf-board { grid-template-columns: fit-content(52vw) minmax(0, 1.5fr) minmax(250px, 0.75fr); }
+@media (max-width: 1280px) { .wf-board { grid-template-columns: fit-content(58vw) minmax(0, 1fr); } }
+@media (max-width: 900px) { .wf-board { grid-template-columns: minmax(0, 1fr); } }
+.wf-list-grid th, .wf-list-grid td { white-space: nowrap; padding-left: 8px; padding-right: 8px; }
+.wf-list-scroll { overflow-x: auto; }
