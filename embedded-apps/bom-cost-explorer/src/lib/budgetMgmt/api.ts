@@ -63,7 +63,7 @@ const srcDtl = (r: Record<string, unknown>): BudRateSrcDtlRow => ({
 const basePrc = (r: Record<string, unknown>): BasePrcRow => ({
   Rowid: num(r.Rowid), Matnr: str(r.Matnr), Ebeln: str(r.Ebeln), Ebelp: str(r.Ebelp), Podate: dateText(r.Podate), Vendor: str(r.Vendor), Plant: str(r.Plant), Matdesc: str(r.Matdesc), Baseunit: str(r.Baseunit),
   Qtybase: num(r.Qtybase), Doccurr: str(r.Doccurr), Valuedoc: num(r.Valuedoc), Localcurr: str(r.Localcurr), Valuelocal: num(r.Valuelocal), Valuegroup: num(r.Valuegroup),
-  Wtdavglocal: num(r.Wtdavglocal), Wtdavggroup: num(r.Wtdavggroup), Rowtype: str(r.Rowtype),
+  Wtdavglocal: num(r.Wtdavglocal), Wtdavggroup: num(r.Wtdavggroup), Rowtype: str(r.Rowtype), Vendname: str(r.Vendname).trim(),
 });
 export const srcDtlFilter = (matnr: string, bukrs: string, land1: string) => [`Matnr eq ${odataString(padMatnr(matnr))}`, `Bukrs eq ${odataString(bukrs || DEFAULT_BUKRS)}`, `Land1 eq ${odataString(land1)}`].join(' and ');
 

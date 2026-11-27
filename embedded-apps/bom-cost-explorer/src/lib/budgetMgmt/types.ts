@@ -56,6 +56,8 @@ export const LAST_PRICE_MODES: { v: LastPriceMode; label: string }[] = [
 export interface BasePrcRow {
   Rowid: number; Matnr: string; Ebeln: string; Ebelp: string; Podate: string; Vendor: string; Plant: string; Matdesc: string; Baseunit: string; Qtybase: number;
   Doccurr: string; Valuedoc: number; Localcurr: string; Valuelocal: number; Valuegroup: number; Wtdavglocal: number; Wtdavggroup: number; Rowtype: string;
+  /** vendor name (LFA1-NAME1); '' / absent where SAP does not send it yet */
+  Vendname?: string;
 }
 
 /** FrtDtlSet (filters Matnr + Land1 + HistFrom + HistTo, Bukrs not needed): one row per freight condition type of a material in a country over the history window

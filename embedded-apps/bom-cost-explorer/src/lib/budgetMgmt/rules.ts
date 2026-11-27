@@ -293,7 +293,7 @@ export interface BasePrcBreakup {
   totalQty: number; totalValue: number; avg: number | null;
   /** SAP's own summary row (type S), when it sent one. */
   sapAvg: number | null; sapQty: number | null; sapValue: number | null; agrees: boolean;
-  byVendor: { vendor: string; qty: number; value: number; avg: number | null; qtyShare: number }[];
+  byVendor: { vendor: string; qty: number; value: number; avg: number | null; qtyShare: number; /** LFA1 name ('' when SAP sent none) */ vendorName?: string }[];
   byMonth: { month: string; qty: number; value: number; avg: number | null }[];
   currency: string; uom: string;
 }
@@ -311,7 +311,9 @@ export function basePrcBreakup(rows: BasePrcRow[]): BasePrcBreakup {
     for (const r of det) { const k = key(r); const g = m.get(k) ?? { q: new Decimal(0), v: new Decimal(0) }; g.q = g.q.plus(String(r.Qtybase)); g.v = g.v.plus(String(r.Valuelocal)); m.set(k, g); }
     return m;
   };
-  const byVendor = Array.from(group((r) => r.Vendor || '—'), ([vendor, g]) => ({ vendor, qty: g.q.toNumber(), value: g.v.toNumber(), avg: rate(g.v, g.q), qtyShare: qty.isZero() ? 0 : g.q.div(qty).toNumber() })).sort((a, b) => b.value - a.value);
+  const names = new Map<string, string>();
+  for (const r of det) if (r.Vendname && !names.has(r.Vendor || '—')) names.set(r.Vendor || '—', r.Vendname);
+  const byVendor = Array.from(group((r) => r.Vendor || '—'), ([vendor, g]) => ({ vendor, qty: g.q.toNumber(), value: g.v.toNumber(), avg: rate(g.v, g.q), qtyShare: qty.isZero() ? 0 : g.q.div(qty).toNumber(), ...(names.has(vendor) ? { vendorName: names.get(vendor) } : {}) })).sort((a, b) => b.value - a.value);
   const byMonth = Array.from(group((r) => (/^\d{8}$/.test(r.Podate) ? `${r.Podate.slice(0, 4)}-${r.Podate.slice(4, 6)}` : '—')), ([month, g]) => ({ month, qty: g.q.toNumber(), value: g.v.toNumber(), avg: rate(g.v, g.q) })).sort((a, b) => a.month.localeCompare(b.month));
   const avg = rate(val, qty);
   const sapAvg = sum ? sum.Wtdavglocal : null;
@@ -338,3 +340,39 @@ export function frtBreakup(rows: FrtDtlRow[], finalBasic: number | null = null):
 /** Perfume = material type ROH with material group 106; every other material is Raw Material. */
 export const isPerfume = (mtart: string, matkl: string): boolean => mtart.trim().toUpperCase() === 'ROH' && matkl.trim().replace(/^0+(?=\d)/, '') === '106';
 export const segmentOf = (mtart: string, matkl: string): Segment => (isPerfume(mtart, matkl) ? 'Perfume' : 'Raw Material');
+
+/* ---------- Avg base price breakup charts (27.11.2026: the old chart gave every PO line an equal bar, so a 1 KG line weighed as much as a 20,000 KG one
+   and the weighted average looked wrong) ---------- */
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+export interface BasePrcMonth { month: string; label: string; /** weighted average of the month (value / quantity); null when nothing was bought */ rate: number | null; qty: number; value: number; lines: number }
+/** One point per calendar month from the first to the last PO date (months without a purchase kept, empty), each the weighted average of its lines. */
+export function basePrcMonthly(b: Pick<BasePrcBreakup, 'lines'>): BasePrcMonth[] {
+  const m = new Map<string, { q: Decimal; v: Decimal; n: number }>();
+  for (const l of b.lines) {
+    if (!/^\d{8}$/.test(l.Podate)) continue;
+    const k = `${l.Podate.slice(0, 4)}-${l.Podate.slice(4, 6)}`;
+    const g = m.get(k) ?? { q: new Decimal(0), v: new Decimal(0), n: 0 };
+    g.q = g.q.plus(String(l.Qtybase)); g.v = g.v.plus(String(l.Valuelocal)); g.n++;
+    m.set(k, g);
+  }
+  const keys = [...m.keys()].sort();
+  if (!keys.length) return [];
+  const out: BasePrcMonth[] = [];
+  let [y, mo] = keys[0].split('-').map(Number);
+  const [ey, em] = keys[keys.length - 1].split('-').map(Number);
+  while (y < ey || (y === ey && mo <= em)) {
+    const k = `${y}-${String(mo).padStart(2, '0')}`;
+    const g = m.get(k);
+    out.push({ month: k, label: `${MONTHS[mo - 1]} ${String(y).slice(2)}`, rate: g && !g.q.isZero() ? g.v.div(g.q).toNumber() : null, qty: g ? g.q.toNumber() : 0, value: g ? g.v.toNumber() : 0, lines: g?.n ?? 0 });
+    mo++; if (mo > 12) { mo = 1; y++; }
+  }
+  return out;
+}
+export interface BasePrcPoint { t: number; date: string; rate: number; qty: number; value: number; po: string; vendor: string }
+/** One dot per PO line with a quantity: x = PO date, y = its rate, size = its quantity. */
+export function basePrcPoints(b: Pick<BasePrcBreakup, 'lines'>): BasePrcPoint[] {
+  return b.lines.filter((l) => l.rate !== null && /^\d{8}$/.test(l.Podate)).map((l) => ({
+    t: Date.UTC(Number(l.Podate.slice(0, 4)), Number(l.Podate.slice(4, 6)) - 1, Number(l.Podate.slice(6))), date: showDate(l.Podate), rate: l.rate as number, qty: l.Qtybase, value: l.Valuelocal,
+    po: `${l.Ebeln}/${l.Ebelp}`, vendor: l.Vendname ? `${l.Vendor} · ${l.Vendname}` : l.Vendor,
+  })).sort((a, c) => a.t - c.t);
+}

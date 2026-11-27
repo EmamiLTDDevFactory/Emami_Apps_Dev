@@ -242,6 +242,27 @@ describe('Avg base price breakup (BasePrcDetSet)', () => {
     expect(b.avg).toBe(45); expect(b.sapAvg).toBeNull(); expect(b.agrees).toBe(false);
     expect(basePrcBreakup([]).avg).toBeNull();
   });
+  it('charts weight by quantity: monthly weighted rate with empty months kept, and one dot per PO line', async () => {
+    const { basePrcBreakup, basePrcMonthly, basePrcPoints } = await import('@/lib/budgetMgmt/rules');
+    // 100000020 shape: a 1 KG line at 200 and a 20,000 KG line at 30 in July, nothing in August, 100 KG at 200 in September
+    const b = basePrcBreakup([r(1, 'A', '20250701', '70', 1, 200), r(2, 'B', '20250715', '81', 20000, 600000), r(3, 'C', '20250910', '70', 100, 20000)]);
+    const m = basePrcMonthly(b);
+    expect(m.map((x) => [x.label, x.rate === null ? null : Number(x.rate.toFixed(3)), x.qty, x.lines])).toEqual([['Jul 25', 30.008, 20001, 2], ['Aug 25', null, 0, 0], ['Sep 25', 200, 100, 1]]);
+    // the months add back up to the overall weighted average, which sits near the big line, not halfway between the bars
+    const v = m.reduce((t, x) => t + x.value, 0), q = m.reduce((t, x) => t + x.qty, 0);
+    expect(v / q).toBeCloseTo(b.avg as number, 9);
+    expect(b.avg as number).toBeLessThan(31);
+    const pts = basePrcPoints(b);
+    expect(pts.map((p) => [p.po, p.rate, p.qty])).toEqual([['A/00010', 200, 1], ['B/00010', 30, 20000], ['C/00010', 200, 100]]);
+    expect(basePrcMonthly(basePrcBreakup([]))).toEqual([]);
+  });
+  it('carries the vendor name (LFA1) next to the code', async () => {
+    const { basePrcBreakup } = await import('@/lib/budgetMgmt/rules');
+    const b = basePrcBreakup([{ ...r(1, 'A', '20260101', '70', 10, 1000), Vendname: 'Dell' }, { ...r(2, 'B', '20260102', '70', 10, 1000), Vendname: 'Dell' }, r(3, 'C', '20260103', '81', 5, 600)]);
+    expect(b.byVendor.map((v) => [v.vendor, v.vendorName])).toEqual([['70', 'Dell'], ['81', undefined]]);
+    expect(b.lines[0].Vendname).toBeUndefined();
+    expect(b.lines[2].Vendname).toBe('Dell');
+  });
 });
 
 describe('History material types and material selection', () => {

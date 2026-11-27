@@ -4,14 +4,14 @@
  * and charts: the rate of every PO line over time against the average, and where the quantity and value come from by vendor.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { Bar, BarChart, CartesianGrid, ComposedChart, Legend, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Bar, BarChart, CartesianGrid, ComposedChart, Legend, Line, ReferenceLine, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis, ZAxis } from 'recharts';
 import { X } from 'lucide-react';
-import { Button, Spinner, cx } from '../ui';
+import { Button, Segmented, Spinner, cx } from '../ui';
 import { useChartTheme } from '../charts';
 import { ErrorBox, NO_RECORDS, errorText, td, th } from './shared';
 import { fetchBasePrcDet } from '@/lib/budgetMgmt/api';
 import type { BasePrcRow } from '@/lib/budgetMgmt/types';
-import { basePrcBreakup, showDate, stripZeros } from '@/lib/budgetMgmt/rules';
+import { basePrcBreakup, basePrcMonthly, basePrcPoints, showDate, stripZeros } from '@/lib/budgetMgmt/rules';
 import { fmtNum } from '@/lib/format';
 import AiNarrateSlot from '../ai/AiNarrateSlot';
 import { rateOutlook } from '@/lib/ai/forecast';
@@ -35,10 +35,12 @@ export default function BasePriceBreakup({ matnr, bukrs, land1, title, onClose }
 
   const b = useMemo(() => (rows ? basePrcBreakup(rows) : null), [rows]);
   const cur = b?.currency || 'INR';
-  // Rate of each PO line over time (oldest first) against the weighted average.
-  const timeline = useMemo(() => (b ? [...b.lines].filter((l) => l.rate !== null).reverse().map((l) => ({ label: `${showDate(l.Podate)} · ${l.Ebeln}`, rate: l.rate as number, qty: l.Qtybase })) : []), [b]);
+  // Rate over time, weighted by quantity: per month (bars = quantity, line = the month's weighted average) or per PO line (dot size = quantity).
+  const monthly = useMemo(() => (b ? basePrcMonthly(b) : []), [b]);
+  const points = useMemo(() => (b ? basePrcPoints(b) : []), [b]);
+  const [rateView, setRateView] = useState<'month' | 'line'>('month');
   const outlook = useMemo(() => (b ? rateOutlook(b.byMonth) : null), [b]);
-  const vendors = useMemo(() => (b ? b.byVendor.map((v) => ({ name: v.vendor, value: v.value, qty: v.qty, avg: v.avg ?? 0 })) : []), [b]);
+  const vendors = useMemo(() => (b ? b.byVendor.map((v) => ({ name: v.vendorName ? `${v.vendor} · ${v.vendorName}` : v.vendor, value: v.value, qty: v.qty, avg: v.avg ?? 0 })) : []), [b]);
   const tip = { contentStyle: { background: t.surface, border: `1px solid ${t.grid}`, borderRadius: 6, fontSize: 12, color: t.text } };
 
   return (
@@ -76,19 +78,41 @@ export default function BasePriceBreakup({ matnr, bukrs, land1, title, onClose }
 
               <section aria-label="Charts" className="grid gap-4 lg:grid-cols-2">
                 <div className="rounded-xl border border-line p-3">
-                  <p className="mb-1 text-xs font-bold">Rate of each purchase-order line vs the average ({cur} / {b.uom || 'unit'})</p>
+                  <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs font-bold">Rate over time vs the weighted average ({cur} / {b.uom || 'unit'})</p>
+                    <Segmented size="sm" label="Rate chart" value={rateView} onChange={setRateView} options={[{ value: 'month', label: 'By month' }, { value: 'line', label: 'By PO line' }]} />
+                  </div>
                   <div className="h-64">
                     <ResponsiveContainer>
-                      <ComposedChart data={timeline} margin={{ top: 8, right: 12, bottom: 24, left: 0 }}>
-                        <CartesianGrid stroke={t.grid} vertical={false} />
-                        <XAxis dataKey="label" tick={{ fill: t.axis, fontSize: 10 }} interval="preserveStartEnd" angle={-30} textAnchor="end" height={50} />
-                        <YAxis tick={{ fill: t.axis, fontSize: 10 }} width={52} />
-                        <Tooltip {...tip} formatter={(v: unknown, n: unknown) => [fmtNum(String(v), 3), String(n)]} />
-                        <Bar dataKey="rate" name="Line rate" fill={t.series} radius={[3, 3, 0, 0]} isAnimationActive={false} />
-                        {b.avg !== null && <ReferenceLine y={b.avg} stroke={t.up} strokeDasharray="5 4" label={{ value: `avg ${fmtNum(b.avg, 3)}`, fill: t.up, fontSize: 11, position: 'insideTopRight' }} />}
-                      </ComposedChart>
+                      {rateView === 'month' ? (
+                        <ComposedChart data={monthly} margin={{ top: 8, right: 4, bottom: 4, left: 0 }}>
+                          <CartesianGrid stroke={t.grid} vertical={false} />
+                          <XAxis dataKey="label" tick={{ fill: t.axis, fontSize: 10 }} interval="preserveStartEnd" />
+                          <YAxis yAxisId="r" tick={{ fill: t.axis, fontSize: 10 }} width={52} domain={[0, 'auto']} />
+                          <YAxis yAxisId="q" orientation="right" tick={{ fill: t.axis, fontSize: 10 }} width={52} />
+                          <Tooltip {...tip} formatter={(v: unknown, n: unknown) => [v === null || v === undefined ? '—' : fmtNum(String(v), 3), String(n)]} labelFormatter={(l: unknown, p: readonly { payload?: { lines?: number; value?: number } }[]) => `${String(l)} · ${p?.[0]?.payload?.lines ?? 0} PO line(s) · value ${fmtNum(String(p?.[0]?.payload?.value ?? 0), 2)}`} />
+                          <Legend wrapperStyle={{ fontSize: 11 }} />
+                          <Bar yAxisId="q" dataKey="qty" name={`Quantity bought (${b.uom || 'UoM'})`} fill={t.series} fillOpacity={0.35} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+                          <Line yAxisId="r" type="monotone" dataKey="rate" name="Month's weighted rate" stroke={t.series} strokeWidth={2} dot={{ r: 3 }} connectNulls isAnimationActive={false} />
+                          {b.avg !== null && <ReferenceLine yAxisId="r" y={b.avg} stroke={t.up} strokeDasharray="5 4" ifOverflow="extendDomain" label={{ value: `avg ${fmtNum(b.avg, 3)}`, fill: t.up, fontSize: 11, position: 'insideTopLeft' }} />}
+                        </ComposedChart>
+                      ) : (
+                        <ScatterChart margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
+                          <CartesianGrid stroke={t.grid} />
+                          <XAxis type="number" dataKey="t" domain={['dataMin', 'dataMax']} scale="time" tick={{ fill: t.axis, fontSize: 10 }} tickFormatter={(v: number) => new Date(v).toLocaleDateString('en-IN', { month: 'short', year: '2-digit', timeZone: 'UTC' })} />
+                          <YAxis type="number" dataKey="rate" name="Rate" tick={{ fill: t.axis, fontSize: 10 }} width={52} domain={[0, 'auto']} />
+                          <ZAxis type="number" dataKey="qty" range={[25, 500]} name="Quantity" />
+                          <Tooltip {...tip} cursor={{ strokeDasharray: '3 3' }} content={({ payload }) => {
+                            const d = payload?.[0]?.payload as { date: string; rate: number; qty: number; value: number; po: string; vendor: string } | undefined;
+                            return d ? <div style={tip.contentStyle} className="px-2 py-1"><div className="font-bold">PO {d.po} · {d.date}</div><div>{d.vendor}</div><div>Rate {fmtNum(d.rate, 3)} · qty {fmtNum(d.qty, 3)} {b.uom} · value {fmtNum(d.value, 2)}</div></div> : null;
+                          }} />
+                          <Scatter data={points} fill={t.series} fillOpacity={0.6} isAnimationActive={false} />
+                          {b.avg !== null && <ReferenceLine y={b.avg} stroke={t.up} strokeDasharray="5 4" ifOverflow="extendDomain" label={{ value: `avg ${fmtNum(b.avg, 3)}`, fill: t.up, fontSize: 11, position: 'insideTopLeft' }} />}
+                        </ScatterChart>
+                      )}
                     </ResponsiveContainer>
                   </div>
+                  <p className="mt-1 text-2xs text-muted">{rateView === 'month' ? 'Each month\'s rate is its total value ÷ total quantity; months with more quantity pull the average more.' : 'One dot per PO line; the bigger the dot, the bigger the quantity — large purchases decide the weighted average.'}</p>
                 </div>
                 <div className="rounded-xl border border-line p-3">
                   <p className="mb-1 text-xs font-bold">Value and quantity by vendor</p>
@@ -107,7 +131,7 @@ export default function BasePriceBreakup({ matnr, bukrs, land1, title, onClose }
                     </ResponsiveContainer>
                   </div>
                   <table className="mt-2 w-full border-collapse"><thead><tr><th className={th}>Vendor</th><th className={cx(th, 'text-right')}>Quantity</th><th className={cx(th, 'text-right')}>Value</th><th className={cx(th, 'text-right')}>Avg rate</th><th className={cx(th, 'text-right')}>Qty share</th></tr></thead>
-                    <tbody>{b.byVendor.map((v) => <tr key={v.vendor} className="border-b border-line/60"><td className={td}>{v.vendor}</td><td className={cx(td, 'num text-right')}>{fmtNum(v.qty, 3)}</td><td className={cx(td, 'num text-right')}>{fmtNum(v.value, 2)}</td><td className={cx(td, 'num text-right')}>{v.avg === null ? '—' : fmtNum(v.avg, 3)}</td><td className={cx(td, 'num text-right')}>{fmtNum(v.qtyShare * 100, 1)}%</td></tr>)}</tbody></table>
+                    <tbody>{b.byVendor.map((v) => <tr key={v.vendor} className="border-b border-line/60"><td className={td}><span className="num">{v.vendor}</span>{v.vendorName && <span className="ml-1.5 text-muted">{v.vendorName}</span>}</td><td className={cx(td, 'num text-right')}>{fmtNum(v.qty, 3)}</td><td className={cx(td, 'num text-right')}>{fmtNum(v.value, 2)}</td><td className={cx(td, 'num text-right')}>{v.avg === null ? '—' : fmtNum(v.avg, 3)}</td><td className={cx(td, 'num text-right')}>{fmtNum(v.qtyShare * 100, 1)}%</td></tr>)}</tbody></table>
                 </div>
               </section>
 
@@ -119,7 +143,7 @@ export default function BasePriceBreakup({ matnr, bukrs, land1, title, onClose }
                     <tbody>
                       {b.lines.map((l) => (
                         <tr key={l.Rowid} className="border-b border-line/60">
-                          <td className={td}>{showDate(l.Podate)}</td><td className={cx(td, 'num')}>{l.Ebeln}</td><td className={cx(td, 'num')}>{l.Ebelp}</td><td className={td}>{l.Vendor}</td><td className={td}>{l.Plant}</td>
+                          <td className={td}>{showDate(l.Podate)}</td><td className={cx(td, 'num')}>{l.Ebeln}</td><td className={cx(td, 'num')}>{l.Ebelp}</td><td className={td}><span className="num">{l.Vendor}</span>{l.Vendname && <span className="ml-1.5 text-muted">{l.Vendname}</span>}</td><td className={td}>{l.Plant}</td>
                           <td className={cx(td, 'num text-right')}>{fmtNum(l.Qtybase, 3)}</td><td className={td}>{l.Baseunit}</td>
                           <td className={cx(td, 'num text-right', l.Valuelocal < 0 && 'text-bad')}>{fmtNum(l.Valuelocal, 2)}</td><td className={cx(td, 'num text-right')}>{l.rate === null ? '—' : fmtNum(l.rate, 3)}</td><td className={cx(td, 'num text-right')}>{fmtNum(l.qtyShare * 100, 2)}%</td>
                         </tr>
