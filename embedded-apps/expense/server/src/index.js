@@ -228,9 +228,13 @@ app.post('/api/expense/extract-document', async (req, res) => {
   // since Claude reads them natively at full resolution and GLM converts them to an image first.
   const processedData = isImage ? await upscaleIfSmall(data) : data;
 
-  if (EXTRACTION_PROVIDER === 'groq' && GROQ_API_KEY && isImage) {
+  if (EXTRACTION_PROVIDER === 'groq' && GROQ_API_KEY && (isImage || isPdf)) {
     try {
-      return res.json(await extractWithGroq(mimeType, processedData));
+      // Groq's vision endpoint doesn't take PDFs either - convert the same way GLM does (first page
+      // only, via pdftoppm) before sending it on, instead of letting PDFs skip straight to Claude.
+      const groqMime = isPdf ? 'image/png' : mimeType;
+      const groqData = isPdf ? await upscaleIfSmall(pdfToImageBase64(data)) : processedData;
+      return res.json(await extractWithGroq(groqMime, groqData));
     } catch (err) {
       console.error('[extract-document] Groq failed, falling back to Claude:', err.message);
     }
