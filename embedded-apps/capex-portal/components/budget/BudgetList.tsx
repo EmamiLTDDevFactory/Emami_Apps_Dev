@@ -10,7 +10,7 @@ import type { Budget, BudgetItem } from '@/lib/entities';
 import { num, fmtInr, inLakhs, fyDigits, fyLabel, statusLabel, statusTone, orDash } from '@/lib/format';
 import Combo from './Combo';
 import { useBudgetOptions } from './useOptions';
-import { guardRow } from './logic';
+import { guardRow, textOf } from './logic';
 
 const PAGE = 15;
 const STATUSES = [['DRAFT', 'Draft'], ['IN_APPROVAL', 'In Approval'], ['APPROVED', 'Approved'], ['REJECTED', 'Rejected']] as const;
@@ -30,7 +30,7 @@ export default function BudgetList() {
   const toast = useToast();
   const { fiscalYear } = useSession();
   const { rows, loading, error, reload } = useList<Budget>('BudgetSet');
-  const { plants, capexTypes } = useBudgetOptions();
+  const { plants, capexTypes, classifications, departments } = useBudgetOptions();
 
   const [search, setSearch] = useState('');
   // null = follow the signed-in person's current fiscal year; '' = All years (log #71)
@@ -62,8 +62,9 @@ export default function BudgetList() {
 
   async function exportXlsx() {
     const XLSX = await import('xlsx');
-    const head = ['Budget ID', 'Fiscal Year', 'Title', 'Plant', 'Category', 'Capex Type', 'Approved', 'Committed', 'Spent', 'Available', 'Internal Order', 'Status'];
+    const head = ['Budget ID', 'Fiscal Year', 'Title', 'Plant', 'Category', 'Capex Type', 'Classification', 'Department', 'Approved', 'Committed', 'Spent', 'Available', 'Internal Order', 'Status'];
     const aoa = [head, ...filtered.map((b) => guardRow([b.Budgetid, fyLabel(b.Fiscalyear), b.Title, b.PlantName, b.CategoryText || b.Category, b.Capextype,
+      textOf(classifications, b.Classification || ''), textOf(departments, b.Department || ''),
       num(b.AmtApproved), num(b.AmtCommitted), num(b.AmtSpent), available(b), b.Aufnr, statusLabel(b.Status)]))];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Budgets');
@@ -75,6 +76,8 @@ export default function BudgetList() {
     { key: 'title', header: 'Budget Title', render: (b) => <>{b.Title}{b.IsCommonpool === 'X' && <span className="ml-2"><Chip tone="info">Common Pool Bucket</Chip></span>}</> },
     { key: 'plant', header: 'Plant', hideBelow: 'md', render: (b) => b.PlantName },
     { key: 'cat', header: 'Category', hideBelow: 'lg', render: (b) => b.CategoryText || b.Category },
+    { key: 'classif', header: 'Classification', hideBelow: 'lg', render: (b) => orDash(textOf(classifications, b.Classification || '')) },
+    { key: 'dept', header: 'Department', hideBelow: 'lg', render: (b) => orDash(textOf(departments, b.Department || '')) },
     { key: 'appr', header: 'Approved', align: 'right', hideBelow: 'sm', render: (b) => inLakhs(b.AmtApproved) },
     { key: 'comm', header: 'Committed', align: 'right', hideBelow: 'lg', render: (b) => inLakhs(b.AmtCommitted) },
     { key: 'avail', header: 'Available', align: 'right', hideBelow: 'sm', render: (b) => <span className={`font-bold ${availTone(b)}`}>{inLakhs(available(b))}</span> },

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   TEMPLATE_COLUMNS, parseBudgetSheet, buildBudgetPayload, buildCashFlowPayload, validateDraft, guardCell, buildTemplateSheets,
-  newDraft, effectiveAmount, draftFromParsed, resolveKey, type ParseContext,
+  newDraft, effectiveAmount, draftFromParsed, resolveKey, textOf, type ParseContext,
 } from '../components/budget/logic';
 
 const ctx: ParseContext = {
@@ -10,6 +10,9 @@ const ctx: ParseContext = {
   categories: [{ key: 'PM', text: 'Plant & Machinery' }],
   defaultPlant: 'UN13',
 };
+const classifications = [{ key: 'STRATEGIC', text: 'Strategic' }, { key: 'MAINTENANCE', text: 'Maintenance' }];
+const departments = [{ key: 'PROD', text: 'Production' }, { key: 'QA', text: 'Quality Assurance' }];
+const ctxWithClassifDept: ParseContext = { ...ctx, classifications, departments, defaultClassification: 'MAINTENANCE', defaultDepartment: 'PROD' };
 const H = [...TEMPLATE_COLUMNS] as string[];
 const row = (o: Record<string, string | number>) => H.map((h) => o[h] ?? '');
 
@@ -51,6 +54,29 @@ describe('parseBudgetSheet', () => {
     expect(parseBudgetSheet([], ctx)).toEqual({ kind: 'error', reason: 'empty' });
     expect(parseBudgetSheet([H], ctx)).toEqual({ kind: 'error', reason: 'empty' });
   });
+
+  it('Classification/Department: resolved from text and warned on unknown when the lists are provided (EDSK9B0EQW)', () => {
+    const r = parseBudgetSheet([
+      H,
+      row({ 'Budget Title': 'A', Plant: 'UN13', 'Capex Type': 'Manufacturing Units', Category: 'Plant & Machinery', Classification: 'strategic', Department: 'quality assurance', 'Item Description': 'x', 'Item Amount': 10 }),
+      row({ 'Budget Title': 'B', Plant: 'UN13', 'Capex Type': 'Manufacturing Units', Category: 'Plant & Machinery', Classification: 'Nonsense', Department: 'Nowhere', 'Item Description': 'y', 'Item Amount': 5 }),
+    ], ctxWithClassifDept);
+    if (r.kind !== 'budgets') throw new Error('x');
+    const [a, b] = r.budgets;
+    expect(a.classification).toBe('STRATEGIC');
+    expect(a.department).toBe('QA');
+    expect(b.classification).toBe('MAINTENANCE'); // defaultClassification, with a warning
+    expect(b.department).toBe('PROD'); // defaultDepartment, with a warning
+    expect(b.warnings).toEqual(['Classification "Nonsense"', 'Department "Nowhere"']);
+  });
+
+  it('Classification/Department: read as plain text with no warning when the lists are not provided (SEGW not regenerated yet)', () => {
+    const r = parseBudgetSheet([H, row({ 'Budget Title': 'A', Classification: 'anything', Department: 'anything-else', 'Item Description': 'x', 'Item Amount': 1 })], ctx);
+    if (r.kind !== 'budgets') throw new Error('x');
+    expect(r.budgets[0].classification).toBe('anything');
+    expect(r.budgets[0].department).toBe('anything-else');
+    expect(r.budgets[0].warnings).toEqual([]);
+  });
 });
 
 describe('payload', () => {
@@ -74,6 +100,13 @@ describe('payload', () => {
     expect('Budgetid' in buildBudgetPayload(d, { irr: 1, npv: 2, payback: 3 }, '2026')).toBe(false);
     expect(buildBudgetPayload(d, { irr: 1, npv: 2, payback: 3 }, '2026').Fiscalyear).toBe('2026');
   });
+  it('Classification/Department: sent as plain strings, blank when not set (EDSK9B0EQW)', () => {
+    expect(buildBudgetPayload(d, { irr: null, npv: null, payback: null }, '2026').Classification).toBe('');
+    expect(buildBudgetPayload(d, { irr: null, npv: null, payback: null }, '2026').Department).toBe('');
+    const withBoth = { ...d, classification: 'STRATEGIC', department: 'QA' };
+    expect(buildBudgetPayload(withBoth, { irr: null, npv: null, payback: null }, '2026').Classification).toBe('STRATEGIC');
+    expect(buildBudgetPayload(withBoth, { irr: null, npv: null, payback: null }, '2026').Department).toBe('QA');
+  });
 });
 
 describe('validateDraft', () => {
@@ -85,6 +118,21 @@ describe('validateDraft', () => {
     const d = { ...newDraft('UN13'), title: 'T', justification: 'y'.repeat(30), items: [{ id: '1', title: '', amount: '', remarks: '' }, { id: '2', title: 'big', amount: '99999999', remarks: '' }] };
     expect(validateDraft(d)).toEqual(['Item 1: title is required.', 'Item 1: amount must be greater than zero.']);
     expect(effectiveAmount(d)).toBe(99999999);
+  });
+  it('Classification/Department are required on Submit only once that domain actually has values configured (EDSK9B0EQW)', () => {
+    const d = { ...newDraft('UN13'), title: 'T', amount: '1000', justification: 'z'.repeat(25) };
+    // No lists passed at all (existing call sites, pre-regen) -> no new errors, same as before this feature existed.
+    expect(validateDraft(d, 20)).toEqual([]);
+    // Lists passed but both empty (ValueHelpSet has no rows yet) -> still not required.
+    expect(validateDraft(d, 20, { classifications: [], departments: [] })).toEqual([]);
+    // A configured, non-empty domain makes its field mandatory.
+    expect(validateDraft(d, 20, { classifications: [{ key: 'STRATEGIC', text: 'Strategic' }], departments: [] }))
+      .toEqual(['Classification is required.']);
+    expect(validateDraft(d, 20, { classifications: [{ key: 'STRATEGIC', text: 'Strategic' }], departments: [{ key: 'PROD', text: 'Production' }] }))
+      .toEqual(['Classification is required.', 'Department is required.']);
+    // Both filled in -> no error.
+    expect(validateDraft({ ...d, classification: 'STRATEGIC', department: 'PROD' }, 20, { classifications: [{ key: 'STRATEGIC', text: 'Strategic' }], departments: [{ key: 'PROD', text: 'Production' }] }))
+      .toEqual([]);
   });
 });
 
@@ -106,5 +154,19 @@ describe('excel guards', () => {
     expect(resolveKey(ctx.plants, 'a021')).toBe('A021');
     expect(resolveKey(ctx.plants, 'emami limited amazon')).toBe('A021');
     expect(resolveKey(ctx.plants, 'nope')).toBe('');
+  });
+  it('textOf shows the value text, falls back to the raw key when unrecognised or blank', () => {
+    expect(textOf(classifications, 'STRATEGIC')).toBe('Strategic');
+    expect(textOf(classifications, 'UNKNOWN')).toBe('UNKNOWN');
+    expect(textOf(classifications, '')).toBe('');
+  });
+  it('template sheets: Classification/Department instruction blocks only appear once that domain has values', () => {
+    const noDomains = buildTemplateSheets({ plants: ctx.plants, capexTypes: ctx.capexTypes, categories: ctx.categories });
+    expect(JSON.stringify(noDomains.instructions)).not.toContain('Allowed Classification values');
+    expect(JSON.stringify(noDomains.instructions)).not.toContain('Allowed Department values');
+    const withDomains = buildTemplateSheets({ plants: ctx.plants, capexTypes: ctx.capexTypes, categories: ctx.categories, classifications, departments });
+    expect(JSON.stringify(withDomains.instructions)).toContain('Allowed Classification values');
+    expect(JSON.stringify(withDomains.instructions)).toContain('Allowed Department values');
+    expect(withDomains.template).toEqual([[...TEMPLATE_COLUMNS]]);
   });
 });

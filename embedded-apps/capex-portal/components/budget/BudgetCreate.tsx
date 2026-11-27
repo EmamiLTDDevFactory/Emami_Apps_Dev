@@ -9,7 +9,8 @@ import type { Budget, BudgetCashFlow, BudgetItem, DoaRule } from '@/lib/entities
 import { num, fmtInr, fmtInrFull, fyDigits, currentFiscalYear, isStatus } from '@/lib/format';
 import { metricsForDisplay, metricWarnings } from '@/lib/finance';
 import { resolveDOA } from '@/lib/rules';
-import { documentsEnabled, DOCUMENTS_OFF_NOTE } from '@/lib/documents';
+import { listDocuments, uploadDocument, validateFile, DOC_MAX_MB, DOC_EXTENSIONS, type CapexDocument } from '@/lib/documents';
+import DocActions from '@/components/documents/DocActions';
 import Combo from './Combo';
 import { useBudgetOptions } from './useOptions';
 import {
@@ -33,7 +34,7 @@ function Inner() {
   const toast = useToast();
   const { busy, run } = useAction();
   const { plants: userPlants, fiscalYear, cfgNum } = useSession();
-  const { plants, capexTypes, categories, loading: optsLoading, error: optsError } = useBudgetOptions();
+  const { plants, capexTypes, categories, classifications, departments, loading: optsLoading, error: optsError } = useBudgetOptions();
   const rules = useList<DoaRule>('DoaRuleSet', { $expand: 'DoaRuleToChain' });
   const justifMin = cfgNum('JUSTIF_MIN_CHARS', DEFAULT_JUSTIF_MIN_CHARS);
 
@@ -45,6 +46,27 @@ function Inner() {
   const [bulk, setBulk] = useState<{ file: string; results: BulkResult[] } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const set = <K extends keyof BudgetDraft>(k: K, v: BudgetDraft[K]) => setDraft((d) => ({ ...d, [k]: v }));
+
+  // ---- attachments (EDSK9B0EQW): DocXferSet Doctype BUD, Docid = Budgetid, category GEN only -
+  // only meaningful once the budget exists in SAP, so this is edit-mode only (editId truthy). ----
+  const [docs, setDocs] = useState<CapexDocument[]>([]);
+  const [docsError, setDocsError] = useState('');
+  const [upload, setUpload] = useState<null | { title: string; note: string; file: File | null }>(null);
+  const reloadDocs = useCallback(async () => {
+    if (!editId) return;
+    try { setDocs(await listDocuments('BUD', editId)); setDocsError(''); }
+    catch (e) { setDocsError(msg(e, 'Could not load the attachments.')); }
+  }, [editId]);
+  async function doUpload() {
+    if (!upload?.file || !editId) return;
+    const bad = validateFile(upload.file, { extensions: DOC_EXTENSIONS, maxMb: DOC_MAX_MB });
+    if (bad) { toast(bad, 'error'); return; }
+    const done = await run(async () => {
+      await uploadDocument({ doctype: 'BUD', docid: editId, category: 'GEN', file: upload.file!, title: upload.title.trim() || undefined, note: upload.note.trim() });
+      return true;
+    }, 'Document uploaded.');
+    if (done) { setUpload(null); await reloadDocs(); }
+  }
 
   // ---- load an existing DRAFT for editing (BudgetEdit route) ----
   useEffect(() => {
@@ -63,15 +85,17 @@ function Inner() {
         fl.rows.forEach((r) => { const i = (parseInt(r.Yearnr, 10) || 0) - 1; if (i >= 0 && i < cf.length) cf[i] = num(r.Amount) ? String(num(r.Amount)) : ''; });
         setDraft({
           budgetId: b.Budgetid, fiscalYear: b.Fiscalyear, title: b.Title, plant: b.Werks, capexType: b.Capextype, category: b.Category,
+          classification: b.Classification || '', department: b.Department || '',
           amount: String(num(b.Investment) || num(b.AmtApproved) || ''), justification: b.Justification, expectedBenefit: b.ExpectedBenefit || '',
           metricsEnabled: b.MetricsOn === 'X', cf,
           items: it.rows.slice().sort((a, c) => a.Itemno.localeCompare(c.Itemno)).map((r, i) => ({ id: `existing-${i}`, title: r.ItemTitle, amount: String(num(r.Amount) || ''), remarks: r.Remarks || '' })),
         });
+        await reloadDocs();
       } catch (e) { if (live) setLoadError(msg(e, 'Could not load the draft.')); }
       finally { if (live) setLoadingDraft(false); }
     })();
     return () => { live = false; };
-  }, [editId, router, toast]);
+  }, [editId, router, toast, reloadDocs]);
 
   // ---- defaults for a NEW budget once the lists are known ----
   useEffect(() => {
@@ -119,7 +143,7 @@ function Inner() {
   }
 
   function askSubmit() {
-    const errs = validateDraft(draft, justifMin);
+    const errs = validateDraft(draft, justifMin, { classifications, departments });
     setErrors(errs);
     if (errs.length) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
     setConfirm(true);
@@ -150,7 +174,7 @@ function Inner() {
   async function downloadTemplate() {
     try {
       const XLSX = await import('xlsx');
-      const s = buildTemplateSheets({ plants, capexTypes, categories });
+      const s = buildTemplateSheets({ plants, capexTypes, categories, classifications, departments });
       const wb = XLSX.utils.book_new();
       const t = XLSX.utils.aoa_to_sheet(s.template);
       t['!cols'] = s.template[0].map(() => ({ wch: 22 }));
@@ -175,12 +199,13 @@ function Inner() {
       aoa = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '', blankrows: false });
     } catch { toast(TEMPLATE_INVALID, 'error'); return; }
 
-    const parsed = parseBudgetSheet(aoa, { plants, capexTypes, categories, defaultPlant: userPlants[0]?.code || plants[0]?.key || '', defaultCapexType: capexTypes[0]?.key, defaultCategory: categories[0]?.key });
+    const parsed = parseBudgetSheet(aoa, { plants, capexTypes, categories, classifications, departments, defaultPlant: userPlants[0]?.code || plants[0]?.key || '', defaultCapexType: capexTypes[0]?.key, defaultCategory: categories[0]?.key });
     if (parsed.kind === 'error') { toast(parsed.reason === 'empty' ? TEMPLATE_EMPTY : TEMPLATE_INVALID, 'error'); return; }
     if (parsed.kind === 'form') {
       // nothing to group by: fill the form from the first row for the user to complete by hand
       const p = parsed.budget;
       setDraft((d) => ({ ...d, plant: p.plant || d.plant, capexType: p.capexType || d.capexType, category: p.category || d.category,
+        classification: p.classification || d.classification, department: p.department || d.department,
         justification: p.justification || d.justification, expectedBenefit: p.expectedBenefit || d.expectedBenefit,
         metricsEnabled: p.metricsEnabled, cf: p.cf, items: p.items, amount: p.items.length ? '' : d.amount }));
       if (p.warnings.length) toast(`Filled the form from ${file.name}, but some values weren't recognised and need to be picked manually: ${p.warnings.join(', ')}`, 'info');
@@ -270,6 +295,20 @@ function Inner() {
                 value={hasItems ? String(itemsTotal(draft.items)) : draft.amount} onChange={(e) => set('amount', e.target.value)} />
             </Field>
             <Field label="Funding Source"><div className="flex h-8 items-center text-[12px] font-semibold">New Budget Allocation</div></Field>
+            <Field label={classifications.length ? 'Classification *' : 'Classification'}
+              error={showErr && classifications.length > 0 && !draft.classification ? 'Required' : undefined}>
+              <Select value={draft.classification} onChange={(e) => set('classification', e.target.value)} disabled={classifications.length === 0}>
+                <option value="">{classifications.length ? 'Select…' : 'Not configured'}</option>
+                {classifications.map((o) => <option key={o.key} value={o.key}>{o.text}</option>)}
+              </Select>
+            </Field>
+            <Field label={departments.length ? 'Department *' : 'Department'}
+              error={showErr && departments.length > 0 && !draft.department ? 'Required' : undefined}>
+              <Select value={draft.department} onChange={(e) => set('department', e.target.value)} disabled={departments.length === 0}>
+                <option value="">{departments.length ? 'Select…' : 'Not configured'}</option>
+                {departments.map((o) => <option key={o.key} value={o.key}>{o.text}</option>)}
+              </Select>
+            </Field>
           </div>
         </Card>
 
@@ -302,9 +341,26 @@ function Inner() {
               <TextArea rows={3} maxLength={600} value={draft.expectedBenefit} onChange={(e) => set('expectedBenefit', e.target.value)}
                 placeholder="Quantify the benefit: throughput gain, cost saving per annum, rejection reduction." />
             </Field>
-            {!documentsEnabled() && <p className="text-[11px] text-sap-muted">{DOCUMENTS_OFF_NOTE}</p>}
           </div>
         </Card>
+
+        {editId && (
+          <Card title="Attachments" hint="Documents are not a Budget field - uploaded under DocXferSet (category GEN), which accumulates files rather than replacing them."
+            actions={<Button onClick={() => setUpload({ title: '', note: '', file: null })}>Upload document</Button>}>
+            {docsError && <ErrorBox message={docsError} onRetry={reloadDocs} />}
+            {!docsError && docs.length === 0 && <p className="text-[12px] text-sap-muted">No documents attached.</p>}
+            {docs.length > 0 && (
+              <ul className="divide-y divide-sap-line text-[12px]">
+                {docs.map((d) => (
+                  <li key={`${d.Doctype}${d.Docseq}`} className="flex flex-wrap items-center justify-between gap-2 py-1.5">
+                    <span className="min-w-0"><b>{d.DocTitle || d.Filename}</b><span className="text-sap-muted">{d.SizeText ? ` · ${d.SizeText}` : ''}</span></span>
+                    <DocActions doc={d} onRemoved={() => { void reloadDocs(); }} />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        )}
 
         <Card title="Financial Evaluation"
           actions={<label className="flex items-center gap-2 text-[12px] font-bold"><input type="checkbox" role="switch" checked={draft.metricsEnabled} onChange={(e) => set('metricsEnabled', e.target.checked)} />Enable financial metrics</label>}>
@@ -373,6 +429,17 @@ function Inner() {
       <Modal open={!!bulk} wide title="Bulk Import" onClose={() => { const any = bulk?.results.some((r) => r.ok); setBulk(null); if (any) router.push('/budget/'); }}
         footer={<Button variant="primary" onClick={() => { const any = bulk?.results.some((r) => r.ok); setBulk(null); if (any) router.push('/budget/'); }}>OK</Button>}>
         {bulk && <BulkSummary file={bulk.file} results={bulk.results} />}
+      </Modal>
+
+      <Modal open={!!upload} title="Upload document" onClose={() => setUpload(null)}
+        footer={<><Button onClick={() => setUpload(null)}>Cancel</Button><Button variant="primary" disabled={busy || !upload?.file} onClick={() => { void doUpload(); }}>Upload</Button></>}>
+        {upload && (
+          <div className="space-y-3">
+            <Field label="Title"><Input maxLength={120} value={upload.title} onChange={(e) => setUpload({ ...upload, title: e.target.value })} /></Field>
+            <Field label="Note"><TextArea rows={2} maxLength={255} value={upload.note} onChange={(e) => setUpload({ ...upload, note: e.target.value })} /></Field>
+            <Field label="File *"><input type="file" aria-label="File" className="text-[11px]" onChange={(e) => setUpload({ ...upload, file: e.target.files?.[0] ?? null })} /></Field>
+          </div>
+        )}
       </Modal>
     </>
   );

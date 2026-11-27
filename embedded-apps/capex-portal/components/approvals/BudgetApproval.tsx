@@ -7,6 +7,8 @@ import { useSession } from '@/lib/session';
 import { listDocuments, type CapexDocument } from '@/lib/documents';
 import DocActions from '@/components/documents/DocActions';
 import { Button, ErrorBox, PageHeader, Spinner } from '@/components/ui';
+import { useBudgetOptions } from '@/components/budget/useOptions';
+import { textOf } from '@/components/budget/logic';
 import { act } from './actions';
 import DecisionBar, { type DecisionAction } from './DecisionBar';
 import { Hero, Metric, Section, dash, irrText, paybackText } from './Parts';
@@ -29,6 +31,7 @@ async function load(id: string): Promise<Bundle | null> {
 
 export default function BudgetApproval({ id }: { id: string }) {
   const s = useSession();
+  const { classifications, departments } = useBudgetOptions();
   const { data, loading, error, reload, tick } = useDoc(id, () => load(id));
   const b = data?.budget;
   const { chain, loading: chainLoading } = useApprovalChain('BUD', id, b?.Doaid ?? '', b?.CurrLevel ?? '', b?.Status ?? '', tick);
@@ -46,6 +49,9 @@ export default function BudgetApproval({ id }: { id: string }) {
   const itemsTotal = items.reduce((n, i) => n + num(i.Amount), 0);
   const raisedBy = b.SubmittedByName || b.SubmittedBy;
   const { final, next } = nextRole(chain);
+  const classificationText = textOf(classifications, b.Classification || '');
+  const departmentText = textOf(departments, b.Department || '');
+  const heroLine = [`${b.PlantName} · ${b.Capextype}`, classificationText, departmentText, `raised by ${raisedBy}`].filter(Boolean).join(' · ');
 
   const actions: DecisionAction[] = [
     { key: 'reject', label: 'Reject', variant: 'danger', commentRequired: true, requiredVerb: 'reject a budget', confirmLabel: 'Reject', confirmTitle: 'Reject budget',
@@ -59,7 +65,7 @@ export default function BudgetApproval({ id }: { id: string }) {
   return (
     <>
       <PageHeader title="Budget Approval" back={back} />
-      <Hero id={b.Budgetid} title={b.Title} line={`${b.PlantName} · ${b.Capextype} · raised by ${raisedBy}`}
+      <Hero id={b.Budgetid} title={b.Title} line={heroLine}
         amountLabel="Budget Amount" amount={inLakhs(b.AmtApproved)} badge={{ tone: statusTone(b.Status), text: statusLabel(b.Status) }} />
 
       <Section title="Approval Chain">

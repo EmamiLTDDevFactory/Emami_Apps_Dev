@@ -10,7 +10,7 @@ export const DEFAULT_JUSTIF_MIN_CHARS = 20;
 export const CASHFLOW_YEARS = 10;
 
 export const TEMPLATE_COLUMNS = [
-  'Budget Title', 'Plant', 'Capex Type', 'Category',
+  'Budget Title', 'Plant', 'Capex Type', 'Category', 'Classification', 'Department',
   'Justification', 'Expected Benefit',
   'Enable Financial Metrics (Yes/No)',
   'Cash Flow Year 1', 'Cash Flow Year 2', 'Cash Flow Year 3', 'Cash Flow Year 4', 'Cash Flow Year 5',
@@ -29,6 +29,12 @@ export interface BudgetDraft {
   plant: string;
   capexType: string;
   category: string;
+  /** New fields (EDSK9B0EQW, 2026-11-27): classification/department, each from its own ValueHelpSet
+   * domain. Blank until SEGW regenerates Classification/Department on the Budget entity, and only
+   * mandatory on Submit once the admin has actually configured at least one value in that domain
+   * - see validateDraft. */
+  classification: string;
+  department: string;
   /** typed amount (string so the input can be edited freely); derived from the items when there are any */
   amount: string;
   justification: string;
@@ -41,9 +47,10 @@ export interface BudgetDraft {
 
 export const emptyCashFlows = (): string[] => Array.from({ length: CASHFLOW_YEARS }, () => '');
 
-export function newDraft(defaultPlant: string, defaults: { capexType?: string; category?: string } = {}): BudgetDraft {
+export function newDraft(defaultPlant: string, defaults: { capexType?: string; category?: string; classification?: string; department?: string } = {}): BudgetDraft {
   return {
     title: '', plant: defaultPlant, capexType: defaults.capexType ?? 'MANUFACTURING', category: defaults.category ?? 'PM',
+    classification: defaults.classification ?? '', department: defaults.department ?? '',
     amount: '', justification: '', expectedBenefit: '', metricsEnabled: true, cf: emptyCashFlows(), items: [],
   };
 }
@@ -57,13 +64,23 @@ export function effectiveAmount(d: Pick<BudgetDraft, 'amount' | 'items'>): numbe
   return d.items.length ? itemsTotal(d.items) : n0(d.amount);
 }
 
-/** BudgetCreate._validate messages (Submit only; Save Draft just needs a title). */
-export function validateDraft(d: BudgetDraft, justifMinChars = DEFAULT_JUSTIF_MIN_CHARS): string[] {
+/** BudgetCreate._validate messages (Submit only; Save Draft just needs a title). `lists` is the
+ * live ValueHelpSet options for Classification/Department - each one is only mandatory once the
+ * admin has actually configured at least one value for that domain (empty domain = field not in
+ * use yet, per the 2026-11-27 handover: "I made them required on Submit only when the list is
+ * non-empty" - pending business confirmation on whether both should always be mandatory). */
+export function validateDraft(
+  d: BudgetDraft,
+  justifMinChars = DEFAULT_JUSTIF_MIN_CHARS,
+  lists?: { classifications?: Option[]; departments?: Option[] },
+): string[] {
   const errors: string[] = [];
   if (!d.title.trim()) errors.push('Budget title is required.');
   if (!d.plant) errors.push('Plant / unit is required.');
   if (!d.capexType) errors.push('Capex type is required.');
   if (!d.category) errors.push('Category is required.');
+  if ((lists?.classifications?.length ?? 0) > 0 && !d.classification) errors.push('Classification is required.');
+  if ((lists?.departments?.length ?? 0) > 0 && !d.department) errors.push('Department is required.');
   if (!(effectiveAmount(d) > 0)) errors.push('Budget amount must be greater than zero.');
   if (d.justification.trim().length < justifMinChars) errors.push(`Business justification must be at least ${justifMinChars} characters.`);
   d.items.forEach((it, i) => {
@@ -79,6 +96,7 @@ export interface ItemRow { Itemno: string; ItemTitle: string; Amount: string; Wa
 export interface BudgetPayload {
   Budgetid?: string;
   Fiscalyear: string; Title: string; Capextype: string; Category: string; Werks: string; Waers: string;
+  Classification: string; Department: string;
   Justification: string; ExpectedBenefit: string; AmtApproved: string; Investment: string; HurdleRate: string;
   Irr: string; Npv: string; Payback: string; MetricsOn: string; IsCommonpool: string; FundingSrc: string; SrcAufnr: string;
   BudgetToCashFlows: CashFlowRow[];
@@ -111,6 +129,7 @@ export function buildBudgetPayload(d: BudgetDraft, m: MetricValues, fiscalYearDi
   const payload: BudgetPayload = {
     Fiscalyear: d.fiscalYear || fiscalYearDigits,
     Title: d.title, Capextype: d.capexType, Category: d.category, Werks: d.plant, Waers: 'INR',
+    Classification: d.classification || '', Department: d.department || '',
     Justification: d.justification, ExpectedBenefit: d.expectedBenefit || '',
     AmtApproved: amount.toFixed(3), Investment: amount.toFixed(3), HurdleRate: HURDLE_RATE.toFixed(2),
     Irr: metric(m.irr, 2), Npv: metric(m.npv, 3), Payback: metric(m.payback, 2),
@@ -131,13 +150,17 @@ export function guardCell<T>(v: T): T | string {
 }
 export const guardRow = (row: unknown[]): unknown[] => row.map(guardCell);
 
-export interface TemplateOptions { plants: Option[]; capexTypes: Option[]; categories: Option[] }
+export interface TemplateOptions { plants: Option[]; capexTypes: Option[]; categories: Option[]; classifications?: Option[]; departments?: Option[] }
 
-/** The two sheets of Budget_Upload_Template.xlsx as arrays of rows (onDownloadTemplate). All text cells are formula-guarded. */
+/** The two sheets of Budget_Upload_Template.xlsx as arrays of rows (onDownloadTemplate). All text cells are formula-guarded.
+ * Classification/Department instruction blocks only appear once that domain actually has values configured (EDSK9B0EQW) -
+ * an empty "Allowed ... values" list would read as "nothing is allowed", not "this field isn't in use yet". */
 export function buildTemplateSheets(o: TemplateOptions): { template: unknown[][]; instructions: unknown[][] } {
   const plant = o.plants[0]?.text || 'Pacharia Plant';
   const capexType = o.capexTypes[0]?.text || 'Manufacturing Units';
   const category = o.categories[0]?.text || 'Plant & Machinery';
+  const classification = o.classifications?.[0]?.text || '';
+  const department = o.departments?.[0]?.text || '';
   const cols = [...TEMPLATE_COLUMNS];
   const instructions: unknown[][] = [
     ['How to fill in the Budget Template sheet'],
@@ -148,17 +171,19 @@ export function buildTemplateSheets(o: TemplateOptions): { template: unknown[][]
     ['Allowed Plant values'], ...o.plants.map((p) => [p.text]),
     [], ['Allowed Capex Type values'], ...o.capexTypes.map((p) => [p.text]),
     [], ['Allowed Category values'], ...o.categories.map((p) => [p.text]),
+    ...(o.classifications?.length ? [[], ['Allowed Classification values'], ...o.classifications.map((p) => [p.text])] : []),
+    ...(o.departments?.length ? [[], ['Allowed Department values'], ...o.departments.map((p) => [p.text])] : []),
     [],
     ['Enable Financial Metrics (Yes/No) - enter Yes or No'],
     [],
     ['EXAMPLE - one budget with 2 line items (as two rows repeating the same budget details):'],
     cols,
-    ['Expansion of Line 3', plant, capexType, category, 'Capacity constraint on Line 3 during peak season.', '15% throughput increase.', 'Yes', 250000, 300000, 300000, 300000, 300000, '', '', '', '', '', 'New extrusion machine', 1800000, 'Primary equipment'],
-    ['Expansion of Line 3', plant, capexType, category, 'Capacity constraint on Line 3 during peak season.', '15% throughput increase.', 'Yes', 250000, 300000, 300000, 300000, 300000, '', '', '', '', '', 'Installation and commissioning', 200000, 'Civil + electrical works'],
+    ['Expansion of Line 3', plant, capexType, category, classification, department, 'Capacity constraint on Line 3 during peak season.', '15% throughput increase.', 'Yes', 250000, 300000, 300000, 300000, 300000, '', '', '', '', '', 'New extrusion machine', 1800000, 'Primary equipment'],
+    ['Expansion of Line 3', plant, capexType, category, classification, department, 'Capacity constraint on Line 3 during peak season.', '15% throughput increase.', 'Yes', 250000, 300000, 300000, 300000, 300000, '', '', '', '', '', 'Installation and commissioning', 200000, 'Civil + electrical works'],
     [],
     ['EXAMPLE - a second, different budget with a single line item (just one row, a different Budget Title from the one above - each distinct Budget Title found in the file becomes its own budget):'],
     cols,
-    ['Replacement AHU Unit 2', plant, capexType, category, 'Existing AHU unit has exceeded its useful life.', 'Reduced maintenance cost.', 'No', '', '', '', '', '', '', '', '', '', '', 'Replacement AHU unit', 450000, ''],
+    ['Replacement AHU Unit 2', plant, capexType, category, classification, department, 'Existing AHU unit has exceeded its useful life.', 'Reduced maintenance cost.', 'No', '', '', '', '', '', '', '', '', '', '', 'Replacement AHU unit', 450000, ''],
   ];
   return { template: [cols], instructions: instructions.map(guardRow) };
 }
@@ -172,6 +197,7 @@ export function resolveKey(list: Option[], value: string): string {
 
 export interface ParsedBudget {
   title: string; plant: string; capexType: string; category: string;
+  classification: string; department: string;
   justification: string; expectedBenefit: string; metricsEnabled: boolean;
   cf: string[]; items: DraftItem[];
   /** Plant / Capex Type / Category values the sheet had but SAP's lists did not recognise (the default was used) */
@@ -184,7 +210,13 @@ export type SheetParse =
   /** No Budget Title anywhere: nothing to group by, fill the on-screen form from the first row (the one remaining Fiori fallback) */
   | { kind: 'form'; budget: ParsedBudget };
 
-export interface ParseContext { plants: Option[]; capexTypes: Option[]; categories: Option[]; defaultPlant: string; defaultCapexType?: string; defaultCategory?: string }
+/** classifications/departments are optional: undefined means that ValueHelpSet domain isn't wired
+ * up yet (SEGW pending, EDSK9B0EQW) - the cell is then read as plain text with no key-resolution
+ * or warning, same as any field with nothing to validate against. */
+export interface ParseContext {
+  plants: Option[]; capexTypes: Option[]; categories: Option[]; classifications?: Option[]; departments?: Option[];
+  defaultPlant: string; defaultCapexType?: string; defaultCategory?: string; defaultClassification?: string; defaultDepartment?: string;
+}
 
 const cellText = (v: unknown) => (v === null || v === undefined ? '' : String(v).trim());
 const numOrBlank = (s: string) => { const f = parseFloat(s); return f ? String(f) : ''; };
@@ -225,6 +257,8 @@ export function parseBudgetSheet(aoa: unknown[][], ctx: ParseContext): SheetPars
       plant: pick('Plant', ctx.plants, ctx.defaultPlant, 'Plant'),
       capexType: pick('Capex Type', ctx.capexTypes, ctx.defaultCapexType ?? 'MANUFACTURING', 'Capex Type'),
       category: pick('Category', ctx.categories, ctx.defaultCategory ?? 'PM', 'Category'),
+      classification: ctx.classifications ? pick('Classification', ctx.classifications, ctx.defaultClassification ?? '', 'Classification') : col(first, 'Classification'),
+      department: ctx.departments ? pick('Department', ctx.departments, ctx.defaultDepartment ?? '', 'Department') : col(first, 'Department'),
       justification: col(first, 'Justification'),
       expectedBenefit: col(first, 'Expected Benefit'),
       metricsEnabled: metricsRaw ? /^y/.test(metricsRaw) : true,
@@ -243,7 +277,16 @@ export function parseBudgetSheet(aoa: unknown[][], ctx: ParseContext): SheetPars
 export function draftFromParsed(p: ParsedBudget): BudgetDraft {
   return {
     title: p.title, plant: p.plant, capexType: p.capexType, category: p.category,
+    classification: p.classification, department: p.department,
     amount: p.items.length ? String(itemsTotal(p.items)) : '', justification: p.justification, expectedBenefit: p.expectedBenefit,
     metricsEnabled: p.metricsEnabled, cf: p.cf, items: p.items,
   };
+}
+
+/** Display text for a Classification/Department (or any ValueHelp-backed) key - falls back to the
+ * raw key when the list hasn't loaded yet or the value isn't recognised, so a screen never shows
+ * a blank where SAP actually has something saved. */
+export function textOf(list: Option[], key: string): string {
+  if (!key) return '';
+  return list.find((o) => o.key === key)?.text || key;
 }

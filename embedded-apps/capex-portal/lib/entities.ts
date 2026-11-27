@@ -11,6 +11,10 @@ export interface Budget {
   Fiscalyear: string;
   AmtAvailable: string;
   Title: string;
+  /** New fields (EDSK9B0EQW, 2026-11-27) - optional until SEGW regenerates Classification/Department
+   * on BudgetSet; older/unregenerated responses simply omit them. */
+  Classification?: string;
+  Department?: string;
   Capextype: string;
   CurrLevel: string;
   Category: string;
