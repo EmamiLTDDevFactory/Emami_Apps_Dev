@@ -15,6 +15,16 @@ CLASS zcl_zmdm_ph_dpc_ext DEFINITION PUBLIC INHERITING FROM zcl_zmdm_ph_dpc CREA
     METHODS workitemset_get_entity      REDEFINITION.
 
   PRIVATE SECTION.
+    "The service model's ABAP field names have no underscores (PRODUCTDESC), ours have (product_desc): CORRESPONDING would drop them
+    METHODS req_out
+      IMPORTING is_req TYPE zcl_mdm_ph_core=>ty_request
+      RETURNING VALUE(rs_out) TYPE zcl_zmdm_ph_mpc=>ts_request.
+    METHODS req_in
+      IMPORTING is_in TYPE zcl_zmdm_ph_mpc=>ts_request
+      RETURNING VALUE(rs_req) TYPE zcl_mdm_ph_core=>ty_request.
+    METHODS wi_out
+      IMPORTING is_item TYPE zcl_mdm_ph_core=>ty_work_item
+      RETURNING VALUE(rs_out) TYPE zcl_zmdm_ph_mpc=>ts_workitem.
     METHODS crs_out
       IMPORTING is_req TYPE zcl_mdm_crs_core=>ty_request
       RETURNING VALUE(rs_out) TYPE zcl_zmdm_ph_mpc_ext=>ts_crsrequest.
@@ -76,7 +86,7 @@ CLASS ZCL_ZMDM_PH_DPC_EXT IMPLEMENTATION.
       CATCH zcx_mdm_ph INTO DATA(lx).
         raise_busi( lx ).
     ENDTRY.
-    copy_data_to_ref( EXPORTING is_data = CORRESPONDING zcl_zmdm_ph_mpc=>ts_request( ls_req )
+    copy_data_to_ref( EXPORTING is_data = req_out( ls_req )
                       CHANGING cr_data = er_data ).
   ENDMETHOD.
 
@@ -149,14 +159,15 @@ CLASS ZCL_ZMDM_PH_DPC_EXT IMPLEMENTATION.
 
 
   METHOD requestset_create_entity.            " job I – Initiate
-    DATA ls_in TYPE zcl_mdm_ph_core=>ty_request.
-    io_data_provider->read_entry_data( IMPORTING es_data = ls_in ).
+    DATA ls_body TYPE zcl_zmdm_ph_mpc=>ts_request.
+    io_data_provider->read_entry_data( IMPORTING es_data = ls_body ).
+    DATA(ls_in) = req_in( ls_body ).
     TRY.
         zcl_mdm_ph_core=>initiate( CHANGING cs_request = ls_in ).
       CATCH zcx_mdm_ph INTO DATA(lx).
         raise_busi( lx ).
     ENDTRY.
-    er_entity = CORRESPONDING #( ls_in ).
+    er_entity = req_out( ls_in ).
   ENDMETHOD.
 
 
@@ -169,7 +180,7 @@ CLASS ZCL_ZMDM_PH_DPC_EXT IMPLEMENTATION.
           textid      = /iwbep/cx_mgw_busi_exception=>resource_not_found
           entity_type = iv_entity_name.
     ENDIF.
-    er_entity = CORRESPONDING #( lt_req[ 1 ] ).
+    er_entity = req_out( lt_req[ 1 ] ).
   ENDMETHOD.
 
 
@@ -183,9 +194,46 @@ CLASS ZCL_ZMDM_PH_DPC_EXT IMPLEMENTATION.
     IF lv_step IS NOT INITIAL.
       DELETE lt_req WHERE step <> lv_step.
     ENDIF.
-    et_entityset = CORRESPONDING #( lt_req ).
+    LOOP AT lt_req ASSIGNING FIELD-SYMBOL(<rq>).
+      APPEND req_out( <rq> ) TO et_entityset.
+    ENDLOOP.
     IF is_paging-skip > 0.
       DELETE et_entityset TO is_paging-skip.
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD req_out.
+    rs_out = VALUE #(
+      transactionid = is_req-transaction_id wiid = is_req-wi_id
+      banner = is_req-banner bannerdesc = is_req-banner_desc brand = is_req-brand branddesc = is_req-brand_desc
+      product = is_req-product productdesc = is_req-product_desc sku = is_req-sku skudesc = is_req-sku_desc
+      variant = is_req-variant variantdesc = is_req-variant_desc scheme = is_req-scheme schemedesc = is_req-scheme_desc
+      hierarchy = is_req-hierarchy costcenter = is_req-cost_center costcenterdesc = is_req-cost_center_desc
+      step = is_req-step initiator = is_req-initiator message = is_req-message ).
+    IF is_req-created_on IS NOT INITIAL.
+      rs_out-createdon = |{ is_req-created_on }{ is_req-created_at }|.
+      rs_out-createdat = is_req-created_at.
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD req_in.
+    rs_req = VALUE #(
+      transaction_id = is_in-transactionid wi_id = is_in-wiid
+      banner = is_in-banner banner_desc = is_in-bannerdesc brand = is_in-brand brand_desc = is_in-branddesc
+      product = is_in-product product_desc = is_in-productdesc sku = is_in-sku sku_desc = is_in-skudesc
+      variant = is_in-variant variant_desc = is_in-variantdesc scheme = is_in-scheme scheme_desc = is_in-schemedesc
+      cost_center = is_in-costcenter ).
+  ENDMETHOD.
+
+
+  METHOD wi_out.
+    rs_out = VALUE #(
+      wiid = is_item-wi_id transactionid = is_item-transaction_id mode = is_item-mode text = is_item-text
+      status = is_item-status initiator = is_item-initiator ).
+    IF is_item-created_on IS NOT INITIAL.
+      rs_out-createdon = |{ is_item-created_on }000000|.
     ENDIF.
   ENDMETHOD.
 
@@ -221,7 +269,7 @@ CLASS ZCL_ZMDM_PH_DPC_EXT IMPLEMENTATION.
           textid      = /iwbep/cx_mgw_busi_exception=>resource_not_found
           entity_type = iv_entity_name.
     ENDIF.
-    er_entity = CORRESPONDING #( ls_item ).
+    er_entity = wi_out( ls_item ).
   ENDMETHOD.
 
 
@@ -231,7 +279,9 @@ CLASS ZCL_ZMDM_PH_DPC_EXT IMPLEMENTATION.
       CATCH zcx_mdm_ph INTO DATA(lx).
         raise_busi( lx ).
     ENDTRY.
-    et_entityset = CORRESPONDING #( lt_items ).
+    LOOP AT lt_items ASSIGNING FIELD-SYMBOL(<wi>).
+      APPEND wi_out( <wi> ) TO et_entityset.
+    ENDLOOP.
   ENDMETHOD.
 
 
