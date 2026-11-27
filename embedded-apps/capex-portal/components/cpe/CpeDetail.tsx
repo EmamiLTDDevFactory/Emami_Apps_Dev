@@ -237,6 +237,33 @@ export default function CpeDetail() {
             <DataTable columns={docCols} rows={docs} rowKey={(d) => `${d.Doctype}|${d.Docid}|${d.Docseq}`} empty="No documents attached." />
           </Card>
         )}
+
+        {/* Print only - mounted regardless of which tab is active, so Print always includes it
+            (matches the old Fiori print's Approval Status table: one row per DOA level, Approved
+            Date is when the level was reached (ReachedOn), not when it was actually decided -
+            a level can sit reached-but-pending for days before anyone acts on it). */}
+        <div className="hidden print:block">
+          <Card title="Approval Status">
+            <table className="w-full border-collapse text-[11px]">
+              <thead>
+                <tr>
+                  <th className="border border-sap-line px-2 py-1 text-left">Username</th>
+                  <th className="border border-sap-line px-2 py-1 text-left">Approved Date</th>
+                  <th className="border border-sap-line px-2 py-1 text-left">Approval Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {chain.chain.map((s) => (
+                  <tr key={s.level}>
+                    <td className="border border-sap-line px-2 py-1">{s.approver || s.role}</td>
+                    <td className="border border-sap-line px-2 py-1">{fmtDate(s.reachedOn) !== '-' ? fmtDate(s.reachedOn) : 'Not Approved'}</td>
+                    <td className="border border-sap-line px-2 py-1">{s.status === 'APPROVED' ? 'Approved' : s.status === 'REJECTED' ? 'Rejected' : 'Not Approved'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+        </div>
       </div>
 
       <div className="sticky bottom-0 z-10 -mx-1 mt-4 flex flex-wrap justify-end gap-2 border-t border-sap-line bg-white/90 px-1 py-3 backdrop-blur print:hidden">

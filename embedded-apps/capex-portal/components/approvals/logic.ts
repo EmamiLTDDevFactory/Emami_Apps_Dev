@@ -68,7 +68,13 @@ export function commentError(comment: string, min: number, what: string): string
 // ------------------------------------------------------------------ approval chain
 
 export type StepStatus = 'APPROVED' | 'PENDING' | 'REJECTED' | 'HOLD' | 'WAITING';
-export interface ChainStep { level: number; role: string; approver: string; status: StepStatus; actedOn: string; comment: string; slaDays: number }
+export interface ChainStep {
+  level: number; role: string; approver: string; status: StepStatus; actedOn: string; comment: string; slaDays: number;
+  /** When this level's turn started (ApprovalStep.ReachedOn) - distinct from actedOn (when a decision was actually
+   * made): a level can be reached, and sit there pending, well before anyone acts on it. The print-only Approval
+   * Status table uses this, not actedOn, for its date column (log item: "add Approval Status to the CPE print"). */
+  reachedOn: string;
+}
 
 /** Log #135: "Unit Technical *" is the evaluation step, not an approval level. */
 export const isUnitTechnicalRole = (role: string | null | undefined): boolean => /^\s*unit\s+technical/i.test(role || '');
@@ -88,7 +94,7 @@ export function buildDoaChain(chain: DoaChain[], currLevel: string, status: stri
   const final = String(status || '').toUpperCase().startsWith('APPROVED');
   const cur = steps.findIndex((s) => s.Role === currLevel);
   const rows: ChainStep[] = steps.map((s, i) => ({
-    level: i + 1, role: s.Role, approver: s.ApproverName || s.Approver || '', actedOn: '', comment: '', slaDays: Number(s.SlaDays) || 0,
+    level: i + 1, role: s.Role, approver: s.ApproverName || s.Approver || '', actedOn: '', reachedOn: '', comment: '', slaDays: Number(s.SlaDays) || 0,
     status: final || (cur > -1 && i < cur) ? 'APPROVED' : i === cur ? 'PENDING' : 'WAITING',
   }));
   return skipUnitTechnical(rows);
@@ -105,7 +111,7 @@ export function buildStepChain(steps: ApprovalStep[]): ChainStep[] {
       const st = String(s.Status || '').toUpperCase();
       const status: StepStatus = st.startsWith('APPR') ? 'APPROVED' : st.startsWith('REJ') ? 'REJECTED' : st.startsWith('HOLD') ? 'HOLD'
         : s.IsCurrent === 'X' || st.startsWith('PEND') ? 'PENDING' : 'WAITING';
-      return { level: i + 1, role: s.Role, approver: s.ApproverName || s.Approver || '', status, actedOn: s.ActedOn || '', comment: s.Comments || '', slaDays: Number(s.SlaDays) || 0 };
+      return { level: i + 1, role: s.Role, approver: s.ApproverName || s.Approver || '', status, actedOn: s.ActedOn || '', reachedOn: s.ReachedOn || '', comment: s.Comments || '', slaDays: Number(s.SlaDays) || 0 };
     });
   return skipUnitTechnical(rows);
 }

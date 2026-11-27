@@ -89,9 +89,16 @@ describe('chain', () => {
     expect(nextRole(buildDoaChain([doa('A', 1), doa('B', 2)], 'B', 'IN_APPROVAL'))).toEqual({ final: true, next: '' });
   });
   it('uses the newest cycle of real steps', () => {
-    const st = (cy: string, lv: string, status: string, role: string, cur = ''): ApprovalStep => ({ IsCurrent: cur, Cyclenr: cy, Escalated: '', Doctype: 'CPE', IsAuto: '', ApproverName: '', Rollout: '', Docid: 'C', Levelnr: lv, Role: role, Approver: '', ActualAppr: '', Status: status, SlaDays: 1, ReachedOn: '', ActedOn: '', DueOn: '', Comments: 'ok' });
+    const st = (cy: string, lv: string, status: string, role: string, cur = '', reachedOn = ''): ApprovalStep => ({ IsCurrent: cur, Cyclenr: cy, Escalated: '', Doctype: 'CPE', IsAuto: '', ApproverName: '', Rollout: '', Docid: 'C', Levelnr: lv, Role: role, Approver: '', ActualAppr: '', Status: status, SlaDays: 1, ReachedOn: reachedOn, ActedOn: '', DueOn: '', Comments: 'ok' });
     const c = buildStepChain([st('1', '1', 'REJECTED', 'OLD'), st('2', '1', 'APPROVED', 'HOD'), st('2', '2', 'PENDING', 'VP', 'X')]);
     expect(c.map((s) => [s.role, s.status])).toEqual([['HOD', 'APPROVED'], ['VP', 'PENDING']]);
+  });
+  it('reachedOn (when a level\'s turn started) carries through distinct from actedOn (when it was decided) - the print Approval Status table uses reachedOn', () => {
+    const st = (lv: string, status: string, role: string, reachedOn: string): ApprovalStep => ({ IsCurrent: '', Cyclenr: '1', Escalated: '', Doctype: 'CPE', IsAuto: '', ApproverName: '', Rollout: '', Docid: 'C', Levelnr: lv, Role: role, Approver: '', ActualAppr: '', Status: status, SlaDays: 1, ReachedOn: reachedOn, ActedOn: '', DueOn: '', Comments: '' });
+    const c = buildStepChain([st('1', 'APPROVED', 'HOD', '2026-11-01'), st('2', 'PENDING', 'VP', '2026-11-06')]);
+    expect(c.map((s) => s.reachedOn)).toEqual(['2026-11-01', '2026-11-06']);
+    // A level never reached yet has neither a reachedOn nor an actedOn.
+    expect(buildDoaChain([{ Doaid: 'D', Seqnr: '1', Role: 'HOD' } as any], 'HOD', 'IN_APPROVAL').map((s) => s.reachedOn)).toEqual(['']);
   });
 });
 
