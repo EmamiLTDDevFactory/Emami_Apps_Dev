@@ -48,10 +48,22 @@ function Inner() {
   const set = <K extends keyof BudgetDraft>(k: K, v: BudgetDraft[K]) => setDraft((d) => ({ ...d, [k]: v }));
 
   // ---- attachments (EDSK9B0EQW): DocXferSet Doctype BUD, Docid = Budgetid, category GEN only -
-  // only meaningful once the budget exists in SAP, so this is edit-mode only (editId truthy). ----
+  // the edit-mode list/upload/delete below is only meaningful once the budget exists in SAP
+  // (editId truthy). For a brand-new budget there's a single, optional attachment instead (see
+  // attachmentFile below), since there's no Budgetid to upload against until after it's created. ----
   const [docs, setDocs] = useState<CapexDocument[]>([]);
   const [docsError, setDocsError] = useState('');
   const [upload, setUpload] = useState<null | { title: string; note: string; file: File | null }>(null);
+  /** One optional file picked on the Create (not Edit) screen, uploaded right after the budget is
+   * created - same pattern as CpeCreate's attachments: create the record first, then upload, on
+   * both Save Draft and Submit. Not mandatory: Submit/Save Draft never block on it being empty. */
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  /** Set when the budget was created/updated fine but the attachment upload failed - mirrors
+   * CpeCreate's `failed` state. The budget is kept (never rolled back); draft.budgetId is already
+   * set by then, so clicking Save Draft/Submit again updates that same budget in place rather than
+   * creating a second one - no separate "created" id needed the way CPE needs, since Budget's own
+   * deep-insert already treats a present Budgetid as "update this one". */
+  const [attachFailed, setAttachFailed] = useState<{ id: string; message: string } | null>(null);
   const reloadDocs = useCallback(async () => {
     if (!editId) return;
     try { setDocs(await listDocuments('BUD', editId)); setDocsError(''); }
@@ -131,15 +143,35 @@ function Inner() {
   // ---- save draft / submit ----
   const afterSave = (id: string) => router.push(draft.budgetId ? `/budget/detail/?id=${encodeURIComponent(id)}` : '/budget/');
 
+  /** Uploads the one optional Create-screen attachment against an already-created budget. Throws
+   * (caller decides what that means) rather than swallowing the error - the budget itself is never
+   * rolled back on a failure here, only this one extra step. */
+  async function uploadAttachmentIfAny(budgetId: string) {
+    if (!attachmentFile) return;
+    const bad = validateFile(attachmentFile, { extensions: DOC_EXTENSIONS, maxMb: DOC_MAX_MB });
+    if (bad) throw new Error(bad);
+    await uploadDocument({ doctype: 'BUD', docid: budgetId, category: 'GEN', file: attachmentFile });
+    setAttachmentFile(null); // uploaded - a retry of Save Draft/Submit must not send it again
+  }
+
   async function saveDraft() {
     if (!draft.title.trim()) { toast('Enter at least a budget title before saving a draft.', 'error'); return; }
+    setAttachFailed(null);
     const editing = !!draft.budgetId;
     const id = await run(async () => {
       // Edit = the same deep POST with the existing Budgetid (Budget Items email); PUT would drop cash flows/items.
       const r = await create<{ Budgetid?: string }>('BudgetSet', payload(draft));
-      return r.Budgetid || draft.budgetId || '';
-    }, editing ? 'Draft updated.' : 'Draft saved.');
-    if (id !== undefined) afterSave(id);
+      const newId = r.Budgetid || draft.budgetId || '';
+      if (!draft.budgetId) setDraft((d) => ({ ...d, budgetId: newId })); // a retry now updates in place, never duplicates
+      try {
+        await uploadAttachmentIfAny(newId);
+      } catch (e) {
+        setAttachFailed({ id: newId, message: msg(e, 'The attachment could not be uploaded.') });
+        return null; // budget is kept; stay on the page instead of navigating away
+      }
+      return newId;
+    });
+    if (id) { toast(editing ? 'Draft updated.' : 'Draft saved.', 'success'); afterSave(id); }
   }
 
   function askSubmit() {
@@ -151,10 +183,21 @@ function Inner() {
 
   async function submit() {
     setConfirm(false);
+    setAttachFailed(null);
     const first = doa[0]?.role || 'Finance';
     const done = await run(async () => {
       const r = await create<{ Budgetid?: string }>('BudgetSet', payload(draft));
       const id = r.Budgetid || draft.budgetId || '';
+      if (!draft.budgetId) setDraft((d) => ({ ...d, budgetId: id })); // a retry now updates in place, never duplicates
+      // Same order as CpeCreate: create -> upload attachment -> submit for approval. An attachment
+      // failure stops here (budget stays a kept, unsubmitted draft) rather than going on to submit
+      // without it - matching how a failed CPE document upload never reaches SubmitCPE either.
+      try {
+        await uploadAttachmentIfAny(id);
+      } catch (e) {
+        setAttachFailed({ id, message: msg(e, 'The attachment could not be uploaded.') });
+        return { id, submitted: false, attachOnly: true };
+      }
       // create only ever makes a DRAFT; the DOA chain starts when SubmitDocument runs
       try {
         const s = await fn('SubmitDocument', { DocType: 'BUD', DocId: id });
@@ -166,6 +209,7 @@ function Inner() {
       return { id, submitted: true };
     });
     if (!done) return;
+    if (done.attachOnly) return; // stay on the page; the attachFailed box already explains it
     if (done.submitted) toast(`Budget ${done.id} submitted. Routed to ${first}. On final approval the SAP Internal Order will be created automatically and the budget reserved.`, 'success');
     router.push('/budget/');
   }
@@ -341,8 +385,35 @@ function Inner() {
               <TextArea rows={3} maxLength={600} value={draft.expectedBenefit} onChange={(e) => set('expectedBenefit', e.target.value)}
                 placeholder="Quantify the benefit: throughput gain, cost saving per annum, rejection reduction." />
             </Field>
+            {!editId && (
+              <Field label="Attachment" hint="Optional - one supporting document, uploaded once the budget is saved.">
+                <input
+                  type="file" aria-label="Attachment" className="text-[12px]"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (!f) { setAttachmentFile(null); return; }
+                    const bad = validateFile(f, { extensions: DOC_EXTENSIONS, maxMb: DOC_MAX_MB });
+                    if (bad) { toast(bad, 'error'); e.target.value = ''; setAttachmentFile(null); return; }
+                    setAttachmentFile(f);
+                  }}
+                />
+                {attachmentFile && (
+                  <p className="mt-1 text-[11px] text-sap-muted">
+                    {attachmentFile.name} &middot; <button type="button" className="font-bold text-plum hover:underline" onClick={() => setAttachmentFile(null)}>Remove</button>
+                  </p>
+                )}
+              </Field>
+            )}
           </div>
         </Card>
+
+        {attachFailed && (
+          <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[12px] text-red-800">
+            <b>Budget {attachFailed.id} was saved, but the attachment could not be uploaded.</b>
+            <p className="mt-1 whitespace-pre-wrap break-words">{attachFailed.message}</p>
+            <p className="mt-2 text-sap-muted">Pick the file again (or remove it) and save or submit again - it will update this same budget, not create a new one.</p>
+          </div>
+        )}
 
         {editId && (
           <Card title="Attachments" hint="Documents are not a Budget field - uploaded under DocXferSet (category GEN), which accumulates files rather than replacing them."
