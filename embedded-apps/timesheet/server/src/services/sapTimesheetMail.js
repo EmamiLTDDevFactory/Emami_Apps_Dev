@@ -23,12 +23,14 @@ const REQUEST_TIMEOUT_MS = Number(process.env.SAP_TIMESHEET_TIMEOUT_MS || 30000)
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-// SAP's Task/TaskDesc fields on ZIT_TIMESHEET_SRV are both CHAR80 (confirmed with the SAP
-// developer) - a longer value throws /IWCOR/CX_DS_EDM_FACET_ERROR and fails the whole deep-entity
-// create (seen live: a project+task name combo over this length silently killed the mail for that
-// timesheet). Truncate instead of risking that.
-const SAP_TEXT_MAX_LEN = 80
-const truncateForSap = (value) => (value || '').slice(0, SAP_TEXT_MAX_LEN)
+// SAP's Task/TaskDesc fields on ZIT_TIMESHEET_SRV (Mail entity, SEGW Service Builder) have
+// different Max lengths - Task is Edm.String Max 30, TaskDesc is Edm.String Max 40. A longer value
+// throws /IWCOR/CX_DS_EDM_FACET_ERROR and fails the whole deep-entity create (seen live: a
+// project+task name combo over Task's 30 chars silently killed the mail for that timesheet - an
+// earlier 80-char guess, since corrected against the real SEGW metadata, was never enough).
+const TASK_MAX_LEN = 30
+const TASK_DESC_MAX_LEN = 40
+const truncate = (value, maxLen) => (value || '').slice(0, maxLen)
 
 function isEnabled() {
   return process.env.SAP_TIMESHEET_MAIL_ENABLED === 'true'
@@ -92,8 +94,8 @@ function buildDayRows(monthStartDate, entries, taskNames, overrides) {
       OutTime: toEdmTime(dayEntries[0].out_time),
       OutLocation: dayEntries.find((e) => e.out_location)?.out_location || '',
       WorkHours: totalHours.toFixed(2),
-      Task: truncateForSap(taskNames[firstTask.task_id]),
-      TaskDesc: truncateForSap(firstTask.note),
+      Task: truncate(taskNames[firstTask.task_id], TASK_MAX_LEN),
+      TaskDesc: truncate(firstTask.note, TASK_DESC_MAX_LEN),
       Status: 'Present',
     }
   })
