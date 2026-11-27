@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { DragEvent, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useMdm } from '@/lib/store';
 import {
-  PhRequest, PhTask, fetchRequests, fetchTasks, phAllCached, phApprove, phAssignCostCenter, phError, phFieldsOf, phInitiate, phLive, phLoad, phLoadAll,
+  PhRequest, PhTask, fetchRequests, fetchTasks, phAllCached, phAllLoading, phApprove, phAssignCostCenter, phError, phFieldsOf, phInitiate, phLive, phLoad, phLoadAll,
   phReject, phReset, phSendBack, phSubscribe, phTick, phValidate,
 } from '@/lib/phApi';
 import { BUSINESS_VERTICALS, Opt, PH_LENGTH, PH_LEVELS, getHierarchyOptions, helpText, phSegLen } from '@/lib/valueHelps';
@@ -125,13 +125,14 @@ interface CodeRowProps {
   suggest?: string;
   /** F4 list independent of what is chosen above (value = full path); picking fills the levels above as well */
   helpOptions?: Opt[];
+  helpLoading?: boolean;
   onHelp?: () => void;
   onPickFull?: (path: string, label: string) => void;
   onChange: (code: string, text: string) => void;
 }
 
 /** Code with F4 help + description. An existing code fills its description; a new code asks for one. */
-function CodeRow({ id, label, tech, code, text, options, len, numeric, disabled, disabledHint, error, suggest, helpOptions, onHelp, onPickFull, onChange }: CodeRowProps) {
+function CodeRow({ id, label, tech, code, text, options, len, numeric, disabled, disabledHint, error, suggest, helpOptions, helpLoading, onHelp, onPickFull, onChange }: CodeRowProps) {
   const [raw, setRaw] = useState(code);
   const [open, setOpen] = useState(false);
   useEffect(() => setRaw(code), [code]);
@@ -208,6 +209,7 @@ function CodeRow({ id, label, tech, code, text, options, len, numeric, disabled,
         <ValueHelpDialog
           title={label}
           options={helpOptions ?? options}
+          loading={helpLoading}
           current={code}
           onPick={(v) => { setOpen(false); if (helpOptions && onPickFull) onPickFull(v, helpOptions.find((o) => o.value === v)?.label ?? ''); else onChange(v, options.find((o) => o.value === v)?.label ?? ''); }}
           onClose={() => setOpen(false)}
@@ -219,12 +221,12 @@ function CodeRow({ id, label, tech, code, text, options, len, numeric, disabled,
 
 interface DescRowProps {
   id: string; label: string; code: string; text: string; options: Opt[]; disabled?: boolean; disabledHint?: string; error?: string;
-  helpOptions: Opt[]; onHelp: () => void; onPickFull: (path: string, label: string) => void;
+  helpOptions: Opt[]; helpLoading?: boolean; onHelp: () => void; onPickFull: (path: string, label: string) => void;
   onChange: (code: string, text: string) => void;
 }
 
 /** Product / SKU / Variant / Scheme: the requester types the description, SAP gives the code after the final approver (an existing node can still be picked with F4) */
-function DescRow({ id, label, code, text, options, disabled, disabledHint, error, helpOptions, onHelp, onPickFull, onChange }: DescRowProps) {
+function DescRow({ id, label, code, text, options, disabled, disabledHint, error, helpOptions, helpLoading, onHelp, onPickFull, onChange }: DescRowProps) {
   const [open, setOpen] = useState(false);
   const existing = !!code;
   void options;
@@ -258,7 +260,7 @@ function DescRow({ id, label, code, text, options, disabled, disabledHint, error
       </div>
       {disabled && disabledHint ? <small className="muted su-msg">{disabledHint}</small> : error ? <small className="err su-msg">{error}</small> : null}
       {open && (
-        <ValueHelpDialog title={label} options={helpOptions} current={code}
+        <ValueHelpDialog title={label} options={helpOptions} loading={helpLoading} current={code}
           onPick={(v) => { setOpen(false); onPickFull(v, helpOptions.find((o) => o.value === v)?.label ?? ''); }} onClose={() => setOpen(false)} />
       )}
     </div>
@@ -303,22 +305,6 @@ function HierarchyForm({ version, mounted, onCreated }: { version: number; mount
 
   const LAST_CODED = 1; // Banner and Brand are chosen by code; Product to Scheme get their code from SAP after the final approver
   const allOpts = useMemo(() => PH_LEVELS.map((_, i) => phAllCached(i) ?? []), [phVer]); // eslint-disable-line react-hooks/exhaustive-deps
-  /** F4 pick: the value carries its full path, so every level above is filled in too */
-  function pickFull(i: number, path: string, text: string) {
-    const segs: string[] = [];
-    let at = 0;
-    for (let j = 0; j <= i; j++) { segs.push(path.slice(at, at + phSegLen(j))); at += phSegLen(j); }
-    setLevels((ls) => {
-      let changed = false;
-      return ls.map((l, j) => {
-        if (j > i) return changed ? { code: '', text: '' } : l;
-        const c = segs[j];
-        if (l.code !== c) changed = true;
-        return { code: c, text: j === i ? text : (l.code === c ? l.text : '') };
-      });
-    });
-  }
-
   const rows = levels.map((l, i) => {
     const filledAbove = levels.slice(0, i).every((x, j) => (j <= LAST_CODED
       ? new RegExp(`^\\d{${phSegLen(j)}}$`).test(x.code) && !/^0+$/.test(x.code)
@@ -333,6 +319,7 @@ function HierarchyForm({ version, mounted, onCreated }: { version: number; mount
       else if (isNew && !l.text.trim()) error = `Describe the new ${PH_LEVELS[i].toLowerCase()}`;
     }
     const shownText = l.text || (i > LAST_CODED && l.code ? opts[i].find((o) => o.value === l.code)?.label ?? '' : '');
+    if (!filledAbove) error = `Fill the ${PH_LEVELS[i - 1].toLowerCase()} first`;
     return { ...l, text: shownText, enabled: filledAbove, isNew, error };
   });
 
@@ -401,10 +388,9 @@ function HierarchyForm({ version, mounted, onCreated }: { version: number; mount
               text={r.text}
               options={r.enabled ? opts[i] : []}
               helpOptions={allOpts[i]}
+              helpLoading={phAllLoading(i)}
               onHelp={() => { void phLoadAll(i); }}
-              onPickFull={(path, t) => pickFull(i, path, t)}
-              disabled={!r.enabled}
-              disabledHint={`Fill ${PH_LEVELS[i - 1].toLowerCase()} first`}
+              onPickFull={(c, t) => set(i, c, t)}
               error={tried ? r.error : ''}
               onChange={(c, t) => set(i, c, t)}
             />
@@ -418,13 +404,12 @@ function HierarchyForm({ version, mounted, onCreated }: { version: number; mount
               options={r.enabled ? opts[i] : []}
               len={phSegLen(i)}
               numeric
-              disabled={!r.enabled}
-              disabledHint={i > 0 ? `Fill ${PH_LEVELS[i - 1].toLowerCase()} first` : undefined}
               error={tried ? r.error : r.code && r.error && !r.error.startsWith('Describe') ? r.error : ''}
               suggest={mounted && r.enabled ? nextFree(opts[i], phSegLen(i)) : undefined}
               helpOptions={allOpts[i]}
+              helpLoading={phAllLoading(i)}
               onHelp={() => { void phLoadAll(i); }}
-              onPickFull={(path, t) => pickFull(i, path, t)}
+              onPickFull={(c, t) => set(i, c, t)}
               onChange={(c, t) => set(i, c, t)}
             />
           )))}

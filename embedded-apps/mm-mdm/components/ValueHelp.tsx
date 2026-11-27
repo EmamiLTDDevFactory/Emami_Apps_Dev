@@ -130,11 +130,12 @@ function VhIcon() {
 /* Value help dialog ("Select: Material Type")                          */
 /* ------------------------------------------------------------------ */
 
-export function ValueHelpDialog({ title, options, current, blockedReason, onPick, onClose }: {
+export function ValueHelpDialog({ title, options, current, blockedReason, loading, onPick, onClose }: {
   title: string;
   options: Opt[];
   current: string;
   blockedReason?: (value: string) => string | undefined;
+  loading?: boolean;
   onPick: (value: string) => void;
   onClose: () => void;
 }) {
@@ -147,7 +148,14 @@ export function ValueHelpDialog({ title, options, current, blockedReason, onPick
   const rows = useMemo(() => {
     const c = code.trim().toUpperCase();
     const d = desc.trim().toUpperCase();
-    return options.filter((x) => (!c || x.value.toUpperCase().includes(c)) && (!d || x.label.toUpperCase().includes(d)));
+    // as SAP: "*" is a wildcard (whole value must match the pattern), without it the text may appear anywhere
+    const match = (v: string, q: string) => {
+      if (!q) return true;
+      const t = v.toUpperCase();
+      if (!q.includes('*')) return t.includes(q);
+      return new RegExp(`^${q.split('*').map((p) => p.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`).test(t);
+    };
+    return options.filter((x) => match(x.value, c) && match(x.label, d));
   }, [options, code, desc]);
 
   return (
@@ -198,7 +206,7 @@ export function ValueHelpDialog({ title, options, current, blockedReason, onPick
                   </tr>
                 );
               })}
-              {rows.length === 0 && <tr><td colSpan={3} className="empty">No values match.</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={3} className="empty">{loading ? 'Loading the values from SAP…' : 'No values match.'}</td></tr>}
             </tbody>
           </table>
         </div>
