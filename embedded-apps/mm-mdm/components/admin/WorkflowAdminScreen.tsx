@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { WfCfg, WfKey, WfMeta, WfSummary, emptyKey, wfApi } from '@/lib/admin/wfApi';
 import { keyText, sameKey, visibleKeyFields } from '@/lib/admin/wfLogic';
-import { IconCopy, IconPlus, IconSearch } from '../icons';
+import { IconCopy, IconPlus, IconSearch, IconTrash } from '../icons';
 import { ErrorState, LoadingState } from '../ui';
 import GroupEditor, { EditorTarget } from './wf/GroupEditor';
 import LogPanel from './wf/LogPanel';
@@ -28,6 +28,10 @@ export default function WorkflowAdminScreen() {
   const [target, setTarget] = useState<EditorTarget | null>(null);
   const [dirty, setDirty] = useState(false);
   const [pending, setPending] = useState<null | (() => void)>(null);
+  const [delKey, setDelKey] = useState<WfSummary | null>(null);
+  const [delForce, setDelForce] = useState('');
+  const [delBusy, setDelBusy] = useState(false);
+  const [delErr, setDelErr] = useState<unknown>(null);
   const [copy, setCopy] = useState<null | { key: WfKey; mode: 'single' | 'type' }>(null);
 
   const loadMeta = useCallback(() => { setMetaErr(''); wfApi.meta().then(setMeta).catch((e: Error) => setMetaErr(e.message)); }, []);
@@ -46,6 +50,19 @@ export default function WorkflowAdminScreen() {
   const chooseApp = (id: string) => guard(() => { setAppId(id); setFilter(emptyKey(id)); setList(null); setTarget(null); setDirty(false); if (id) search(id, emptyKey(id)); });
   const open = (k: WfKey) => guard(() => { setTarget({ kind: 'existing', key: k }); setDirty(false); setTop('groups'); });
   const refresh = () => search(appId, filter);
+  async function removeGroup(force: boolean) {
+    if (!delKey) return;
+    setDelBusy(true); setDelErr(null);
+    try {
+      await wfApi.remove(delKey, force);
+      if (target?.kind === 'existing' && sameKey(target.key, delKey)) { setTarget(null); setDirty(false); }
+      setDelKey(null); setDelForce(''); refresh();
+    } catch (e) {
+      const m = (e as { messages?: { code?: string; message: string }[] }).messages;
+      if (!force && m?.some((x) => x.code === 'OPEN_REQUESTS')) setDelForce(m[0].message);
+      else { setDelKey(null); setDelForce(''); setErr(e); }
+    } finally { setDelBusy(false); }
+  }
 
   if (metaErr) return <section className="card"><ErrorState title="Workflow maintenance is not available" message={metaErr} onRetry={loadMeta} /></section>;
   if (!meta) return <section className="card"><LoadingState text="Reading the applications from SAP…" /></section>;
@@ -90,7 +107,7 @@ export default function WorkflowAdminScreen() {
             {!busy && list && list.length > 0 && (
               <div className="wf-list-scroll">
                 <table className="wf-grid wf-list-grid">
-                  <thead><tr><th className="wf-c-sel" />{fields.map((f) => <th key={f.field}>{f.label}</th>)}<th title="Reviewer / Approver levels">R / A</th><th>Agents</th><th /></tr></thead>
+                  <thead><tr><th className="wf-c-sel" />{fields.map((f) => <th key={f.field}>{f.label}</th>)}<th title="Reviewer / Approver levels">R / A</th><th>Agents</th><th>Status</th><th /></tr></thead>
                   <tbody>
                     {list.map((g) => {
                       const sel = target?.kind === 'existing' && sameKey(target.key, g);
@@ -101,6 +118,7 @@ export default function WorkflowAdminScreen() {
                           <td className="num">{g.reviewerLevels} / {g.approverLevels}</td>
                           <td className="num">{g.countedAgents}</td>
                           <td>{g.issues.length ? <span className="badge badge-warn" title={g.issues.join('\n')}>{g.issues.length} issue{g.issues.length === 1 ? '' : 's'}</span> : <span className="badge badge-success">ok</span>}</td>
+                          <td className="wf-c-chk"><button type="button" className="btn btn-sm btn-danger-ghost" aria-label={`Delete ${keyText(g)}`} title="Delete this combination" onClick={(e) => { e.stopPropagation(); setDelKey(g); setDelForce(''); setDelErr(null); }}><IconTrash size={13} /></button></td>
                         </tr>
                       );
                     })}
@@ -130,6 +148,18 @@ export default function WorkflowAdminScreen() {
       {pending && (
         <ConfirmDialog title="Discard unsaved changes?" confirmText="Discard" danger onCancel={() => setPending(null)} onConfirm={() => { const fn = pending; setPending(null); setDirty(false); fn(); }}>
           <p>Note : Before action kindly save the data otherwise modified data will be lost.</p>
+        </ConfirmDialog>
+      )}
+      {delKey && !delForce && (
+        <ConfirmDialog title="Delete this combination?" confirmText="Delete" danger busy={delBusy} onCancel={() => setDelKey(null)} onConfirm={() => removeGroup(false)}>
+          <p><strong>{keyText(delKey)}</strong></p>
+          <p>It will be deleted corresponding details of Level Definition, Agent and View visibility also. It will be Updated in SAP. Do you want to continue?</p>
+          <p>This happens immediately and is recorded in the change log. Requests of this combination that start afterwards fail until a definition exists again.</p>
+        </ConfirmDialog>
+      )}
+      {delKey && delForce && (
+        <ConfirmDialog title="Requests are still running" confirmText="Delete anyway" danger busy={delBusy} onCancel={() => { setDelKey(null); setDelForce(''); }} onConfirm={() => removeGroup(true)}>
+          <p>{delForce}</p>
         </ConfirmDialog>
       )}
       {copy && <CopyDialog source={copy.key} cfg={cfg} mode={copy.mode} onClose={() => setCopy(null)} onDone={(k) => { setCopy(null); refresh(); if (k) open(k); }} />}

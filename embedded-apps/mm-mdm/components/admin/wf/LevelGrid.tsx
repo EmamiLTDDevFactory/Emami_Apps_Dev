@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import { WfAgent, WfCfg, WfGroup, WfItem, WfLevel } from '@/lib/admin/wfApi';
 import { AREA_LABEL, OPEN_END, agentSig, isCounted, levelSig, newAgent, recount, swapRoles, todayIso } from '@/lib/admin/wfLogic';
 import { IconPlus, IconTrash } from '../../icons';
@@ -74,18 +75,20 @@ export function LevelTable({ base, levels, cfg, flagged, scope, setScope, pirTyp
 }
 
 /** Agent Assignment of the selected level */
-export function AgentTable({ base, level, appId, levelTexts, departments, cfg, flagged, onChange }: {
-  base: WfGroup; level: WfLevel | undefined; appId: string; levelTexts: WfItem[]; departments: WfItem[]; cfg: WfCfg | undefined; flagged: string[]; onChange: (l: WfLevel) => void;
+export function AgentTable({ openToken, base, level, appId, levelTexts, departments, cfg, flagged, onChange }: {
+  openToken?: number; base: WfGroup; level: WfLevel | undefined; appId: string; levelTexts: WfItem[]; departments: WfItem[]; cfg: WfCfg | undefined; flagged: string[]; onChange: (l: WfLevel) => void;
 }) {
   const set = (p: Partial<WfLevel>) => level && onChange(recount({ ...level, ...p }));
   const setAgent = (i: number, p: Partial<WfAgent>) => level && set({ agents: level.agents.map((a, k) => (k === i ? { ...a, ...p, ...(p.isAppr ? { mailId: '' } : {}) } : a)) });
   const counted = level ? level.agents.filter((a) => isCounted(a)).length : 0;
   const verb = level?.typeLvl === 'A' ? 'approve' : 'review';
   const byMail = level?.typeLvl === 'R'; // reviewers are chosen by e-mail id, SAP resolves the SAP user on save
+  const paneRef = useRef<HTMLDetailsElement>(null);
+  useEffect(() => { if (openToken && paneRef.current) paneRef.current.open = true; }, [openToken]);
   const baseSigs = new Set((base.levels.find((l) => l.lvl === level?.lvl)?.agents || []).map(agentSig));
 
   return (
-    <details className="card wf-pane wf-fold" aria-label="Agent assignment" open>
+    <details ref={paneRef} className="card wf-pane wf-fold" aria-label="Agent assignment" open>
       <summary className="wf-pane-bar"><h2>Agent Assignment{level ? <span className="wf-pane-sub"> · {level.lvl} {AREA_LABEL[level.typeLvl] || ''}</span> : ''}</h2>
         {level && <button type="button" className="btn btn-sm" onClick={() => set({ agents: [...level.agents, newAgent(level)] })}><IconPlus size={14} /> Add agent</button>}
       </summary>
