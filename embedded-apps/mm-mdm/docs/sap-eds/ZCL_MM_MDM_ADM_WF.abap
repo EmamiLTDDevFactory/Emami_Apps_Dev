@@ -2670,7 +2670,10 @@ CLASS zcl_mm_mdm_adm_wf IMPLEMENTATION.
       WHEN 'KSCHL'.
         "condition types: those already used as key of this application's definitions first, then the pricing condition types of purchasing (M) and sales (V)
         SELECT DISTINCT gen_type AS key FROM /inowits/wf_def WHERE app_id = @lv_app AND gen_type <> '' INTO CORRESPONDING FIELDS OF TABLE @lt_items.
-        SELECT DISTINCT kschl AS key, vtext AS text FROM t685t WHERE spras = @sy-langu AND kvewe = 'A' AND kappl IN ('M','V') APPENDING CORRESPONDING FIELDS OF TABLE @lt_items.
+        "Product Hierarchy (PH) keys are its own codes (01, 02, 03), not SAP condition types: only the used values
+        IF lv_app <> 'PH'.
+          SELECT DISTINCT kschl AS key, vtext AS text FROM t685t WHERE spras = @sy-langu AND kvewe = 'A' AND kappl IN ('M','V') APPENDING CORRESPONDING FIELDS OF TABLE @lt_items.
+        ENDIF.
         SORT lt_items BY key text DESCENDING.
         DELETE ADJACENT DUPLICATES FROM lt_items COMPARING key.
       WHEN 'VIEW'.
