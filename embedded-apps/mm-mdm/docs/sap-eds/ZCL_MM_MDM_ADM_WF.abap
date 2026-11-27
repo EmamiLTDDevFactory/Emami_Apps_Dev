@@ -210,7 +210,7 @@ CLASS zcl_mm_mdm_adm_wf DEFINITION PUBLIC FINAL CREATE PUBLIC.
     CONSTANTS c_lock_tab TYPE tabname VALUE '/INOWITS/WF_DEF'.
     "applications without view tables / initiator views (Web Dynpro: en_view_table = false and the validate_selected exclusion list)
     CONSTANTS c_no_views TYPE string VALUE ` VB VU CB CU BC BX MBX SAM BP MAC SMC PO AMX MVC MMC MCC MCX MBC MRC MQC PM PXX VMX EMC CTM CRT `.
-    CONSTANTS c_no_l0    TYPE string VALUE ` VB VU CB CU BC BX MBX SAM BP MVC MMC MCC MBC MQC PM PXX PVC PVX QMX VMX MCX AMX MRC PR PRM MMX RXX CRT MAC SMC PO CTM `.
+    CONSTANTS c_no_l0    TYPE string VALUE ` VB VU CB CU BC BX MBX SAM BP MVC MMC MCC MBC MQC PM PXX PVC PVX QMX VMX MCX AMX MRC PR PRM MMX RXX CRT MAC SMC PO CTM PH `.
 
     "---- json and messages
     CLASS-METHODS ser IMPORTING ig_data TYPE any RETURNING VALUE(rv_json) TYPE string.
