@@ -2019,3 +2019,11 @@ h1 { font-size: 22px; } h2 { font-size: 16px; } h3 { font-size: 14px; margin-bot
 .wf-fold:not([open]) > summary::before { transform: rotate(-90deg); }
 .wf-fold > summary h2 { flex: 1; }
 .wf-fold:not([open]) > summary { border-bottom: 0; }
+
+/* ---- round 6: warnings in yellow ---- */
+.wf-page .alert-warn, .wf-msgs.alert-warn { background: #fff3b0; border: 1px solid #f2c200; color: #6b4e00; }
+.wf-page .alert-warn .wf-link { color: #6b4e00; text-decoration: underline; }
+.wf-msg-w, .wf-msg-w .wf-msg-sev { color: #8a6500; }
+.wf-msg-w .wf-msg-sev { background: #ffe066; border-radius: 4px; padding: 1px 6px; }
+.wf-page .badge-warn { background: #ffe066; color: #6b4e00; border-color: #f2c200; }
+.wf-warn-text { color: #8a6500; background: #fff3b0; border: 1px solid #f2c200; border-radius: 6px; padding: 4px 10px; display: inline-block; }
