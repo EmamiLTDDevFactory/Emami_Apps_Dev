@@ -21,6 +21,7 @@ import { componentRate, fgSources, type FgSources, type PlanLineWithOptions } fr
 import FgPerPiece from './FgPerPiece';
 import ComponentSimulator from './ComponentSimulator';
 import RateDetail from './RateDetail';
+import PlanFreightDrawer from './PlanFreightDrawer';
 import type { PlanLine } from '@/lib/plan/rateDetail';
 import type { RateOptionRow } from '@/lib/rates/fields';
 import type { PlanCostQuery } from '@/lib/plan/requests';
@@ -86,6 +87,7 @@ export default function BreakupTab({ ws }: { ws: PlanWorkspace }) {
   const [search, setSearch] = useState('');
   const [leafOnly, setLeafOnly] = useState(false);
   const [drawer, setDrawer] = useState<number | null>(null);
+  const [freightLine, setFreightLine] = useState<PlanCostLine | null>(null);
   const [pcDlg, setPcDlg] = useState<{ key: string; basis: PcBasis } | null>(null);
   const system = useMemo(() => { const c = loadSapConfig(); return c.ok ? c.config.system : ''; }, []);
   const { cost } = ws;
@@ -230,7 +232,7 @@ export default function BreakupTab({ ws }: { ws: PlanWorkspace }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {visible.list.map((v) => ('g' in v ? <GroupRow key={v.g.key} g={v.g} open={isOpen(v.g)} onToggle={() => toggle(v.g)} months={months} fg={v.g.rollup ? fgByKey.get(v.g.rollup.key) : undefined} optionsLoaded={optionsLoaded} onPc={(basis) => v.g.rollup && setPcDlg({ key: v.g.rollup.key, basis })} /> : <LineRow key={`${v.i}`} l={lines[v.i]} months={months} optionsLoaded={optionsLoaded} onOpen={() => setDrawer(v.i)} />))}
+                    {visible.list.map((v) => ('g' in v ? <GroupRow key={v.g.key} g={v.g} open={isOpen(v.g)} onToggle={() => toggle(v.g)} months={months} fg={v.g.rollup ? fgByKey.get(v.g.rollup.key) : undefined} optionsLoaded={optionsLoaded} onPc={(basis) => v.g.rollup && setPcDlg({ key: v.g.rollup.key, basis })} /> : <LineRow key={`${v.i}`} l={lines[v.i]} months={months} optionsLoaded={optionsLoaded} onOpen={() => setDrawer(v.i)} onFreight={() => setFreightLine(lines[v.i])} />))}
                   </tbody>
                 </table>
                 {visible.capped && <p className="px-3 py-2 text-xs text-warn">Showing the first {ROW_CAP.toLocaleString('en-IN')} component rows. Filter or collapse to see the rest (the export has every row).</p>}
@@ -273,7 +275,8 @@ export default function BreakupTab({ ws }: { ws: PlanWorkspace }) {
         </>
       )}
       {pcDlg && <FgPcDialog fgKey={pcDlg.key} lines={withRates as unknown as PlanLineWithOptions[]} basis={pcDlg.basis} optionsReady={optionsLoaded} onClose={() => setPcDlg(null)} />}
-      <LineDrawer line={drawer === null ? null : (withRates[drawer] as unknown as PlanCostLine & { RateOptions?: CostLine['RateOptions'] })} onClose={() => setDrawer(null)} ranQuery={cost.ranQuery} calls={cost.calls} />
+      <LineDrawer line={drawer === null ? null : (withRates[drawer] as unknown as PlanCostLine & { RateOptions?: CostLine['RateOptions'] })} onClose={() => setDrawer(null)} ranQuery={cost.ranQuery} calls={cost.calls} onFreight={(l) => setFreightLine(l)} />
+      <PlanFreightDrawer line={freightLine} ranQuery={cost.ranQuery} onClose={() => setFreightLine(null)} />
     </div>
   );
 }
@@ -341,7 +344,7 @@ function GroupRow({ g, open, onToggle, months, fg, optionsLoaded, onPc }: { g: G
   );
 }
 
-function LineRow({ l, months, onOpen, optionsLoaded }: { l: PlanLineWithOptions; months: Months; onOpen: () => void; optionsLoaded: boolean }) {
+function LineRow({ l, months, onOpen, optionsLoaded, onFreight }: { l: PlanLineWithOptions; months: Months; onOpen: () => void; optionsLoaded: boolean; /** opens the freight drawer (source calculation + freight analysis) */ onFreight?: () => void }) {
   const rate = (k: 'MBEW' | 'CONSUMP') => { const r = componentRate(l, k); return r ? fmtRate(r) : optionsLoaded ? <span className="text-faint">—</span> : ''; };
   const leaf = isLeafRow(l);
   const qty = monthQty(l);
@@ -362,7 +365,9 @@ function LineRow({ l, months, onOpen, optionsLoaded }: { l: PlanLineWithOptions;
       <td className={tdNum}>{fmtQty(l.QtyTot)} <span className="text-faint">{l.Meins}</span></td>
       <td className={tdCls}>{leaf ? <SourceBadge source={l.SelSource} /> : null}</td>
       <td className={tdNum}>{leaf ? fmtRate(l.SelRatePcInr) : ''}</td>
-      <td className={tdNum} title={(l as FreightTagged).FrtIncluded ? `Not added: the ${sourceLabel(l.SelSource)} rate already includes freight` : undefined}>{leaf ? <>{fmtRate(String(componentFreightInr(l)))}{(l as FreightTagged).FrtIncluded && <span className="text-2xs text-faint"> not added</span>}</> : ''}</td>
+      <td className={tdNum} title={(l as FreightTagged).FrtIncluded ? `Not added: the ${sourceLabel(l.SelSource)} rate already includes freight` : undefined}>{leaf ? <>{onFreight && !componentFreightInr(l).isZero()
+        ? <button type="button" className="underline decoration-dotted underline-offset-2 hover:decoration-solid" title="Freight break-up: source calculation and freight analysis" onClick={(e) => { e.stopPropagation(); onFreight(); }}>{fmtRate(String(componentFreightInr(l)))}</button>
+        : fmtRate(String(componentFreightInr(l)))}{(l as FreightTagged).FrtIncluded && <span className="text-2xs text-faint"> not added</span>}</> : ''}</td>
       <td className={tdNum}>{leaf ? fmtRate(l.TotCostPcInr) : ''}</td>
       <td className={cx(tdNum, leaf && 'font-semibold')}>{leaf ? fmtNum(l.TotCostInr, 2) : ''}</td>
       <td className={tdNum}>{leaf && D(l.BudLanded).gt(0) ? fmtRate(l.BudLanded) : ''}</td>
@@ -374,7 +379,7 @@ function LineRow({ l, months, onOpen, optionsLoaded }: { l: PlanLineWithOptions;
   );
 }
 
-function LineDrawer({ line, onClose, ranQuery, calls }: { line: (PlanCostLine & { RateOptions?: CostLine['RateOptions'] }) | null; onClose: () => void; ranQuery: PlanCostQuery | null; calls: PlanCall[] }) {
+function LineDrawer({ line, onClose, ranQuery, calls, onFreight }: { line: (PlanCostLine & { RateOptions?: CostLine['RateOptions'] }) | null; onClose: () => void; ranQuery: PlanCostQuery | null; calls: PlanCall[]; onFreight?: (l: PlanCostLine) => void }) {
   if (!line) return <Drawer open={false} onClose={onClose} title="">{null}</Drawer>;
   const l = line;
   const facts: [string, ReactNode][] = [
@@ -388,7 +393,7 @@ function LineDrawer({ line, onClose, ranQuery, calls }: { line: (PlanCostLine & 
     ['Rate source', <SourceBadge key="s" source={l.SelSource} />],
     ['Vendor', `${l.SelVendor} ${l.SelVname}`.trim() || '—'],
     ['Rate/pc INR', fmtRate(l.SelRatePcInr)],
-    ['Freight/pc INR', `${fmtRate(String(componentFreightInr(l)))} (${l.FrtSrc || '—'})${(l as FreightTagged).FrtIncluded ? ` - not added, the ${sourceLabel(l.SelSource)} rate includes freight` : ''}`],
+    ['Freight/pc INR', <span key="f">{`${fmtRate(String(componentFreightInr(l)))} (${l.FrtSrc || '—'})${(l as FreightTagged).FrtIncluded ? ` - not added, the ${sourceLabel(l.SelSource)} rate includes freight` : ''}`}{onFreight && !componentFreightInr(l).isZero() && <button type="button" className="ml-2 text-xs font-semibold text-accent hover:underline" onClick={() => onFreight(l)}>Freight break-up</button>}</span>],
     ['Total/pc INR', fmtRate(l.TotCostPcInr)],
     ['Total cost INR', fmtNum(l.TotCostInr, 2)],
     ['Alt BOM (FG / item)', `${l.Stlal || '—'} / ${l.ItemStlal || '—'}`],
