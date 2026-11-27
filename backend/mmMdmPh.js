@@ -205,7 +205,11 @@ async function sapPost(caller, path, json = null) {
         const headers = { ...common, 'X-CSRF-Token': token };
         if (cookie) headers.Cookie = cookie;
         if (json) headers['Content-Type'] = 'application/json';
-        res = await fetch(`${base()}/${path}${client}`, { method: 'POST', headers, body: json ? JSON.stringify(json) : undefined, cache: 'no-store' });
+        // The Azure proxy drops the query string of a POST (SAP then answers an empty 404): send it as an encoded path, "Name%3F<query>"
+        let target = `${path}${client}`;
+        const qi = target.indexOf('?');
+        if (qi >= 0) target = `${target.slice(0, qi)}%3F${encodeURIComponent(target.slice(qi + 1))}`;
+        res = await fetch(`${base()}/${target}`, { method: 'POST', headers, body: json ? JSON.stringify(json) : undefined, cache: 'no-store' });
     } catch (e) { throw new SapError(`SAP is not reachable: ${e.message}`); }
     const raw = await res.text();
     let body = {};

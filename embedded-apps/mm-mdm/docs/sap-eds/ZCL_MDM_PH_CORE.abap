@@ -949,7 +949,7 @@ CLASS ZCL_MDM_PH_CORE IMPLEMENTATION.
       ENDIF.
 
       IF <code> IS NOT INITIAL.
-        IF <code> CN '0123456789'.
+        IF CONV string( <code> ) CN '0123456789'.
           add_msg( EXPORTING iv_text = |{ <l>-title }: only digits are allowed|
                              iv_field = lv_field CHANGING ct_return = lt_return ).
           CONTINUE.
