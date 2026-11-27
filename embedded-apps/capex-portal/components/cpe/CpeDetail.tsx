@@ -3,10 +3,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { PageHeader, Card, Button, Chip, DataTable, Empty, ErrorBox, Field, Input, Modal, Select, Spinner, Tabs, TextArea, useAction, useToast, type Column } from '@/components/ui';
-import { fn, get, isOk, odataKey, type FnResult } from '@/lib/api';
+import { fn, get, isOk, list, odataKey, q, type FnResult } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { DOC_CATEGORIES, DOC_EXTENSIONS, DOC_MAX_MB, listDocuments, uploadDocument, validateFile, type CapexDocument } from '@/lib/documents';
-import type { CPE } from '@/lib/entities';
+import type { CPE, PurchaseOrder } from '@/lib/entities';
 import DocActions from '@/components/documents/DocActions';
 import { fmtDate, fmtDays, inLakhs, num, orDash, statusLabel, statusTone } from '@/lib/format';
 import { isUnitTechnicalRole } from '@/lib/rules';
@@ -14,7 +14,7 @@ import Timeline, { useApprovalChain } from '@/components/approvals/Timeline';
 import { categoryLabel, uploadCategories } from './uploads';
 import { MetricTiles, Strip, VendorCards, VendorScorecard } from './Bits';
 import { canReviseAmount, canSetVendorCode } from './features';
-import { canEvaluate, canUploadDocs, savingText, savingVsL1, slaBanner, sortedVendors, submitCpeParams } from './logic';
+import { canEvaluate, canUploadDocs, missingCategories, savingText, savingVsL1, slaBanner, sortedVendors, submitCpeParams } from './logic';
 
 const POST_APPROVAL = ['APPROVED', 'CAPITALIZED', 'COMPLETED'];
 
@@ -39,6 +39,8 @@ export default function CpeDetail() {
   const [cpe, setCpe] = useState<CPE | null>(null);
   const [docs, setDocs] = useState<CapexDocument[]>([]);
   const [docsErr, setDocsErr] = useState('');
+  /** The PO raised against this CPE, if any (EDSK9B0EQW: shown alongside Banfn after a CWIP push). */
+  const [poNumber, setPoNumber] = useState('');
   const [state, setState] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
   const [error, setError] = useState('');
   const [tab, setTab] = useState('overview');
@@ -56,9 +58,12 @@ export default function CpeDetail() {
       setCpe(row);
       setState('ready');
       setTick((t) => t + 1);
-      // Documents are a separate list; a failure here must not hide the CPE.
+      // Documents and the linked PO are separate lookups; a failure in either must not hide the CPE.
       listDocuments('CPE', id).then((r) => { setDocs(r); setDocsErr(''); })
         .catch((e) => { setDocs([]); setDocsErr(e instanceof Error ? e.message : 'Could not load documents.'); });
+      list<PurchaseOrder>('PurchaseOrderSet', { $filter: `Cpeid eq ${q(id)}` })
+        .then((r) => setPoNumber(r.rows[0]?.Ebeln || ''))
+        .catch(() => setPoNumber(''));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load the CPE.');
       setState('error');
@@ -72,6 +77,19 @@ export default function CpeDetail() {
   const selectedLifnr = vendors.find((v) => v.selected)?.lifnr ?? '';
   useEffect(() => { setVendorCode(selectedLifnr); }, [selectedLifnr]);
   const chain = useApprovalChain('CPE', id, cpe?.Doaid ?? '', cpe?.CurrLevel ?? '', status, tick);
+
+  /** EDSK9B0EQW (2026-11-27): SubmitCPE now runs check_attachments and refuses with a 400 if a
+   * mandatory document is missing. Check locally first so the person sees exactly what's missing
+   * and can upload it right away, instead of a raw backend rejection after confirming Submit. */
+  function trySubmit() {
+    const missing = missingCategories(docs.map((d) => d.Category), vendors.length);
+    if (missing.length) {
+      toast(`Required documents are missing: ${missing.map(categoryLabel).join(', ')}.`, 'error');
+      setUpload({ category: missing[0], title: '', note: '', file: null });
+      return;
+    }
+    setConfirmSubmit(true);
+  }
 
   const resubmit = () => { setConfirmSubmit(false); return run(async () => {
     if (!cpe) return;
@@ -173,6 +191,8 @@ export default function CpeDetail() {
               <KV k="Created on">{fmtDate(cpe.CreatedOn)}</KV>
               <KV k="Delivery (weeks)">{cpe.DeliveryWeeks ? cpe.DeliveryWeeks : '-'}</KV>
               <KV k="Technical compliance">{cpe.TechCompliant === 'X' ? <Chip tone="success">Compliant</Chip> : <Chip tone="warning">Pending sign-off</Chip>}</KV>
+              <KV k="Purchase Requisition">{orDash(cpe.Banfn)}</KV>
+              <KV k="Purchase Order">{poNumber ? <Link href={`/po/detail/?id=${encodeURIComponent(poNumber)}`} className="text-plum hover:underline">{poNumber}</Link> : (cpe.Banfn ? <span className="text-amber-700">PR created, PO failed - <Link href={`/cwip/create/?cpe=${encodeURIComponent(cpe.Cpeid)}`} className="underline">retry the push</Link></span> : orDash(''))}</KV>
             </dl>
             {([['Technical specifications', cpe.Specs], ['Terms & conditions', cpe.Terms], ['Technical remarks', cpe.TechRemark]] as const).map(([k, v]) => (
               <div key={k} className="mt-4">
@@ -220,7 +240,8 @@ export default function CpeDetail() {
       </div>
 
       <div className="sticky bottom-0 z-10 -mx-1 mt-4 flex flex-wrap justify-end gap-2 border-t border-sap-line bg-white/90 px-1 py-3 backdrop-blur print:hidden">
-        {isDraft && <Button variant="primary" disabled={busy} onClick={() => setConfirmSubmit(true)}>Submit</Button>}
+        {isDraft && <Link href={`/cpe/create/?id=${encodeURIComponent(cpe.Cpeid)}`} className="btn btn-secondary">Edit</Link>}
+        {isDraft && <Button variant="primary" disabled={busy} onClick={trySubmit}>Submit</Button>}
         {canEvaluate(status, isUnitTechnicalRole(session.role), session.isAdmin) && <Link href={`/evaluation/?id=${encodeURIComponent(cpe.Cpeid)}`} className="btn btn-secondary">Evaluation</Link>}
         {status === 'APPROVED' && <Link href={`/cwip/create/?cpe=${encodeURIComponent(cpe.Cpeid)}`} className="btn btn-primary">Create CWIP</Link>}
         {showRevise && <Button onClick={() => setRevise({ amount: String(num(cpe.Amount)), reason: '', file: null })}>Revise Amount</Button>}

@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
-  buildCpePayload, buildEmptyAttachments, canEvaluate, draftMetrics, emptyDraft, inFiscalYear, matchesStatus, mapVendor, missingDocuments,
-  newVendor, nextId, nonL1Narrative, nonL1Selected, patchVendor, resizeAttachmentSlots, savingVsL1, selectVendor, statusCounts,
-  submitCpeParams, validateDraft, validateEvaluation, withRanks, type CpeDraft, type DraftVendor,
+  buildCpePayload, buildEmptyAttachments, canEvaluate, draftFromCpe, draftMetrics, emptyDraft, inFiscalYear, matchesStatus, mapVendor,
+  missingCategories, missingDocuments, newVendor, nextId, nonL1Narrative, nonL1Selected, patchVendor, requiredDocumentCategories,
+  resizeAttachmentSlots, savingVsL1, selectVendor, statusCounts, submitCpeParams, validateDraft, validateEvaluation, withRanks,
+  type CpeDraft, type DraftVendor,
 } from '@/components/cpe/logic';
+import type { CPE } from '@/lib/entities';
 
 const v = (id: string, quote: string, extra: Partial<DraftVendor> = {}): DraftVendor => ({ ...newVendor([]), id, name: 'Vendor ' + id, quote, ...extra });
 
@@ -54,6 +56,20 @@ describe('attachment matrix', () => {
   });
   it('lists every empty mandatory slot', () => {
     expect(missingDocuments(buildEmptyAttachments(1))[0]).toBe('Required documents are missing: RFQ 1, Quotation 1, Techno Commercial Comparative, Negotiation History, Justification Note');
+  });
+  it('only checks RFQ/Quotation for vendors actually entered, not every reserved slot (EDSK9B0EQW check_attachments)', () => {
+    const att = buildEmptyAttachments(3); // 3 reserved slots, but only 2 vendors on this CPE
+    expect(missingDocuments(att, 2)[0]).toBe('Required documents are missing: RFQ 1, RFQ 2, Quotation 1, Quotation 2, Techno Commercial Comparative, Negotiation History, Justification Note');
+    expect(missingDocuments(att, 0)[0]).toBe('Required documents are missing: Techno Commercial Comparative, Negotiation History, Justification Note');
+    // Filling exactly the 2 vendor slots (not slot 3) clears everything but the 3 single docs.
+    const filled = { ...att, rfq: att.rfq.map((s, i) => (i < 2 ? { ...s, fileName: 'a.pdf' } : s)), quotation: att.quotation.map((s, i) => (i < 2 ? { ...s, fileName: 'b.pdf' } : s)) };
+    expect(missingDocuments(filled, 2)[0]).toBe('Required documents are missing: Techno Commercial Comparative, Negotiation History, Justification Note');
+  });
+  it('requiredDocumentCategories/missingCategories mirror the backend check_attachments rule, capped at 3 vendors', () => {
+    expect(requiredDocumentCategories(2)).toEqual(['RFQ1', 'QUOTE1', 'RFQ2', 'QUOTE2', 'TCC', 'NEGOTIATION', 'JUSTIFICATION']);
+    expect(requiredDocumentCategories(5)).toEqual(requiredDocumentCategories(3)); // never more than the 3 reserved slots
+    expect(missingCategories(['RFQ1', 'QUOTE1', 'TCC'], 1)).toEqual(['NEGOTIATION', 'JUSTIFICATION']);
+    expect(missingCategories(requiredDocumentCategories(2), 2)).toEqual([]);
   });
 });
 
@@ -113,6 +129,58 @@ describe('buildCpePayload', () => {
   });
   it('SubmitCPE params follow the metadata names', () => {
     expect(submitCpeParams('CPE-1', 'B1', '1500000.000')).toEqual({ CpeId: 'CPE-1', BudgetId: 'B1', Amount: 1500000, PoolBudgetId: '', PoolAmount: 0 });
+  });
+  it('Cpeid is only sent when editing an existing draft (EDSK9B0EQW: deep create updates in place when Cpeid is set)', () => {
+    expect('Cpeid' in p).toBe(false);
+    expect((buildCpePayload({ ...d, cpeId: 'CPE-0050' }, '2026', draftMetrics(d)) as any).Cpeid).toBe('CPE-0050');
+  });
+});
+
+describe('draftFromCpe (edit mode, EDSK9B0EQW)', () => {
+  const cpe: CPE = {
+    BudgetTitle: '', TechCompliant: '', SingleVendJust: 'sole source available', Banfn: '', IsQuota: '', Cpeid: 'CPE-0050', MetricsOn: 'X',
+    Budgetid: 'B1', RolloutFlag: '', Fiscalyear: '2026', PlantName: 'EMAMI LTD, Pachoria', Title: 'Packing line', CategoryText: 'Plant & Machinery',
+    Werks: 'UN13', Capextype: 'MANUFACTURING', DaysPending: 0, Category: 'PM', SlaState: '', Amount: '1500000.000', TechBy: '', TechOn: '',
+    Waers: 'INR', Status: 'DRAFT', CurrLevel: '', HurdleRate: '8.00', Investment: '1500000.000', Specs: 'specs here', Irr: '0.00', Terms: 'terms here',
+    DeliveryWeeks: 12, Npv: '0.000', Payback: '0.00', PoolBudgetid: '', TechRemark: '', PoolAmount: '0.000', SelVendor: '0001', BlockReason: '',
+    Nonl1Justif: '', Doaid: '', SavingVsL1: '', SubmittedBy: '', SubmittedOn: '', ApprovedOn: '', CreatedBy: '', CreatedByName: '', CreatedOn: '',
+    CreatedAt: '', ChangedBy: '', ChangedOn: '',
+    CPEToVendors: { results: [{ Cpeid: 'CPE-0050', Quality: 3, GstCompliant: 'X', Selected: 'X', Vendorseq: '0001', Ranking: '1', Lifnr: '0000004258', Vendorname: 'Acme', QuoteAmt: '1500000.000', Totalcost: '0.000', Waers: 'INR', DeliveryDays: 30, WarrantyMon: '12' }] },
+    CPEToCashFlows: { results: [{ Cpeid: 'CPE-0050', Yearnr: '01', Amount: '400000.000', Waers: 'INR' }, { Cpeid: 'CPE-0050', Yearnr: '02', Amount: '500000.000', Waers: 'INR' }] },
+  };
+  const docs = [
+    { Category: 'RFQ1', Filename: 'rfq1.pdf', DocTitle: 'RFQ 1 doc' },
+    { Category: 'QUOTE1', Filename: 'quote1.pdf' },
+    { Category: 'TCC', Filename: 'tcc.pdf' },
+    { Category: 'NEGOTIATION', Filename: 'neg.pdf' },
+    { Category: 'JUSTIFICATION', Filename: 'just.pdf' },
+    { Category: 'GEN', Filename: 'extra.pdf', Note: 'spec sheet' },
+  ];
+  const d = draftFromCpe(cpe, docs);
+  it('carries Cpeid, header fields and infers Single Vendor from SingleVendJust', () => {
+    expect(d.cpeId).toBe('CPE-0050');
+    expect(d.budgetId).toBe('B1');
+    expect(d.plant).toBe('UN13');
+    expect(d.singleCpe).toBe(true);
+    expect(d.singleVendorJustification).toBe('sole source available');
+    expect(d.amount).toBe('1500000');
+  });
+  it('rebuilds vendors and 5-slot cash flows from the expanded nav properties', () => {
+    expect(d.vendors).toHaveLength(1);
+    expect(d.vendors[0]).toMatchObject({ name: 'Acme', lifnr: '0000004258', quote: '1500000', selected: true, rank: 'L1' });
+    expect(d.cf).toEqual(['400000', '500000', '', '', '']);
+  });
+  it('already-uploaded documents show as already selected, by category, and extras land in General', () => {
+    expect(d.attachments.rfq).toHaveLength(1); // Single Vendor -> 1 slot
+    expect(d.attachments.rfq[0].fileName).toBe('rfq1.pdf');
+    expect(d.attachments.rfq[0].title).toBe('RFQ 1 doc');
+    expect(d.attachments.quotation[0].fileName).toBe('quote1.pdf');
+    expect(d.attachments.tcc.fileName).toBe('tcc.pdf');
+    expect(d.attachments.negotiation.fileName).toBe('neg.pdf');
+    expect(d.attachments.justification.fileName).toBe('just.pdf');
+    expect(d.attachments.general).toHaveLength(1);
+    expect(d.attachments.general[0]).toMatchObject({ fileName: 'extra.pdf', note: 'spec sheet' });
+    expect(missingDocuments(d.attachments, d.vendors.length)).toEqual([]); // nothing missing: every mandatory slot is filled
   });
 });
 

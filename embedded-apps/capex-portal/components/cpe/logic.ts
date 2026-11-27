@@ -5,7 +5,7 @@
 import { metricsForDisplay } from '@/lib/finance';
 import { currentFiscalYear, fyDigits, inLakhs, isStatus, num } from '@/lib/format';
 import { compareToL1, isNonL1Selection, rankVendors, validateCpe, type CpeValidationConfig } from '@/lib/rules';
-import type { CPE, Vendor } from '@/lib/entities';
+import type { CPE, CpeCashFlow, Vendor } from '@/lib/entities';
 
 // ---------------------------------------------------------------- draft shapes
 
@@ -36,6 +36,10 @@ export interface Attachments {
 }
 
 export interface CpeDraft {
+  /** Set only when editing an existing DRAFT/BLOCKED CPE (/cpe/create/?id=...) - sent as Cpeid in
+   * buildCpePayload so CPESet's deep create updates that CPE in place instead of making a new one
+   * (EDSK9B0EQW, 2026-11-27). Blank means "create a brand new CPE". */
+  cpeId?: string;
   budgetId: string;
   title: string;
   plant: string;
@@ -176,12 +180,36 @@ export const fmtPayback = (v: number | null | undefined) => (v === null || v ===
 
 // ---------------------------------------------------------------- attachments
 
-/** Slots that must be filled on Submit (RFQ + Quotation per slot, TCC, Negotiation, Justification). Save Draft never checks. */
-export function missingDocuments(att: Attachments): string[] {
+/**
+ * Slots that must be filled on Submit. Save Draft never checks. SubmitCPE's own check_attachments (EDSK9B0EQW)
+ * requires RFQ/QUOTE only for vendors actually entered - not every reserved slot (3, or 1 for Single Vendor) -
+ * plus TCC/Negotiation/Justification always. `vendorCount` defaults to every reserved slot (old behaviour) when
+ * the caller doesn't know how many vendors are entered.
+ */
+export function missingDocuments(att: Attachments, vendorCount: number = att.rfq.length): string[] {
   const out: string[] = [];
-  [...att.rfq, ...att.quotation].forEach((s) => { if (!s.fileName) out.push(s.label); });
+  const n = Math.max(0, Math.min(vendorCount, att.rfq.length, att.quotation.length));
+  att.rfq.slice(0, n).forEach((s) => { if (!s.fileName) out.push(s.label); });
+  att.quotation.slice(0, n).forEach((s) => { if (!s.fileName) out.push(s.label); });
   ([att.tcc, att.negotiation, att.justification]).forEach((s) => { if (!s.fileName) out.push(s.label); });
   return out.length ? ['Required documents are missing: ' + out.join(', ')] : [];
+}
+
+/** Mandatory document categories for a CPE with `vendorCount` vendors actually entered (never more than the 3
+ * reserved RFQ/Quotation slots): RFQ1..N and QUOTE1..N, plus TCC/NEGOTIATION/JUSTIFICATION always. Mirrors
+ * SubmitCPE's own check_attachments rule (EDSK9B0EQW) - used by CpeDetail's pre-Submit check against the real
+ * uploaded CapexDocument list, so the screen agrees with the backend before the person even clicks Submit. */
+export function requiredDocumentCategories(vendorCount: number): string[] {
+  const n = Math.max(0, Math.min(3, vendorCount));
+  const cats: string[] = [];
+  for (let i = 1; i <= n; i++) cats.push('RFQ' + i, 'QUOTE' + i);
+  return [...cats, 'TCC', 'NEGOTIATION', 'JUSTIFICATION'];
+}
+
+/** Which mandatory categories (per requiredDocumentCategories) have no uploaded document yet. */
+export function missingCategories(uploadedCategories: Iterable<string>, vendorCount: number): string[] {
+  const have = new Set(uploadedCategories);
+  return requiredDocumentCategories(vendorCount).filter((c) => !have.has(c));
 }
 
 // ---------------------------------------------------------------- validation
@@ -195,7 +223,7 @@ export function validateDraft(d: CpeDraft, r: DraftRules): string[] {
     vendors: d.vendors.map(toQuote), nonL1Justification: d.nonL1Justification, singleCpe: d.singleCpe,
     singleVendorJustification: d.singleVendorJustification,
   }, r);
-  return r.documentsEnabled ? errs.concat(missingDocuments(d.attachments)) : errs;
+  return r.documentsEnabled ? errs.concat(missingDocuments(d.attachments, d.vendors.length)) : errs;
 }
 
 /** Field-level error flags (the Fiori valueState) so the screen can outline what is wrong after a failed Submit. */
@@ -236,7 +264,7 @@ export function buildCpePayload(d: CpeDraft, fiscalYear: string, m: MetricsView)
   }));
   const selIdx = d.vendors.findIndex((v) => v.selected);
   const cashFlows = d.cf.map((v, i) => ({ Yearnr: String(i + 1).padStart(2, '0'), Amount: num(v).toFixed(3), Waers: 'INR' }));
-  return {
+  const payload: Record<string, unknown> = {
     Budgetid: d.budgetId,
     Fiscalyear: fyDigits(fiscalYear) || currentFiscalYear(),
     Title: d.title,
@@ -263,6 +291,8 @@ export function buildCpePayload(d: CpeDraft, fiscalYear: string, m: MetricsView)
     CPEToVendors: { results: vendorRows },
     CPEToCashFlows: { results: cashFlows },
   };
+  if (d.cpeId) payload.Cpeid = d.cpeId;
+  return payload;
 }
 
 /** Parameters of SubmitCPE (names/types per docs/metadata.live.xml). Pool fields are always blank: the common pool was removed (log #44). */
@@ -315,6 +345,55 @@ export function expandedRows<T>(x: unknown): T[] {
 /** Rows ordered by their SAP sequence so the table is stable. */
 export function sortedVendors(cpe: CPE): VendorView[] {
   return expandedRows<Vendor>(cpe.CPEToVendors).map(mapVendor).sort((a, b) => a.id.localeCompare(b.id));
+}
+
+/**
+ * Rebuild a CpeDraft from an already-saved CPE for editing (/cpe/create/?id=..., EDSK9B0EQW 2026-11-27) - its
+ * vendors, cash flows and already-uploaded documents all carry over, so Save Draft / Submit update it in place
+ * (via Cpeid in buildCpePayload) instead of creating a duplicate. A document already on SAP shows with its
+ * fileName already set, so the matrix and the mandatory-document check both agree with what is really there;
+ * picking a new file for a fixed slot still replaces it locally exactly like a brand-new upload would.
+ * `docs` only needs the fields read here - CapexDocument itself is defined in lib/documents.ts, not imported
+ * here to avoid a dependency from pure logic back onto the documents module.
+ */
+export function draftFromCpe(cpe: CPE, docs: Array<{ Category: string; Filename: string; DocTitle?: string; Note?: string }>): CpeDraft {
+  const vendors: DraftVendor[] = sortedVendors(cpe).map((v) => ({
+    id: v.id, rank: v.rank, name: v.name, lifnr: v.lifnr, quote: v.quote ? String(v.quote) : '',
+    deliveryDays: v.deliveryDays ? String(v.deliveryDays) : '', quality: v.quality,
+    warrantyMonths: v.warrantyMonths ? String(v.warrantyMonths) : '', gstCompliant: v.gstCompliant, selected: v.selected,
+  }));
+  // There's no stored "was this a Single Vendor CPE" flag - SingleVendJust is only ever non-blank when it was
+  // (see buildCpePayload), so its presence is the reliable signal.
+  const singleCpe = !!cpe.SingleVendJust;
+  const cfRows = expandedRows<CpeCashFlow>(cpe.CPEToCashFlows).slice().sort((a, b) => a.Yearnr.localeCompare(b.Yearnr));
+  const cf: [string, string, string, string, string] = ['', '', '', '', ''];
+  cfRows.forEach((r) => { const i = (parseInt(r.Yearnr, 10) || 0) - 1; if (i >= 0 && i < 5) cf[i] = num(r.Amount) ? String(num(r.Amount)) : ''; });
+
+  const byCategory = new Map(docs.map((d) => [d.Category, d]));
+  const attachments = buildEmptyAttachments(singleCpe ? 1 : 3);
+  const fillSlot = (s: AttachSlot): AttachSlot => {
+    const d = byCategory.get(s.id);
+    return d ? { ...s, fileName: d.Filename, title: d.DocTitle || s.title, note: d.Note || s.note } : s;
+  };
+  attachments.rfq = attachments.rfq.map(fillSlot);
+  attachments.quotation = attachments.quotation.map(fillSlot);
+  attachments.tcc = fillSlot(attachments.tcc);
+  attachments.negotiation = fillSlot(attachments.negotiation);
+  attachments.justification = fillSlot(attachments.justification);
+  const knownIds = new Set([...attachments.rfq, ...attachments.quotation, attachments.tcc, attachments.negotiation, attachments.justification].map((s) => s.id));
+  attachments.general = docs
+    .filter((d) => !knownIds.has(d.Category) && d.Category !== 'AMT_REV')
+    .map((d, i) => ({ id: 'GEN' + (i + 1), label: 'Additional Document', title: d.DocTitle || '', note: d.Note || '', fileName: d.Filename }));
+
+  return {
+    cpeId: cpe.Cpeid, budgetId: cpe.Budgetid, title: cpe.Title, plant: cpe.Werks, plantName: cpe.PlantName,
+    capexType: cpe.Capextype, category: cpe.CategoryText || cpe.Category, categoryCode: cpe.Category,
+    amount: num(cpe.Investment || cpe.Amount) ? String(num(cpe.Investment || cpe.Amount)) : '',
+    specs: cpe.Specs || '', terms: cpe.Terms || '', deliveryWeeks: cpe.DeliveryWeeks ? String(cpe.DeliveryWeeks) : '',
+    metricsEnabled: cpe.MetricsOn === 'X', hurdleRate: num(cpe.HurdleRate) || HURDLE_RATE, cf,
+    vendors, nonL1Justification: cpe.Nonl1Justif || '', singleCpe, singleVendorJustification: cpe.SingleVendJust || '',
+    attachments,
+  };
 }
 
 /** CPEDetail._calcSavingVsL1 (TCO falls back to quote). */

@@ -7,15 +7,15 @@ import Combo from '@/components/budget/Combo';
 import { create, fn, get, isOk, odataKey, type FnResult } from '@/lib/api';
 import { useList } from '@/lib/useData';
 import { useSession } from '@/lib/session';
-import { documentsEnabled } from '@/lib/documents';
-import type { Budget } from '@/lib/entities';
+import { documentsEnabled, listDocuments, type CapexDocument } from '@/lib/documents';
+import type { Budget, CPE } from '@/lib/entities';
 import { fmtDays, inLakhs, isStatus, num } from '@/lib/format';
 import { budgetAvailable, checkBudget, resolveDOA, skipUnitTechnical } from '@/lib/rules';
 import { MetricTiles, Strip, useDoaRules } from './Bits';
 import AttachmentMatrix from './AttachmentMatrix';
 import VendorTable from './VendorTable';
 import {
-  buildCpePayload, draftMetrics, emptyDraft, fieldErrors, newVendor, nonL1Narrative, nonL1Selected, patchVendor, resizeAttachmentSlots,
+  buildCpePayload, draftFromCpe, draftMetrics, emptyDraft, fieldErrors, newVendor, nonL1Narrative, nonL1Selected, patchVendor, resizeAttachmentSlots,
   selectVendor, submitCpeParams, validateDraft, withRanks, type CpeDraft, type DraftVendor,
 } from './logic';
 import { uploadAll } from './uploads';
@@ -35,6 +35,9 @@ export default function CpeCreate() {
   const router = useRouter();
   const toast = useToast();
   const preselect = useSearchParams().get('budget') ?? '';
+  /** /cpe/create/?id=<Cpeid>: edit an existing DRAFT/BLOCKED CPE in place (EDSK9B0EQW, 2026-11-27)
+   * instead of always creating a new one. */
+  const editId = useSearchParams().get('id') ?? '';
   const session = useSession();
   const { fiscalYear, cfgNum, config } = session;
   const { busy, run } = useAction();
@@ -48,12 +51,47 @@ export default function CpeCreate() {
   const [showErrors, setShowErrors] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [errorsOpen, setErrorsOpen] = useState<string[]>([]);
-  /** CPE already created in SAP by a Submit whose SubmitCPE failed: a retry only re-submits it, never creates a duplicate. */
+  /** CPE already created in SAP by a Submit whose SubmitCPE failed: a retry only re-submits it, never creates a duplicate.
+   * Stays blank even when editing an existing draft (draft.cpeId carries that instead) - the FIRST Save Draft / Submit
+   * of this visit must still actually run persist() so the edited fields really get sent, with Cpeid in the payload
+   * updating the CPE in place rather than being skipped as "already created this session". */
   const [created, setCreated] = useState('');
   const [failed, setFailed] = useState<{ id: string; message: string; stage: 'upload' | 'submit' } | null>(null);
+  const [loadingDraft, setLoadingDraft] = useState(!!editId);
+  const [loadError, setLoadError] = useState('');
   const files = useRef<Record<string, File>>({});
   /** Slots already sent to SAP for the created CPE: a retry uploads only the failed / remaining files. */
   const uploaded = useRef<Set<string>>(new Set());
+
+  // ---- load an existing DRAFT/BLOCKED CPE for editing ----
+  useEffect(() => {
+    if (!editId) { setLoadingDraft(false); return; }
+    let live = true;
+    (async () => {
+      try {
+        const cpe = await get<CPE>('CPESet' + odataKey(editId), { $expand: 'CPEToVendors,CPEToCashFlows' });
+        if (!live) return;
+        if (!cpe) { toast(`Record ${editId} could not be found.`, 'error'); router.replace('/cpe/'); return; }
+        if (!isStatus(cpe.Status, 'DRAFT') && !isStatus(cpe.Status, 'BLOCKED')) {
+          toast('Only a Draft or Blocked CPE can be edited.', 'error');
+          router.replace(`/cpe/detail/?id=${encodeURIComponent(editId)}`);
+          return;
+        }
+        const docs = await listDocuments('CPE', editId).catch(() => [] as CapexDocument[]);
+        if (!live) return;
+        setDraft(draftFromCpe(cpe, docs));
+        try {
+          const b = await get<Budget>('BudgetSet' + odataKey(cpe.Budgetid));
+          if (live && b) setBudget(b);
+        } catch { /* the Approved/Committed/Available strip just won't show; editing itself still works */ }
+      } catch (e) {
+        if (live) setLoadError(e instanceof Error ? e.message : 'Could not load the CPE.');
+      } finally {
+        if (live) setLoadingDraft(false);
+      }
+    })();
+    return () => { live = false; };
+  }, [editId, router, toast]);
 
   const rules = useMemo(() => ({
     threeQuoteLimit: cfgNum('THREE_QUOTE_LIMIT', 1000000), specsMinChars: cfgNum('SPECS_MIN_CHARS', 15), nonL1MinChars: cfgNum('NONL1_MIN_CHARS', 25),
@@ -83,11 +121,12 @@ export default function CpeCreate() {
     }
   }
   // A budget handed over from Budget Detail (?budget=...) is applied once the approved list is in.
+  // Never when editing (?id=...) - the loaded CPE's own budget/plant/category already came from draftFromCpe.
   const applied = useRef('');
   useEffect(() => {
-    if (preselect && !budgets.loading && applied.current !== preselect) { applied.current = preselect; void applyBudget(preselect); }
+    if (!editId && preselect && !budgets.loading && applied.current !== preselect) { applied.current = preselect; void applyBudget(preselect); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preselect, budgets.loading, budgets.rows]);
+  }, [editId, preselect, budgets.loading, budgets.rows]);
 
   // ---- derived: budget availability, metrics, DOA preview, non-L1
   const amount = num(draft.amount);
@@ -163,10 +202,15 @@ export default function CpeCreate() {
   };
 
   const noBudget = !draft.budgetId;
+  const title = editId ? 'Edit CPE' : 'Create CPE';
+  const back = { href: editId ? `/cpe/detail/?id=${encodeURIComponent(editId)}` : '/cpe/', label: editId ? 'CPE' : 'All CPEs' };
+
+  if (loadingDraft) return <><PageHeader title={title} back={back} /><Spinner /></>;
+  if (loadError) return <><PageHeader title={title} back={back} /><ErrorBox message={loadError} /></>;
 
   return (
     <>
-      <PageHeader title="Create CPE" back={{ href: '/cpe/', label: 'All CPEs' }} />
+      <PageHeader title={title} back={back} />
       {budgets.error && <ErrorBox message={budgets.error} onRetry={budgets.reload} />}
 
       <div className="space-y-4">
@@ -307,7 +351,7 @@ export default function CpeCreate() {
       <div className="sticky bottom-0 z-10 -mx-1 mt-4 flex flex-wrap justify-end gap-2 border-t border-sap-line bg-white/90 px-1 py-3 backdrop-blur">
         <Button onClick={saveDraft} disabled={busy}>{created ? 'Retry Upload' : 'Save Draft'}</Button>
         <Button variant="primary" onClick={trySubmit} disabled={busy || (!!budget && !check.sufficient)}>{created ? 'Retry Submit' : 'Submit'}</Button>
-        <Link href="/cpe/" className="btn btn-secondary">Cancel</Link>
+        <Link href={back.href} className="btn btn-secondary">Cancel</Link>
       </div>
 
       <Modal open={errorsOpen.length > 0} title="Cannot submit" onClose={() => setErrorsOpen([])} footer={<Button variant="primary" onClick={() => setErrorsOpen([])}>OK</Button>}>

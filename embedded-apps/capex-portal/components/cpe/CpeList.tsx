@@ -86,6 +86,9 @@ export default function CpeList() {
     { key: 'sla', header: 'SLA', align: 'right', hideBelow: 'lg', render: (c) => (Number(c.DaysPending) > 0
       ? <Chip tone={slaTone(slaState(c.DaysPending, warn, breach))}>{slaLabel(c.DaysPending, warn, breach)}</Chip> : null) },
     { key: 'status', header: 'Status', align: 'right', render: (c) => <Chip tone={statusTone(c.Status)}>{statusLabel(c.Status)}</Chip> },
+    { key: 'edit', header: '', align: 'right', width: '5rem', render: (c) => (c.Status === 'DRAFT'
+      ? <Link href={`/cpe/create/?id=${encodeURIComponent(c.Cpeid)}`} onClick={(e) => e.stopPropagation()} className="font-semibold text-plum underline-offset-2 hover:underline">Edit</Link>
+      : null) },
   ];
 
   return (
