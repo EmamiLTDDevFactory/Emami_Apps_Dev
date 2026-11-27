@@ -155,7 +155,28 @@ CLASS zcl_tms_ty DEFINITION PUBLIC FINAL CREATE PUBLIC.
         instaon TYPE d,
         status TYPE c LENGTH 12,
       END OF ts_parallelcheck,
-      tt_parallelcheck TYPE STANDARD TABLE OF ts_parallelcheck WITH DEFAULT KEY.
+      tt_parallelcheck TYPE STANDARD TABLE OF ts_parallelcheck WITH DEFAULT KEY,
+      BEGIN OF ts_freightcond,
+        knumh TYPE c LENGTH 10,
+        kappl TYPE c LENGTH 2,
+        kschl TYPE c LENGTH 4,
+        shtyp TYPE c LENGTH 4,
+        route TYPE c LENGTH 6,
+        add01 TYPE c LENGTH 10,
+        add02 TYPE c LENGTH 10,
+        sdabw TYPE c LENGTH 4,
+        tdlnr TYPE c LENGTH 10,
+        zdays TYPE c LENGTH 4,
+        vsart TYPE c LENGTH 2,
+        datab TYPE d,
+        datbi TYPE d,
+        vendorname TYPE c LENGTH 35,
+        vendorregion TYPE c LENGTH 3,
+        addressnumber TYPE c LENGTH 10,
+        vendoremail TYPE c LENGTH 241,
+        routetext TYPE c LENGTH 40,
+      END OF ts_freightcond,
+      tt_freightcond TYPE STANDARD TABLE OF ts_freightcond WITH DEFAULT KEY.
 ENDCLASS.
 
 CLASS zcl_tms_ty IMPLEMENTATION.

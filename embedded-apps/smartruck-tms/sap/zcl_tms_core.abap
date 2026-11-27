@@ -55,6 +55,13 @@ CLASS zcl_tms_core DEFINITION PUBLIC FINAL CREATE PUBLIC.
     CLASS-METHODS parallel_check
       IMPORTING iv_werks TYPE werks_d OPTIONAL iv_days TYPE i DEFAULT 30
       RETURNING VALUE(rt_chk) TYPE zcl_tms_ty=>tt_parallelcheck.
+    "! Freight condition A964 rows with transporter name / region / default e-mail and route text (CDS ZI_TMS_A964_VENDOR). Empty filter
+    "! tables = no restriction; the caller must restrict or page (iv_top). Newest validity first within a route and transporter.
+    CLASS-METHODS get_freight_cond
+      IMPORTING it_route TYPE string_table OPTIONAL it_tdlnr TYPE string_table OPTIONAL it_kschl TYPE string_table OPTIONAL
+                it_vsart TYPE string_table OPTIONAL it_shtyp TYPE string_table OPTIONAL it_add01 TYPE string_table OPTIONAL
+                iv_skip TYPE i DEFAULT 0 iv_top TYPE i DEFAULT 5000
+      RETURNING VALUE(rt_cond) TYPE zcl_tms_ty=>tt_freightcond.
     CLASS-METHODS get_lanes
       IMPORTING it_route   TYPE string_table OPTIONAL
                 it_lifnr   TYPE string_table OPTIONAL
@@ -678,6 +685,32 @@ CLASS zcl_tms_core IMPLEMENTATION.
                             ELSE 'DIFF' ).
       APPEND ls_c TO rt_chk.
     ENDLOOP.
+  ENDMETHOD.
+
+  METHOD get_freight_cond.
+    DATA lr_route TYPE RANGE OF zcl_tms_ty=>ts_freightcond-route.
+    DATA lr_tdlnr TYPE RANGE OF zcl_tms_ty=>ts_freightcond-tdlnr.
+    DATA lr_kschl TYPE RANGE OF zcl_tms_ty=>ts_freightcond-kschl.
+    DATA lr_vsart TYPE RANGE OF zcl_tms_ty=>ts_freightcond-vsart.
+    DATA lr_shtyp TYPE RANGE OF zcl_tms_ty=>ts_freightcond-shtyp.
+    DATA lr_add01 TYPE RANGE OF zcl_tms_ty=>ts_freightcond-add01.
+    lr_route = VALUE #( FOR r IN it_route ( sign = 'I' option = 'EQ' low = to_upper( r ) ) ).
+    lr_tdlnr = VALUE #( FOR l IN it_tdlnr ( sign = 'I' option = 'EQ' low = |{ CONV lifnr( l ) ALPHA = IN }| ) ).
+    lr_kschl = VALUE #( FOR k IN it_kschl ( sign = 'I' option = 'EQ' low = to_upper( k ) ) ).
+    lr_vsart = VALUE #( FOR v IN it_vsart ( sign = 'I' option = 'EQ' low = v ) ).
+    lr_shtyp = VALUE #( FOR t IN it_shtyp ( sign = 'I' option = 'EQ' low = to_upper( t ) ) ).
+    lr_add01 = VALUE #( FOR a IN it_add01 ( sign = 'I' option = 'EQ' low = to_upper( a ) ) ).
+    DATA(lv_up) = nmax( val1 = 1 val2 = iv_skip + iv_top ).
+    SELECT knumh, kappl, kschl, shtyp, route, add01, add02, sdabw, tdlnr, zdays, vsart, datab, datbi,
+           vendorname, vendorregion, addressnumber, vendoremail, routetext
+      FROM zi_tms_a964_vendor
+      WHERE route IN @lr_route AND tdlnr IN @lr_tdlnr AND kschl IN @lr_kschl AND vsart IN @lr_vsart AND shtyp IN @lr_shtyp AND add01 IN @lr_add01
+      ORDER BY route, tdlnr, datbi DESCENDING, knumh
+      INTO CORRESPONDING FIELDS OF TABLE @rt_cond
+      UP TO @lv_up ROWS.
+    IF iv_skip > 0.
+      DELETE rt_cond TO iv_skip.
+    ENDIF.
   ENDMETHOD.
 
 ENDCLASS.

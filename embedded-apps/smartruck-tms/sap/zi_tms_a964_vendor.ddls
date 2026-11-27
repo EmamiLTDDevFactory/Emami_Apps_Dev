@@ -1,0 +1,41 @@
+@AbapCatalog.sqlViewName: 'ZITMSA964VEND'
+@AbapCatalog.compiler.compareFilter: true
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@EndUserText.label: 'Freight condition A964 with transporter and route text'
+/* Freight condition table A964 (shipment type / route / ADD01 / ADD02 / special processing / service agent / ZDAYS / shipping type)
+   with the transporter and the route text:
+     A964-TDLNR  -> LFA1-LIFNR   : vendor name (NAME1), region (REGIO), address number (ADRNR)
+     LFA1-ADRNR  -> ADR6-ADDRNUMBER : e-mail (SMTP_ADDR) - the vendor's own (company) address, default e-mail only
+     A964-ROUTE  -> TVROT-ROUTE  : route description (BEZEI), language E (English; SAP stores the 1-character key E, not EN)
+   All A964 fields are exposed (MANDT is the client and is handled by the view). Every join is a LEFT OUTER join, so a condition record
+   is never lost because the vendor has no e-mail or the route has no text.
+   One e-mail per vendor: ADR6 can hold several addresses; only the default one of the company address (PERSNUMBER blank, FLGDEFAULT = X)
+   is joined, so the view returns exactly one row per A964 record. A vendor with no default e-mail gets an empty VendorEmail. */
+define view ZI_TMS_A964_VENDOR
+  as select from a964 as a
+    left outer join lfa1 as l on l.lifnr = a.tdlnr
+    left outer join adr6 as m on  m.addrnumber = l.adrnr
+                              and m.persnumber = ''
+                              and m.flgdefault = 'X'
+    left outer join tvrot as t on  t.route = a.route
+                               and t.spras = 'E'
+{
+  key a.kappl   as Kappl,
+  key a.kschl   as Kschl,
+  key a.shtyp   as Shtyp,
+  key a.route   as Route,
+  key a.add01   as Add01,
+  key a.add02   as Add02,
+  key a.sdabw   as Sdabw,
+  key a.tdlnr   as Tdlnr,
+  key a.zdays   as Zdays,
+  key a.vsart   as Vsart,
+  key a.datbi   as Datbi,
+      a.datab   as Datab,
+      a.knumh   as Knumh,
+      l.name1   as VendorName,
+      l.regio   as VendorRegion,
+      l.adrnr   as AddressNumber,
+      m.smtp_addr as VendorEmail,
+      t.bezei   as RouteText
+}

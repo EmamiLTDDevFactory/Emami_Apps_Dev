@@ -1,5 +1,5 @@
 "! Data provider of OData service ZTMS_SRV (code based, no SEGW project): maps requests to ZCL_TMS_CORE. Reads: VendorSet, CustomerSet,
-"! PoSoCheckSet, PaymentStatusSet, OutDeliverySet, OutShipmentSet, LaneSet (freight condition ZB00 via CDS ZI_TMS_LANERATE),
+"! PoSoCheckSet, PaymentStatusSet, OutDeliverySet, OutShipmentSet, LaneSet (freight condition ZB00 via CDS ZI_TMS_LANERATE), FreightCondSet (A964 + transporter + route text via CDS ZI_TMS_A964_VENDOR),
 "! TripInvoiceSet + ParallelCheckSet (Instavans/ZSMART_VEH replacement, read) and POST TripVehicleSet (writes ZTMS_TRIP_VEH/INV). The only write is POST FreightInvoiceSet (the gateway hub passes no function imports / PUT / DELETE).
 "! The hub login e-mail arrives as option emamiuser= or header X-Emami-User and is written into the FI item text for traceability.
 CLASS zcl_ztms_dpc DEFINITION PUBLIC INHERITING FROM /iwbep/cl_mgw_abs_data CREATE PUBLIC.
@@ -126,6 +126,24 @@ CLASS zcl_ztms_dpc IMPLEMENTATION.
           DELETE lt_ln FROM is_paging-top + 1.
         ENDIF.
         copy_data_to_ref( EXPORTING is_data = lt_ln CHANGING cr_data = er_entityset ).
+      WHEN 'FreightCondSet'.
+        " A964 freight conditions with transporter and route text. Filters (all optional, EQ): Route, Tdlnr, Kschl, Vsart, Shtyp, Add01.
+        " Without any filter $top is required (the table has ~20,000 rows); $top / $skip page the result.
+        DATA(lt_fr) = filter_values( it_filter = it_filter_select_options iv_name = 'Route' ).
+        DATA(lt_ft) = filter_values( it_filter = it_filter_select_options iv_name = 'Tdlnr' ).
+        DATA(lt_fk) = filter_values( it_filter = it_filter_select_options iv_name = 'Kschl' ).
+        DATA(lt_fv) = filter_values( it_filter = it_filter_select_options iv_name = 'Vsart' ).
+        DATA(lt_fs) = filter_values( it_filter = it_filter_select_options iv_name = 'Shtyp' ).
+        DATA(lt_fa) = filter_values( it_filter = it_filter_select_options iv_name = 'Add01' ).
+        IF lt_fr IS INITIAL AND lt_ft IS INITIAL AND lt_fk IS INITIAL AND lt_fv IS INITIAL AND lt_fs IS INITIAL AND lt_fa IS INITIAL AND is_paging-top = 0.
+          busi( `Give a filter (Route, Tdlnr, Kschl, Vsart, Shtyp or Add01 eq '...') or $top: the table is too large to read in one go.` ).
+        ENDIF.
+        IF is_paging-top > 5000.
+          busi( `At most 5000 rows per request ($top).` ).
+        ENDIF.
+        DATA(lt_fc) = zcl_tms_core=>get_freight_cond( it_route = lt_fr it_tdlnr = lt_ft it_kschl = lt_fk it_vsart = lt_fv it_shtyp = lt_fs it_add01 = lt_fa
+                                                     iv_skip = is_paging-skip iv_top = COND #( WHEN is_paging-top > 0 THEN is_paging-top ELSE 5000 ) ).
+        copy_data_to_ref( EXPORTING is_data = lt_fc CHANGING cr_data = er_entityset ).
       WHEN 'TripInvoiceSet'.
         " Filter Vbeln eq '<billing>' and/or Vbelv eq '<delivery>' (one is required, at most 50 each); optional Werks eq '<plant>'.
         DATA(lt_tib) = filter_values( it_filter = it_filter_select_options iv_name = 'Vbeln' ).

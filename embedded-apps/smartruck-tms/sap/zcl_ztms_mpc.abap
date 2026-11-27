@@ -19,7 +19,7 @@ CLASS zcl_ztms_mpc IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD get_last_modified.
-    CONSTANTS lc_gen_date_time TYPE timestamp VALUE '20261126220000'.
+    CONSTANTS lc_gen_date_time TYPE timestamp VALUE '20261127120000'.
     rv_last_modified = super->get_last_modified( ).
     IF rv_last_modified < lc_gen_date_time.
       rv_last_modified = lc_gen_date_time.
@@ -557,6 +557,74 @@ CLASS zcl_ztms_mpc IMPLEMENTATION.
     lo_property->set_maxlength( iv_max_length = 12 ).
     lo_entity_type->bind_structure( iv_structure_name = 'ZCL_TMS_TY=>TS_PARALLELCHECK' iv_bind_conversions = abap_false ).
     lo_entity_set = lo_entity_type->create_entity_set( 'ParallelCheckSet' ).
+    lo_entity_set->set_creatable( abap_false ).
+    lo_entity_set->set_updatable( abap_false ).
+    lo_entity_set->set_deletable( abap_false ).
+    lo_entity_set->set_pageable( abap_false ).
+    lo_entity_set->set_addressable( abap_true ).
+    lo_entity_set->set_has_ftxt_search( abap_false ).
+    lo_entity_set->set_subscribable( abap_false ).
+    lo_entity_set->set_filter_required( abap_false ).
+
+    lo_entity_type = model->create_entity_type( iv_entity_type_name = 'FreightCond' iv_def_entity_set = abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Knumh' iv_abap_fieldname = 'KNUMH' ).
+    lo_property->set_is_key( ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 10 ).
+    lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Kappl' iv_abap_fieldname = 'KAPPL' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 2 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Kschl' iv_abap_fieldname = 'KSCHL' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 4 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Shtyp' iv_abap_fieldname = 'SHTYP' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 4 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Route' iv_abap_fieldname = 'ROUTE' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 6 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Add01' iv_abap_fieldname = 'ADD01' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 10 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Add02' iv_abap_fieldname = 'ADD02' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 10 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Sdabw' iv_abap_fieldname = 'SDABW' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 4 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Tdlnr' iv_abap_fieldname = 'TDLNR' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 10 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Zdays' iv_abap_fieldname = 'ZDAYS' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 4 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Vsart' iv_abap_fieldname = 'VSART' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 2 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Datab' iv_abap_fieldname = 'DATAB' ).
+    lo_property->set_type_edm_datetime( ).
+    lo_property->/iwbep/if_mgw_odata_annotatabl~create_annotation( iv_annotation_namespace = /iwbep/if_mgw_med_odata_types=>gc_sap_namespace )->add( iv_key = 'display-format' iv_value = 'Date' ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Datbi' iv_abap_fieldname = 'DATBI' ).
+    lo_property->set_type_edm_datetime( ).
+    lo_property->/iwbep/if_mgw_odata_annotatabl~create_annotation( iv_annotation_namespace = /iwbep/if_mgw_med_odata_types=>gc_sap_namespace )->add( iv_key = 'display-format' iv_value = 'Date' ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'VendorName' iv_abap_fieldname = 'VENDORNAME' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 35 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'VendorRegion' iv_abap_fieldname = 'VENDORREGION' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 3 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'AddressNumber' iv_abap_fieldname = 'ADDRESSNUMBER' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 10 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'VendorEmail' iv_abap_fieldname = 'VENDOREMAIL' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 241 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'RouteText' iv_abap_fieldname = 'ROUTETEXT' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 40 ).
+    lo_entity_type->bind_structure( iv_structure_name = 'ZCL_TMS_TY=>TS_FREIGHTCOND' iv_bind_conversions = abap_false ).
+    lo_entity_set = lo_entity_type->create_entity_set( 'FreightCondSet' ).
     lo_entity_set->set_creatable( abap_false ).
     lo_entity_set->set_updatable( abap_false ).
     lo_entity_set->set_deletable( abap_false ).

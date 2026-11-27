@@ -23,6 +23,8 @@ CLASS ltc_core DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
     METHODS lanes_valid_today FOR TESTING.
     METHODS lanes_route_filter FOR TESTING.
     METHODS lanes_priority_by_rate FOR TESTING.
+    METHODS freight_cond_by_route FOR TESTING.
+    METHODS freight_cond_paging FOR TESTING.
 ENDCLASS.
 
 CLASS ltc_core IMPLEMENTATION.
@@ -141,6 +143,33 @@ CLASS ltc_core IMPLEMENTATION.
       ENDIF.
       lv_rate = ls-rate.
     ENDLOOP.
+  ENDMETHOD.
+
+  METHOD freight_cond_by_route.
+    DATA(lt) = zcl_tms_core=>get_freight_cond( it_route = VALUE #( ( `ZDECTK` ) ) ).
+    cl_abap_unit_assert=>assert_not_initial( lt ).
+    LOOP AT lt INTO DATA(ls).
+      cl_abap_unit_assert=>assert_equals( act = ls-route exp = 'ZDECTK' ).
+      cl_abap_unit_assert=>assert_equals( act = ls-routetext exp = 'Delhi To Cuttack' ).
+      cl_abap_unit_assert=>assert_not_initial( act = ls-vendorname ).
+      cl_abap_unit_assert=>assert_not_initial( act = ls-knumh ).
+    ENDLOOP.
+    " the transporter filter takes the leading zeros or not
+    DATA(lt_v) = zcl_tms_core=>get_freight_cond( it_tdlnr = VALUE #( ( `240628` ) ) iv_top = 50 ).
+    cl_abap_unit_assert=>assert_not_initial( lt_v ).
+    LOOP AT lt_v INTO ls.
+      cl_abap_unit_assert=>assert_equals( act = ls-tdlnr exp = '0000240628' ).
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD freight_cond_paging.
+    DATA(lt_all) = zcl_tms_core=>get_freight_cond( it_kschl = VALUE #( ( `ZB00` ) ) iv_top = 30 ).
+    DATA(lt_p1) = zcl_tms_core=>get_freight_cond( it_kschl = VALUE #( ( `ZB00` ) ) iv_skip = 0 iv_top = 10 ).
+    DATA(lt_p2) = zcl_tms_core=>get_freight_cond( it_kschl = VALUE #( ( `ZB00` ) ) iv_skip = 10 iv_top = 10 ).
+    cl_abap_unit_assert=>assert_equals( act = lines( lt_p1 ) exp = 10 ).
+    cl_abap_unit_assert=>assert_equals( act = lines( lt_p2 ) exp = 10 ).
+    cl_abap_unit_assert=>assert_equals( act = lt_p1[ 1 ]-knumh exp = lt_all[ 1 ]-knumh ).
+    cl_abap_unit_assert=>assert_equals( act = lt_p2[ 1 ]-knumh exp = lt_all[ 11 ]-knumh ).
   ENDMETHOD.
 
 ENDCLASS.
