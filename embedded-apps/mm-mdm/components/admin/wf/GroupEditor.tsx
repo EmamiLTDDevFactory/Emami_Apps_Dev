@@ -6,7 +6,7 @@ import { WfCfg, WfGroup, WfKey, WfMeta, WfMsg, wfApi } from '@/lib/admin/wfApi';
 import { agentSig, emptyGroup, keyText, levelSig, newAgent, newLevel, recount, snapshot, viewSig, visibleKeyFields } from '@/lib/admin/wfLogic';
 import { IconCopy, IconPlus, IconRefresh, IconSave, IconTrash, IconUndo } from '../../icons';
 import { ErrorState, LoadingState } from '../../ui';
-import { AgentTable, LevelTable } from './LevelGrid';
+import { AgentTable, LevelTable, SaveBtn } from './LevelGrid';
 import LogPanel from './LogPanel';
 import PreviewPanel from './PreviewPanel';
 import ViewsPanel from './ViewsPanel';
@@ -188,12 +188,12 @@ export default function GroupEditor({ target, cfg, meta, onDirty, onSaved, onDel
 
       <div className="wf-mid">
         <LevelTable base={baseGroup} levels={group.levels} cfg={cfg} flagged={flagged} scope={scope} setScope={setScope} pirTypes={meta.pirTypes}
-          onChange={setLevel} onAdd={addLevel} onRemove={(lvl) => setConfirm({ kind: 'level', lvl })} />
-        <AgentTable openToken={agentOpen} base={baseGroup} level={group.levels.find((l) => l.lvl === scope)} appId={appId} levelTexts={meta.levelTexts} departments={meta.departments} cfg={cfg} flagged={flagged}
+          onChange={setLevel} onAdd={addLevel} onRemove={(lvl) => setConfirm({ kind: 'level', lvl })} onSave={save} canSave={canSave} saving={saving} />
+        <AgentTable onSave={save} canSave={canSave} saving={saving} openToken={agentOpen} base={baseGroup} level={group.levels.find((l) => l.lvl === scope)} appId={appId} levelTexts={meta.levelTexts} departments={meta.departments} cfg={cfg} flagged={flagged}
           onChange={(nl) => setLevel(group.levels.findIndex((l) => l.lvl === scope), nl)} />
       </div>
       <details className="card wf-pane wf-right wf-fold" aria-label="View visibility" open>
-        <summary className="wf-pane-bar"><h2>View Visibility<span className="wf-pane-sub"> · {scope === 'L0' ? 'Initiator L0' : scope}</span></h2></summary>
+        <summary className="wf-pane-bar"><h2>View Visibility<span className="wf-pane-sub"> · {scope === 'L0' ? 'Initiator L0' : scope}</span></h2><SaveBtn onSave={save} canSave={canSave} saving={saving} /></summary>
         <div className="wf-pane-body"><ViewsPanel base={baseGroup} group={group} cfg={cfg} onChange={update} scope={scope} setScope={setScope} /></div>
       </details>
 

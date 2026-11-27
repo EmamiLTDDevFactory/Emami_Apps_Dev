@@ -3,7 +3,14 @@
 import { useEffect, useRef } from 'react';
 import { WfAgent, WfCfg, WfGroup, WfItem, WfLevel } from '@/lib/admin/wfApi';
 import { AREA_LABEL, OPEN_END, agentSig, isCounted, levelSig, newAgent, recount, swapRoles, todayIso } from '@/lib/admin/wfLogic';
-import { IconPlus, IconTrash } from '../../icons';
+import { IconPlus, IconSave, IconTrash } from '../../icons';
+
+export type SaveProps = { onSave?: () => void; canSave?: boolean; saving?: boolean };
+/** Save button of a section: saves the whole combination (SAP stores it as one unit) */
+export function SaveBtn({ onSave, canSave, saving }: SaveProps) {
+  if (!onSave) return null;
+  return <button type="button" className="btn btn-sm btn-primary" onClick={onSave} disabled={!canSave} title="Saves the whole combination"><IconSave size={14} /> {saving ? 'Saving…' : 'Save'}</button>;
+}
 import { VhInput } from './parts';
 
 const RECEIVES: Record<string, { text: string; cls: string }> = {
@@ -13,7 +20,7 @@ const RECEIVES: Record<string, { text: string; cls: string }> = {
 };
 
 /** Level Definition table (one row per level, click to select) */
-export function LevelTable({ base, levels, cfg, flagged, scope, setScope, pirTypes, onChange, onAdd, onRemove }: {
+export function LevelTable({ base, levels, cfg, flagged, scope, setScope, pirTypes, onChange, onAdd, onRemove, onSave, canSave, saving }: SaveProps & {
   base: WfGroup; levels: WfLevel[]; cfg: WfCfg | undefined; flagged: string[]; scope: string; setScope: (s: string) => void; pirTypes: WfItem[];
   onChange: (i: number, l: WfLevel) => void; onAdd: () => void; onRemove: (lvl: string) => void;
 }) {
@@ -21,6 +28,7 @@ export function LevelTable({ base, levels, cfg, flagged, scope, setScope, pirTyp
     <details className="card wf-pane wf-fold" aria-label="Level definition" open>
       <summary className="wf-pane-bar"><h2>Level Definition</h2>
         <button type="button" className="btn btn-sm" onClick={onAdd}><IconPlus size={14} /> Add level</button>
+        <SaveBtn onSave={onSave} canSave={canSave} saving={saving} />
       </summary>
       <div className="wf-pane-body">
         <table className="wf-grid">
@@ -75,7 +83,7 @@ export function LevelTable({ base, levels, cfg, flagged, scope, setScope, pirTyp
 }
 
 /** Agent Assignment of the selected level */
-export function AgentTable({ openToken, base, level, appId, levelTexts, departments, cfg, flagged, onChange }: {
+export function AgentTable({ onSave, canSave, saving, openToken, base, level, appId, levelTexts, departments, cfg, flagged, onChange }: SaveProps & {
   openToken?: number; base: WfGroup; level: WfLevel | undefined; appId: string; levelTexts: WfItem[]; departments: WfItem[]; cfg: WfCfg | undefined; flagged: string[]; onChange: (l: WfLevel) => void;
 }) {
   const set = (p: Partial<WfLevel>) => level && onChange(recount({ ...level, ...p }));
@@ -91,6 +99,7 @@ export function AgentTable({ openToken, base, level, appId, levelTexts, departme
     <details ref={paneRef} className="card wf-pane wf-fold" aria-label="Agent assignment" open>
       <summary className="wf-pane-bar"><h2>Agent Assignment{level ? <span className="wf-pane-sub"> · {level.lvl} {AREA_LABEL[level.typeLvl] || ''}</span> : ''}</h2>
         {level && <button type="button" className="btn btn-sm" onClick={() => set({ agents: [...level.agents, newAgent(level)] })}><IconPlus size={14} /> Add agent</button>}
+        <SaveBtn onSave={onSave} canSave={canSave} saving={saving} />
       </summary>
       <div className="wf-pane-body">
         {!level && <p className="muted wf-empty-row">The Initiator has no agents. Select a Reviewer or Approver level.</p>}
