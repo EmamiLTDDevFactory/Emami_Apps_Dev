@@ -40,11 +40,18 @@ const FRONTEND_ORIGINS = (process.env.FRONTEND_ORIGIN || 'http://localhost:8081'
 // PUT added for Dev Tracker's item-edit route (devTracker.js) — same class of gap as the
 // DELETE/PATCH one above, additive only, doesn't change any existing route's behavior.
 app.use(cors({ origin: FRONTEND_ORIGINS, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] }));
+// CAPEX Portal documents (DocXferSet) need more headroom than the 6mb global default below: SAP
+// caps a file at DOC_MAX_MB (10), and base64 + JSON field overhead adds roughly another third on
+// top of that (see lib/documents.ts / capex.js's own comments). A route-level express.json() can't
+// raise the limit once the global parser below has already consumed the body, so this one is
+// mounted first, scoped to just this path, ahead of the catch-all — every other route's effective
+// limit is unchanged (still whatever the global default below allows).
+app.use('/api/me/capex', express.json({ limit: '16mb' }));
 // 6mb (not the old 2mb) because this now also covers userProfile.js's profile-photo upload — a
 // 512x512 image encoded as a base64 data URI, plus JSON/base64 overhead, needs more headroom than
 // the earlier 2mb ceiling (itself raised from 10kb for saml-sso.js's metadata upload). Once this
 // global parser has consumed the body, a route-level express.json() can't raise the limit again
-// (body-parser skips re-parsing a body it already parsed).
+// (body-parser skips re-parsing a body it already parsed) — see the capex-specific exemption above.
 app.use(express.json({ limit: '6mb' }));
 
 const apiRouter = express.Router();
