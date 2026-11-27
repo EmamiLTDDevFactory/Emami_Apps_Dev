@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { FormEvent, ReactNode, useState } from 'react';
 import { useMdm } from '@/lib/store';
 import { CRS_PATH, CRS_TCODE, DOMAINS, SETUP_PATH, SETUP_TCODE, resolveTcode } from '@/lib/tcodes';
-import { DOMAIN_ICONS, IconChart, IconClock, IconHome, IconLayers, IconMenu, IconTree } from './icons';
+import { DOMAIN_ICONS, IconChart, IconCheck, IconClock, IconHome, IconLayers, IconMenu, IconTree } from './icons';
 
 const BASE = process.env.NEXT_PUBLIC_BASE_PATH || '';
 
@@ -14,6 +14,7 @@ const ADMIN_LINKS = [
   { href: '/admin/worklist', label: 'Work Inbox', tcode: 'UWL', Icon: IconClock },
   { href: '/admin/workflow', label: 'Workflow maintenance', tcode: 'ROLE_MAIN', Icon: IconLayers },
   { href: '/admin/rules', label: 'Rules maintenance', tcode: 'MDM_CONFIG', Icon: IconTree },
+  { href: '/admin/ph-masters', label: 'Hierarchy masters', tcode: 'MDM_PHM', Icon: IconCheck },
 ];
 
 export default function AppShell({ children }: { children: ReactNode }) {

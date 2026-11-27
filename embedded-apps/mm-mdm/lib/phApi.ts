@@ -82,8 +82,17 @@ export interface PhRequest {
 }
 export interface PhTask { wiId: string; transactionId: string; mode: string; text: string; status: string; initiator: string; createdOn: string | null }
 
-export const fetchLevel = (level: number, parent = '') =>
-  get<PhLevelRow[]>(`/levels?level=${level + 1}${parent ? `&parent=${encodeURIComponent(parent)}` : ''}`);
+export const fetchLevel = (level: number, parent = '', activeOnly = false) =>
+  get<PhLevelRow[]>(`/levels?level=${level + 1}${parent ? `&parent=${encodeURIComponent(parent)}` : ''}${activeOnly ? '&activeOnly=1' : ''}`);
+
+/** Hierarchy masters maintenance (Product, SKU, Variant, Scheme): list with status, switch active / deactive */
+export interface PhMaster extends PhLevelRow { active: boolean; changedBy: string; changedAt: string | null }
+export const fetchMasters = (level: number, f: { code?: string; text?: string; status?: string } = {}) => {
+  const q = [`level=${level}`, ...Object.entries(f).filter(([, v]) => v).map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)].join('&');
+  return get<{ level: number; rows: PhMaster[] }>(`/ph/masters?${q}`);
+};
+export const setMasterStatus = (level: number, prodhs: string[], active: boolean) =>
+  request<{ updated: number; active: boolean }>('POST', '/ph/masters/status', { level, prodhs, active }).then((r) => { phReset(); return r; });
 export const fetchCostCenters = (text = '') => get<PhCostCenter[]>(`/cost-centers${text ? `?text=${encodeURIComponent(text)}` : ''}`);
 export const fetchRequests = (opts: { initiator?: string; step?: string; top?: number } = {}) => {
   const q = Object.entries(opts).filter(([, v]) => v).map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join('&');
@@ -209,7 +218,7 @@ export function phLoadAll(level: number): Promise<void> {
   if (allCache.has(level)) return Promise.resolve();
   const running = allInflight.get(level);
   if (running) return running;
-  const p = fetchLevel(level, '')
+  const p = fetchLevel(level, '', level >= 2) // Product .. Scheme: active masters only
     .then((rows) => {
       // same as the Web Dynpro OVS: the level's own code (PRODHA) and text, duplicates on code + text removed
       const seen = new Set<string>();

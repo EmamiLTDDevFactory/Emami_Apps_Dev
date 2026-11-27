@@ -35,6 +35,7 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const { pool } = require('./db');
+const status = require('./mmMdmPhStatus');
 const { JWT_SECRET } = require('./sessionAuth');
 
 const APP_ID = 'mm-mdm';
@@ -117,7 +118,7 @@ async function requireUser(req, res, next) {
             pool.query('SELECT is_active FROM emami_apps.authorized_users WHERE email = $1', [email]),
         ]);
         if (!grant.rows.length || (user.rows[0] && user.rows[0].is_active === false)) return res.status(403).json({ error: 'You do not have access to Material master. Ask an Emami Apps admin for it in Admin Center.' });
-        req.caller = { user: email };
+        req.caller = { user: email, isAdmin: String(grant.rows[0].role || '').toLowerCase() === 'admin' };
         next();
     } catch (e) {
         console.error('[mm-mdm-ph] access check', e.message);
@@ -154,7 +155,13 @@ router.get('/levels', handle('levels', async (req) => {
     }
     if (req.query.code) { const c = safe(req.query.code); if (!c) throw new SapError('code has characters that are not allowed.', 400); f.push(`Code eq ${q(c)}`); }
     if (req.query.text) { const t = safe(req.query.text); if (!t) throw new SapError('text has characters that are not allowed.', 400); f.push(`Text eq ${q(t)}`); }
-    return (await sapGet(req.caller, 'LevelValueSet', f, topOf(req.query.top))).map(mapLevel);
+    let rows = (await sapGet(req.caller, 'LevelValueSet', f, topOf(req.query.top))).map(mapLevel);
+    // Product, SKU, Variant, Scheme: only the active masters (deactivated in Hierarchy masters maintenance) when asked
+    if (String(req.query.activeOnly || '') === '1' && status.PRODH_LEN[level]) {
+        const off = await status.inactiveSet(Number(level));
+        if (off.size) rows = rows.filter((r) => !off.has(r.prodh));
+    }
+    return rows;
 }));
 
 router.get('/cost-centers', handle('cost-centers', async (req) => {
@@ -294,14 +301,63 @@ const PH_PARAMS = [['Banner', 'banner', 2], ['BannerDesc', 'bannerDesc', 40], ['
 const phFields = (b) => Object.fromEntries(PH_PARAMS.map(([sap, key, max]) => [sap, param(b[key], max)]));
 const wiOf = (b) => { if (!/^\d{1,12}$/.test(String(b.wiId || ''))) throw new SapError('wiId is required.', 400); return String(b.wiId); };
 
+const adminOnly = (req) => { if (!req.caller.isAdmin) throw new SapError('Only an Emami Apps admin of Material master may maintain the hierarchy masters.', 403); };
+
+/** Hierarchy masters maintenance: the masters of one level (3 Product, 4 SKU, 5 Variant, 6 Scheme) with their active / deactive status */
+router.get('/ph/masters', handle('ph-masters', async (req) => {
+    adminOnly(req);
+    const level = String(req.query.level || '');
+    if (!status.PRODH_LEN[level]) throw new SapError('level must be 3 (Product), 4 (SKU), 5 (Variant) or 6 (Scheme).', 400);
+    const f = [`Level eq ${q(level)}`];
+    if (req.query.code) { const c = safe(req.query.code); if (!c) throw new SapError('code has characters that are not allowed.', 400); f.push(`Code eq ${q(c)}`); }
+    if (req.query.text) { const t = safe(req.query.text); if (!t) throw new SapError('text has characters that are not allowed.', 400); f.push(`Text eq ${q(t)}`); }
+    const [sap, st] = await Promise.all([sapGet(req.caller, 'LevelValueSet', f, 3000), status.statusOf(Number(level))]);
+    const want = String(req.query.status || '');
+    const rows = sap.map(mapLevel).filter((r) => r.code).map((r) => {
+        const s = st.get(r.prodh);
+        return { ...r, active: s ? s.active : true, changedBy: s ? s.by : '', changedAt: s ? s.at : null };
+    }).filter((r) => (want === 'active' ? r.active : want === 'inactive' ? !r.active : true));
+    rows.sort((a, b) => a.code.localeCompare(b.code) || String(a.text).localeCompare(String(b.text)) || a.prodh.localeCompare(b.prodh));
+    return { level: Number(level), rows };
+}));
+
+router.post('/ph/masters/status', handle('ph-masters-status', async (req) => {
+    adminOnly(req);
+    const b = req.body || {};
+    const level = String(b.level || '');
+    const len = status.PRODH_LEN[level];
+    if (!len) throw new SapError('level must be 3 (Product), 4 (SKU), 5 (Variant) or 6 (Scheme).', 400);
+    if (typeof b.active !== 'boolean') throw new SapError('active must be true or false.', 400);
+    const list = Array.isArray(b.prodhs) ? [...new Set(b.prodhs.map(String))] : [];
+    if (!list.length || list.length > 1000) throw new SapError('Choose between 1 and 1000 masters.', 400);
+    if (list.some((p) => !new RegExp(`^\\d{${len}}$`).test(p))) throw new SapError('A master key is not valid for this level.', 400);
+    const n = await status.setStatus(Number(level), list, b.active, req.caller.user);
+    return { updated: n, active: b.active };
+}));
+
+/** A request may not use a deactivated Product, SKU, Variant or Scheme (a blank code = a new master, always allowed) */
+async function assertActive(b) {
+    let path = `${b.banner || ''}${b.brand || ''}`;
+    if (path.length !== 6) return;
+    for (const [level, key] of [[3, 'product'], [4, 'sku'], [5, 'variant'], [6, 'scheme']]) {
+        const code = String(b[key] || '').trim();
+        if (!code) return;
+        path += code;
+        if (path.length === status.PRODH_LEN[level] && await status.isInactive(level, path)) {
+            throw new SapError(`${status.LEVEL_NAME[level]} ${code} is deactivated. Choose an active one.`, 400);
+        }
+    }
+}
+
 router.post('/ph/validate', handle('ph-validate', async (req) => {
+    if (['I', undefined, ''].includes((req.body || {}).mode)) await assertActive(req.body || {});
     const b = req.body || {};
     const mode = ['I', 'A', 'C'].includes(b.mode) ? b.mode : 'I';
     const r = await sapPost(req.caller, crsFnPath('Validate', { Mode: mode, ...phFields(b) }));
     return { ok: true, message: r.Message || 'Valid', request: mapRequest(r) };
 }));
 
-router.post('/ph/requests', handle('ph-initiate', async (req) => mapRequest(await sapPost(req.caller, 'RequestSet', phFields(req.body || {})))));
+router.post('/ph/requests', handle('ph-initiate', async (req) => { await assertActive(req.body || {}); return mapRequest(await sapPost(req.caller, 'RequestSet', phFields(req.body || {}))); }));
 
 router.post('/ph/approve', handle('ph-approve', async (req) => {
     const b = req.body || {};
