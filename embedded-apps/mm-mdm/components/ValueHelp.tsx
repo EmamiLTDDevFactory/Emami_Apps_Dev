@@ -130,18 +130,21 @@ function VhIcon() {
 /* Value help dialog ("Select: Material Type")                          */
 /* ------------------------------------------------------------------ */
 
-export function ValueHelpDialog({ title, options, current, blockedReason, loading, onPick, onClose }: {
+export function ValueHelpDialog({ title, options, current, currentLabel, blockedReason, loading, onPick, onClose }: {
   title: string;
   options: Opt[];
   current: string;
+  /** Description of the current value: the same code can sit under several descriptions, only that row is marked */
+  currentLabel?: string;
   blockedReason?: (value: string) => string | undefined;
   loading?: boolean;
-  onPick: (value: string) => void;
+  onPick: (value: string, label: string) => void;
   onClose: () => void;
 }) {
   const [code, setCode] = useState('');
   const [desc, setDesc] = useState('');
   const first = useRef<HTMLInputElement>(null);
+  const isCur = (x: Opt) => !!current && x.value === current && (!currentLabel || x.label === currentLabel);
 
   useEffect(() => first.current?.focus(), []);
 
@@ -187,17 +190,17 @@ export function ValueHelpDialog({ title, options, current, blockedReason, loadin
                 return (
                   <tr
                     key={`${x.value}|${x.label}|${ix}`}
-                    className={`${x.value === current ? 'vh-current' : ''} ${blocked ? 'vh-blocked' : ''}`}
-                    onClick={() => !blocked && onPick(x.value)}
+                    className={`${isCur(x) ? 'vh-current' : ''} ${blocked ? 'vh-blocked' : ''}`}
+                    onClick={() => !blocked && onPick(x.value, x.label)}
                     title={blocked}
                   >
                     <td>
                       <input
                         type="radio"
                         name="vh-pick"
-                        checked={x.value === current}
+                        checked={isCur(x)}
                         disabled={!!blocked}
-                        onChange={() => onPick(x.value)}
+                        onChange={() => onPick(x.value, x.label)}
                         aria-label={`${x.value} ${x.label}`}
                       />
                     </td>

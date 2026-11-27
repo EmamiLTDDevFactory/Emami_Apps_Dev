@@ -211,7 +211,8 @@ function CodeRow({ id, label, tech, code, text, options, len, numeric, disabled,
           options={helpOptions ?? options}
           loading={helpLoading}
           current={code}
-          onPick={(v) => { setOpen(false); if (helpOptions && onPickFull) onPickFull(v, helpOptions.find((o) => o.value === v)?.label ?? ''); else onChange(v, options.find((o) => o.value === v)?.label ?? ''); }}
+          currentLabel={helpOptions ? text : undefined}
+          onPick={(v, l) => { setOpen(false); if (helpOptions && onPickFull) onPickFull(v, l); else onChange(v, options.find((o) => o.value === v)?.label ?? l); }}
           onClose={() => setOpen(false)}
         />
       )}
@@ -260,8 +261,8 @@ function DescRow({ id, label, code, text, options, disabled, disabledHint, error
       </div>
       {disabled && disabledHint ? <small className="muted su-msg">{disabledHint}</small> : error ? <small className="err su-msg">{error}</small> : null}
       {open && (
-        <ValueHelpDialog title={label} options={helpOptions} loading={helpLoading} current={code}
-          onPick={(v) => { setOpen(false); onPickFull(v, helpOptions.find((o) => o.value === v)?.label ?? ''); }} onClose={() => setOpen(false)} />
+        <ValueHelpDialog title={label} options={helpOptions} loading={helpLoading} current={code} currentLabel={text}
+          onPick={(v, l) => { setOpen(false); onPickFull(v, l); }} onClose={() => setOpen(false)} />
       )}
     </div>
   );
