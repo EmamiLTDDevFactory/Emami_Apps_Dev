@@ -73,7 +73,7 @@ const results = (j) => (j && j.d && (j.d.results || (Array.isArray(j.d) ? j.d : 
 
 // ===================================================================================================================== MAPPING
 // Everything below knows the SAP names. Adjust here (and only here) when the contract changes.
-const SET = { vendor: 'VendorSet', customer: 'CustomerSet', poso: 'PoSoCheckSet', invoice: 'FreightInvoiceSet', payment: 'PaymentStatusSet', outDelivery: 'OutDeliverySet', outShipment: 'OutShipmentSet', lane: 'LaneSet', tripInvoice: 'TripInvoiceSet', tripVehicle: 'TripVehicleSet', parallel: 'ParallelCheckSet' };
+const SET = { vendor: 'VendorSet', customer: 'CustomerSet', poso: 'PoSoCheckSet', invoice: 'FreightInvoiceSet', payment: 'PaymentStatusSet', outDelivery: 'OutDeliverySet', outShipment: 'OutShipmentSet', lane: 'LaneSet', tripInvoice: 'TripInvoiceSet', tripVehicle: 'TripVehicleSet', parallel: 'ParallelCheckSet', freightCond: 'FreightCondSet' };
 
 const map = {
     vendor: (r) => ({ code: str(r.Lifnr), name: str(r.Name1), paymentTerms: str(r.Zterm) ? `Net ${parseInt(str(r.Zterm).replace(/\D/g, ''), 10) || 30}` : '', blocked: isX(r.Sperr) || isX(r.Loevm) }),
@@ -91,6 +91,10 @@ const map = {
     tripVehicleBody: (v) => ({ Sin: v.sin, ShipmentId: v.shipmentId || '', Werks: v.plant, VehicleNo: String(v.vehicleNo || '').toUpperCase().slice(0, 15), Delivery: v.delivery || '', VehExit: v.exit ? 'E' : '',
         Invoices: (v.invoices || []).join(','), Count: '', Target: '', Ok: '', Message: '' }),
     parallel: (r) => ({ no: str(r.Vbeln), plant: str(r.Werks), ttSin: str(r.TtSin), ttVehicle: str(r.TtVehicle), ttOn: sapDate(r.TtOn), instaSin: str(r.InstaSin), instaVehicle: str(r.InstaVehicle), instaOn: sapDate(r.InstaOn), status: str(r.Status) }),
+    // Freight condition A964 with the transporter (LFA1: name, region; ADR6: default e-mail) and the route text (CDS ZI_TMS_A964_VENDOR)
+    freightCond: (r) => ({ condRecord: str(r.Knumh), application: str(r.Kappl), condType: str(r.Kschl), shipmentType: str(r.Shtyp), route: str(r.Route), routeText: str(r.RouteText),
+        add01: str(r.Add01), add02: str(r.Add02), specialProcessing: str(r.Sdabw), vendor: str(r.Tdlnr), vendorName: str(r.VendorName), vendorRegion: str(r.VendorRegion),
+        vendorAddressNo: str(r.AddressNumber), vendorEmail: str(r.VendorEmail), transitDays: str(r.Zdays), shippingType: str(r.Vsart), validFrom: sapDate(r.Datab), validTo: sapDate(r.Datbi) }),
     // ZB00 freight condition record (CDS ZI_TMS_LANERATE): lane = SAP route, mode = shipping type (Vsart) + ADD01 (vehicle type or rate method).
     lane: (r) => ({ fromLoc: str(r.FromLoc), toLoc: str(r.ToLoc), vendor: str(r.Lifnr), vendorName: str(r.VendorName), rate: Number(r.Rate) || 0, distanceKm: Number(r.Distance) || 0, transitH: Number(r.TransitH) || 0, priority: Number(r.Priority) || 0,
         route: str(r.Route), routeText: str(r.RouteText), sapVehicle: str(r.VehicleType), vehicleText: str(r.VehicleText), rateBasis: str(r.RateBasis), shippingType: str(r.Vsart), shippingText: str(r.VsartText),
@@ -175,6 +179,17 @@ const service = {
         if (!isConfigured()) return { simulated: true, rows: [] };
         const f = [q.plant && `Werks eq ${enc(q.plant)}`, `Days eq ${enc(String(q.days || 30))}`].filter(Boolean).join(' and ');
         return { simulated: false, rows: results(await request(caller, 'GET', `${SET.parallel}?$filter=${encodeURIComponent(f)}`)).map(map.parallel) };
+    },
+    /** A964 freight conditions with transporter and route text. q: route, vendor, condType, shippingType, shipmentType, add01 (each one value or an array), top (default 500, max 5000), skip.
+        SAP needs at least one filter or a top; here a top is always sent, so a bare call returns the first 500 rows. -> { simulated, rows[] } */
+    async freightConditions(q = {}, caller) {
+        if (!isConfigured()) return { simulated: true, rows: [] };
+        const one = (v) => (Array.isArray(v) ? v : v ? [v] : []);
+        const f = [['Route', q.route], ['Tdlnr', q.vendor], ['Kschl', q.condType], ['Vsart', q.shippingType], ['Shtyp', q.shipmentType], ['Add01', q.add01]]
+            .map(([prop, v]) => { const l = one(v); return l.length === 1 ? `${prop} eq ${enc(l[0])}` : l.length > 1 ? `(${l.map((x) => `${prop} eq ${enc(x)}`).join(' or ')})` : ''; }).filter(Boolean).join(' and ');
+        const top = Math.min(5000, Math.max(1, Number(q.top) || 500)), skip = Math.max(0, Number(q.skip) || 0);
+        const url = `${SET.freightCond}?${f ? `$filter=${encodeURIComponent(f)}&` : ''}$top=${top}${skip ? `&$skip=${skip}` : ''}`;
+        return { simulated: false, rows: results(await request(caller, 'GET', url)).map(map.freightCond).filter((r) => r.condRecord) };
     },
     /** docs[] -> { [doc]: { cleared, clearingDoc } } */
     async paymentStatus(docs, caller) {

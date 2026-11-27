@@ -130,3 +130,16 @@ ZSMART_VEH (SM01) first, because its "get vehicles" run marks every open vehicle
 Then retire proxies ZCO_SAP_REQUEST / ZCO_SAP_INVOICEGET_VEHICLES / ZCO_SAP_API_AWSINVOICE (they carry hard-coded Instavans logins) and
 `ZMM_MATERIAL_DTL_TO_SMARTRUCK`. Write tests (11 scenarios incl. the cutover path) ran in a rolled-back classrun on EDS; EDS only allows
 harmless ABAP Unit, so they are not in ZTMS_CORE_TEST. No e-mail is sent by any of this.
+
+## FreightCondSet - A964 with transporter and route text (2026-11-27)
+CDS **`ZI_TMS_A964_VENDOR`** (`sap/zi_tms_a964_vendor.ddls`, SQL view `ZITMSA964VEND`, transport EDSK9B0EM3): every field of freight condition
+table **A964** (KAPPL, KSCHL, SHTYP, ROUTE, ADD01, ADD02, SDABW, TDLNR, ZDAYS, VSART, DATBI, DATAB, KNUMH) with, all LEFT OUTER joins:
+`TDLNR -> LFA1-LIFNR` (NAME1 -> VendorName, REGIO -> VendorRegion, ADRNR -> AddressNumber), `LFA1-ADRNR -> ADR6-ADDRNUMBER` (SMTP_ADDR ->
+VendorEmail: the company address, default e-mail only, so one row per record) and `ROUTE -> TVROT-ROUTE` language **E** (BEZEI -> RouteText;
+SAP's language key is one character, `EN` finds nothing). 22,790 rows on EDS = the table's rows. On EDS no A964 transporter has an e-mail
+in ADR6 (the join is proven on other vendors), so VendorEmail is blank there.
+
+OData `FreightCondSet` in ZTMS_SRV (key `Knumh`; `ZCL_TMS_CORE=>GET_FREIGHT_COND`): filters `Route`, `Tdlnr` (leading zeros optional), `Kschl`,
+`Vsart`, `Shtyp`, `Add01` (eq, several values with `or`), `$top` / `$skip`. With no filter `$top` is mandatory (about 20,000 rows); at most 5000
+per request. Newest validity first within route and transporter. Backend: `sapSvc.freightConditions({ route, vendor, condType, shippingType,
+shipmentType, add01, top, skip })` in `backend/tmsSap.js` (a bare call returns the first 500 rows). ABAP Unit 19/19, backend tests 51/51.

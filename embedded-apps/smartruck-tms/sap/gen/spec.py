@@ -55,6 +55,14 @@ ENT = [
   ('Vbeln','vbeln',S,10,True,'c'),('Werks','werks',S,4,False,'c'),('Days','days',S,3,False,'c'),
   ('TtSin','ttsin',S,50,False,'c'),('TtVehicle','ttvehicle',S,15,False,'c'),('TtOn','tton',DT,0,False,'d'),
   ('InstaSin','instasin',S,50,False,'c'),('InstaVehicle','instavehicle',S,15,False,'c'),('InstaOn','instaon',DT,0,False,'d'),('Status','status',S,12,False,'c')]),
+ # Freight condition A964 (all fields) with the transporter (LFA1: name, region, address no.) and its default e-mail (ADR6) and the route text (TVROT, E):
+ # CDS ZI_TMS_A964_VENDOR. Key = condition record number. Needs a filter (Route, Tdlnr, Kschl, Vsart, Shtyp, Add01) or $top.
+ dict(name='FreightCond', set='FreightCondSet', create=False, props=[
+  ('Knumh','knumh',S,10,True,'c'),('Kappl','kappl',S,2,False,'c'),('Kschl','kschl',S,4,False,'c'),('Shtyp','shtyp',S,4,False,'c'),('Route','route',S,6,False,'c'),
+  ('Add01','add01',S,10,False,'c'),('Add02','add02',S,10,False,'c'),('Sdabw','sdabw',S,4,False,'c'),('Tdlnr','tdlnr',S,10,False,'c'),('Zdays','zdays',S,4,False,'c'),
+  ('Vsart','vsart',S,2,False,'c'),('Datab','datab',DT,0,False,'d'),('Datbi','datbi',DT,0,False,'d'),
+  ('VendorName','vendorname',S,35,False,'c'),('VendorRegion','vendorregion',S,3,False,'c'),('AddressNumber','addressnumber',S,10,False,'c'),
+  ('VendorEmail','vendoremail',S,241,False,'c'),('RouteText','routetext',S,40,False,'c')]),
 ]
 ASSOC = []
 ACT = []

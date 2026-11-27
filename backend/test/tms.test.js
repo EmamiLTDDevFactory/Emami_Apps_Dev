@@ -807,3 +807,22 @@ test('vehicle type: internal cargo size (cm) is all-or-nothing, derives the volu
     await run(w, w.u.ho, vt({ code: 'OLD', maxVolumeM3: 20 }));                         // sizes stay optional
     assert.equal(w.db.vehicleTypes.find((x) => x.code === 'OLD').lengthCm, undefined);
 });
+
+test('SAP freight conditions (A964 + transporter + route text): mapping, filter URL, paging, simulated when SAP is off', async () => {
+    const row = { Knumh: '0000552435', Kappl: 'F', Kschl: 'ZB00', Shtyp: 'ZSD1', Route: 'ZDECTK', RouteText: 'Delhi To Cuttack', Add01: 'RTPKG', Add02: 'WEIGHT', Sdabw: 'NORM', Tdlnr: '0000210919', VendorName: 'VRL LOGISTICS LTD.', VendorRegion: 'TNU', AddressNumber: '0000041468', VendorEmail: 'a@vrl.test', Zdays: '5', Vsart: '01', Datab: '/Date(1270080000000)/', Datbi: '/Date(1277856000000)/' };
+    const m = sap.map.freightCond(row);
+    assert.deepEqual([m.condRecord, m.route, m.routeText, m.vendor, m.vendorName, m.vendorRegion, m.vendorEmail, m.validFrom, m.validTo], ['0000552435', 'ZDECTK', 'Delhi To Cuttack', '0000210919', 'VRL LOGISTICS LTD.', 'TNU', 'a@vrl.test', '2010-04-01', '2010-06-30']);
+    delete process.env.TMS_SAP_ODATA_BASE;
+    assert.deepEqual(await sap.freightConditions({ route: 'ZDECTK' }, { email: 'a@x.com' }), { simulated: true, rows: [] });
+    process.env.TMS_SAP_ODATA_BASE = 'https://gw.example/api/EDS/ZTMS_SRV'; process.env.TMS_SAP_CLIENT = '900';
+    const calls = []; const real = global.fetch;
+    global.fetch = async (u) => { calls.push(String(u)); return new Response(JSON.stringify({ d: { results: [row, { Route: 'X' }] } }), { status: 200 }); };
+    try {
+        const r = await sap.freightConditions({ route: 'ZDECTK', vendor: ['0000210919', '0000240628'], top: 99999, skip: 10 }, { email: 'a@x.com' });
+        assert.equal(r.rows.length, 1);                                                    // a row without a condition record is dropped
+        assert.match(calls[0], /FreightCondSet\?\$filter=Route%20eq%20'ZDECTK'%20and%20\(Tdlnr%20eq/);
+        assert.match(calls[0], /\$top=5000&\$skip=10/);                                    // top capped at 5000
+        await sap.freightConditions({}, { email: 'a@x.com' });
+        assert.match(calls[1], /FreightCondSet\?\$top=500/);                               // a bare call is bounded
+    } finally { global.fetch = real; delete process.env.TMS_SAP_ODATA_BASE; delete process.env.TMS_SAP_CLIENT; }
+});
