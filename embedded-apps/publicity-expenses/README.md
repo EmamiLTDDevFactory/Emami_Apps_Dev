@@ -77,7 +77,12 @@ field, **one column per picked period** (that period alone) and the CY / PY tota
 that the lines add up to the figure clicked (and flags a difference between the period columns and the SAP YTD, e.g.
 special periods 13-16); views: posting lines, by G/L, by cost centre, by report row; search; Excel with the selection,
 the source and how SAP was read (sheets: lines, by G/L, by cost centre, by report row, SKUs). Each picked period is one
-whole-period SAP read the first time (~5 s on NWP), cached 10 minutes.
+whole-period SAP read the first time (~5 s on NWP), cached 10 minutes. To make the first click fast, the server starts
+those reads in the background as soon as the report is read, and asks SAP only for the fields the app uses (`$select`:
+~4 MB a period instead of ~12 MB; it falls back to every field if SAP refuses, `PUBEXP_SAP_SELECT=off` /
+`PUBEXP_WARM_DETAIL=off` switch these off). The table scrolls in its own box: header row frozen at the top, total row
+at the bottom, arrow keys / Page Up / Page Down scroll it (it takes the focus when the lines arrive). The Excel file
+holds the lines on the screen: with a search, only the matching lines and their total (file name ends `-filtered`).
 
 **ZNET_SALE_MASTER columns** at the end of every posting line (screen and Excel): ZSKUGRCODECRS (`SkuGroupCode`),
 Product, Prd_Typ (`ProductType`), Prd_Rng (`ProductRange`), Item_Cat (`ItemCategory`) of the line's SKU group; the

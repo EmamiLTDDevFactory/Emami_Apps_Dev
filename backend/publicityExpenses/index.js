@@ -172,6 +172,14 @@ const byCompany = (rows, companies) => (companies?.length ? rows.filter((r) => c
 */
 const MONTHS = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0'));
 const months = {}; // `${source}|${kind}` -> true / false (unknown until the first answer)
+const monthsAt = {}; // when that was learned
+const MONTH_FIELDS = MONTHS.flatMap((m) => [`CYP${m}Amount`, `PYP${m}Amount`]);
+/** Learn from an answer whether the views carry the month fields (not from a $select answer that left them out). */
+function learnMonths(kind, rows) {
+    if (!rows.length || rows.withoutMonths) return;
+    const k = `${source()}|${kind}`;
+    months[k] = hasMonths(rows); monthsAt[k] = Date.now();
+}
 const hasMonths = (rows) => rows.length > 0 && 'CYP01Amount' in rows[0];
 const monthsOn = (kind) => process.env.PUBEXP_SAP_MONTHS !== 'off' && !(kind === 's' && envBudgetSource() === 'sap') && months[`${source()}|${kind}`] === true;
 const round2 = (x) => Math.round(x * 100) / 100;
@@ -195,13 +203,13 @@ function periodOf(yearRows, n) {
 async function periodRows(kind, fy, period, refresh, read) {
     if (monthsOn(kind)) {
         const year = await cached(`${kind}Y|${source()}|${fy}`, refresh, async () => { readStats.year++; return read(12); });
-        if (year.length) months[`${source()}|${kind}`] = hasMonths(year);
+        learnMonths(kind, year);
         if (hasMonths(year)) return period === 12 ? year : periodOf(year, period);
         if (period === 12) return year;
     }
     readStats.period++;
     const rows = await read(period);
-    if (rows.length) months[`${source()}|${kind}`] = hasMonths(rows);
+    learnMonths(kind, rows);
     return rows;
 }
 const readStats = { year: 0, period: 0 };
@@ -212,6 +220,40 @@ function rawSummary({ fy, period, companies, refresh }) {
     const read = (q) => (src === 'sap' ? G.sapSlot(() => sap.fetchSummary(fy, q, {})) : mock.summary(fy, q, {}));
     return cached(`s|${src}|${fy}|${period}`, refresh, () => periodRows('s', fy, period, refresh, read))
         .then((rows) => byCompany(rows, companies));
+}
+
+/*
+   Detail reads ask SAP only for the fields the app uses ($select): on NWP a period answers ~4 MB instead of ~12 MB and
+   ~30 % faster. The first read (and one an hour while the views have no month fields) reads every field, to learn
+   whether the month fields are there. If SAP refuses the $select, every field is read for an hour (PUBEXP_SAP_SELECT=off:
+   always every field).
+*/
+const DETAIL_SELECT = ['CompanyCode', 'ReportingKey', 'GLAccount', 'GLAccountName', 'Site', 'ReportHeader', 'ReportHeaderSequence', 'FSVItem', 'CostCenter',
+    'CostCenterName', 'CostCenterType', 'ProfitCenter', 'MappingRule', 'LookupField', 'DerivedCostCenterNo', 'ProductHierarchy', 'SalesBrand', 'SkuGroupKey',
+    'ProductGroup', 'SerialNo', 'ItemCategory', 'T1', 'ProductRange', 'T2', 'ProductType', 'T3', 'Product', 'MISHeading', 'VisibleInMIS', 'Currency', ...sap.AMOUNTS];
+const HOUR = 60 * 60 * 1000;
+let selectFailedAt = 0;
+function detailSelect() {
+    if (process.env.PUBEXP_SAP_SELECT === 'off' || Date.now() - selectFailedAt < HOUR) return null;
+    const k = 'sap|d';
+    if (months[k] === undefined) return null;
+    if (months[k] === false && Date.now() - (monthsAt[k] || 0) > HOUR) return null;
+    return months[k] ? [...DETAIL_SELECT, ...MONTH_FIELDS] : DETAIL_SELECT;
+}
+async function sapDetail(fy, period) {
+    const select = detailSelect();
+    if (select) {
+        try {
+            const rows = await G.sapSlot(() => sap.fetchDetail(fy, period, {}, { select }));
+            if (!select.includes('CYP01Amount')) rows.withoutMonths = true;
+            return rows;
+        } catch (e) {
+            if (e instanceof G.Busy) throw e;
+            console.error('[publicity-expenses] detail read with $select failed - every field for an hour:', e.message);
+            selectFailedAt = Date.now();
+        }
+    }
+    return G.sapSlot(() => sap.fetchDetail(fy, period, {}));
 }
 
 /**
@@ -229,7 +271,7 @@ function rawDetail({ fy, period, companies, refresh }, where = {}) {
     const long = Object.values(rest).some((v) => Array.isArray(v) && v.length > 25);
     let promise;
     if (!Object.keys(where).length) {
-        const read = (q) => (src === 'sap' ? G.sapSlot(() => sap.fetchDetail(fy, q, {})) : mock.detail(fy, q, {}));
+        const read = (q) => (src === 'sap' ? sapDetail(fy, q) : mock.detail(fy, q, {}));
         promise = cached(ck, refresh, () => periodRows('d', fy, period, refresh, read));
     } else if (src !== 'sap' || sap.isGateway() || long || !Object.keys(rest).length || monthsOn('d')) {
         // Filtered here from the whole period (itself from the year read when SAP gives the month fields).
@@ -375,6 +417,17 @@ async function mapLimit(items, limit, fn) {
     return out;
 }
 
+/**
+ * A drill-down reads the whole-period detail of the selected periods (6-8 s a period on NWP the first time, then
+ * cached). Once the report is read, start those reads in the background - same cache, same SAP limit - so a click on
+ * a figure finds them ready. Errors are left to the drill-down itself.
+ */
+function warmDetail(p) {
+    if (source() !== 'sap' || process.env.PUBEXP_WARM_DETAIL === 'off') return;
+    const periods = uniq([...p.periods, ...S.termsOf(p.periods).map((t) => t.period)]);
+    mapLimit(periods, 2, (q) => rawDetail({ fy: p.fy, period: q, refresh: p.refresh })).catch(() => {});
+}
+
 // ---------------------------------------------------------------- routes
 
 // Order: headers on every answer -> flood ceiling per IP -> session + Manage Access -> per-user limits (see guard.js).
@@ -412,13 +465,14 @@ const meta = (p, extra = {}) => ({
     companies: p.companies, exclusionsOn: p.exclusions, fetchedAt: new Date().toISOString(), ...extra,
 });
 
-router.get('/health', handle('health', async () => ({ ok: true, source: source(), budget: envBudgetSource(), system: source() === 'sap' ? sap.systemLabel() : 'Mock data', sapReads: G.sapStats(), monthFields: { ...months }, reads: { ...readStats } })));
+router.get('/health', handle('health', async () => ({ ok: true, source: source(), budget: envBudgetSource(), system: source() === 'sap' ? sap.systemLabel() : 'Mock data', sapReads: G.sapStats(), monthFields: { ...months }, detailSelect: !!detailSelect(), reads: { ...readStats } })));
 router.get('/me', handle('me', async (req) => ({ email: req.email, role: req.role, admin: req.role === 'Admin' })));
 router.get('/config', handle('config', async () => ({ config: { ...publicConfig(await mappingNow()), dimensions: Object.entries(R.DIMENSIONS).map(([id, d]) => ({ id, label: d.label, level: d.level })) } })));
 
 router.get('/summary', handle('summary', async (req) => {
     const p = params(req.query);
     const out = await reportRows(p);
+    warmDetail(p);
     const latest = await rawSummary({ fy: p.fy, period: p.period }); // cached by now
     // Company codes with data in the latest selected period (all companies), for the company filter.
     const companiesInData = uniq(latest.map((r) => r.CompanyCode).filter(Boolean)).sort();
@@ -780,4 +834,4 @@ router.get('/audit', requireAdmin, handle('audit', async () => ({ entries: await
 router.use((req, res) => res.status(404).json({ success: false, error: 'Not found.' }));
 
 module.exports = router;
-module.exports._test = { params, enrich, totalBy, source, reportRows, selectionSummary, selectionDetail, forgetMonthFields: () => { for (const k of Object.keys(months)) delete months[k]; } };
+module.exports._test = { params, enrich, totalBy, source, reportRows, selectionSummary, selectionDetail, forgetMonthFields: () => { for (const k of Object.keys(months)) delete months[k]; selectFailedAt = 0; }, clearCache: () => cache.clear() };

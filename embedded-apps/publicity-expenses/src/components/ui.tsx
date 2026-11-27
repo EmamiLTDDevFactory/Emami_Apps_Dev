@@ -222,7 +222,7 @@ export function Drawer({ open, onClose, title, children, width = 640 }: { open: 
           <div className="min-w-0 flex-1">{title}</div>
           <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close"><X size={16} /></Button>
         </div>
-        <div className="scroll-thin flex-1 overflow-auto p-5">{children}</div>
+        <div data-drawer-body className="scroll-thin flex-1 overflow-auto p-5">{children}</div>
       </div>
     </div>
   );

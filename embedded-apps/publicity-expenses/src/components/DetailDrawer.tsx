@@ -8,7 +8,7 @@
  * PRD_TYP, PRD_RNG, ITEM_CAT - with the SKUs one click away; they come with the lines (one cached read of the master on
  * the server, joined on the SKU group key). The Excel export carries the selection, the source and how SAP was read.
  */
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Download, Search } from 'lucide-react';
 import { api, type ApiError } from '@/lib/api';
 import { useApp } from '@/lib/context';
@@ -85,6 +85,8 @@ export default function DetailDrawer({ cell, onClose }: { cell: Cell; onClose: (
   const [find, setFind] = useState('');
   const [limit, setLimit] = useState(PAGE);
   const [open, setOpen] = useState<Set<number>>(new Set());
+  /** The table's own scroll box: header row frozen at its top, total row at its bottom, arrow keys / Page Up / Down scroll it. */
+  const box = useRef<HTMLDivElement>(null);
 
   // The figure's own header group(s) / site / G/L, narrowed by the filters in force (the figure was shown with them).
   const req = useMemo(() => {
@@ -120,18 +122,37 @@ export default function DetailDrawer({ cell, onClose }: { cell: Cell; onClose: (
   const part = useMemo(() => totalsOf(shown.map((x) => x.l), n), [shown, n]);
   const aggs = useMemo(() => (view === 'lines' ? [] : aggregate(shown.map((x) => x.l), view, n)), [shown, view, n]);
   const excluded = ready?.excluded ?? [];
+  const hasLines = lines.length > 0;
+  useEffect(() => { if (hasLines) box.current?.focus({ preventScroll: true }); }, [hasLines]);
+  // The box takes the height left below it in the window, so the frozen header and total row are both on screen.
+  const [boxH, setBoxH] = useState<number>();
+  useEffect(() => {
+    if (!hasLines) return;
+    const fit = () => {
+      const el = box.current; const body = el?.closest('[data-drawer-body]');
+      if (!el || !body) return;
+      const top = el.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop;
+      setBoxH(Math.max(288, body.clientHeight - top - 64));
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  }, [hasLines, excluded.length, find]);
 
   const groupNames = req.groups.map((g) => config.groups.find((x) => x.id === g)?.label ?? g);
   const target = cell.value;
   const got = cell.measure === 'py' ? all.pyT : all.cyT;
   const matches = target === undefined ? null : Math.abs(got - target) < 1;
   const periodGap = multiP ? all.cy.reduce((a, b) => a + b, 0) - all.cyT : 0;
-  const skus = lines.some((l) => skusOf(l).length > 0);
   const companies = q.companies.length ? q.companies.join(', ') : 'all companies';
   const source = ready ? (ready.meta.source === 'sap' ? `SAP ${ready.meta.system}` : 'Mock data') : '';
 
   async function exportXlsx() {
     if (!ready) return;
+    // What is on the screen: the lines matching the search box (all lines without one), with their total.
+    const rowsOut = shown.map((x) => x.l);
+    const tot = part;
+    const filtered = !!find.trim();
     const div = UNIT_DIV[unit];
     const v = (x: number) => Math.round((x / div) * 100) / 100;
     const per = periods.map((p) => `${P(p)} ${periodLabel(filters.fy, p)}`);
@@ -147,6 +168,7 @@ export default function DetailDrawer({ cell, onClose }: { cell: Cell; onClose: (
       ['Company codes', companies],
       ['Source', `${source} · CDS ZC_ATLBTL_EXP_DETAIL · read as ${ready.reads.text}`],
       ['SKU columns', 'ZNET_SALE_MASTER (CDS ZI_ATLBTL_NETSALEMASTER) of the line\'s SKU group (first 9 characters of ZSKUGRCODECRS); the amount is booked per cost centre, not split per SKU'],
+      ['Lines', filtered ? `${rowsOut.length} of ${lines.length} posting lines - only those matching "${find.trim()}" (search box)` : `all ${lines.length} posting lines`],
       ['Exclusion rules', q.excl === false ? 'not applied (report shown without them)' : 'applied (rules in force for the latest selected period)'],
       ['Amounts in', UNIT_LABEL[unit]],
       ['Read at', fmtDateTime(ready.meta.fetchedAt)],
@@ -155,16 +177,16 @@ export default function DetailDrawer({ cell, onClose }: { cell: Cell; onClose: (
     const head = ['Company code', 'Reporting key', 'Report row', 'Header', 'G/L', 'G/L name', 'Cost centre', 'Cost centre description', 'CC type', 'Profit centre', 'Site', 'Mapping rule', 'Lookup field', 'Derived no.', 'Product hierarchy', 'Sales brand',
       ...(multiP ? per.map((x) => `CY ${x}`) : []), `CY ${sel.cy}`, ...(multiP ? per.map((x) => `PY ${x}`) : []), `PY ${sel.py}`,
       ...SKU_COLS.map((c) => (c.field === c.label ? c.field : `${c.field} (${c.label.toLowerCase()})`))];
-    const body = lines.map((l) => [l.CompanyCode, l.ReportingKey, rowLabel(l), l.HeaderLabel ?? '', noZeros(l.GLAccount), l.GLAccountName ?? '', l.CostCenter ?? '', l.CostCenterName ?? '', l.CostCenterType ?? '', l.ProfitCenter ?? '', l.Site ?? '',
+    const body = rowsOut.map((l) => [l.CompanyCode, l.ReportingKey, rowLabel(l), l.HeaderLabel ?? '', noZeros(l.GLAccount), l.GLAccountName ?? '', l.CostCenter ?? '', l.CostCenterName ?? '', l.CostCenterType ?? '', l.ProfitCenter ?? '', l.Site ?? '',
       l.MappingRule ?? '', l.LookupField ?? '', l.DerivedCostCenterNo ?? '', l.ProductHierarchy ?? '', l.SalesBrand ?? '',
       ...(multiP ? l.cy.map(v) : []), v(l.CYYTDAmount), ...(multiP ? l.py.map(v) : []), v(l.PYYTDAmount),
       ...SKU_COLS.map((c) => skuValues(skusOf(l), c.key).join(', '))]);
-    const total = ['Total', ...Array<string>(15).fill(''), ...(multiP ? all.cy.map(v) : []), v(all.cyT), ...(multiP ? all.py.map(v) : []), v(all.pyT), ...SKU_COLS.map(() => '')];
+    const total = [filtered ? `Total (${rowsOut.length} matching lines)` : 'Total', ...Array<string>(15).fill(''), ...(multiP ? tot.cy.map(v) : []), v(tot.cyT), ...(multiP ? tot.py.map(v) : []), v(tot.pyT), ...SKU_COLS.map(() => '')];
     const amountCols = 2 + (multiP ? 2 * n : 0);
     const aggSheet = (name: string, kind: Exclude<View, 'lines'>, cols: string[]) => ({
       name,
       rows: [[`${cell.label} · ${sel.cy} · ${UNIT_LABEL[unit]}`], [], [...cols, 'Lines', 'Cost centres', ...(multiP ? per.map((x) => `CY ${x}`) : []), `CY ${sel.cy}`, `PY ${sel.py}`],
-        ...aggregate(lines, kind, n).map((a) => [a.title, a.sub, a.extra, a.lines, a.ccs, ...(multiP ? a.cy.map(v) : []), v(a.cyT), v(a.pyT)])] as XCell[][],
+        ...aggregate(rowsOut, kind, n).map((a) => [a.title, a.sub, a.extra, a.lines, a.ccs, ...(multiP ? a.cy.map(v) : []), v(a.cyT), v(a.pyT)])] as XCell[][],
       widths: [16, 34, 16, 7, 9, ...periods.map(() => 12), 13, 13], freeze: { rows: 3 },
     });
     const sheets = [
@@ -172,15 +194,15 @@ export default function DetailDrawer({ cell, onClose }: { cell: Cell; onClose: (
       aggSheet('By G-L', 'gl', ['G/L', 'G/L name', 'Header']),
       aggSheet('By cost centre', 'cc', ['Cost centre', 'Description', 'Company code']),
       ...(multiRow ? [aggSheet('By report row', 'row', ['Report row', 'Reporting key', 'Brand family'])] : []),
-      ...(skus ? [{
+      ...(rowsOut.some((l) => skusOf(l).length > 0) ? [{
         name: 'SKUs',
         rows: [['Company code', 'Cost centre', 'G/L', 'Reporting key', 'ZSKUGRCODECRS', 'Material', 'SKU size', 'Base unit', 'Product', 'Prd_Typ', 'Prd_Rng', 'Item_Cat'],
-          ...lines.flatMap((l) => skusOf(l).map((s) => [l.CompanyCode, l.CostCenter ?? '', noZeros(l.GLAccount), l.ReportingKey, s.SkuGroupCode ?? '', noZeros(s.Material), s.SKUSize ?? '', s.BaseUnit ?? '',
+          ...rowsOut.flatMap((l) => skusOf(l).map((s) => [l.CompanyCode, l.CostCenter ?? '', noZeros(l.GLAccount), l.ReportingKey, s.SkuGroupCode ?? '', noZeros(s.Material), s.SKUSize ?? '', s.BaseUnit ?? '',
             s.Product ?? '', s.ProductType ?? '', s.ProductRange ?? '', s.ItemCategory ?? '']))] as XCell[][],
         widths: [9, 12, 11, 14, 16, 14, 9, 7, 28, 16, 16, 16], freeze: { rows: 1 },
       }] : []),
     ];
-    await writeBook(`ATL-BTL-drilldown-${cell.label.replace(/[^A-Za-z0-9]+/g, '-').slice(0, 60)}-${sel.cy.replace(/[^A-Za-z0-9'-]+/g, '-')}.xlsx`, sheets);
+    await writeBook(`ATL-BTL-drilldown-${cell.label.replace(/[^A-Za-z0-9]+/g, '-').slice(0, 60)}-${sel.cy.replace(/[^A-Za-z0-9'-]+/g, '-')}${filtered ? '-filtered' : ''}.xlsx`, sheets);
   }
 
   const amountHeads = (
@@ -288,9 +310,17 @@ export default function DetailDrawer({ cell, onClose }: { cell: Cell; onClose: (
             <Button size="sm" onClick={exportXlsx}><Download size={14} /> Excel</Button>
           </div>
           {find && <p className="text-2xs text-muted">{shown.length} of {lines.length} lines match “{find}”; the total row is for the matching lines.</p>}
-          <div className="scroll-thin overflow-x-auto rounded-xl border border-line bg-panel">
-            <table className="w-full text-left text-[12px]" data-testid="drill-table">
-              <thead>
+          <div
+            ref={box}
+            tabIndex={0}
+            role="region"
+            aria-label="Drill-down lines (arrow keys scroll)"
+            data-testid="drill-scroll"
+            style={{ maxHeight: boxH }}
+            className="scroll-thin max-h-[max(18rem,calc(100dvh-17rem))] overflow-auto rounded-xl border border-line bg-panel outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+          >
+            <table className="w-full border-separate border-spacing-0 text-left text-[12px]" data-testid="drill-table">
+              <thead className="[&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:border-b [&_th]:border-line [&_th]:bg-panel">
                 {view === 'lines' ? (
                   <tr className="border-b border-line align-bottom text-2xs uppercase tracking-wide text-muted">
                     {['', 'G/L', 'Cost centre', 'Co. code', 'Profit centre', 'Site', ...(multiRow ? ['Report row'] : []), 'Mapping'].map((h, i) => <th key={`${h}${i}`} className="whitespace-nowrap px-2 py-2 font-bold">{h}</th>)}
@@ -305,7 +335,7 @@ export default function DetailDrawer({ cell, onClose }: { cell: Cell; onClose: (
                   </tr>
                 )}
               </thead>
-              <tbody className="divide-y divide-line">
+              <tbody className="[&>tr:not(:last-child)>td]:border-b [&>tr>td]:border-line">
                 {view === 'lines' ? shown.slice(0, limit).map(({ l, i }) => {
                   const sk = skusOf(l);
                   const isOpen = open.has(i);
@@ -352,7 +382,7 @@ export default function DetailDrawer({ cell, onClose }: { cell: Cell; onClose: (
                     {amountCells(a)}
                   </tr>
                 ))}
-                <tr className="bg-sunken font-bold">
+                <tr className="font-bold [&>td]:sticky [&>td]:bottom-0 [&>td]:z-10 [&>td]:border-t [&>td]:border-line [&>td]:bg-sunken" data-testid="drill-total-row">
                   <td colSpan={textCols} className="px-2 py-1.5">Total{find ? ` (${shown.length} matching lines)` : ''}</td>
                   {amountCells(part, true, true)}
                   {view === 'lines' && <td colSpan={SKU_COLS.length} className="border-l border-line" />}
