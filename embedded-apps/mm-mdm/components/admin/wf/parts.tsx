@@ -96,7 +96,7 @@ export function useValueList(kind: string, appId: string, enabled = true) {
     const hit = listCache.get(k);
     if (hit) { setItems(hit); return; }
     let live = true;
-    wfApi.valueHelp(kind, appId, '', 300).then((r) => { listCache.set(k, r); if (live) setItems(r); }).catch((e: Error) => { if (live) setError(e.message); });
+    wfApi.valueHelp(kind, appId, '', 1000).then((r) => { listCache.set(k, r); if (live) setItems(r); }).catch((e: Error) => { if (live) setError(e.message); });
     return () => { live = false; };
   }, [kind, appId, enabled]);
   return { items, error };

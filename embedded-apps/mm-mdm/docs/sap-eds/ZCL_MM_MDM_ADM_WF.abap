@@ -734,6 +734,10 @@ CLASS zcl_mm_mdm_adm_wf IMPLEMENTATION.
       ELSEIF lv = 'PC' OR lv = 'PX' OR lv = 'PM' OR lv = 'PXX'.
         rs_cfg-family = 'PIR'.  rs_cfg-gt_label = 'Material type'.  rs_cfg-gf1_label = 'Origin Group'.  rs_cfg-gf2_label = 'Purchase Org.'.
         rs_cfg-gt_vh = 'MTART'.  rs_cfg-gf2_vh = 'EKORG'.  rs_cfg-pir_visible = abap_true.
+      ELSEIF lv = 'PH'.
+        "Product Hierarchy creation: routing key = banner (gen_type, T179 level 1) and brand (gen_field, T179 level 2), '*' = every brand
+        rs_cfg-family = 'PRODH'.  rs_cfg-gt_label = 'Banner'.  rs_cfg-gf1_label = 'Brand'.
+        rs_cfg-gt_vh = 'BANNER'.  rs_cfg-gf1_vh = 'PHBRAND'.  rs_cfg-gf2_visible = abap_false.
       ELSEIF lv1 = 'P'.
         rs_cfg-family = 'PRICING'.  rs_cfg-gt_label = 'Condition Type'.  rs_cfg-gt_vh = 'KSCHL'.  rs_cfg-gf1_label = 'Department'.  rs_cfg-gf1_vh = 'DEPT'.  rs_cfg-gf2_visible = abap_false.
     ENDIF.
@@ -2632,7 +2636,7 @@ CLASS zcl_mm_mdm_adm_wf IMPLEMENTATION.
   METHOD op_value_help.
     DATA(lv_kind) = to_upper( condense( gs_req-kind ) ).
     DATA(lv_q) = to_upper( condense( gs_req-query ) ).
-    DATA(lv_limit) = COND i( WHEN gs_req-limit <= 0 THEN 50 WHEN gs_req-limit > 300 THEN 300 ELSE gs_req-limit ).
+    DATA(lv_limit) = COND i( WHEN gs_req-limit <= 0 THEN 50 WHEN gs_req-limit > 1000 THEN 1000 ELSE gs_req-limit ).
     DATA lt_items TYPE ty_items.
     DATA(lv_app) = CONV /inowits/wf_app_id( condense( to_upper( gs_req-app_id ) ) ).
 
@@ -2667,6 +2671,16 @@ CLASS zcl_mm_mdm_adm_wf IMPLEMENTATION.
         SELECT vtweg AS key, vtext AS text FROM tvtwt WHERE spras = @sy-langu ORDER BY vtweg INTO CORRESPONDING FIELDS OF TABLE @lt_items.
       WHEN 'EKORG'.
         SELECT ekorg AS key, ekotx AS text FROM t024e ORDER BY ekorg INTO CORRESPONDING FIELDS OF TABLE @lt_items.
+      WHEN 'BANNER'.
+        SELECT t~prodh AS key, x~vtext AS text FROM t179 AS t LEFT OUTER JOIN t179t AS x ON x~prodh = t~prodh AND x~spras = @sy-langu
+          WHERE t~stufe = 1 ORDER BY t~prodh INTO CORRESPONDING FIELDS OF TABLE @lt_items.
+        APPEND VALUE #( key = '*' text = 'All banners' ) TO lt_items.
+      WHEN 'PHBRAND'.
+        "brand = own 4-character code of level 2 (the code is the same under every banner it is used in)
+        SELECT t~prodha AS key, x~vtext AS text FROM t179 AS t LEFT OUTER JOIN t179t AS x ON x~prodh = t~prodh AND x~spras = @sy-langu
+          WHERE t~stufe = 2 ORDER BY t~prodha INTO CORRESPONDING FIELDS OF TABLE @lt_items.
+        DELETE ADJACENT DUPLICATES FROM lt_items COMPARING key.
+        INSERT VALUE #( key = '*' text = 'All brands' ) INTO lt_items INDEX 1.
       WHEN 'KSCHL'.
         "condition types: those already used as key of this application's definitions first, then the pricing condition types of purchasing (M) and sales (V)
         SELECT DISTINCT gen_type AS key FROM /inowits/wf_def WHERE app_id = @lv_app AND gen_type <> '' INTO CORRESPONDING FIELDS OF TABLE @lt_items.
