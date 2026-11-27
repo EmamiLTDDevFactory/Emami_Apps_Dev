@@ -17,6 +17,7 @@ import {
 import { Button, Card, Empty, Notice, Skeleton, cx } from './ui';
 import ServiceHealth from './ServiceHealth';
 import { multiDesk } from '@/lib/workspaces';
+import { ItsmTag } from './Itsm';
 
 const PERIODS = [7, 14, 30, 60] as const;
 type Period = (typeof PERIODS)[number];
@@ -163,7 +164,7 @@ export default function Dashboard() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-xl font-extrabold tracking-tight">Good to see you, {me.name.split(' ')[0]}</h2>
+          <h2 className="flex flex-wrap items-center gap-2 text-xl font-extrabold tracking-tight">Good to see you, {me.name.split(' ')[0]} <ItsmTag practice={['servicedesk', 'availability']} /></h2>
           <p className="text-sm text-muted">Live queue for Emami Service Desk{loadedAt && ` · updated ${fmtTime(loadedAt)}`}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

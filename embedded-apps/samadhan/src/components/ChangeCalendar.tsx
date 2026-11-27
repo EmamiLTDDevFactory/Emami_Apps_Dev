@@ -5,6 +5,7 @@ import { changeCalendar } from '@/lib/api';
 import { useSamadhan } from '@/lib/context';
 import type { CalendarChange, ChangeWindow } from '@/lib/types';
 import { Button, Card, Notice, Pill, Skeleton, cx } from './ui';
+import { ItsmTag } from './Itsm';
 
 /*
    v7 Phase 6 (§M /change-calendar): a month of planned changes with FREEZE and MAINTENANCE windows. Click a change
@@ -40,7 +41,7 @@ export default function ChangeCalendar() {
     <div className="space-y-4" data-testid="change-calendar">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h2 className="text-xl font-extrabold tracking-tight">Change calendar</h2>
+          <h2 className="flex flex-wrap items-center gap-2 text-xl font-extrabold tracking-tight">Change calendar <ItsmTag practice={'change'} /></h2>
           <p className="text-sm text-muted">Planned changes by risk, with freeze and maintenance windows. Scheduling inside a freeze needs an override and a reason.</p>
         </div>
         <div className="flex items-center gap-1.5">

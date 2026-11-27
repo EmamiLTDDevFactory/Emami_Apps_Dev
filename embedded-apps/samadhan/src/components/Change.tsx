@@ -6,6 +6,7 @@ import { useSamadhan } from '@/lib/context';
 import { fmtDate, fmtDateTime, relative } from '@/lib/format';
 import type { Approval, ApprovalChain, ChangeDetails, Ticket, Transport } from '@/lib/types';
 import { Button, Card, Field, Notice, Pill, Spinner, cx, inputBase, inputCls, textareaCls } from './ui';
+import { ItsmTag } from './Itsm';
 
 /*
    v7 Phase 6 (master prompt §N 5): Transports (pipeline chips), Change planning (type, risk, window, freeze check,
@@ -49,7 +50,7 @@ export function TransportsCard({ ticketId, transports, reload }: { ticketId: num
     try { await fn(); await reload(); return true; } catch (e) { setError(errText(e)); return false; } finally { setBusy(false); }
   };
   return (
-    <Card title="Transports" sub={transports.length ? `${transports.filter((t) => t.status === 'Imported to PRD').length} of ${transports.length} in PRD` : 'Workbench / customizing requests of this change'}
+    <Card title={<span className="inline-flex flex-wrap items-center gap-1.5">Transports <ItsmTag practice="release" /></span>} sub={transports.length ? `${transports.filter((t) => t.status === 'Imported to PRD').length} of ${transports.length} in PRD` : 'Workbench / customizing requests of this change'}
       actions={manage && !adding && <Button size="sm" aria-label="New transport" onClick={() => setAdding(true)}><Plus size={13} /> Add</Button>}>
       <div className="space-y-2" data-testid="transports">
         {error && <Notice onClose={() => setError('')}>{error}</Notice>}
@@ -134,7 +135,7 @@ export function ChangeCard({ ticket, change, reload }: { ticket: Ticket; change:
   };
   const c = change;
   return (
-    <Card title={isAccess ? 'Access' : 'Change plan'} sub={isAccess ? 'Validity - a revoke to-do is created on resolve' : c?.plannedStart ? `${fmtDateTime(c.plannedStart)}${c.plannedEnd ? ` → ${fmtDateTime(c.plannedEnd)}` : ''}` : 'Type, risk, window, evidence'}
+    <Card title={<span className="inline-flex flex-wrap items-center gap-1.5">{isAccess ? 'Access' : 'Change plan'} <ItsmTag practice={isAccess ? 'request' : 'change'} /></span>} sub={isAccess ? 'Validity - a revoke to-do is created on resolve' : c?.plannedStart ? `${fmtDateTime(c.plannedStart)}${c.plannedEnd ? ` → ${fmtDateTime(c.plannedEnd)}` : ''}` : 'Type, risk, window, evidence'}
       actions={can('ticket.edit') && !editing && <Button size="sm" onClick={() => setEditing(true)}><Pencil size={13} /> Edit</Button>}>
       <div data-testid="change-card">
         {editing ? (
@@ -229,7 +230,7 @@ export function ApprovalsCard({ ticket, approvals, reload }: { ticket: Ticket; a
   };
   const result = !running && current.length ? (current.some((a) => a.state === 'Rejected') ? 'Rejected' : current.every((a) => a.state === 'Approved') ? 'Approved' : 'Cancelled') : null;
   return (
-    <Card title="Approvals" sub={current[0]?.chainName ?? 'Manager, role owner, CAB ...'}
+    <Card title={<span className="inline-flex flex-wrap items-center gap-1.5">Approvals <ItsmTag practice={['change', 'workflow']} /></span>} sub={current[0]?.chainName ?? 'Manager, role owner, CAB ...'}
       actions={!running && can('ticket.edit') && !starting && <Button size="sm" onClick={() => setStarting(true)}><Play size={13} /> {current.length ? 'Start again' : 'Start'}</Button>}>
       <div className="space-y-3" data-testid="approvals">
         {error && <Notice onClose={() => setError('')}>{error}</Notice>}

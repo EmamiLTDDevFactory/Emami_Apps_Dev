@@ -7,6 +7,7 @@ import { fmtDateTime } from '@/lib/format';
 import type { ItDetails } from '@/lib/types';
 import { MasterInput } from './Sap';
 import { Button, Card, Field, Notice, Spinner, cx, inputBase, inputCls, textareaCls } from './ui';
+import { ItsmTag } from './Itsm';
 
 /*
    v7 Phase 5 (master prompt §I ticket_it_details, §N): IT details for Digital Apps and Infra & IT tickets - the form
@@ -106,7 +107,7 @@ export function ItCard({ ticketId, it, deskKey, reload }: { ticketId: number; it
   const rows = it ? [...itSpecFor(deskKey), { key: 'usersAffected' as Key, label: 'Users affected' }]
     .map((f) => [f.label, it[f.key] != null && it[f.key] !== '' ? String(it[f.key]) : null] as const).filter(([, v]) => v) : [];
   return (
-    <Card title={deskKey === 'INFRA_IT' ? 'IT details' : 'App details'} sub={it?.updatedAt ? `Updated ${fmtDateTime(it.updatedAt)}` : deskKey === 'INFRA_IT' ? 'Server, asset, site' : 'Layer, URL, status, correlation id'}
+    <Card title={<span className="inline-flex flex-wrap items-center gap-1.5">{deskKey === 'INFRA_IT' ? 'IT details' : 'App details'} <ItsmTag practice="config" /></span>} sub={it?.updatedAt ? `Updated ${fmtDateTime(it.updatedAt)}` : deskKey === 'INFRA_IT' ? 'Server, asset, site' : 'Layer, URL, status, correlation id'}
       actions={can('ticket.edit') && !editing && <Button size="sm" onClick={() => setEditing(true)}><Pencil size={13} /> Edit</Button>}>
       <div data-testid="it-card">
         {editing ? (

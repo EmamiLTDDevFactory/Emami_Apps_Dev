@@ -7,6 +7,7 @@ import { fmtDateTime, fmtNum } from '@/lib/format';
 import type { RegisterData } from '@/lib/types';
 import { appOptions } from './Tickets';
 import { Button, Card, Notice, Skeleton, Table, cx, inputBase, inputCls } from './ui';
+import { ItsmTag } from './Itsm';
 
 /** v7 Phase 6 (§N 8): the registers - Change & Transport, Access Request Log, SAP / Infra / Digital / Sales Apps - with Excel export. */
 const isoDay = (d: Date) => d.toISOString().slice(0, 10);
@@ -35,7 +36,7 @@ export default function Registers() {
   return (
     <div className="space-y-4" data-testid="registers">
       <div>
-        <h2 className="text-xl font-extrabold tracking-tight">Registers</h2>
+        <h2 className="flex flex-wrap items-center gap-2 text-xl font-extrabold tracking-tight">Registers <ItsmTag practice={'reporting'} /></h2>
         <p className="text-sm text-muted">Audit-ready lists for changes, access, SAP, Infra, Digital and the sales apps. The daily report is unchanged.</p>
       </div>
       <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Registers">

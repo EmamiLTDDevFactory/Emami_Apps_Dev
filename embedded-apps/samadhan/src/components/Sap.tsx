@@ -7,6 +7,7 @@ import { fmtDateTime } from '@/lib/format';
 import { parseSapText } from '@/lib/sapParse';
 import type { ExternalRef, SapDetails } from '@/lib/types';
 import { Button, Card, Field, Modal, Notice, Pill, Spinner, cx, inputBase, inputCls, textareaCls } from './ui';
+import { ItsmTag } from './Itsm';
 
 /*
    v7 Phase 4 (master prompt §N 4-5): SAP details (form + card), the "Paste error / dump text" helper, reference-master
@@ -171,7 +172,7 @@ export function ExternalRefsCard({ ticketId, refs, reload }: { ticketId: number;
   };
   const manage = can('externalRef.manage');
   return (
-    <Card title="External references" sub="SAP for Me cases, vendor and partner tickets" actions={manage && !adding && <Button size="sm" onClick={() => setAdding(true)}><Plus size={13} /> Add</Button>}>
+    <Card title={<span className="inline-flex flex-wrap items-center gap-1.5">External references <ItsmTag practice={['supplier', 'escalation']} /></span>} sub="SAP for Me cases, vendor and partner tickets" actions={manage && !adding && <Button size="sm" onClick={() => setAdding(true)}><Plus size={13} /> Add</Button>}>
       <div className="space-y-2" data-testid="external-refs">
         {error && <Notice onClose={() => setError('')}>{error}</Notice>}
         {refs.length === 0 && !adding && <p className="text-2xs text-muted">None yet. Add the SAP case or vendor ticket number when the issue goes outside.</p>}

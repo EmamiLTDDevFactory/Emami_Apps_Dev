@@ -565,3 +565,23 @@ test('ITSM: support model, ticket migration templates, support & escalation card
   }
   expect(problems).toEqual([]);
 });
+
+test('ITSM overview, CMDB and ITSM practice tags', async ({ page }) => {
+  const problems = watch(page);
+  await signIn(page, data.admin);
+  await page.goto('/apps/samadhan/?screen=itsm');
+  const ov = page.getByTestId('itsm-overview');
+  await expect(ov).toContainText('Incident Management');
+  await expect(ov).toContainText('Problem Management');
+  await expect(ov).toContainText('Service Configuration Management (CMDB)');
+  await expect(ov).toContainText('Workflows');
+  await page.goto('/apps/samadhan/?screen=cmdb');
+  const list = page.getByTestId('cmdb');
+  await expect(list).toContainText('APP-');
+  await list.locator('tbody tr').first().click();
+  await expect(page.getByTestId('ci-detail')).toContainText('History');
+  await page.goto(`/apps/samadhan/?ticket=${data.ticketId}`);
+  await expect(page.getByTestId('ci-card')).toBeVisible();
+  await expect(page.locator('[data-itsm]').first()).toBeVisible();
+  expect(problems).toEqual([]);
+});

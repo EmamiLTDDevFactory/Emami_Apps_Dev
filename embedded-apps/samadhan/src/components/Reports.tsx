@@ -6,6 +6,7 @@ import { useSamadhan } from '@/lib/context';
 import { fmtNum, istToday } from '@/lib/format';
 import type { ReportVariantConfig, Variant } from '@/lib/types';
 import { Button, Card, Field, Modal, MultiSelect, Notice, Spinner, cx, inputCls } from './ui';
+import { ItsmTag } from './Itsm';
 
 // Neutralise spreadsheet formulas in user-supplied text (same rule as the other apps' exports).
 const safeCell = (v: string | number) => (typeof v === 'string' && /^[=+\-@\t\r]/.test(v) ? `'${v}` : v);
@@ -329,7 +330,7 @@ export default function Reports() {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-xl font-extrabold tracking-tight">Daily report</h2>
+        <h2 className="flex flex-wrap items-center gap-2 text-xl font-extrabold tracking-tight">Daily report <ItsmTag practice={'reporting'} /></h2>
         <p className="text-sm text-muted">Tickets created in the date range (IST), in the 36-column order of the daily report template. Filter on any column, choose the columns, and save the setup as a variant. Includes requesters&apos; phone numbers and emails - supervisors and admins only.</p>
       </div>
 

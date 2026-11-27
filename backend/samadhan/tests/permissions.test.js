@@ -20,7 +20,7 @@ const { RULES, ruleFor } = require('../middleware/permission');
 const { SEED_PROFILES } = require('../lib/authSeed');
 
 // Routers mounted after requireAccess in index.js, with their mount prefix.
-const MOUNTS = [['', 'me'], ['', 'tickets'], ['', 'work'], ['', 'reports'], ['', 'insights'], ['', 'attachments'], ['/admin', 'admin'], ['/admin/authz', 'authz'], ['/admin', 'workspaces'], ['', 'sap'], ['', 'it'], ['', 'change'], ['', 'problem'], ['', 'program'], ['', 'integrations'], ['', 'analyticsDesks'], ['', 'itsm']];
+const MOUNTS = [['', 'me'], ['', 'tickets'], ['', 'work'], ['', 'reports'], ['', 'insights'], ['', 'attachments'], ['/admin', 'admin'], ['/admin/authz', 'authz'], ['/admin', 'workspaces'], ['', 'sap'], ['', 'it'], ['', 'change'], ['', 'problem'], ['', 'program'], ['', 'integrations'], ['', 'analyticsDesks'], ['', 'itsm'], ['', 'cmdb']];
 function registered() {
     const out = [];
     for (const [prefix, file] of MOUNTS) {
@@ -47,6 +47,9 @@ const OLD_MIN = {
     'GET /analytics/desks': 'Supervisor',
     // ITSM support model (7.11): the vendor scorecard sits with Analytics (Supervisor and up).
     'GET /analytics/vendors': 'Supervisor',
+    // CMDB (7.12): changing configuration items is Supervisor and up; viewing and linking to tickets stay with Agents.
+    'POST /cmdb': 'Supervisor', 'POST /cmdb/import': 'Supervisor', 'POST /cmdb/:cid/verify': 'Supervisor',
+    'POST /cmdb/:cid/relations': 'Supervisor', 'DELETE /cmdb/:cid/relations/:rid': 'Supervisor',
 };
 const oldMin = (method, p) => (p.startsWith('/admin') ? 'Admin' : OLD_MIN[`${method} ${p}`] || 'Agent');
 const allowedNew = (role, rule, req = { body: {}, query: {} }) => {

@@ -16,6 +16,7 @@ import type {
   AccessUser, Overview, ReportVariantConfig, Role, Variant, Workspace, Application, MatrixCell, PriorityMode, SapDetails, ExternalRef, RefMaster, ItDetails, PortalApplication, Transport, ChangeDetails, Approval, ApprovalChain, CatalogItem, ChangeWindow, CalendarChange,
   MyApproval, RegisterData, PublicApproval, PortalCatalogItem, Pir, KnownError, ProblemCandidate, DuplicateHint, ServiceHealth, ProgramDetails, ProgramOverview, IntegrationsOverview, SolmanResult, DeskAnalytics,
   SupportModelData, TicketEscalation, VendorScore, MigrationKind, MigrationTemplate, MigrationResult,
+  CiRef, CmdbList, CiDetail, ItsmOverviewData,
 } from './types';
 
 const API_HOST = 'https://audit-capa-api.emamiapps.in';
@@ -495,6 +496,22 @@ export const vendorScorecard = (days: number) => get<{ items: VendorScore[] }>(`
 export const migrationTemplate = (kind: MigrationKind) => get<{ template: MigrationTemplate }>(`/admin/migration/${kind}/template`).then((r) => r.template);
 export const migrationImport = (kind: MigrationKind, rows: string[][], dryRun: boolean, slaFrom: 'import' | 'logged') =>
   request<MigrationResult>('POST', `/admin/migration/${kind}/import`, { rows, dryRun, slaFrom });
+
+// Configuration management (CMDB, 7.12) and the ITSM overview.
+export const cmdbApi = {
+  list: (q: Record<string, string>) => get<CmdbList>(`/cmdb${qs(q)}`),
+  get: (id: number) => get<CiDetail>(`/cmdb/${id}`),
+  save: (b: Record<string, unknown>) => request<{ id: number }>('POST', '/cmdb', b),
+  verify: (id: number) => request('POST', `/cmdb/${id}/verify`),
+  relate: (id: number, toId: number, kind: string) => request('POST', `/cmdb/${id}/relations`, { toId, kind }),
+  unrelate: (id: number, relId: number) => request('DELETE', `/cmdb/${id}/relations/${relId}`),
+  importRows: (rows: Record<string, string>[], dryRun: boolean) => request<{ dryRun: boolean; total: number; added: number; updated: number; errors: { line: number; code: string | null; error: string }[] }>('POST', '/cmdb/import', { rows, dryRun }),
+  search: (q: string) => get<{ items: CiRef[] }>(`/cmdb/search${qs({ q })}`).then((r) => r.items),
+  forTicket: (ticketId: number) => get<{ linked: CiRef[]; suggestions: CiRef[]; ready: boolean }>(`/tickets/${ticketId}/cis`),
+  link: (ticketId: number, ciId: number) => request('POST', `/tickets/${ticketId}/cis`, { ciId }),
+  unlink: (ticketId: number, ciId: number) => request('DELETE', `/tickets/${ticketId}/cis/${ciId}`),
+};
+export const itsmOverview = () => get<ItsmOverviewData>('/itsm/overview');
 
 export const publicApproval = (token: string) => get<{ approval: PublicApproval }>(`/portal/approval/${encodeURIComponent(token)}`).then((r) => r.approval);
 export const publicDecide = (token: string, decision: string, comment: string) => request('POST', `/portal/approval/${encodeURIComponent(token)}`, { decision, comment });

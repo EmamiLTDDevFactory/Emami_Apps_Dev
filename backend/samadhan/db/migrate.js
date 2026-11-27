@@ -1064,6 +1064,91 @@ const MIGRATIONS = [
             return 'Support model removed';
         },
     },
+    {
+        // Configuration management / CMDB (2026-11-27): configuration items with identity, class, lifecycle status,
+        // owner / user, site, support vendor and hosting; relationships between CIs; a history of every change (status
+        // accounting and audit); the CIs a ticket affects. Starts filled from the ASSET and SERVER masters and one
+        // "Application / Service" CI per active application (copies - the masters stay as they are).
+        // Down drops the four new tables (the copies go with them).
+        id: '7.12-cmdb',
+        describe: 'CMDB: configuration items, relationships, history, ticket links; seeded from the asset / server masters and applications',
+        async up(client) {
+            const S = ident(activeSchema());
+            const { classFromTag } = require('../lib/cmdbSeed');
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.config_items (
+                id serial PRIMARY KEY,
+                code text NOT NULL,
+                name text NOT NULL,
+                "ciClass" text NOT NULL DEFAULT 'Other',
+                status text NOT NULL DEFAULT 'In use',
+                criticality text NOT NULL DEFAULT 'Medium',
+                environment text,
+                "siteLocation" text,
+                department text,
+                "assignedName" text,
+                "assignedEmail" text,
+                "ownerGroupId" int REFERENCES ${S}.groups(id) ON DELETE SET NULL,
+                "supportPartnerId" int REFERENCES ${S}.support_partners(id) ON DELETE SET NULL,
+                "hostingPartnerId" int REFERENCES ${S}.support_partners(id) ON DELETE SET NULL,
+                "applicationId" int REFERENCES ${S}.applications(id) ON DELETE SET NULL,
+                manufacturer text, model text, "serialNo" text, "ipAddress" text, version text,
+                "purchaseDate" date, "warrantyEnd" date,
+                notes text,
+                "lastVerifiedAt" timestamptz, "lastVerifiedBy" text,
+                "seedKey" text,
+                "createdAt" timestamptz NOT NULL DEFAULT now(),
+                "updatedAt" timestamptz NOT NULL DEFAULT now())`);
+            await q(client, `CREATE UNIQUE INDEX IF NOT EXISTS config_items_code_uq ON ${S}.config_items (lower(code))`);
+            await q(client, `CREATE INDEX IF NOT EXISTS config_items_class_idx ON ${S}.config_items ("ciClass", status)`);
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.ci_relations (
+                id serial PRIMARY KEY,
+                "fromId" int NOT NULL REFERENCES ${S}.config_items(id) ON DELETE CASCADE,
+                "toId" int NOT NULL REFERENCES ${S}.config_items(id) ON DELETE CASCADE,
+                kind text NOT NULL,
+                "createdAt" timestamptz NOT NULL DEFAULT now(),
+                UNIQUE ("fromId", "toId", kind), CHECK ("fromId" <> "toId"))`);
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.ci_history (
+                id bigserial PRIMARY KEY,
+                "ciId" int NOT NULL REFERENCES ${S}.config_items(id) ON DELETE CASCADE,
+                action text NOT NULL,
+                details jsonb NOT NULL DEFAULT '{}',
+                "byAgentId" int REFERENCES ${S}.agents(id) ON DELETE SET NULL,
+                "createdAt" timestamptz NOT NULL DEFAULT now())`);
+            await q(client, `CREATE INDEX IF NOT EXISTS ci_history_ci_idx ON ${S}.ci_history ("ciId", id DESC)`);
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.ticket_cis (
+                "ticketId" int NOT NULL REFERENCES ${S}.tickets(id) ON DELETE CASCADE,
+                "ciId" int NOT NULL REFERENCES ${S}.config_items(id) ON DELETE CASCADE,
+                "addedBy" int REFERENCES ${S}.agents(id) ON DELETE SET NULL,
+                "createdAt" timestamptz NOT NULL DEFAULT now(),
+                PRIMARY KEY ("ticketId", "ciId"))`);
+            await q(client, `CREATE INDEX IF NOT EXISTS ticket_cis_ci_idx ON ${S}.ticket_cis ("ciId")`);
+            // Start from what Samadhan already knows (copies; the masters are untouched).
+            let n = 0;
+            const hasMasters = (await q(client, 'SELECT to_regclass($1) AS t', [`${activeSchema()}.ref_masters`])).rows[0].t;
+            if (hasMasters) {
+                const rows = (await q(client, `SELECT kind, code, description, "parentCode" FROM ${S}.ref_masters WHERE kind IN ('ASSET', 'SERVER') AND active`)).rows;
+                for (const r of rows) {
+                    const cls = r.kind === 'SERVER' ? 'Server (physical)' : classFromTag(r.code);
+                    const x = await q(client, `INSERT INTO ${S}.config_items (code, name, "ciClass", "siteLocation", "seedKey") VALUES ($1, $2, $3, $4, '7.12')
+                                               ON CONFLICT (lower(code)) DO NOTHING RETURNING id`, [r.code, (r.description || r.code).slice(0, 300), cls, r.parentCode]);
+                    n += x.rowCount;
+                }
+            }
+            const apps = (await q(client, `SELECT id, code, name, criticality FROM ${S}.applications WHERE active`)).rows;
+            for (const a of apps) {
+                const crit = ['Low', 'Medium', 'High', 'Critical'].find((c) => c.toLowerCase() === String(a.criticality || '').toLowerCase()) || 'Medium';
+                const x = await q(client, `INSERT INTO ${S}.config_items (code, name, "ciClass", criticality, "applicationId", "seedKey") VALUES ($1, $2, 'Application / Service', $3, $4, '7.12')
+                                           ON CONFLICT (lower(code)) DO NOTHING RETURNING id`, [`APP-${a.code}`, a.name, crit, a.id]);
+                n += x.rowCount;
+            }
+            return `CMDB ready: ${n} configuration items from the masters and applications`;
+        },
+        async down(client) {
+            const S = ident(activeSchema());
+            for (const t of ['ticket_cis', 'ci_history', 'ci_relations', 'config_items']) await q(client, `DROP TABLE IF EXISTS ${S}.${t}`);
+            return 'CMDB removed';
+        },
+    },
 ];
 
 async function applied(client, schema) {

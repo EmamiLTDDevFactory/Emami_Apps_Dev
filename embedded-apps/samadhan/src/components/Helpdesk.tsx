@@ -8,6 +8,7 @@ import { fmtDate, fmtNum, istToday, SEVERITY_LABEL, SEVERITY_TONE } from '@/lib/
 import type { Breakdown, NameValue } from '@/lib/types';
 import { BarList, type BarRow } from './charts';
 import { Button, Card, Empty, Kpi, Notice, Pill, Select, Skeleton } from './ui';
+import { ItsmTag } from './Itsm';
 
 const PERIODS = [
   { value: '7', label: 'Last 7 days' },
@@ -61,7 +62,7 @@ export default function Helpdesk() {
   const header = (
     <div className="flex flex-wrap items-end justify-between gap-2">
       <div>
-        <h2 className="text-xl font-extrabold tracking-tight">Helpdesk dashboard</h2>
+        <h2 className="flex flex-wrap items-center gap-2 text-xl font-extrabold tracking-tight">Helpdesk dashboard <ItsmTag practice={'reporting'} /></h2>
         <p className="text-sm text-muted">Ticket counts by region, status, type and source - click a bar to open those tickets</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">

@@ -41,4 +41,6 @@ export const SCREEN_KEY = {
   approvals: 'screen.approvals', calendar: 'screen.changeCalendar', registers: 'screen.reports',
   // v7 Phase 8
   programme: 'screen.dashboard',
+  // ITSM overview and configuration management (CMDB, 7.12)
+  itsm: 'screen.dashboard', cmdb: 'screen.tickets',
 } as const;

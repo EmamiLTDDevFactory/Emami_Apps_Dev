@@ -1,5 +1,14 @@
 # Samadhan changelog
 
+## v7.12 — CMDB / IT asset register, ITSM overview, ITSM practice tags (2026-11-27)
+
+- Configuration (CMDB): configuration items with identity, class, lifecycle (stock → in use → repair → retired → disposed),
+  user, site, vendor, hosting, warranty; relationships; history (status accounting); "Verified" audit; Excel import;
+  CIs linked to tickets with suggestions; repeat incidents per item flagged.
+- ITSM overview screen: every ITIL practice in plain words with live numbers and workflows.
+- "ITSM · <practice>" tags on the menu, screen headings, ticket cards and Admin sections.
+- Migration `7.12-cmdb` with down. Details: `docs/v7/ITSM-NOTES.md`.
+
 ## v7.11 — ITSM support model, escalation matrix, vendor scorecard, ticket migration (2026-11-26)
 
 - Admin > Support model: client (Emami), ITSM support vendor (Allied Digital) and hyperscaler (Azure) picked from lists

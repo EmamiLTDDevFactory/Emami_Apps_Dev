@@ -1,6 +1,6 @@
 'use client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, BarChart3, BookOpen, Calendar, CalendarRange, ClipboardCheck, Columns3, Rocket, Table2, FileSpreadsheet, Headset, Inbox, Keyboard, LayoutDashboard, Menu, PieChart, PlusCircle, RefreshCw, Settings, ShieldX, SlidersHorizontal, Users, X, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, BarChart3, BookOpen, Boxes, Layers, Calendar, CalendarRange, ClipboardCheck, Columns3, Rocket, Table2, FileSpreadsheet, Headset, Inbox, Keyboard, LayoutDashboard, Menu, PieChart, PlusCircle, RefreshCw, Settings, ShieldX, SlidersHorizontal, Users, X, type LucideIcon } from 'lucide-react';
 import { ApiError, getMe, getMeta, savePrefs, setAvailability, setUnauthorizedHandler, type TicketQuery } from '@/lib/api';
 import { availableWorkspaces, multiDesk, wsTone } from '@/lib/workspaces';
 import { BASE_PATH } from '@/lib/config';
@@ -11,6 +11,7 @@ import type { AgentPrefs, AttachmentsInfo, Availability, BellEvent, Me, Meta } f
 import MyPreferences from './MyPreferences';
 import { useScreenHistory } from '@/lib/useScreenHistory';
 import { Avatar, Button, Notice, cx } from './ui';
+import { PRACTICES, type Practice } from '@/lib/itsmPractices';
 import Dashboard from './Dashboard';
 import Tickets from './Tickets';
 import TicketView from './TicketView';
@@ -35,25 +36,31 @@ const Approvals = dynamic(() => import('./Approvals'), { loading });
 const ChangeCalendar = dynamic(() => import('./ChangeCalendar'), { loading });
 const Registers = dynamic(() => import('./Registers'), { loading });
 const Programme = dynamic(() => import('./Program'), { loading });
+// ITSM overview and configuration management (CMDB, 7.12)
+const ItsmOverview = dynamic(() => import('./ItsmOverview'), { loading });
+const Cmdb = dynamic(() => import('./Cmdb'), { loading });
 
-type NavItem = { id: Screen; label: string; hint: string; icon: LucideIcon; desks?: boolean; desk?: string };
+// itsm: the ITIL practice(s) the screen belongs to, shown under the hint so everyone sees where ITSM lives.
+type NavItem = { id: Screen; label: string; hint: string; icon: LucideIcon; desks?: boolean; desk?: string; itsm?: Practice[] };
 const NAV: NavItem[] = [
-  { id: 'dashboard', label: 'Dashboard', hint: "Today's queue and trends", icon: LayoutDashboard },
-  { id: 'helpdesk', label: 'Helpdesk dashboard', hint: 'Region, status, type, source', icon: PieChart },
-  { id: 'tickets', label: 'Tickets', hint: 'Views, filters, bulk actions', icon: Inbox },
-  { id: 'board', label: 'Board', hint: 'Drag tickets between statuses', icon: Columns3 },
-  { id: 'new', label: 'New ticket', hint: 'On behalf of a requester', icon: PlusCircle },
-  { id: 'contacts', label: 'Contacts', hint: 'Requesters and companies', icon: Users },
-  { id: 'solutions', label: 'Solutions', hint: 'Knowledge base articles', icon: BookOpen },
-  { id: 'analytics', label: 'Analytics', hint: 'SLA, agents, CSAT, trends', icon: BarChart3 },
-  { id: 'reports', label: 'Daily report', hint: 'Excel in the template order', icon: FileSpreadsheet },
+  { id: 'dashboard', label: 'Dashboard', hint: "Today's queue and trends", icon: LayoutDashboard, itsm: ['servicedesk', 'availability'] },
+  { id: 'itsm', label: 'ITSM overview', hint: 'Every ITSM practice, live', icon: Layers, itsm: ['servicedesk'] },
+  { id: 'helpdesk', label: 'Helpdesk dashboard', hint: 'Region, status, type, source', icon: PieChart, itsm: ['reporting'] },
+  { id: 'tickets', label: 'Tickets', hint: 'Views, filters, bulk actions', icon: Inbox, itsm: ['incident', 'request'] },
+  { id: 'board', label: 'Board', hint: 'Drag tickets between statuses', icon: Columns3, itsm: ['workflow'] },
+  { id: 'new', label: 'New ticket', hint: 'On behalf of a requester', icon: PlusCircle, itsm: ['incident', 'request'] },
+  { id: 'contacts', label: 'Contacts', hint: 'Requesters and companies', icon: Users, itsm: ['servicedesk'] },
+  { id: 'solutions', label: 'Solutions', hint: 'Knowledge base articles', icon: BookOpen, itsm: ['knowledge'] },
+  { id: 'cmdb', label: 'Configuration (CMDB)', hint: 'Assets, servers, apps, relations', icon: Boxes, itsm: ['config', 'asset'] },
+  { id: 'analytics', label: 'Analytics', hint: 'SLA, agents, CSAT, trends', icon: BarChart3, itsm: ['slm', 'reporting'] },
+  { id: 'reports', label: 'Daily report', hint: 'Excel in the template order', icon: FileSpreadsheet, itsm: ['reporting'] },
   // v7 Phase 6: shown while the service desks are on.
-  { id: 'approvals', label: 'My approvals', hint: 'Access, changes, transports', icon: ClipboardCheck, desks: true },
-  { id: 'calendar', label: 'Change calendar', hint: 'Planned changes, freezes', icon: CalendarRange, desks: true },
-  { id: 'registers', label: 'Registers', hint: 'Change, access, SAP, IT registers', icon: Table2, desks: true },
+  { id: 'approvals', label: 'My approvals', hint: 'Access, changes, transports', icon: ClipboardCheck, desks: true, itsm: ['change', 'workflow'] },
+  { id: 'calendar', label: 'Change calendar', hint: 'Planned changes, freezes', icon: CalendarRange, desks: true, itsm: ['change'] },
+  { id: 'registers', label: 'Registers', hint: 'Change, access, SAP, IT registers', icon: Table2, desks: true, itsm: ['reporting'] },
   // v7 Phase 8: only while the S/4HANA Programme desk is on.
-  { id: 'programme', label: 'S/4 Programme', hint: 'Defects, burn-down, hypercare', icon: Rocket, desks: true, desk: 'S4_PROGRAM' },
-  { id: 'admin', label: 'Admin', hint: 'Agents, SLA, fields, templates', icon: Settings },
+  { id: 'programme', label: 'S/4 Programme', hint: 'Defects, burn-down, hypercare', icon: Rocket, desks: true, desk: 'S4_PROGRAM', itsm: ['release'] },
+  { id: 'admin', label: 'Admin', hint: 'Agents, SLA, fields, templates', icon: Settings, itsm: ['slm', 'workflow', 'supplier'] },
 ];
 
 const AVAIL_DOT: Record<Availability, string> = {
@@ -287,7 +294,8 @@ export default function App() {
                 className={cx('flex items-start gap-3 rounded-xl px-3 py-2.5 text-left transition', activeNav === n.id ? 'bg-accent/10 text-accent' : 'text-ink hover:bg-sunken')}
               >
                 <span className={cx('mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg', activeNav === n.id ? 'bg-gradient-to-br from-accent to-accent-deep text-white' : 'bg-sunken text-accent')}><n.icon size={16} /></span>
-                <span><span className="block text-sm font-bold">{n.label}</span><span className="block text-[11px] text-muted">{n.hint}</span></span>
+                <span><span className="block text-sm font-bold">{n.label}</span><span className="block text-[11px] text-muted">{n.hint}</span>
+                  {n.itsm && <span className="mt-0.5 block text-[9.5px] font-bold uppercase tracking-wide text-accent/80" title={n.itsm.map((p) => PRACTICES[p].label).join(' · ')}>ITSM · {n.itsm.map((p) => PRACTICES[p].short).join(' · ')}</span>}</span>
               </button>
             ))}
           </nav>
@@ -355,6 +363,8 @@ export default function App() {
               {screen === 'calendar' && allowed('calendar') && <ChangeCalendar />}
               {screen === 'registers' && allowed('registers') && <Registers />}
               {screen === 'programme' && allowed('programme') && <Programme />}
+              {screen === 'itsm' && allowed('itsm') && <ItsmOverview />}
+              {screen === 'cmdb' && allowed('cmdb') && <Cmdb />}
             </div>
             <Shortcuts />
             <MyPreferences

@@ -6,6 +6,7 @@ import { useSamadhan } from '@/lib/context';
 import { fmtDateTime, relative } from '@/lib/format';
 import type { KnownError, LinkedIncident, Pir, ProblemRef, Ticket } from '@/lib/types';
 import { Button, Card, Field, Modal, Notice, Pill, Spinner, cx, inputBase, inputCls, textareaCls } from './ui';
+import { ItsmTag } from './Itsm';
 
 /*
    v7 Phase 7 (master prompt §N 5): the Major-incident banner (bridge link, next-update countdown, post an update,
@@ -110,7 +111,7 @@ export function PirCard({ ticket: t, pir, reload }: { ticket: Ticket; pir: Pir |
   };
   const missing = t.isMajorIncident && (!pir?.summary || !pir?.rootCause);
   return (
-    <Card title="Post-incident review" sub={pir?.reviewedAt ? `Reviewed by ${pir.reviewedBy} · ${fmtDateTime(pir.reviewedAt)}` : missing ? 'Needed before this major incident is resolved' : 'What happened, why, and what changes'}
+    <Card title={<span className="inline-flex flex-wrap items-center gap-1.5">Post-incident review <ItsmTag practice="major" /></span>} sub={pir?.reviewedAt ? `Reviewed by ${pir.reviewedBy} · ${fmtDateTime(pir.reviewedAt)}` : missing ? 'Needed before this major incident is resolved' : 'What happened, why, and what changes'}
       actions={edit && !editing && <Button size="sm" onClick={() => setEditing(true)}><Pencil size={13} /> {pir ? 'Edit' : 'Write'}</Button>}>
       <div data-testid="pir-card" className="space-y-2 text-xs">
         {missing && !editing && <Notice tone="warn">Summary and root cause are required before resolving.</Notice>}
@@ -162,7 +163,7 @@ export function ProblemCard({ ticket: t, problem, incidents, knownError, reload 
   };
   if (t.recordClass === 'PROBLEM') {
     return (
-      <Card title="Problem / known error" sub={knownError?.knownError ? 'Known error - the workaround is in the KEDB' : knownError?.status ?? 'Under investigation'}
+      <Card title={<span className="inline-flex flex-wrap items-center gap-1.5">Problem / known error <ItsmTag practice={['problem', 'knowledge']} /></span>} sub={knownError?.knownError ? 'Known error - the workaround is in the KEDB' : knownError?.status ?? 'Under investigation'}
         actions={manage && !editing && <Button size="sm" onClick={() => setEditing(true)}><Pencil size={13} /> Edit</Button>}>
         <div className="space-y-2 text-xs" data-testid="problem-card">
           {error && <Notice onClose={() => setError('')}>{error}</Notice>}
@@ -203,7 +204,7 @@ export function ProblemCard({ ticket: t, problem, incidents, knownError, reload 
     );
   }
   return (
-    <Card title="Problem" sub={problem ? 'This incident is part of a known problem' : 'Recurring? Link it to a problem'}>
+    <Card title={<span className="inline-flex flex-wrap items-center gap-1.5">Problem <ItsmTag practice="problem" /></span>} sub={problem ? 'This incident is part of a known problem' : 'Recurring? Link it to a problem'}>
       <div className="space-y-2 text-xs" data-testid="problem-card">
         {error && <Notice onClose={() => setError('')}>{error}</Notice>}
         {problem ? (

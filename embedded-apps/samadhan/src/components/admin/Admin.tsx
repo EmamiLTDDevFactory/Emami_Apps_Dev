@@ -21,6 +21,32 @@ import { ApprovalChainsTab, CatalogTab, ChangeWindowsTab } from './ChangeAdmin';
 import { IntegrationsTab } from './Integrations';
 import { SupportModelTab } from './SupportModel';
 import { MigrationTab } from './Migration';
+import { ItsmTag } from '../Itsm';
+import type { Practice } from '@/lib/itsmPractices';
+
+// The ITSM practice each Admin section configures (shown above the section).
+const TAB_PRACTICE: Partial<Record<TabId, { p: Practice[]; text: string }>> = {
+  support: { p: ['supplier', 'escalation'], text: 'Client, ITSM support vendor, hyperscaler; hierarchical escalation matrix.' },
+  migration: { p: ['incident', 'request'], text: 'Bring open tickets over from the old tool.' },
+  workspaces: { p: ['servicedesk'], text: 'Service desks (SAP, Infra & IT, Digital Apps, Secondary Sales ...).' },
+  applications: { p: ['config'], text: 'The applications (services) tickets are logged against.' },
+  refmasters: { p: ['config', 'asset'], text: 'Reference lists: SAP systems, servers, sites, IT assets.' },
+  catalog: { p: ['request'], text: 'The service catalogue: what can be requested and what each item asks.' },
+  chains: { p: ['workflow', 'change'], text: 'Approval workflows: manager, role owner, CAB, security.' },
+  windows: { p: ['change'], text: 'Freeze and maintenance windows for changes.' },
+  integrations: { p: ['event'], text: 'Monitoring alerts and SAP Cloud ALM create tickets automatically.' },
+  groups: { p: ['servicedesk', 'escalation'], text: 'Resolver teams (L1 / L2 / L3) and round-robin assignment.' },
+  sla: { p: ['slm'], text: 'Response and resolution targets per priority and desk.' },
+  hours: { p: ['slm'], text: 'Business hours and holidays the SLA clock follows.' },
+  severity: { p: ['incident'], text: 'Category → severity / priority rules.' },
+  statuses: { p: ['workflow'], text: 'Ticket statuses and which ones pause the SLA.' },
+  automations: { p: ['workflow'], text: 'Routing, reminders, auto-close and escalation rules.' },
+  scenarios: { p: ['workflow'], text: 'One-click sets of actions for common cases.' },
+  canned: { p: ['knowledge'], text: 'Standard replies.' },
+  templates: { p: ['servicedesk'], text: 'Emails to requesters and agents.' },
+  mailclass: { p: ['servicedesk'], text: 'Which desk / application an incoming mail belongs to.' },
+  authz: { p: ['workflow'], text: 'Who may do what (segregation of duties).' },
+};
 
 type TabId = 'general' | 'support' | 'migration' | 'authz' | 'workspaces' | 'applications' | 'mailclass' | 'refmasters' | 'catalog' | 'chains' | 'windows' | 'integrations' | 'access' | 'statuses' | 'agents' | 'groups' | 'sla' | 'hours' | 'severity' | 'fields' | 'templates' | 'canned' | 'scenarios' | 'distributors' | 'settings' | 'channels' | 'automations' | 'contacts' | 'audit' | 'parked';
 const TABS: { id: TabId; label: string }[] = [
@@ -90,6 +116,7 @@ export default function Admin() {
       </div>
       {msg && <Notice tone={msg.tone} onClose={() => setMsg(null)}>{msg.text}</Notice>}
       <Tabs label="Admin sections" tabs={TABS} value={tab} onChange={setTab} />
+      {TAB_PRACTICE[tab] && <div className="flex flex-wrap items-center gap-2 text-2xs text-muted" data-testid="admin-itsm"><ItsmTag practice={TAB_PRACTICE[tab]!.p} /> <span>{TAB_PRACTICE[tab]!.text}</span></div>}
       <div>
         {tab === 'general' && <GeneralTab />}
         {tab === 'agents' && <AgentsTab />}

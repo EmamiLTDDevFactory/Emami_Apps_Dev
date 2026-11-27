@@ -1012,3 +1012,44 @@ export interface MigrationResult {
   errors: { line: number; legacyRef: string | null; error: string }[];
   created: { line: number; legacyRef: string; id: number; ref: string }[];
 }
+
+// ---------- Configuration management / CMDB (migration 7.12) ----------
+export interface CiRef { id: number; code: string; name: string; ciClass: string; status: string; criticality?: string; assignedName?: string | null; siteLocation?: string | null }
+export interface ConfigItem extends CiRef {
+  criticality: string;
+  environment: string | null;
+  department: string | null;
+  assignedEmail: string | null;
+  ownerGroupId: number | null; ownerGroupName: string | null;
+  supportPartnerId: number | null; supportPartnerName: string | null;
+  hostingPartnerId: number | null; hostingPartnerName: string | null;
+  applicationId: number | null; applicationCode: string | null;
+  manufacturer: string | null; model: string | null; serialNo: string | null; ipAddress: string | null; version: string | null;
+  purchaseDate: string | null; warrantyEnd: string | null; notes: string | null;
+  lastVerifiedAt: string | null; lastVerifiedBy: string | null; createdAt: string; updatedAt: string;
+  openTickets?: number; tickets30d?: number;
+}
+export interface CmdbList {
+  items: ConfigItem[];
+  summary: { total: number; inUse: number; inRepair: number; unverified: number; warrantyEnding: number; repeat: number } | null;
+  ready: boolean;
+  lists: { classes: string[]; statuses: string[]; criticality: string[]; relations: string[] };
+  importColumns: string[];
+  verifyDays: number;
+}
+export interface CiDetail {
+  ci: ConfigItem;
+  relations: { id: number; kind: string; dir: 'in' | 'out'; ciId: number; code: string; name: string; ciClass: string; status: string }[];
+  history: { id: number; action: string; details: Record<string, unknown>; createdAt: string; byName: string | null }[];
+  tickets: { id: number; subject: string; createdAt: string; recordClass: string | null; statusName: string; isResolved: boolean; applicationCode: string | null }[];
+}
+export interface ItsmOverviewData {
+  tickets: { incidents: number; incidentsOverdue: number; requests: number; major: number; changes: number; escalated: number } | null;
+  problems: { open: number; knownErrors: number } | null;
+  changes: { next7: number; awaitingApproval: number } | null;
+  cis: { total: number; inUse: number; unverified: number } | null;
+  kb: { published: number; drafts: number } | null;
+  sla: { resolutionPct: number | null; responsePct: number | null } | null;
+  supplier: { vendors: number; escalationContacts: number } | null;
+  events: { enabled: number } | null;
+}

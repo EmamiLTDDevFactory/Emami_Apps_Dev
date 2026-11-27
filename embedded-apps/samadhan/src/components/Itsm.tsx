@@ -1,10 +1,11 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
-import { ArrowUpCircle, BookPlus, Building2, Check, Clock, Download, Gauge, History, PhoneCall, ShieldAlert, Timer, Users } from 'lucide-react';
-import { escalateTicket, getEscalations, saveArticle, setSupportVendor, vendorScorecard } from '@/lib/api';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { ArrowUpCircle, BookPlus, Boxes, Building2, Check, Clock, Download, Gauge, History, Link2, PhoneCall, ShieldAlert, Timer, Users, X } from 'lucide-react';
+import { cmdbApi, escalateTicket, getEscalations, saveArticle, setSupportVendor, vendorScorecard } from '@/lib/api';
+import { PRACTICES, type Practice } from '@/lib/itsmPractices';
 import { useSamadhan } from '@/lib/context';
 import { fmtDateTime, htmlToText, relative } from '@/lib/format';
-import type { Ticket, TicketEscalation, VendorScore } from '@/lib/types';
+import type { CiRef, Ticket, TicketEscalation, VendorScore } from '@/lib/types';
 import { Button, Card, Empty, Field, Kpi, Notice, Pill, Skeleton, Spinner, Table, cx, inputBase, textareaCls } from './ui';
 
 /*
@@ -16,6 +17,30 @@ import { Button, Card, Empty, Field, Kpi, Notice, Pill, Skeleton, Spinner, Table
      - VendorScorecard: SLA, MTTR, backlog, escalations and CSAT per support vendor (Analytics > Support vendors).
 */
 const errText = (e: unknown) => (e instanceof Error ? e.message : 'Could not save.');
+
+/** Small "ITSM · <practice>" tag: shows which ITIL practice a screen or card belongs to (hover for the meaning). */
+export function ItsmTag({ practice, className }: { practice: Practice | Practice[]; className?: string }) {
+  const list = Array.isArray(practice) ? practice : [practice];
+  return (
+    <span className={cx('inline-flex flex-wrap items-center gap-1 align-middle', className)}>
+      {list.map((p) => (
+        <span key={p} title={`${PRACTICES[p].label}: ${PRACTICES[p].plain}`} data-itsm={p}
+          className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-accent/25 bg-accent/5 px-1.5 py-px text-[10px] font-bold uppercase tracking-wide text-accent">
+          ITSM · {PRACTICES[p].short}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** One line under a screen's top: the ITSM practices it serves, in plain words. */
+export function ItsmBanner({ practice, children }: { practice: Practice | Practice[]; children: ReactNode }) {
+  return <div className="flex flex-wrap items-center gap-2 text-2xs text-muted" data-testid="itsm-banner"><ItsmTag practice={practice} /> <span>{children}</span></div>;
+}
+
+/** Practice of a ticket from its record class (Incident / Service request / Problem / Change ...). */
+export const ticketPractice = (rc?: string | null): Practice =>
+  rc === 'PROBLEM' ? 'problem' : rc === 'CHANGE' ? 'change' : rc === 'SERVICE_REQUEST' || rc === 'ACCESS_REQUEST' || rc === 'QUERY' ? 'request' : 'incident';
 
 const STEPS = [
   { key: 'logged', label: 'Logged' },
@@ -50,7 +75,7 @@ export function IncidentLifecycle({ ticket: t }: { ticket: Ticket }) {
   return (
     <div className="mt-3 border-t border-line pt-3" data-testid="incident-lifecycle">
       <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
-        <span className="text-2xs font-bold uppercase tracking-wide text-muted">Lifecycle</span>
+        <span className="inline-flex items-center gap-1.5 text-2xs font-bold uppercase tracking-wide text-muted">Lifecycle <ItsmTag practice={ticketPractice(t.recordClass)} /></span>
         {next && <span className="text-2xs text-muted">Next: {hint[next]}</span>}
       </div>
       <ol className="flex flex-wrap gap-1">
@@ -98,7 +123,7 @@ export function SupportCard({ ticket: t, reload }: { ticket: Ticket; reload: () 
     } catch (e) { setMsg({ tone: 'bad', text: errText(e) }); } finally { setBusy(false); }
   };
   return (
-    <Card title={<span className="inline-flex items-center gap-1.5"><Building2 size={15} className="text-accent" /> Support &amp; escalation</span>}
+    <Card title={<span className="inline-flex flex-wrap items-center gap-1.5"><Building2 size={15} className="text-accent" /> Support &amp; escalation <ItsmTag practice={['supplier', 'escalation']} /></span>}
       actions={level > 0 ? <Pill tone="bad">Level {level}</Pill> : <Pill>Not escalated</Pill>}>
       <div className="space-y-3 text-[13px]" data-testid="support-card">
         <Field label="Support vendor" hint={vendor ? undefined : 'In-house team (no vendor)'}>
@@ -173,7 +198,7 @@ export function VendorScorecard({ days }: { days: number }) {
         <Kpi label="Mean time to resolve" value={main.mttrHours === null ? '—' : `${main.mttrHours} h`} sub="logged to resolved, wall clock" icon={Gauge} />
         <Kpi label="Open past due" value={main.openBreached} sub={`${main.open} open · ${main.escalated} escalated`} icon={Users} tone={main.openBreached ? 'bad' : 'good'} />
       </div>
-      <Card title="Support vendor scorecard" sub="The vendor's report card for the period: tickets logged, by the vendor working them. SLA % counts only tickets with a target."
+      <Card title={<span className="inline-flex flex-wrap items-center gap-1.5">Support vendor scorecard <ItsmTag practice={['supplier', 'slm']} /></span>} sub="The vendor's report card for the period: tickets logged, by the vendor working them. SLA % counts only tickets with a target."
         actions={<Button size="sm" onClick={() => downloadReportCard(rows, days)}><Download size={13} /> Report card (Excel)</Button>} bodyClass="p-0">
         <Table head={['Vendor', 'Tickets', 'Open', 'Open past due', 'Response SLA', 'Resolution SLA', 'Contract target', 'First contact', 'MTTR', 'Escalated', 'Major', 'CSAT happy', 'Contract ends']}>
           {rows.map((r) => (
@@ -240,5 +265,51 @@ function KnowledgeButton({ ticket: t }: { ticket: Ticket }) {
       <Button className="w-full" onClick={save} disabled={state === 'busy'} data-testid="ticket-to-article">{state === 'busy' ? <Spinner /> : <BookPlus size={14} />} Save the fix as a knowledge article</Button>
       {state !== 'idle' && state !== 'busy' && <Notice onClose={() => setState('idle')}>{state}</Notice>}
     </div>
+  );
+}
+
+/** Configuration items the ticket affects (CMDB): linked CIs, suggestions from the asset tag / server / application, search to link. */
+export function CiCard({ ticketId }: { ticketId: number }) {
+  const { can, go } = useSamadhan();
+  const [data, setData] = useState<{ linked: CiRef[]; suggestions: CiRef[]; ready: boolean } | null>(null);
+  const [q, setQ] = useState('');
+  const [hits, setHits] = useState<CiRef[]>([]);
+  const [error, setError] = useState('');
+  const load = useCallback(() => { cmdbApi.forTicket(ticketId).then(setData).catch(() => setData({ linked: [], suggestions: [], ready: false })); }, [ticketId]);
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (q.trim().length < 2) { setHits([]); return; }
+    const h = setTimeout(() => { cmdbApi.search(q).then(setHits).catch(() => setHits([])); }, 250);
+    return () => clearTimeout(h);
+  }, [q]);
+  if (!data?.ready) return null;
+  const edit = can('ticket.edit');
+  const act = async (fn: () => Promise<unknown>) => { setError(''); try { await fn(); setQ(''); load(); } catch (e) { setError(errText(e)); } };
+  const row = (c: CiRef, action?: React.ReactNode) => (
+    <li key={c.id} className="flex items-start gap-2 rounded-lg bg-sunken px-2 py-1.5 text-2xs">
+      <div className="min-w-0 flex-1"><div className="font-semibold"><span className="num">{c.code}</span> · {c.name}</div><div className="text-muted">{c.ciClass} · {c.status}{c.assignedName ? ` · ${c.assignedName}` : ''}</div></div>
+      {action}
+    </li>
+  );
+  const linkBtn = (c: CiRef) => <Button size="sm" onClick={() => act(() => cmdbApi.link(ticketId, c.id))}><Link2 size={12} /> Link</Button>;
+  return (
+    <Card title={<span className="inline-flex flex-wrap items-center gap-1.5"><Boxes size={15} className="text-accent" /> Configuration items <ItsmTag practice="config" /></span>}
+      actions={<button type="button" className="text-2xs font-bold text-accent hover:underline" onClick={() => go('cmdb')}>CMDB</button>}>
+      <div className="space-y-2 text-[13px]" data-testid="ci-card">
+        {data.linked.length === 0 && <p className="text-2xs text-muted">No configuration item linked. Link the laptop, server or application this ticket is about - repeat issues on one item point to a problem.</p>}
+        {data.linked.length > 0 && <ul className="space-y-1">{data.linked.map((c) => row(c, edit && <button type="button" aria-label={`Unlink ${c.code}`} className="text-faint hover:text-bad" onClick={() => act(() => cmdbApi.unlink(ticketId, c.id))}><X size={13} /></button>))}</ul>}
+        {edit && data.suggestions.length > 0 && (
+          <div><div className="mb-1 text-2xs font-bold uppercase tracking-wide text-muted">Suggested</div>
+            <ul className="space-y-1">{data.suggestions.map((c) => row(c, linkBtn(c)))}</ul></div>
+        )}
+        {edit && (
+          <div>
+            <input className={cx('h-9 w-full', inputBase)} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find by asset tag, name, user, serial" aria-label="Find a configuration item" />
+            {hits.length > 0 && <ul className="mt-1 space-y-1">{hits.filter((h) => !data.linked.some((l) => l.id === h.id)).map((c) => row(c, linkBtn(c)))}</ul>}
+          </div>
+        )}
+        {error && <Notice onClose={() => setError('')}>{error}</Notice>}
+      </div>
+    </Card>
   );
 }
