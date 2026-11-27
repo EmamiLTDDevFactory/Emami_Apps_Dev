@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { WfCfg, WfGroup, WfView } from '@/lib/admin/wfApi';
 import { AREA_LABEL, flowOrder, viewSig } from '@/lib/admin/wfLogic';
 import { IconPlus, IconTrash } from '../../icons';
@@ -26,6 +26,15 @@ export default function ViewsPanel({ group, base, cfg, onChange, scope, setScope
   const shown = rows.map((v, i) => ({ v, i })).filter(({ v }) => !parallel || v.agent === curAgent);
   const baseRows = new Set((isL0 ? base.l0Views : base.levels.find((l) => l.lvl === scope)?.views || []).map(viewSig));
   const desc = (name: string) => appViews?.find((x) => x.key === name)?.text || '';
+
+  // A new combination needs one active Preliminary view on the Initiator (SAP refuses to save otherwise): when the application has a single view (PH: MAIN VIEW), add it
+  const prefilled = useRef(false);
+  useEffect(() => {
+    if (prefilled.current || !appViews || cfg?.l0Required === false) return;
+    prefilled.current = true;
+    const isNewGroup = base.levels.length === 0 && base.l0Views.length === 0 && group.l0Views.length === 0;
+    if (isNewGroup && appViews.length === 1) onChange({ ...group, l0Views: [{ agent: '', viewName: appViews[0].key, active: true, readOnly: false }] });
+  }, [appViews]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (cfg && cfg.viewsEnabled === false) return <div className="alert alert-info">This application has no view visibility: it does not use tab sets per level.</div>;
 
