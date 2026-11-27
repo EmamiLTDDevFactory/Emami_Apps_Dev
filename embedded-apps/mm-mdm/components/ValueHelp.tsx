@@ -182,11 +182,11 @@ export function ValueHelpDialog({ title, options, current, blockedReason, loadin
               <tr><th aria-label="Select" /><th>{title}</th><th>Description</th></tr>
             </thead>
             <tbody>
-              {rows.map((x) => {
+              {rows.map((x, ix) => {
                 const blocked = blockedReason?.(x.value);
                 return (
                   <tr
-                    key={x.value}
+                    key={`${x.value}|${x.label}|${ix}`}
                     className={`${x.value === current ? 'vh-current' : ''} ${blocked ? 'vh-blocked' : ''}`}
                     onClick={() => !blocked && onPick(x.value)}
                     title={blocked}
