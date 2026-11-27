@@ -5,7 +5,10 @@ import { isStatus } from '@/lib/format';
 export const isFlag = (v: unknown) => v === 'X' || v === true;
 const has = (hay: string | undefined, needle: string) => (hay || '').toLowerCase().includes(needle.toLowerCase());
 
-/** SAP CreateCWIP (live metadata 2026-11-24) has no AssetDesc parameter: the description is NOT sent until SAP adds it (log #77). */
+/** SAP CreateCWIP now accepts AssetDesc (log #77) - stored in its own table, ZCAPEX_CWPX (built on
+ * EDSK9B0EO7), not a CWIP header field, so it doesn't appear as a CWIP property in $metadata; it
+ * round-trips back via the same table when a CWIP is re-read. docs/metadata.live.xml predates this
+ * (2026-11-24) and does not list it - that snapshot is stale, not the live service. */
 export const CREATE_CWIP_HAS_ASSET_DESC = true;
 
 /** CWIPCreate: no backend picklist for these (log #50 / Component.js), kept as in Fiori. */

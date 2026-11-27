@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button, Card, ErrorBox, Field, Input, Modal, PageHeader, Select, Spinner, TextArea, useAction } from '@/components/ui';
 import { ApiError, fn, get, isOk, list, odataKey, q } from '@/lib/api';
-import type { CPE, ValueHelp, Vendor } from '@/lib/entities';
+import type { CPE, PurchaseOrder, ValueHelp, Vendor } from '@/lib/entities';
 import { fmtInr, fmtInrFull, num } from '@/lib/format';
 import { ASSET_CLASS_MAX, CREATE_CWIP_HAS_ASSET_DESC, EXEC_PROCESSES, assetClassDesc, buildCreateCwipParams, suggestAssetClass, validateCwip, type AssetClassOption, type CwipDraft } from './procureLogic';
 import { AssetClassCombo } from './Bits';
@@ -24,6 +24,11 @@ export default function CwipCreate() {
   const [problems, setProblems] = useState<string[]>([]);
   const [confirm, setConfirm] = useState(false);
   const [done, setDone] = useState('');
+  /** Full SAP text (up to 200 chars) from a failed push (EDSK9B0EQW: now a real HTTP 400, not a
+   * generic 500) - shown in a persistent dialog, never a toast, so nothing is truncated or missed.
+   * `banfn` set means the PR step succeeded before the PO step failed: the next push reuses it. */
+  const [pushError, setPushError] = useState<{ message: string; banfn: string } | null>(null);
+  const [poNumber, setPoNumber] = useState('');
 
   useEffect(() => {
     if (!cpeId) { setLoading(false); setError('No CPE selected. Open this screen from an approved CPE.'); return; }
@@ -33,12 +38,15 @@ export default function CwipCreate() {
       get<CpeWithVendors>(`CPESet${odataKey(cpeId)}`, { $expand: 'CPEToVendors' }),
       // asset classes: ValueHelpSet domain ASSETCLASS (log #50). Not fatal when empty: the box also accepts a typed code.
       list<ValueHelp>('ValueHelpSet', { $filter: `Domain eq ${q('ASSETCLASS')}` }).then((r) => r.rows).catch(() => [] as ValueHelp[]),
-    ]).then(([c, vh]) => {
+      // A prior attempt may have already created the PR (Banfn) before failing at the PO step.
+      list<PurchaseOrder>('PurchaseOrderSet', { $filter: `Cpeid eq ${q(cpeId)}` }).then((r) => r.rows[0]?.Ebeln || '').catch(() => ''),
+    ]).then(([c, vh, po]) => {
       if (!live) return;
       if (!c) { setError(`Record ${cpeId} was not found.`); return; }
       const opts = vh.filter((v) => !v.Domain || v.Domain === 'ASSETCLASS').sort((a, b) => num(a.Sortorder) - num(b.Sortorder) || a.Keyval.localeCompare(b.Keyval)).map((v) => ({ key: v.Keyval, text: v.Textval }));
       setClasses(opts);
       setCpe(c);
+      setPoNumber(po);
       const sugg = suggestAssetClass(c.Capextype);
       const match = opts.find((o) => o.key === sugg);
       setDraft({
@@ -67,12 +75,42 @@ export default function CwipCreate() {
     setProblems([]);
     setConfirm(true);
   };
+  /** Re-reads the CPE (Banfn gets set by SAP as soon as the PR step succeeds, even if the later PO
+   * step then fails) and the PO raised against it, if any - EDSK9B0EQW: "reload the CWIP, CPE and
+   * PO lists after the push" so this screen and CpeDetail both show the real current state, not
+   * what was true before the push. */
+  async function refreshAfterPush(): Promise<{ cpe: CpeWithVendors | null; po: string }> {
+    const [freshCpe, pos] = await Promise.all([
+      get<CpeWithVendors>(`CPESet${odataKey(cpeId)}`, { $expand: 'CPEToVendors' }).catch(() => null),
+      list<PurchaseOrder>('PurchaseOrderSet', { $filter: `Cpeid eq ${q(cpeId)}` }).then((r) => r.rows).catch(() => [] as PurchaseOrder[]),
+    ]);
+    if (freshCpe) setCpe(freshCpe);
+    const po = pos[0]?.Ebeln || '';
+    setPoNumber(po);
+    return { cpe: freshCpe, po };
+  }
+
   const doPush = async () => {
     setConfirm(false);
+    setPushError(null);
     const r = await run(async () => {
-      const res = await fn('CreateCWIP', buildCreateCwipParams(cpeId, draft, CREATE_CWIP_HAS_ASSET_DESC));
-      if (!isOk(res)) throw new Error(res.Message || 'SAP posting failed.');
-      return res;
+      // Caught locally (not re-thrown) so useAction's own toast never fires for this call - a
+      // business error here can be up to ~200 chars and must show in full, in a persistent dialog,
+      // never a toast (see the Modal below).
+      try {
+        const res = await fn('CreateCWIP', buildCreateCwipParams(cpeId, draft, CREATE_CWIP_HAS_ASSET_DESC));
+        if (!isOk(res)) {
+          const { cpe: fresh } = await refreshAfterPush();
+          setPushError({ message: res.Message || 'SAP posting failed.', banfn: fresh?.Banfn || '' });
+          return null;
+        }
+        await refreshAfterPush();
+        return res;
+      } catch (e) {
+        const { cpe: fresh } = await refreshAfterPush();
+        setPushError({ message: e instanceof ApiError || e instanceof Error ? e.message : 'SAP posting failed.', banfn: fresh?.Banfn || '' });
+        return null;
+      }
     });
     if (r) setDone(r.Message || 'Pushed to SAP successfully.');
   };
@@ -85,9 +123,27 @@ export default function CwipCreate() {
 
       <div className="mb-3 text-[12px] text-sap-muted">{cpe.PlantName} &middot; {fmtInr(cpe.Amount)} &middot; Vendor: {vendor?.Vendorname || '-'}</div>
 
+      {!done && !pushError && cpe.Banfn && (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-[12px] text-amber-800">
+          A Purchase Requisition ({cpe.Banfn}) already exists for this CPE from an earlier push{poNumber ? <> and PO {poNumber} was also raised</> : ' - the PO step had not completed'}. Pushing again will not create a second PR.
+        </div>
+      )}
+
+      {pushError && (
+        <div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[12px] text-red-800">
+          <b>Push to SAP failed.</b>
+          <p className="mt-1 whitespace-pre-wrap break-words">{pushError.message}</p>
+          {pushError.banfn ? (
+            <p className="mt-2 font-semibold">PR {pushError.banfn} created, PO failed. A retry reuses this PR - it will not create a second one.</p>
+          ) : (
+            <p className="mt-2 text-sap-muted">Nothing was created in SAP. Fix the issue above and push again.</p>
+          )}
+        </div>
+      )}
       {done ? (
         <div role="status" className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-[12px] text-emerald-800">
           <b>Posted to SAP.</b> {done}<br />The budget commitment has been updated in real time.
+          {cpe.Banfn && <div className="mt-1">PR: <b>{cpe.Banfn}</b>{poNumber && <> &middot; PO: <b>{poNumber}</b></>}</div>}
           <div className="mt-2"><Button variant="primary" onClick={() => router.push('/po/')}>Go to Purchase Orders</Button></div>
         </div>
       ) : approved ? (
