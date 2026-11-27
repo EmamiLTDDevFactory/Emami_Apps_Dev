@@ -78,8 +78,8 @@ export function snapshot(g: WfGroup): string {
   ]);
 }
 
-/** SAP leaves the value-help kind empty for 'Department' key fields (Product Hierarchy, Vendor): use the DEPT list */
-const vhOf = (label: string, vh: string | undefined) => vh || (/^department$/i.test(label.trim()) ? 'DEPT' : '');
+/** SAP leaves the value-help kind empty for 'Department' (DEPT list) and 'Condition Type' (KSCHL list) key fields */
+const vhOf = (label: string, vh: string | undefined) => vh || (/^department$/i.test(label.trim()) ? 'DEPT' : /^condition type$/i.test(label.trim()) ? 'KSCHL' : '');
 
 export const visibleKeyFields = (cfg: WfCfg | undefined, used: WfKey[] = []): { field: 'genType' | 'genField' | 'genField2' | 'genField3' | 'genField4'; label: string; vh: string }[] => {
   const c = cfg;
