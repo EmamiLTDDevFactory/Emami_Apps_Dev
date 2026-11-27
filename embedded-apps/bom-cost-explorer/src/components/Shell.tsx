@@ -4,6 +4,7 @@ import TutorialButton from './TutorialButton';
 import { ArrowLeft, Boxes, Calendar, ChevronRight, ClipboardList, Layers, Menu, PanelLeftClose, PanelLeftOpen, Scale, Tags, Truck, User, X, type LucideIcon } from 'lucide-react';
 import { WAC_ENABLED, wacNavVisible } from '@/lib/wac/flag';
 import { PSUM_ENABLED } from '@/lib/psum/flag';
+import { POVAR_ENABLED } from '@/lib/povar/flag';
 import { COGM_ENABLED } from '@/lib/margin/flag';
 import { CK_ENABLED } from '@/lib/ck/flag';
 import { BUDGET_ENABLED } from '@/lib/budget/flag';
@@ -128,6 +129,8 @@ export default function Shell({ mode, email, actions, children, env, onBack, pla
   // Admin-only nav item of the Actual vs rate sources page; with the flag off no request is made.
   const [wacAdmin, setWacAdmin] = useState(false);
   useEffect(() => { if ((WAC_ENABLED || CK_ENABLED || COGM_SO_ENABLED || PSUM_ENABLED) && email) void fetchIsAdmin(email).then(setWacAdmin); }, [email]);
+  // Variance check alone (the other Admin screens off): the same Admin lookup
+  useEffect(() => { if (POVAR_ENABLED && !(WAC_ENABLED || CK_ENABLED || COGM_SO_ENABLED || PSUM_ENABLED) && email) void fetchIsAdmin(email).then(setWacAdmin); }, [email]);
   // Margin module: the person's role of this app (one lookup per session); with the flag off no request is made.
   const [marginRole, setMarginRole] = useState('');
   useEffect(() => { if (COGM_ENABLED && email) void fetchAppRole(email).then(setMarginRole); }, [email]);
@@ -137,7 +140,7 @@ export default function Shell({ mode, email, actions, children, env, onBack, pla
   // Screen limit from Manage Access: undefined while loading, null = no limit.
   const [tiles, setTiles] = useState<string[] | null | undefined>(undefined);
   useEffect(() => { if (email) void fetchAppTiles(email).then(setTiles); else setTiles(null); }, [email]);
-  const sections = useMemo(() => navSections({ wac: wacNavVisible(WAC_ENABLED, wacAdmin), ck: wacNavVisible(CK_ENABLED, wacAdmin), so: wacNavVisible(COGM_SO_ENABLED, wacAdmin), psum: wacNavVisible(PSUM_ENABLED, wacAdmin), marginRole, budgetRole, tiles }), [wacAdmin, marginRole, budgetRole, tiles]);
+  const sections = useMemo(() => navSections({ wac: wacNavVisible(WAC_ENABLED, wacAdmin), ck: wacNavVisible(CK_ENABLED, wacAdmin), so: wacNavVisible(COGM_SO_ENABLED, wacAdmin), psum: wacNavVisible(PSUM_ENABLED, wacAdmin), povar: wacNavVisible(POVAR_ENABLED, wacAdmin), marginRole, budgetRole, tiles }), [wacAdmin, marginRole, budgetRole, tiles]);
   // The screen on show, by its Manage Access id: a section page lists screens, so it is not itself limited.
   const shownId = section ? null : planActive && planActive !== 'section' ? planActive : planActive ? null : `mode-${mode}`;
   const blocked = tiles !== undefined && shownId !== null && !tileAllowed(tiles, shownId);

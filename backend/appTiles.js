@@ -21,6 +21,7 @@ const APP_TILES = {
         { id: 'ck', label: 'Standard cost', group: 'Analysis' },
         { id: 'so', label: 'Sales price', group: 'Analysis' },
         { id: 'dash', label: 'Costing dashboard', group: 'Analysis' },
+        { id: 'povar', label: 'Process order variance', group: 'Variance check' },
         { id: 'margin', label: 'Margin (all screens)', group: 'Margin' },
         { id: 'budget', label: 'Budget costing', group: 'Budget' },
         { id: 'budget-rates', label: 'Component rates', group: 'Budget' },

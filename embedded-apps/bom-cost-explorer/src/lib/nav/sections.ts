@@ -2,7 +2,7 @@
  * The side pane of Costing Cockpit: six sections, each opening a page of tiles. One list drives the side pane, the section pages and the header
  * chip, so a screen is added in one place. Flags and roles decide what is listed; a section with no visible item is dropped.
  */
-import { BellRing, Boxes, Calculator, Calendar, ClipboardList, Factory, GitCompareArrows, Layers, LineChart, Scale, Tags, TrendingUp, Truck, Upload, type LucideIcon } from 'lucide-react';
+import { BellRing, Boxes, Percent, Calculator, Calendar, ClipboardList, Factory, GitCompareArrows, Layers, LineChart, Scale, Tags, TrendingUp, Truck, Upload, type LucideIcon } from 'lucide-react';
 import { PLAN_MODULE_ENABLED } from '../plan/flag';
 import { AI_ENABLED } from '../ai/config';
 import { WATCH_ENABLED } from '../watch/api';
@@ -17,8 +17,8 @@ import { budgetNavItems } from '../budget/roles';
 import { MODE_LABEL, type Mode } from '../query/schema';
 
 /** Which screen of a route-based page is active (also the `active` prop of PlanFrame). */
-export type PlanNav = 'plans' | 'upload' | 'watch' | 'freight' | 'freight-analysis' | 'wac' | 'ck' | 'so' | 'psum' | 'psum-report' | 'margin' | 'margin-whatif' | 'margin-alerts' | 'margin-portfolio' | 'margin-history' | 'margin-data' | 'budget' | 'budget-rates' | 'budget-rate-mgmt' | 'pkg-budget' | 'dash' | 'section';
-export type SectionId = 'costing' | 'analysis' | 'margin' | 'budget' | 'plan' | 'monitoring';
+export type PlanNav = 'plans' | 'upload' | 'watch' | 'freight' | 'freight-analysis' | 'wac' | 'ck' | 'so' | 'psum' | 'psum-report' | 'margin' | 'margin-whatif' | 'margin-alerts' | 'margin-portfolio' | 'margin-history' | 'margin-data' | 'budget' | 'budget-rates' | 'budget-rate-mgmt' | 'pkg-budget' | 'dash' | 'povar' | 'section';
+export type SectionId = 'costing' | 'analysis' | 'variance' | 'margin' | 'budget' | 'plan' | 'monitoring';
 
 export interface NavItem {
   id: string; label: string; hint: string; icon: LucideIcon;
@@ -30,7 +30,7 @@ export interface NavItem {
   plan?: PlanNav;
 }
 export interface NavSection { id: SectionId; label: string; hint: string; icon: LucideIcon; items: NavItem[] }
-export interface NavFlags { wac: boolean; ck: boolean; so: boolean; psum: boolean; marginRole: string; budgetRole: string; /** screens this person is limited to in Manage Access (null / absent = every screen their role gets) */ tiles?: string[] | null }
+export interface NavFlags { wac: boolean; ck: boolean; so: boolean; psum: boolean; /** Variance check (ZMM_PCOST / ZMM_COST); absent = hidden */ povar?: boolean; marginRole: string; budgetRole: string; /** screens this person is limited to in Manage Access (null / absent = every screen their role gets) */ tiles?: string[] | null }
 
 /** The Manage Access screen id of a nav item or `plan` value. Must match backend/appTiles.js (margin screens and plan screens share one id each). */
 export const tileOf = (id: string): string => (id.startsWith('margin') ? 'margin' : id === 'plans' || id === 'upload' ? 'plan' : id);
@@ -77,10 +77,12 @@ export function navSections(f: NavFlags): NavSection[] {
     { id: 'plans', label: 'Plans', hint: 'Plans in SAP, breakup and cost', icon: ClipboardList, path: '/plan/', plan: 'plans' },
     { id: 'upload', label: 'Upload plan', hint: 'Excel template, check, save', icon: Upload, path: '/plan/upload/', plan: 'upload' },
   ] : [];
+  const variance: NavItem[] = f.povar ? [{ id: 'povar', label: 'Process order variance', hint: 'Orders over 4 % vs standard (ZMM_PCOST) and the component rates behind them (ZMM_COST)', icon: Percent, path: '/variance-check/', plan: 'povar' }] : [];
   const monitoring: NavItem[] = AI_ENABLED && WATCH_ENABLED ? [{ id: 'watch', label: 'Cost watch', hint: 'Daily 06:00 cost alerts and digest', icon: BellRing, path: '/watch/', plan: 'watch' }] : [];
   const all: NavSection[] = [
     { id: 'costing', label: 'Costing', hint: 'Cost a finished good', icon: Layers, items: [modeItem('B'), modeItem('C')] },
     { id: 'analysis', label: 'Analysis', hint: 'Rates, freight, actual cost, standard cost and prices', icon: LineChart, items: [...analysis, ...dash] },
+    { id: 'variance', label: 'Variance check', hint: 'Process orders vs standard, and the components behind the variance', icon: Percent, items: variance },
     { id: 'margin', label: 'Margin', hint: 'Cost against selling price', icon: Scale, items: margin },
     { id: 'budget', label: 'Budget', hint: 'Budget cost of finished goods', icon: Calculator, items: budget },
     { id: 'plan', label: 'Production Plan', hint: 'Plans, breakup and cost', icon: ClipboardList, items: plan },
