@@ -2,13 +2,15 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { PageHeader, Card, Button, Chip, Kpi, Tabs, DataTable, Modal, Spinner, ErrorBox, Empty, useAction, type Tone } from '@/components/ui';
+import { PageHeader, Card, Button, Chip, Kpi, Tabs, DataTable, Modal, Spinner, ErrorBox, Empty, useAction, type Column, type Tone } from '@/components/ui';
 import { ApiError, fn, get, isOk, list, odataKey, q } from '@/lib/api';
 import type { AuditLog, Budget, BudgetCashFlow, BudgetItem, CPE, DoaRule } from '@/lib/entities';
 import { num, fmtInr, fmtInrFull, inLakhs, fmtDate, fmtDateTime, fyLabel, statusLabel, statusTone, orDash, yesNo, irrTone, npvTone, paybackTone, balanceTone, isStatus } from '@/lib/format';
 import { resolveDOA } from '@/lib/rules';
+import { listDocuments, type CapexDocument } from '@/lib/documents';
+import DocActions from '@/components/documents/DocActions';
 
-interface Loaded { budget: Budget; flows: BudgetCashFlow[]; items: BudgetItem[]; cpes: CPE[]; cpeError: string; audit: AuditLog[]; auditError: string }
+interface Loaded { budget: Budget; flows: BudgetCashFlow[]; items: BudgetItem[]; cpes: CPE[]; cpeError: string; audit: AuditLog[]; auditError: string; docs: CapexDocument[]; docsError: string }
 
 const errMsg = (e: unknown, fallback: string) => (e instanceof ApiError || e instanceof Error ? e.message : fallback);
 const TONE_CLASS = { good: 'text-emerald-700', warn: 'text-amber-700', bad: 'text-red-700', none: 'text-sap-ink' } as const;
@@ -35,11 +37,12 @@ function Inner() {
       const key = `BudgetSet${odataKey(id)}`;
       const budget = await get<Budget>(key);
       if (!budget) { setError(`Record ${id} could not be found.`); setData(null); return; }
-      const [flows, items, cpes, audit] = await Promise.allSettled([
+      const [flows, items, cpes, audit, docs] = await Promise.allSettled([
         list<BudgetCashFlow>(`${key}/BudgetToCashFlows`),
         list<BudgetItem>(`${key}/BudgetToItems`),
         list<CPE>(`${key}/BudgetToCPEs`),
         list<AuditLog>('AuditLogSet', { $filter: `Docid eq ${q(id)}` }),
+        listDocuments('BUD', id),
       ]);
       setData({
         budget,
@@ -49,6 +52,8 @@ function Inner() {
         cpeError: cpes.status === 'rejected' ? errMsg(cpes.reason, 'Could not load the linked CPEs.') : '',
         audit: audit.status === 'fulfilled' ? audit.value.rows.filter((a) => a.Docid === id) : [],
         auditError: audit.status === 'rejected' ? errMsg(audit.reason, 'Could not load the audit trail.') : '',
+        docs: docs.status === 'fulfilled' ? docs.value : [],
+        docsError: docs.status === 'rejected' ? errMsg(docs.reason, 'Could not load the attachments.') : '',
       });
     } catch (e) { setError(errMsg(e, 'Could not load the budget.')); setData(null); }
     finally { setLoading(false); }
@@ -120,7 +125,10 @@ function Inner() {
         { id: 'cpes', label: 'Linked CPEs', count: data.cpes.length }, { id: 'audit', label: 'Audit Trail' },
       ]} />
 
-      {tab === 'details' && <DetailsTab b={b} items={data.items} />}
+      {tab === 'details' && <>
+        <DetailsTab b={b} items={data.items} />
+        <div className="mt-4"><AttachmentsCard docs={data.docs} error={data.docsError} /></div>
+      </>}
       {tab === 'financials' && <FinancialsTab b={b} flows={data.flows} />}
       {tab === 'cpes' && (
         <Card>
@@ -198,6 +206,23 @@ function DetailsTab({ b, items }: { b: Budget; items: BudgetItem[] }) {
           <p className="mt-1.5 text-[11px] text-sap-muted">{fmtInrFull(total)} ({items.length} item{items.length === 1 ? '' : 's'})</p>
         </div>
       )}
+    </Card>
+  );
+}
+
+function AttachmentsCard({ docs, error }: { docs: CapexDocument[]; error: string }) {
+  const cols: Column<CapexDocument>[] = [
+    { key: 'file', header: 'File', render: (d) => <><div className="font-semibold">{d.DocTitle || d.Filename}</div>{d.DocTitle && d.DocTitle !== d.Filename && <div className="text-[11px] text-sap-muted">{d.Filename}</div>}</> },
+    { key: 'cat', header: 'Category', hideBelow: 'sm', render: (d) => <Chip tone="info">{d.CategoryText || d.Category}</Chip> },
+    { key: 'note', header: 'Note', hideBelow: 'lg', render: (d) => orDash(d.Note) },
+    { key: 'size', header: 'Size', align: 'right', hideBelow: 'md', render: (d) => d.SizeText },
+    { key: 'by', header: 'Uploaded', align: 'right', hideBelow: 'md', render: (d) => <><div>{d.UploadedByName || d.UploadedBy}</div><div className="text-[11px] text-sap-muted">{fmtDate(d.UploadedOn)}</div></> },
+    { key: 'act', header: '', align: 'right', render: (d) => <DocActions doc={d} /> },
+  ];
+  return (
+    <Card title="Attachments">
+      {error && <ErrorBox message={error} />}
+      <DataTable columns={cols} rows={docs} rowKey={(d) => `${d.Doctype}|${d.Docid}|${d.Docseq}`} empty="No documents attached." />
     </Card>
   );
 }
