@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { DragEvent, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useMdm } from '@/lib/store';
 import {
-  PhRequest, PhTask, fetchRequests, fetchTasks, phApprove, phAssignCostCenter, phError, phFieldsOf, phInitiate, phLive, phLoad,
+  PhRequest, PhTask, fetchRequests, fetchTasks, phAllCached, phApprove, phAssignCostCenter, phError, phFieldsOf, phInitiate, phLive, phLoad, phLoadAll,
   phReject, phReset, phSendBack, phSubscribe, phTick, phValidate,
 } from '@/lib/phApi';
 import { BUSINESS_VERTICALS, Opt, PH_LENGTH, PH_LEVELS, getHierarchyOptions, helpText, phSegLen } from '@/lib/valueHelps';
@@ -123,11 +123,15 @@ interface CodeRowProps {
   error?: string;
   /** Suggested next free code (shown while the field is empty) */
   suggest?: string;
+  /** F4 list independent of what is chosen above (value = full path); picking fills the levels above as well */
+  helpOptions?: Opt[];
+  onHelp?: () => void;
+  onPickFull?: (path: string, label: string) => void;
   onChange: (code: string, text: string) => void;
 }
 
 /** Code with F4 help + description. An existing code fills its description; a new code asks for one. */
-function CodeRow({ id, label, tech, code, text, options, len, numeric, disabled, disabledHint, error, suggest, onChange }: CodeRowProps) {
+function CodeRow({ id, label, tech, code, text, options, len, numeric, disabled, disabledHint, error, suggest, helpOptions, onHelp, onPickFull, onChange }: CodeRowProps) {
   const [raw, setRaw] = useState(code);
   const [open, setOpen] = useState(false);
   useEffect(() => setRaw(code), [code]);
@@ -162,14 +166,14 @@ function CodeRow({ id, label, tech, code, text, options, len, numeric, disabled,
             onChange={(e) => setRaw(numeric ? e.target.value.replace(/\D/g, '') : e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
             onBlur={(e) => commit(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'F4') { e.preventDefault(); setOpen(true); }
+              if (e.key === 'F4') { e.preventDefault(); onHelp?.(); setOpen(true); }
               if (e.key === 'Enter') { e.preventDefault(); commit(raw); }
             }}
             spellCheck={false}
             autoComplete="off"
             aria-invalid={!!error}
           />
-          <button type="button" className="vh-btn" onClick={() => setOpen(true)} disabled={disabled || options.length === 0} aria-label={`Search ${label} (F4)`} title={options.length ? 'Existing values (F4)' : 'No existing values at this level'}>
+          <button type="button" className="vh-btn" onClick={() => { onHelp?.(); setOpen(true); }} disabled={helpOptions ? false : disabled || options.length === 0} aria-label={`Search ${label} (F4)`} title="Existing values (F4)">
             <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.4"><rect x="1" y="4" width="9" height="9" rx="1" /><path d="M4 4V1.5A.5.5 0 0 1 4.5 1h8a.5.5 0 0 1 .5.5v8a.5.5 0 0 1-.5.5H10" /></svg>
           </button>
         </div>
@@ -203,9 +207,9 @@ function CodeRow({ id, label, tech, code, text, options, len, numeric, disabled,
       {open && (
         <ValueHelpDialog
           title={label}
-          options={options}
+          options={helpOptions ?? options}
           current={code}
-          onPick={(v) => { setOpen(false); onChange(v, options.find((o) => o.value === v)?.label ?? ''); }}
+          onPick={(v) => { setOpen(false); if (helpOptions && onPickFull) onPickFull(v, helpOptions.find((o) => o.value === v)?.label ?? ''); else onChange(v, options.find((o) => o.value === v)?.label ?? ''); }}
           onClose={() => setOpen(false)}
         />
       )}
@@ -215,13 +219,15 @@ function CodeRow({ id, label, tech, code, text, options, len, numeric, disabled,
 
 interface DescRowProps {
   id: string; label: string; code: string; text: string; options: Opt[]; disabled?: boolean; disabledHint?: string; error?: string;
+  helpOptions: Opt[]; onHelp: () => void; onPickFull: (path: string, label: string) => void;
   onChange: (code: string, text: string) => void;
 }
 
 /** Product / SKU / Variant / Scheme: the requester types the description, SAP gives the code after the final approver (an existing node can still be picked with F4) */
-function DescRow({ id, label, code, text, options, disabled, disabledHint, error, onChange }: DescRowProps) {
+function DescRow({ id, label, code, text, options, disabled, disabledHint, error, helpOptions, onHelp, onPickFull, onChange }: DescRowProps) {
   const [open, setOpen] = useState(false);
   const existing = !!code;
+  void options;
   return (
     <div className={`su-row ${disabled ? 'su-row-off' : ''} ${error ? 'field-error' : ''} field`}>
       <label htmlFor={id} className="su-label">{label}</label>
@@ -237,7 +243,7 @@ function DescRow({ id, label, code, text, options, disabled, disabledHint, error
             aria-invalid={!!error}
             autoComplete="off"
           />
-          <button type="button" className="vh-btn" onClick={() => setOpen(true)} disabled={disabled || options.length === 0} aria-label={`Pick an existing ${label} (F4)`} title={options.length ? 'Pick an existing value (F4)' : 'No existing values at this level'}>
+          <button type="button" className="vh-btn" onClick={() => { onHelp(); setOpen(true); }} aria-label={`Pick an existing ${label} (F4)`} title="Pick an existing value (F4)">
             <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.4"><rect x="1" y="4" width="9" height="9" rx="1" /><path d="M4 4V1.5A.5.5 0 0 1 4.5 1h8a.5.5 0 0 1 .5.5v8a.5.5 0 0 1-.5.5H10" /></svg>
           </button>
         </div>
@@ -252,8 +258,8 @@ function DescRow({ id, label, code, text, options, disabled, disabledHint, error
       </div>
       {disabled && disabledHint ? <small className="muted su-msg">{disabledHint}</small> : error ? <small className="err su-msg">{error}</small> : null}
       {open && (
-        <ValueHelpDialog title={label} options={options} current={code}
-          onPick={(v) => { setOpen(false); onChange(v, options.find((o) => o.value === v)?.label ?? ''); }} onClose={() => setOpen(false)} />
+        <ValueHelpDialog title={label} options={helpOptions} current={code}
+          onPick={(v) => { setOpen(false); onPickFull(v, helpOptions.find((o) => o.value === v)?.label ?? ''); }} onClose={() => setOpen(false)} />
       )}
     </div>
   );
@@ -296,6 +302,23 @@ function HierarchyForm({ version, mounted, onCreated }: { version: number; mount
     [codes.join('|'), version, phVer]);
 
   const LAST_CODED = 1; // Banner and Brand are chosen by code; Product to Scheme get their code from SAP after the final approver
+  const allOpts = useMemo(() => PH_LEVELS.map((_, i) => phAllCached(i) ?? []), [phVer]); // eslint-disable-line react-hooks/exhaustive-deps
+  /** F4 pick: the value carries its full path, so every level above is filled in too */
+  function pickFull(i: number, path: string, text: string) {
+    const segs: string[] = [];
+    let at = 0;
+    for (let j = 0; j <= i; j++) { segs.push(path.slice(at, at + phSegLen(j))); at += phSegLen(j); }
+    setLevels((ls) => {
+      let changed = false;
+      return ls.map((l, j) => {
+        if (j > i) return changed ? { code: '', text: '' } : l;
+        const c = segs[j];
+        if (l.code !== c) changed = true;
+        return { code: c, text: j === i ? text : (l.code === c ? l.text : '') };
+      });
+    });
+  }
+
   const rows = levels.map((l, i) => {
     const filledAbove = levels.slice(0, i).every((x, j) => (j <= LAST_CODED
       ? new RegExp(`^\\d{${phSegLen(j)}}$`).test(x.code) && !/^0+$/.test(x.code)
@@ -309,7 +332,8 @@ function HierarchyForm({ version, mounted, onCreated }: { version: number; mount
       else if (!new RegExp(`^\\d{${phSegLen(i)}}$`).test(l.code) || /^0+$/.test(l.code)) error = `Use a ${phSegLen(i)}-digit code from ${'1'.padStart(phSegLen(i), '0')} to ${'9'.repeat(phSegLen(i))}`;
       else if (isNew && !l.text.trim()) error = `Describe the new ${PH_LEVELS[i].toLowerCase()}`;
     }
-    return { ...l, enabled: filledAbove, isNew, error };
+    const shownText = l.text || (i > LAST_CODED && l.code ? opts[i].find((o) => o.value === l.code)?.label ?? '' : '');
+    return { ...l, text: shownText, enabled: filledAbove, isNew, error };
   });
 
   const complete = rows.every((r) => r.enabled && !r.error);
@@ -376,6 +400,9 @@ function HierarchyForm({ version, mounted, onCreated }: { version: number; mount
               code={r.code}
               text={r.text}
               options={r.enabled ? opts[i] : []}
+              helpOptions={allOpts[i]}
+              onHelp={() => { void phLoadAll(i); }}
+              onPickFull={(path, t) => pickFull(i, path, t)}
               disabled={!r.enabled}
               disabledHint={`Fill ${PH_LEVELS[i - 1].toLowerCase()} first`}
               error={tried ? r.error : ''}
@@ -395,6 +422,9 @@ function HierarchyForm({ version, mounted, onCreated }: { version: number; mount
               disabledHint={i > 0 ? `Fill ${PH_LEVELS[i - 1].toLowerCase()} first` : undefined}
               error={tried ? r.error : r.code && r.error && !r.error.startsWith('Describe') ? r.error : ''}
               suggest={mounted && r.enabled ? nextFree(opts[i], phSegLen(i)) : undefined}
+              helpOptions={allOpts[i]}
+              onHelp={() => { void phLoadAll(i); }}
+              onPickFull={(path, t) => pickFull(i, path, t)}
               onChange={(c, t) => set(i, c, t)}
             />
           )))}

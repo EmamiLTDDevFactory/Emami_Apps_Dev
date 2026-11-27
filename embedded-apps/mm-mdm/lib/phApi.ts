@@ -200,5 +200,25 @@ export function phLoadCode(code: string): Promise<void> {
   return Promise.all(codes.map((_, i) => phLoad(i, codes))).then(() => undefined);
 }
 
+/* F4 help: every value of a level, whatever is chosen above it (value = the full path, so the levels above can be filled in on pick) */
+const allCache = new Map<number, Opt[]>();
+const allInflight = new Map<number, Promise<void>>();
+export const phAllCached = (level: number): Opt[] | undefined => allCache.get(level);
+export function phLoadAll(level: number): Promise<void> {
+  if (allCache.has(level)) return Promise.resolve();
+  const running = allInflight.get(level);
+  if (running) return running;
+  const p = fetchLevel(level, '')
+    .then((rows) => {
+      const seen = new Set<string>();
+      const opts = rows.filter((r) => r.code && !seen.has(r.prodh) && seen.add(r.prodh)).map((r) => ({ value: r.prodh, label: r.text }));
+      allCache.set(level, opts.sort((a, b) => a.value.localeCompare(b.value)));
+    })
+    .catch(() => undefined)
+    .finally(() => { allInflight.delete(level); emit(); });
+  allInflight.set(level, p);
+  return p;
+}
+
 /** Forget what was loaded (after a write, or a manual refresh) */
-export function phReset() { cache.clear(); errors.clear(); emit(); }
+export function phReset() { cache.clear(); errors.clear(); allCache.clear(); emit(); }
