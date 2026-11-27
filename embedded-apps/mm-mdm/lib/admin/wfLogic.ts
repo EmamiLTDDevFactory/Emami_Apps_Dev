@@ -78,16 +78,19 @@ export function snapshot(g: WfGroup): string {
   ]);
 }
 
+/** SAP leaves the value-help kind empty for 'Department' key fields (Product Hierarchy, Vendor): use the DEPT list */
+const vhOf = (label: string, vh: string | undefined) => vh || (/^department$/i.test(label.trim()) ? 'DEPT' : '');
+
 export const visibleKeyFields = (cfg: WfCfg | undefined, used: WfKey[] = []): { field: 'genType' | 'genField' | 'genField2' | 'genField3' | 'genField4'; label: string; vh: string }[] => {
   const c = cfg;
   const any = (f: 'genField' | 'genField2' | 'genField3' | 'genField4') => used.some((k) => !!k[f]);
   const out: { field: 'genType' | 'genField' | 'genField2' | 'genField3' | 'genField4'; label: string; vh: string }[] = [
-    { field: 'genType', label: c?.gtLabel || 'Generic type', vh: c?.gtVh || '' },
+    { field: 'genType', label: c?.gtLabel || 'Generic type', vh: vhOf(c?.gtLabel || 'Generic type', c?.gtVh) },
   ];
-  if (!c || c.gf1Visible || any('genField')) out.push({ field: 'genField', label: c?.gf1Label || 'Generic field 1', vh: c?.gf1Vh || '' });
-  if (!c || c.gf2Visible || any('genField2')) out.push({ field: 'genField2', label: c?.gf2Label || 'Generic field 2', vh: c?.gf2Vh || '' });
-  if (c?.gf3Visible || any('genField3')) out.push({ field: 'genField3', label: c?.gf3Label || 'Generic field 3', vh: c?.gf3Vh || '' });
-  if (c?.gf4Visible || any('genField4')) out.push({ field: 'genField4', label: c?.gf4Label || 'Generic field 4', vh: c?.gf4Vh || '' });
+  if (!c || c.gf1Visible || any('genField')) out.push({ field: 'genField', label: c?.gf1Label || 'Generic field 1', vh: vhOf(c?.gf1Label || 'Generic field 1', c?.gf1Vh) });
+  if (!c || c.gf2Visible || any('genField2')) out.push({ field: 'genField2', label: c?.gf2Label || 'Generic field 2', vh: vhOf(c?.gf2Label || 'Generic field 2', c?.gf2Vh) });
+  if (c?.gf3Visible || any('genField3')) out.push({ field: 'genField3', label: c?.gf3Label || 'Generic field 3', vh: vhOf(c?.gf3Label || 'Generic field 3', c?.gf3Vh) });
+  if (c?.gf4Visible || any('genField4')) out.push({ field: 'genField4', label: c?.gf4Label || 'Generic field 4', vh: vhOf(c?.gf4Label || 'Generic field 4', c?.gf4Vh) });
   return out;
 };
 

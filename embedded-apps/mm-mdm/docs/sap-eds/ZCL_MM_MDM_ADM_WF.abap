@@ -715,7 +715,7 @@ CLASS zcl_mm_mdm_adm_wf IMPLEMENTATION.
         rs_cfg-family = 'CONTRACT'.  rs_cfg-gt_label = 'Material Type'.  rs_cfg-gf1_label = 'Origin Group'.  rs_cfg-gf2_label = 'Purch.Organization'.
         rs_cfg-gt_vh = 'MTART'.  rs_cfg-gf2_vh = 'EKORG'.
       ELSEIF lv = 'MVC' OR lv = 'VMX' OR lv1 = 'V'.
-        rs_cfg-family = 'VENDOR'.  rs_cfg-gt_label = 'Account Group'.  rs_cfg-gf1_label = 'Company Code'.  rs_cfg-gf2_label = 'Department'.
+        rs_cfg-family = 'VENDOR'.  rs_cfg-gt_label = 'Account Group'.  rs_cfg-gf1_label = 'Company Code'.  rs_cfg-gf2_label = 'Department'.  rs_cfg-gf2_vh = 'DEPT'.
         rs_cfg-gt_vh = 'KTOKK'.  rs_cfg-gf1_vh = 'BUKRS'.
         rs_cfg-dept_visible = xsdbool( lv = 'VC' OR lv = 'VX' OR lv = 'VE' OR lv = 'MVC' ).
       ELSEIF lv = 'MCC' OR lv = 'MCX' OR lv1 = 'C'.
@@ -735,7 +735,7 @@ CLASS zcl_mm_mdm_adm_wf IMPLEMENTATION.
         rs_cfg-family = 'PIR'.  rs_cfg-gt_label = 'Material type'.  rs_cfg-gf1_label = 'Origin Group'.  rs_cfg-gf2_label = 'Purchase Org.'.
         rs_cfg-gt_vh = 'MTART'.  rs_cfg-gf2_vh = 'EKORG'.  rs_cfg-pir_visible = abap_true.
       ELSEIF lv1 = 'P'.
-        rs_cfg-family = 'PRICING'.  rs_cfg-gt_label = 'Condition Type'.  rs_cfg-gf1_label = 'Department'.  rs_cfg-gf2_visible = abap_false.
+        rs_cfg-family = 'PRICING'.  rs_cfg-gt_label = 'Condition Type'.  rs_cfg-gf1_label = 'Department'.  rs_cfg-gf1_vh = 'DEPT'.  rs_cfg-gf2_visible = abap_false.
     ENDIF.
     rs_cfg-wf_id = wf_id( lv ).
   ENDMETHOD.
