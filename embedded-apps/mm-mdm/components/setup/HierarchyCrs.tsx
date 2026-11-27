@@ -213,6 +213,52 @@ function CodeRow({ id, label, tech, code, text, options, len, numeric, disabled,
   );
 }
 
+interface DescRowProps {
+  id: string; label: string; code: string; text: string; options: Opt[]; disabled?: boolean; disabledHint?: string; error?: string;
+  onChange: (code: string, text: string) => void;
+}
+
+/** Product / SKU / Variant / Scheme: the requester types the description, SAP gives the code after the final approver (an existing node can still be picked with F4) */
+function DescRow({ id, label, code, text, options, disabled, disabledHint, error, onChange }: DescRowProps) {
+  const [open, setOpen] = useState(false);
+  const existing = !!code;
+  return (
+    <div className={`su-row ${disabled ? 'su-row-off' : ''} ${error ? 'field-error' : ''} field`}>
+      <label htmlFor={id} className="su-label">{label}</label>
+      <div className="su-inputs">
+        <div className="vh-input su-desc-wide">
+          <input
+            id={id}
+            value={text}
+            disabled={disabled || existing}
+            maxLength={DESC_MAX}
+            placeholder={`Description of the new ${label.toLowerCase()}`}
+            onChange={(e) => onChange('', e.target.value)}
+            aria-invalid={!!error}
+            autoComplete="off"
+          />
+          <button type="button" className="vh-btn" onClick={() => setOpen(true)} disabled={disabled || options.length === 0} aria-label={`Pick an existing ${label} (F4)`} title={options.length ? 'Pick an existing value (F4)' : 'No existing values at this level'}>
+            <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.4"><rect x="1" y="4" width="9" height="9" rx="1" /><path d="M4 4V1.5A.5.5 0 0 1 4.5 1h8a.5.5 0 0 1 .5.5v8a.5.5 0 0 1-.5.5H10" /></svg>
+          </button>
+        </div>
+        {existing ? (
+          <>
+            <span className="su-state su-state-existing">Existing {code}</span>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange('', '')}>Create new instead</button>
+          </>
+        ) : text.trim() ? (
+          <span className="su-state su-state-new" title="SAP generates the code when the final approver approves">New · code after final approval</span>
+        ) : null}
+      </div>
+      {disabled && disabledHint ? <small className="muted su-msg">{disabledHint}</small> : error ? <small className="err su-msg">{error}</small> : null}
+      {open && (
+        <ValueHelpDialog title={label} options={options} current={code}
+          onPick={(v) => { setOpen(false); onChange(v, options.find((o) => o.value === v)?.label ?? ''); }} onClose={() => setOpen(false)} />
+      )}
+    </div>
+  );
+}
+
 function nextFree(options: Opt[], len: number, prefix = ''): string {
   const nums = options.map((o) => Number(o.value.slice(prefix.length))).filter((x) => Number.isFinite(x));
   const n = (nums.length ? Math.max(...nums) : 0) + 1;
@@ -245,16 +291,21 @@ function HierarchyForm({ version, mounted, onCreated }: { version: number; mount
   }, [codes.join('|')]);
   const loadErrors = phLive() ? PH_LEVELS.map((_, i) => phError(i, codes)).filter(Boolean) : [];
   // Options per level, given the codes above (a new parent has no existing children)
-  const opts = useMemo(() => PH_LEVELS.map((_, i) => getHierarchyOptions(i, codes)),
+  const opts = useMemo(() => PH_LEVELS.map((_, i) => (codes.slice(0, i).every((c, j) => c.length === phSegLen(j)) ? getHierarchyOptions(i, codes) : [])),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [codes.join('|'), version, phVer]);
 
+  const LAST_CODED = 1; // Banner and Brand are chosen by code; Product to Scheme get their code from SAP after the final approver
   const rows = levels.map((l, i) => {
-    const filledAbove = levels.slice(0, i).every((x, j) => new RegExp(`^\\d{${phSegLen(j)}}$`).test(x.code) && !/^0+$/.test(x.code));
-    const isNew = !!l.code && !opts[i].some((o) => o.value === l.code);
+    const filledAbove = levels.slice(0, i).every((x, j) => (j <= LAST_CODED
+      ? new RegExp(`^\\d{${phSegLen(j)}}$`).test(x.code) && !/^0+$/.test(x.code)
+      : !!x.code || !!x.text.trim()));
+    const isNew = i <= LAST_CODED ? !!l.code && !opts[i].some((o) => o.value === l.code) : !l.code;
     let error = '';
     if (filledAbove) {
-      if (!l.code) error = `Enter the ${PH_LEVELS[i].toLowerCase()} code`;
+      if (i > LAST_CODED) {
+        if (!l.code && !l.text.trim()) error = `Enter the ${PH_LEVELS[i].toLowerCase()} description`;
+      } else if (!l.code) error = `Enter the ${PH_LEVELS[i].toLowerCase()} code`;
       else if (!new RegExp(`^\\d{${phSegLen(i)}}$`).test(l.code) || /^0+$/.test(l.code)) error = `Use a ${phSegLen(i)}-digit code from ${'1'.padStart(phSegLen(i), '0')} to ${'9'.repeat(phSegLen(i))}`;
       else if (isNew && !l.text.trim()) error = `Describe the new ${PH_LEVELS[i].toLowerCase()}`;
     }
@@ -263,8 +314,9 @@ function HierarchyForm({ version, mounted, onCreated }: { version: number; mount
 
   const complete = rows.every((r) => r.enabled && !r.error);
   const anyNew = rows.some((r) => r.isNew);
-  const code = complete ? codes.join('') : '';
-  const exists = complete && !anyNew;
+  const pending = rows.some((r) => !r.code);
+  const code = complete && !pending ? codes.join('') : '';
+  const exists = complete && !anyNew && !pending;
 
   function set(i: number, c: string, t: string) {
     // Changing a level clears every level below it
@@ -293,7 +345,12 @@ function HierarchyForm({ version, mounted, onCreated }: { version: number; mount
     if (!complete) { notify('error', 'Fill every level of the product hierarchy'); return; }
     if (exists) { notify('error', `Product hierarchy ${code} already exists`); return; }
     if (phLive()) { void submitLive(); return; }
-    const rec = createHierarchy(rows.map((r) => ({ code: r.code, text: r.isNew ? r.text.trim() : r.text, isNew: r.isNew })), user.name);
+    const filled: string[] = [];
+    const rec = createHierarchy(rows.map((r, i) => {
+      const c = r.code || nextFree(getHierarchyOptions(i, filled.concat(Array(PH_LEVELS.length - filled.length).fill(''))), phSegLen(i));
+      filled.push(c);
+      return { code: c, text: r.isNew ? r.text.trim() : r.text, isNew: r.isNew };
+    }), user.name);
     notify('success', `Product hierarchy ${rec.code} created (${rec.newLevels.length} new node${rec.newLevels.length === 1 ? '' : 's'})`);
     setLast(rec.code);
     setLevels(emptyLevels());
@@ -306,12 +363,25 @@ function HierarchyForm({ version, mounted, onCreated }: { version: number; mount
   return (
     <div className="su-layout">
       <section className="card su-card" aria-labelledby="ph-form-title">
-        <FormBanner title="MDM Product Hierarchy Creation" sub="Pick an existing code with F4 or type a new one – everything below a new level is new as well." />
+        <FormBanner title="MDM Product Hierarchy Creation" sub="Choose the banner and brand, then describe the product, SKU, variant and scheme – SAP generates their codes after the final approver." />
         <h3 id="ph-form-title" className="sr-only">Product hierarchy levels</h3>
         {loadErrors.length > 0 && <p className="err su-msg" role="alert">{loadErrors[0]}</p>}
         {liveError && <p className="err su-msg" role="alert" style={{ whiteSpace: 'pre-line' }}>{liveError}</p>}
         <div className="su-rows">
-          {rows.map((r, i) => (
+          {rows.map((r, i) => (i > LAST_CODED ? (
+            <DescRow
+              key={PH_LEVELS[i]}
+              id={`ph-${i}`}
+              label={PH_LEVELS[i]}
+              code={r.code}
+              text={r.text}
+              options={r.enabled ? opts[i] : []}
+              disabled={!r.enabled}
+              disabledHint={`Fill ${PH_LEVELS[i - 1].toLowerCase()} first`}
+              error={tried ? r.error : ''}
+              onChange={(c, t) => set(i, c, t)}
+            />
+          ) : (
             <CodeRow
               key={PH_LEVELS[i]}
               id={`ph-${i}`}
@@ -327,19 +397,20 @@ function HierarchyForm({ version, mounted, onCreated }: { version: number; mount
               suggest={mounted && r.enabled ? nextFree(opts[i], phSegLen(i)) : undefined}
               onChange={(c, t) => set(i, c, t)}
             />
-          ))}
+          )))}
           <div className="su-row field">
             <span className="su-label">Product hierarchy<span className="tech">PRDHA</span></span>
             <div className="su-inputs">
               <div className="ph-code su-ph-code" aria-live="polite" aria-label={`Product hierarchy ${codes.join('')}`}>
                 {PH_LEVELS.map((name, i) => (
                   <span key={name} className={rows[i].code && !(rows[i].error && rows[i].code) ? 'ph-seg-on' : 'ph-seg-off'} title={name}>
-                    {rows[i].code || '·'.repeat(phSegLen(i))}
+                    {rows[i].code || (i > LAST_CODED && rows[i].text.trim() ? '…' : '·'.repeat(phSegLen(i)))}
                   </span>
                 ))}
                 <span className="ph-len">{codes.join('').length}/{PH_LENGTH}</span>
               </div>
             </div>
+            {pending && complete && <small className="su-msg muted">The codes of Product, SKU, Variant and Scheme are generated by SAP after the final approver approves.</small>}
             {exists && <small className="warn-text su-msg">This hierarchy already exists – it can be used in material creation as it is.</small>}
           </div>
         </div>
@@ -358,9 +429,9 @@ function HierarchyForm({ version, mounted, onCreated }: { version: number; mount
                 <span className="su-node-dot" aria-hidden />
                 <span className="su-node-text">
                   <small>{PH_LEVELS[i]}</small>
-                  <strong>{r.code ? (r.text || (r.isNew ? 'New – add a description' : '')) : '—'}</strong>
+                  <strong>{r.code || r.text.trim() ? (r.text || (r.isNew ? 'New – add a description' : '')) : '—'}</strong>
                 </span>
-                {r.code && <span className="mono su-node-code">{r.code}</span>}
+                {r.code ? <span className="mono su-node-code">{r.code}</span> : i > LAST_CODED && r.text.trim() ? <span className="su-tag" title="Generated after the final approver">code pending</span> : null}
                 {r.isNew && <span className="su-tag">New</span>}
               </li>
             ))}
