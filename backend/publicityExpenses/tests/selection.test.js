@@ -253,6 +253,7 @@ test('views with each period alone (CYP01Amount..): one read of P12 per fiscal y
     } finally {
         delete process.env.PUBEXP_SAP_MONTHS;
         router._test.forgetMonthFields();
+        router._test.clearCache();
         global.fetch = real;
         if (keep.s === undefined) delete process.env.PUBEXP_SAP_SUMMARY_BASE; else process.env.PUBEXP_SAP_SUMMARY_BASE = keep.s;
         if (keep.d === undefined) delete process.env.PUBEXP_SAP_DETAIL_BASE; else process.env.PUBEXP_SAP_DETAIL_BASE = keep.d;
@@ -274,6 +275,60 @@ test('mock: the month fields give the same report as reading every period', () =
         }
     } finally { delete process.env.PUBEXP_MOCK_MONTHS; delete process.env.PUBEXP_SAP_MONTHS; }
 }));
+
+test('drill-down speed: detail read in the background after the report; $select after the first read, every field when SAP refuses it', async () => {
+    const GW = 'https://gw.example.net/api/NWP';
+    const keep = { s: process.env.PUBEXP_SAP_SUMMARY_BASE, d: process.env.PUBEXP_SAP_DETAIL_BASE };
+    process.env.PUBEXP_SAP_SUMMARY_BASE = `${GW}/ZC_ATLBTL_EXP_SUMMARY_CDS`;
+    process.env.PUBEXP_SAP_DETAIL_BASE = `${GW}/ZC_ATLBTL_EXP_DETAIL_CDS`;
+    router._test.forgetMonthFields();
+    const seen = [];
+    let refuseSelect = false;
+    const real = global.fetch;
+    const row = { CompanyCode: '1000', ReportingKey: 'BR001', GLAccount: '507929', Site: 'HO', ReportHeader: 'ATL', CostCenter: 'BEH01', ProfitCenter: 'EH00', MappingRule: 'R03',
+        CYYTDAmount: '10', PYYTDAmount: '5', CYPeriodAmount: '10', PYPeriodAmount: '5' };
+    global.fetch = async (url, o) => {
+        if (String(url).startsWith('http://127.0.0.1')) return real(url, o);
+        seen.push(String(url));
+        if (/ZI_ATLBTL_NETSALEMASTER/.test(url)) return new Response(JSON.stringify({ d: { results: [] } }), { status: 200 });
+        if (refuseSelect && /\$select=/.test(url)) return new Response(JSON.stringify({ error: { message: { value: 'Property CYP01Amount not found' } } }), { status: 400 });
+        return new Response(JSON.stringify({ d: { results: [row] } }), { status: 200 });
+    };
+    const detailReads = () => seen.filter((u) => /ZC_ATLBTL_EXP_DETAIL\(/.test(u));
+    try {
+        await withServer(async (call) => {
+            const r = await call('GET', '/summary?fy=2035&periods=4-6&companies=1000');
+            assert.equal(r.status, 200);
+            for (let i = 0; i < 50 && detailReads().length < 4; i++) await new Promise((ok) => setTimeout(ok, 10));
+            assert.deepEqual(detailReads().map((u) => /P_FiscalPeriod='(\d{3})'/.exec(u)[1]).sort(), ['003', '004', '005', '006'], 'the report starts the reads its drill-down needs (YTD terms + each period)');
+            const before = detailReads().length;
+            const d = await call('POST', '/detail', { fy: '2035', periods: '4-6', companies: ['1000'], keys: ['BR001'] });
+            assert.equal(d.status, 200);
+            assert.equal(d.body.rows[0].CYYTDAmount, 0, 'YTD 6 - YTD 3 of the same answer');
+            assert.equal(detailReads().length, before, 'the drill-down finds them ready');
+            // The first answers had every field; the next read asks only for the fields the app uses.
+            assert.ok(!detailReads()[0].includes('$select'), 'the first read has every field (are the month fields there?)');
+            await call('POST', '/detail', { fy: '2035', periods: '8', companies: ['1000'], keys: ['BR001'] });
+            const sel = detailReads().pop();
+            assert.match(sel, /\$select=CompanyCode,ReportingKey,GLAccount,/);
+            assert.ok(!sel.includes('CYP01Amount'), 'no month fields asked for while the views have none');
+            // SAP refuses the $select: the same read again with every field, and no $select for a while.
+            refuseSelect = true;
+            const again = await call('POST', '/detail', { fy: '2035', periods: '9', companies: ['1000'], keys: ['BR001'] });
+            assert.equal(again.status, 200, JSON.stringify(again.body));
+            const last2 = detailReads().slice(-2);
+            assert.ok(last2[0].includes('$select') && !last2[1].includes('$select'));
+            await call('POST', '/detail', { fy: '2035', periods: '10', companies: ['1000'], keys: ['BR001'] });
+            assert.ok(!detailReads().pop().includes('$select'));
+        });
+    } finally {
+        router._test.forgetMonthFields();
+        router._test.clearCache();
+        global.fetch = real;
+        if (keep.s === undefined) delete process.env.PUBEXP_SAP_SUMMARY_BASE; else process.env.PUBEXP_SAP_SUMMARY_BASE = keep.s;
+        if (keep.d === undefined) delete process.env.PUBEXP_SAP_DETAIL_BASE; else process.env.PUBEXP_SAP_DETAIL_BASE = keep.d;
+    }
+});
 
 test('G/L drill-down: SAP sends the G/L without leading zeros (507926) - a G/L column figure finds its lines', async () => {
     const GW = 'https://gw.example.net/api/NWP';

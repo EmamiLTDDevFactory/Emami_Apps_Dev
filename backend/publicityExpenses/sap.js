@@ -130,11 +130,12 @@ async function getAll(url) {
 }
 
 /** All result rows of a period through the gateway: the parameters entity with its Set expanded. */
-async function getViaGateway(base, view, fy, period) {
+async function getViaGateway(base, view, fy, period, select) {
     // The gateway forwards one path segment, and `(params)?$expand=Set` makes SAP run the view with INITIAL parameters
     // (P_FiscalYear='0000' -> always zero rows). `/Set` must reach SAP, so the slash is double-encoded (%252F): the gateway
     // decodes it once and SAP decodes the rest. Checked live on NWP and NGD.
-    const d = (await getJson(`${base}/${view}(${paramsKey(fy, period)})%252FSet?$format=json`))?.d;
+    const sel = select?.length ? `&$select=${select.join(',')}` : '';
+    const d = (await getJson(`${base}/${view}(${paramsKey(fy, period)})%252FSet?$format=json${sel}`))?.d;
     const list = Array.isArray(d?.results) ? d.results : [];
     if (d?.__next) throw new SapError('SAP returned a paged answer through the gateway; the period is incomplete.');
     return list;
@@ -178,14 +179,18 @@ async function fetchSummary(fy, period, where) {
     return (await getAll(buildUrl(base, entityPath('ZC_ATLBTL_EXP_SUMMARY', fy, period), { filter: filterOf(where) }))).map((r) => clean(r));
 }
 
-/** Detail rows. Gateway mode: the whole period (filtered here); SKUs are added by expandSkus() for the lines shown. */
-async function fetchDetail(fy, period, where, { expand = false } = {}) {
+/**
+ * Detail rows. Gateway mode: the whole period (filtered here); SKUs are added by expandSkus() for the lines shown.
+ * select = only these fields ($select: a period answers ~4 MB instead of ~12 MB on NWP, and faster).
+ */
+async function fetchDetail(fy, period, where, { expand = false, select = null } = {}) {
     const { base, gateway } = requireBase('detail');
+    const fields = select?.length ? select.filter((f) => /^[A-Za-z][A-Za-z0-9_]*$/.test(f)) : null;
     if (gateway) {
-        const rows = (await getViaGateway(base, 'ZC_ATLBTL_EXP_DETAIL', fy, period)).map((r) => clean(r, { keepEntity: true })).filter((r) => matches(r, where));
+        const rows = (await getViaGateway(base, 'ZC_ATLBTL_EXP_DETAIL', fy, period, fields)).map((r) => clean(r, { keepEntity: true })).filter((r) => matches(r, where));
         return expand ? expandSkus(rows) : rows;
     }
-    return (await getAll(buildUrl(base, entityPath('ZC_ATLBTL_EXP_DETAIL', fy, period), { filter: filterOf(where), expand: expand ? 'to_NetSaleMaster' : '' }))).map((r) => clean(r));
+    return (await getAll(buildUrl(base, entityPath('ZC_ATLBTL_EXP_DETAIL', fy, period), { filter: filterOf(where), expand: expand ? 'to_NetSaleMaster' : '', select: fields?.join(',') }))).map((r) => clean(r));
 }
 
 /**
