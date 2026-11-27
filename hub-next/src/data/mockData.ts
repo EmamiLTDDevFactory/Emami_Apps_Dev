@@ -52,7 +52,7 @@ export const EMBEDDED_APP_URLS: Record<string, string> = {
   'cascade-pricing': '/apps/cascade-pricing', // Cascade Pricing (ZMM_CASCADE_PRICING, export price cascade)
   'capex-portal': '/apps/capex-portal', // CAPEX Portal (Fiori ZCAPEX_PORTAL converted; SAP ZCAPEX_PORTAL_SRV)
   'mm-mdm': '/apps/mm-mdm', // Material Master (ZMM_MDM_SRV, material master requests)
-  'smartruck-tms': '/apps/smartruck-tms', // SmarTruck TMS (rebuild of Instavans SmarTruck Shipper — demo data)
+  'smartruck-tms': '/apps/smartruck-tms', // Trip Trail (was SmarTruck TMS; in-house replacement of Instavans SmarTruck)
   'auditee-response': '/apps/auditee-response', // Auditee Response (replaces WDs ZAUDIT_TOOL + ZMSD_MIS_OBSERVATION; open to all, see OPEN_TO_ALL_APPS in backend/server.js)
   'publicity-expenses': '/apps/publicity-expenses', // Publicity Expenses (ATL / BTL advertisement expenses MIS, SAP CDS ZC_ATLBTL_EXP_*)
   'order-to-cash': '/apps/order-to-cash', // Order to Cash (JAVIS-style PO -> SO -> fulfilment -> cash; SAP RFC Z_SD_O2C_ACTION)
@@ -87,7 +87,7 @@ const RAW_APPS: AppItem[] = [
   { id: 'cascade-pricing', name: 'Cascade Pricing', desc: 'Export price cascade from RRP to CIF by market and customer — rate upload, pricing simulation, approval, SAP condition creation and pricing KPIs.', cat: 'IBD', icon: Layers, uses: 0, stage: 'WIP' },
   { id: 'capex-portal', name: 'CAPEX Portal', desc: 'Capital expenditure from budget to capitalization — budgets, CPEs, DOA approvals, CWIP / PO, installation certificates, unit quota, dashboards and audit trail.', cat: 'Finance', icon: Landmark, uses: 0, stage: 'WIP' },
   { id: 'mm-mdm', name: 'Material Master', desc: 'Request, review and approve material master records — key data, tabs, validation by SAP, workflow with send back and approval.', cat: 'Supply Chain', icon: PackageSearch, uses: 0, stage: 'WIP' },
-  { id: 'smartruck-tms', name: 'SmarTruck TMS', desc: 'Transport management — orders, reverse-auction bidding, live fleet tracking and control tower, ePOD, carrier invoicing and reports. Demo build on sample data.', cat: 'Supply Chain', icon: Route, uses: 0, stage: 'WIP' },
+  { id: 'smartruck-tms', name: 'Trip Trail', desc: 'Outward transport and freight — indents, transporter allocation and bidding, live trip tracking, ePOD and freight invoicing, connected to SAP.', cat: 'Supply Chain', icon: Route, uses: 0, stage: 'WIP' },
   { id: 'auditee-response', name: 'Auditee Response', desc: 'Answer the internal audit and MIS observations assigned to you and submit your response to the reviewer, with attachments.', cat: 'MSD', icon: MessageSquareReply, uses: 0, stage: 'WIP' },
   { id: 'publicity-expenses', name: 'Publicity Expenses', desc: 'ATL / BTL advertisement expenses MIS from SAP — brand-wise report with G/L drill-down to cost centre and SKU, A&P dashboards, media mix, budget vs actual and reconciliation.', cat: 'Finance', icon: Megaphone, uses: 0, stage: 'WIP' },
   { id: 'order-to-cash', name: 'Order to Cash', desc: 'Customer POs from PDF, Excel, image or email read by AI, validated in SAP with auto amendment, sales orders created, then back orders, appointments, ASN, GRN, invoices, cash application, deductions and disputes.', cat: 'SD', icon: ShoppingCart, uses: 0, stage: 'WIP' },

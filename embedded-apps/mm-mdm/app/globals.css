@@ -1998,3 +1998,32 @@ h1 { font-size: 22px; } h2 { font-size: 16px; } h3 { font-size: 14px; margin-bot
 .wf-sapid { display: block; font-family: var(--mono); font-size: 11px; }
 .nav-home { padding: 8px 10px 0; flex: none; position: relative; }
 .nav-home .nav-item { background: rgba(255, 255, 255, 0.08); }
+
+/* ---- round 4: General Details shows every column in full (pane sizes to its table) ---- */
+.wf-board { grid-template-columns: fit-content(52vw) minmax(0, 1.5fr) minmax(250px, 0.75fr); }
+@media (max-width: 1280px) { .wf-board { grid-template-columns: fit-content(58vw) minmax(0, 1fr); } }
+@media (max-width: 900px) { .wf-board { grid-template-columns: minmax(0, 1fr); } }
+.wf-list-grid th, .wf-list-grid td { white-space: nowrap; padding-left: 8px; padding-right: 8px; }
+.wf-list-scroll { overflow-x: auto; }
+
+/* ---- round 5: one full-width pane under the other (General Details, Level, Agents, Views), each foldable ---- */
+.wf-board { display: flex; flex-direction: column; gap: 12px; }
+.wf-edit, .wf-editor { display: flex; flex-direction: column; gap: 12px; }
+.wf-mid { display: flex; flex-direction: column; gap: 12px; }
+.wf-list, .wf-right, .wf-mid, .wf-editor-bar, .wf-editor-msgs, .wf-more, .wf-placeholder { grid-column: auto; grid-row: auto; width: 100%; }
+.wf-list-scroll, .wf-pane-body { max-height: none; }
+.wf-list-scroll { max-height: 420px; }
+.wf-fold > summary { list-style: none; cursor: pointer; user-select: none; }
+.wf-fold > summary::-webkit-details-marker { display: none; }
+.wf-fold > summary::before { content: '\25BE'; color: #1e2470; margin-right: 8px; font-size: 14px; transition: transform .15s; }
+.wf-fold:not([open]) > summary::before { transform: rotate(-90deg); }
+.wf-fold > summary h2 { flex: 1; }
+.wf-fold:not([open]) > summary { border-bottom: 0; }
+
+/* ---- round 6: warnings in yellow ---- */
+.wf-page .alert-warn, .wf-msgs.alert-warn { background: #fff3b0; border: 1px solid #f2c200; color: #6b4e00; }
+.wf-page .alert-warn .wf-link { color: #6b4e00; text-decoration: underline; }
+.wf-msg-w, .wf-msg-w .wf-msg-sev { color: #8a6500; }
+.wf-msg-w .wf-msg-sev { background: #ffe066; border-radius: 4px; padding: 1px 6px; }
+.wf-page .badge-warn { background: #ffe066; color: #6b4e00; border-color: #f2c200; }
+.wf-warn-text { color: #8a6500; background: #fff3b0; border: 1px solid #f2c200; border-radius: 6px; padding: 4px 10px; display: inline-block; }

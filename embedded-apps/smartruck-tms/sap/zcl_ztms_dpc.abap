@@ -1,5 +1,6 @@
 "! Data provider of OData service ZTMS_SRV (code based, no SEGW project): maps requests to ZCL_TMS_CORE. Reads: VendorSet, CustomerSet,
-"! PoSoCheckSet, PaymentStatusSet, OutDeliverySet, OutShipmentSet (LaneSet answers 501 until the freight source is decided). The only write is POST FreightInvoiceSet (the gateway hub passes no function imports / PUT / DELETE).
+"! PoSoCheckSet, PaymentStatusSet, OutDeliverySet, OutShipmentSet, LaneSet (freight condition ZB00 via CDS ZI_TMS_LANERATE), FreightCondSet (A964 + transporter + route text via CDS ZI_TMS_A964_VENDOR),
+"! TripInvoiceSet + ParallelCheckSet (Instavans/ZSMART_VEH replacement, read) and POST TripVehicleSet (writes ZTMS_TRIP_VEH/INV). The only write is POST FreightInvoiceSet (the gateway hub passes no function imports / PUT / DELETE).
 "! The hub login e-mail arrives as option emamiuser= or header X-Emami-User and is written into the FI item text for traceability.
 CLASS zcl_ztms_dpc DEFINITION PUBLIC INHERITING FROM /iwbep/cl_mgw_abs_data CREATE PUBLIC.
   PUBLIC SECTION.
@@ -112,8 +113,60 @@ CLASS zcl_ztms_dpc IMPLEMENTATION.
         ENDIF.
         copy_data_to_ref( EXPORTING is_data = lt_os CHANGING cr_data = er_entityset ).
       WHEN 'LaneSet'.
-        " Where the lane freight lives (condition type / table) is a Logistics decision not yet taken: refuse clearly instead of returning nothing.
-        busi( iv_text = `The lane freight source is not configured yet (needs the SD freight condition type and key).` iv_status = '501' ).
+        " Lane freight = condition ZB00 records valid today (CDS ZI_TMS_LANERATE). Optional filters Route, Lifnr, Vsart, VehicleType; $top/$skip honoured.
+        DATA(lt_ln) = zcl_tms_core=>get_lanes(
+          it_route   = filter_values( it_filter = it_filter_select_options iv_name = 'Route' )
+          it_lifnr   = filter_values( it_filter = it_filter_select_options iv_name = 'Lifnr' )
+          it_vsart   = filter_values( it_filter = it_filter_select_options iv_name = 'Vsart' )
+          it_vehicle = filter_values( it_filter = it_filter_select_options iv_name = 'VehicleType' ) ).
+        IF is_paging-skip > 0.
+          DELETE lt_ln TO is_paging-skip.
+        ENDIF.
+        IF is_paging-top > 0 AND lines( lt_ln ) > is_paging-top.
+          DELETE lt_ln FROM is_paging-top + 1.
+        ENDIF.
+        copy_data_to_ref( EXPORTING is_data = lt_ln CHANGING cr_data = er_entityset ).
+      WHEN 'FreightCondSet'.
+        " A964 freight conditions with transporter and route text. Filters (all optional, EQ): Route, Tdlnr, Kschl, Vsart, Shtyp, Add01.
+        " Without any filter $top is required (the table has ~20,000 rows); $top / $skip page the result.
+        DATA(lt_fr) = filter_values( it_filter = it_filter_select_options iv_name = 'Route' ).
+        DATA(lt_ft) = filter_values( it_filter = it_filter_select_options iv_name = 'Tdlnr' ).
+        DATA(lt_fk) = filter_values( it_filter = it_filter_select_options iv_name = 'Kschl' ).
+        DATA(lt_fv) = filter_values( it_filter = it_filter_select_options iv_name = 'Vsart' ).
+        DATA(lt_fs) = filter_values( it_filter = it_filter_select_options iv_name = 'Shtyp' ).
+        DATA(lt_fa) = filter_values( it_filter = it_filter_select_options iv_name = 'Add01' ).
+        IF lt_fr IS INITIAL AND lt_ft IS INITIAL AND lt_fk IS INITIAL AND lt_fv IS INITIAL AND lt_fs IS INITIAL AND lt_fa IS INITIAL AND is_paging-top = 0.
+          busi( `Give a filter (Route, Tdlnr, Kschl, Vsart, Shtyp or Add01 eq '...') or $top: the table is too large to read in one go.` ).
+        ENDIF.
+        IF is_paging-top > 5000.
+          busi( `At most 5000 rows per request ($top).` ).
+        ENDIF.
+        DATA(lt_fc) = zcl_tms_core=>get_freight_cond( it_route = lt_fr it_tdlnr = lt_ft it_kschl = lt_fk it_vsart = lt_fv it_shtyp = lt_fs it_add01 = lt_fa
+                                                     iv_skip = is_paging-skip iv_top = COND #( WHEN is_paging-top > 0 THEN is_paging-top ELSE 5000 ) ).
+        copy_data_to_ref( EXPORTING is_data = lt_fc CHANGING cr_data = er_entityset ).
+      WHEN 'TripInvoiceSet'.
+        " Filter Vbeln eq '<billing>' and/or Vbelv eq '<delivery>' (one is required, at most 50 each); optional Werks eq '<plant>'.
+        DATA(lt_tib) = filter_values( it_filter = it_filter_select_options iv_name = 'Vbeln' ).
+        DATA(lt_tid) = filter_values( it_filter = it_filter_select_options iv_name = 'Vbelv' ).
+        DATA(lt_tiw) = filter_values( it_filter = it_filter_select_options iv_name = 'Werks' ).
+        IF lt_tib IS INITIAL AND lt_tid IS INITIAL.
+          busi( `Filter Vbeln eq '<billing document>' or Vbelv eq '<delivery>' is mandatory.` ).
+        ENDIF.
+        IF lines( lt_tib ) > 50 OR lines( lt_tid ) > 50.
+          busi( `At most 50 documents per request.` ).
+        ENDIF.
+        DATA(lt_ti) = zcl_tms_core=>get_trip_invoices( it_vbeln = lt_tib it_vbelv = lt_tid
+                                                       iv_werks = COND #( WHEN lt_tiw IS NOT INITIAL THEN CONV werks_d( lt_tiw[ 1 ] ) ) ).
+        copy_data_to_ref( EXPORTING is_data = lt_ti CHANGING cr_data = er_entityset ).
+      WHEN 'ParallelCheckSet'.
+        DATA(lt_pcw) = filter_values( it_filter = it_filter_select_options iv_name = 'Werks' ).
+        DATA(lt_pcd) = filter_values( it_filter = it_filter_select_options iv_name = 'Days' ).
+        DATA(lv_days) = COND i( WHEN lt_pcd IS NOT INITIAL AND lt_pcd[ 1 ] CO '0123456789' AND lt_pcd[ 1 ] IS NOT INITIAL THEN lt_pcd[ 1 ] ELSE 30 ).
+        IF lv_days > 366.
+          lv_days = 366.
+        ENDIF.
+        DATA(lt_pc) = zcl_tms_core=>parallel_check( iv_werks = COND #( WHEN lt_pcw IS NOT INITIAL THEN CONV werks_d( lt_pcw[ 1 ] ) ) iv_days = lv_days ).
+        copy_data_to_ref( EXPORTING is_data = lt_pc CHANGING cr_data = er_entityset ).
       WHEN OTHERS.
         busi( iv_text = |Unknown entity set { iv_entity_set_name }| iv_status = '404' ).
     ENDCASE.
@@ -157,6 +210,19 @@ CLASS zcl_ztms_dpc IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD /iwbep/if_mgw_appl_srv_runtime~create_entity.
+    IF iv_entity_set_name = 'TripVehicleSet'.
+      " Trip vehicle + its complete invoice list (ZSMART_VEH replacement). Commits only a fully valid write.
+      DATA ls_tv TYPE zcl_tms_ty=>ts_tripvehicle.
+      io_data_provider->read_entry_data( IMPORTING es_data = ls_tv ).
+      DATA(ls_tvo) = zcl_tms_core=>write_trip_vehicle( is_in = ls_tv iv_user = hub_user( ) ).
+      IF ls_tvo-ok <> 'X'.
+        ROLLBACK WORK.
+        busi( iv_text = CONV #( ls_tvo-message ) ).
+      ENDIF.
+      COMMIT WORK.
+      copy_data_to_ref( EXPORTING is_data = ls_tvo CHANGING cr_data = er_entity ).
+      RETURN.
+    ENDIF.
     IF iv_entity_set_name <> 'FreightInvoiceSet'.
       busi( iv_text = |{ iv_entity_set_name } is read-only.| iv_status = '405' ).
     ENDIF.

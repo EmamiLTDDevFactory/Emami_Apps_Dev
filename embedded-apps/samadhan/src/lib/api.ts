@@ -15,6 +15,7 @@ import type {
   Attachment, AttachmentLimits, AttachmentsInfo, SavedView, Scenario, ScenarioAction, SearchResults, SeverityRule, SlaPolicy, Ticket, TicketDetail, TicketInsights, TicketRow, Todo,
   AccessUser, Overview, ReportVariantConfig, Role, Variant, Workspace, Application, MatrixCell, PriorityMode, SapDetails, ExternalRef, RefMaster, ItDetails, PortalApplication, Transport, ChangeDetails, Approval, ApprovalChain, CatalogItem, ChangeWindow, CalendarChange,
   MyApproval, RegisterData, PublicApproval, PortalCatalogItem, Pir, KnownError, ProblemCandidate, DuplicateHint, ServiceHealth, ProgramDetails, ProgramOverview, IntegrationsOverview, SolmanResult, DeskAnalytics,
+  SupportModelData, TicketEscalation, VendorScore, MigrationKind, MigrationTemplate, MigrationResult,
 } from './types';
 
 const API_HOST = 'https://audit-capa-api.emamiapps.in';
@@ -477,6 +478,23 @@ export const integrationsAdmin = {
   solman: (rows: string[][], mapping: Record<string, string>, dryRun: boolean) => request<SolmanResult>('POST', '/admin/integrations/solman/import', { rows, mapping, dryRun }),
 };
 export const deskAnalytics = (days: number) => get<DeskAnalytics & { success: boolean }>(`/analytics/desks${qs({ days: String(days) })}`);
+
+// ITSM support model (migration 7.11): Admin > Support model, support vendor / escalation on a ticket, vendor scorecard.
+export const supportAdmin = {
+  get: () => get<SupportModelData & { success: boolean }>('/admin/support-model'),
+  save: (b: Record<string, unknown>) => request<{ moved: number }>('PUT', '/admin/support-model', b),
+  savePartner: (b: Record<string, unknown>) => request<{ id: number }>('POST', '/admin/support-partners', b),
+  saveContact: (b: Record<string, unknown>) => request<{ id: number }>('POST', '/admin/escalation-contacts', b),
+  deleteContact: (id: number) => request('DELETE', `/admin/escalation-contacts/${id}`),
+};
+export const getEscalations = (ticketId: number) => get<{ items: TicketEscalation[] }>(`/tickets/${ticketId}/escalations`).then((r) => r.items);
+export const escalateTicket = (ticketId: number, reason: string) => request<{ level: number; notified: string[] }>('POST', `/tickets/${ticketId}/escalate`, { reason });
+export const setSupportVendor = (ticketId: number, supportPartnerId: number | null) => request('PUT', `/tickets/${ticketId}/support-vendor`, { supportPartnerId });
+export const vendorScorecard = (days: number) => get<{ items: VendorScore[] }>(`/analytics/vendors${qs({ days: String(days) })}`).then((r) => r.items);
+// Admin > Ticket migration.
+export const migrationTemplate = (kind: MigrationKind) => get<{ template: MigrationTemplate }>(`/admin/migration/${kind}/template`).then((r) => r.template);
+export const migrationImport = (kind: MigrationKind, rows: string[][], dryRun: boolean, slaFrom: 'import' | 'logged') =>
+  request<MigrationResult>('POST', `/admin/migration/${kind}/import`, { rows, dryRun, slaFrom });
 
 export const publicApproval = (token: string) => get<{ approval: PublicApproval }>(`/portal/approval/${encodeURIComponent(token)}`).then((r) => r.approval);
 export const publicDecide = (token: string, decision: string, comment: string) => request('POST', `/portal/approval/${encodeURIComponent(token)}`, { decision, comment });

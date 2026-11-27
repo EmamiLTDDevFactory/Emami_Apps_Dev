@@ -508,7 +508,7 @@ function depsOf(w, over = {}) {
         sap: {
             async deliveries(nos) { return { simulated: false, rows: nos.filter((n) => n !== '999999').map((n) => ({ no: n, plant: 'UN13', shipTo: 'Shop', cartons: 100, weightKg: 6000, volumeM3: 25 })) }; },
             async shipment(no) { return { no, serviceAgent: '100200', deliveries: ['80001234', '80001235'], cost: { net: 40000, tax: 2000, currency: 'INR', status: 'C' } }; },
-            async lanes() { return [{ fromLoc: 'GAU', toLoc: 'CCU', vendor: '100200', rate: 41000, distanceKm: 1030, transitH: 30, priority: 1 }, { fromLoc: 'GAU', toLoc: 'XXX', vendor: '100200', rate: 1, distanceKm: 1, transitH: 1, priority: 1 }]; },
+            async lanes() { return [{ fromLoc: 'GAU', toLoc: 'CCU', vendor: '100200', rate: 41000, distanceKm: 1030, transitH: 30, priority: 1, condRecord: '11' }, { fromLoc: 'GAU', toLoc: 'XXX', vendor: '100200', rate: 1, distanceKm: 1, transitH: 1, priority: 1, condRecord: '12' }]; },
         },
         ...over,
     };
@@ -689,7 +689,11 @@ test('trip: settings and lane sync from SAP are validated; vendor view never car
     await run(w, w.u.ho, { type: 'saveSettings', settings: { capacityMinPct: 70, invoiceMailbox: 'f@emami.test', consentText: 'New wording' } }, d);
     assert.equal(w.db.settings.capacityMinPct, 70); assert.equal(w.db.settings.consentVersion, 'v2');
     const r = await run(w, w.u.ho, { type: 'syncLanes' }, d);
-    assert.equal(r.result.lanes, 1); assert.equal(r.result.skipped.length, 1);
+    // GAU-CCU matches existing locations; the unknown SAP point XXX becomes a location instead of dropping the rate
+    assert.equal(r.result.lanes, 2); assert.equal(r.result.locationsAdded, 1); assert.equal(r.result.skippedCount, 0);
+    assert.equal(w.db.locs.find((l) => l.id === 'XXX').source, 'sap');
+    // a gateway on the old model (no condition record / unit / mode) is refused
+    await rejects(run(w, w.u.ho, { type: 'syncLanes' }, { ...d, sap: { ...d.sap, async lanes() { return [{ fromLoc: 'GAU', toLoc: 'CCU', vendor: '100200', rate: 4.9 }]; } } }), 503, /metadata cache/);
     const sin = await loaded(w, d);
     await run(w, w.u.v1, { type: 'vendorDepart', sin, lrNo: 'LR-3' }, d, NOW + H);
     assert.equal(engine.scopedDb(w.db, w.u.v1).shipments[0].trackToken, undefined);
@@ -713,4 +717,112 @@ test('outward: HO can hand an escalated indent to a chosen vendor', async () => 
     await run(w, w.u.ho, { type: 'offerIndent', id: result.indentId, carrierId: 'C001' });
     const r = await run(w, w.u.v1, { type: 'vendorRespond', id: result.indentId, response: 'accept' });
     assert.equal(w.db.shipments.find((s) => s.sin === r.result.sin).freight, 41000);
+});
+
+test('lanes from SAP ZB00: mode-wise rates, offers follow the indent vehicle type, per-KG freight estimated on the indent quantity', async () => {
+    const w = outwardWorld();
+    const row = (o) => ({ fromLoc: 'GUWAHATI', toLoc: 'KOLKATA', vendor: '100200', rate: 4.9, distanceKm: 1030, transitH: 30, priority: 1, route: 'ZGUKOL', routeText: 'Guwahati to Kolkata', sapVehicle: 'RTPKG', vehicleText: 'Rate Per KG',
+        rateBasis: 'WEIGHT', shippingType: '01', shippingText: 'Truck', sdabw: 'NORM', shtyp: 'ZSD1', zdays: '', currency: 'INR', perQty: 1, perUnit: 'KG', condTable: 'A973', condRecord: '1', validTo: '9999-12-31', ...o });
+    w.db.locs.find((l) => l.id === 'GAU').city = 'Guwahati'; w.db.locs.find((l) => l.id === 'CCU').city = 'Kolkata';
+    const rows = [
+        row({}),                                                                              // C001, any vehicle, 4.90/KG
+        row({ vendor: '100207', rate: 4.5, condRecord: '2' }),                                // C002 cheaper, any vehicle
+        row({ vendor: '100207', rate: 4.4, condTable: 'A964', zdays: '5', condRecord: '3' }), // same mode in A964: A973 row wins
+        row({ vendor: '100200', sapVehicle: 'FTL9MT', vehicleText: 'Full Truck Load 9 Metric Ton', rateBasis: 'FLAT RATE', rate: 3.8, condRecord: '4' }),
+        row({ vendor: '100200', shippingType: '03', shippingText: 'Train', rate: 3.1, condRecord: '5' }),
+        row({ vendor: '999999', condRecord: '6' }),                                           // not in the vendor master, no name: skipped
+        row({ vendor: '888888', vendorName: 'Lane Only Carrier', rate: 6, condRecord: '8' }),  // outside ZTRP: added from the rate row
+        row({ fromLoc: '', toLoc: '', route: 'ZNOPT', condRecord: '7' }),                     // route without stages
+    ];
+    const d = { ...depsOf(w), sap: { ...depsOf(w).sap, async lanes() { return rows; } } };
+    const r = await run(w, w.u.ho, { type: 'syncLanes' }, d);
+    assert.equal(r.result.lanes, 1); assert.equal(r.result.rates, 5); assert.equal(r.result.carriersAdded, 1); assert.equal(r.result.skippedCount, 2); assert.equal(r.result.locationsAdded, 0); assert.equal(r.result.vehicleTypesAdded, 1);
+    const lane = w.db.lanes.find((l) => l.id === 'LN-GAU-CCU');
+    assert.deepEqual(lane.sapRoutes, ['ZGUKOL']);
+    const c2 = lane.vendors.find((v) => v.carrierId === 'C002');
+    assert.equal(c2.condTable, 'A973'); assert.equal(c2.rate, 4.5); assert.equal(c2.priority, 1);
+    assert.equal(lane.vendors.find((v) => v.carrierId === 'C001' && v.sapVehicle === 'RTPKG' && v.shippingType === '01').priority, 2);
+    assert.equal(w.db.vehicleTypes.find((v) => v.code === 'FTL9MT').maxWeightKg, 9000);
+    assert.equal(w.db.sapTexts.shipping['03'], 'Train');
+
+    // an FTL9MT indent goes first to the FTL9MT rate (C001), a CONT15MT indent to the cheapest any-vehicle truck rate (C002)
+    const a = await run(w, w.u.depot, indentCmd({ vehicleType: 'FTL9MT', shippingType: '01' }), d);
+    assert.equal(a.result.offeredTo, 'C001'); assert.equal(w.db.indents[0].offers[0].rate, 3.8); assert.equal(w.db.indents[0].offers[0].per, 'KG');
+    const b = await run(w, w.u.depot, indentCmd({ shippingType: '01' }), d);
+    assert.equal(b.result.offeredTo, 'C002');
+    // accept: freight estimated on 12 MT, invoice checked against rate x delivered weight (2 deliveries x 6000 kg)
+    const acc = await run(w, w.u.v2, { type: 'vendorRespond', id: b.result.indentId, response: 'accept' }, d);
+    const s = w.db.shipments.find((x) => x.sin === acc.result.sin);
+    assert.equal(s.freight, 54000); assert.deepEqual(s.freightRate, { rate: 4.5, per: 'KG', currency: 'INR' });
+
+    // a hand-entered vendor row survives the next sync
+    await run(w, w.u.ho, { type: 'upsertLane', id: 'LN-GAU-CCU', fromLocId: 'GAU', toLocId: 'CCU', distanceKm: 1030, transitH: 30, vendors: [...lane.vendors, { carrierId: 'C001', priority: 9, rate: 50000, vehicleType: 'CONT15MT' }] });
+    await run(w, w.u.ho, { type: 'syncLanes' }, d);
+    assert.ok(w.db.lanes.find((l) => l.id === 'LN-GAU-CCU').vendors.some((v) => v.rate === 50000 && v.source === undefined));
+});
+
+test('trip invoices (Instavans replacement): checked in SAP, written as TT-<sin>, failures kept for retry, exit on departure, vendor refused', async () => {
+    const w = outwardWorld();
+    const writes = [];
+    const inv = (no, o = {}) => ({ no, delivery: '80001234', plant: 'UN13', date: '2026-11-26', customer: 'K1', customerName: 'Shop', cancelled: false, cases: 6.5, value: 22750, currency: 'INR', grossKg: 71.5, netKg: 65, ttSin: '', ttVehicle: '', instaSin: '', instaVehicle: '', message: '', ...o });
+    let sapDown = false;
+    const d = depsOf(w, { sap: { ...depsOf(w).sap,
+        async tripInvoices(q) { return { simulated: false, rows: [...(q.billing || []), ...(q.deliveries || []).map(() => '4280111664')].map((n) => n === '4280111666' ? inv(n, { message: 'Billing document 4280111666 is cancelled.' }) : n === '4280111667' ? inv(n, { ttSin: 'TT-SIN99', ttVehicle: 'XX01' }) : inv(n, n === '4280111664' ? { instaSin: 'AVQ01134', instaVehicle: 'KA57NC4857' } : {})) }; },
+        async writeTripVehicle(v) { if (sapDown) throw new sap.SapError('SAP is not reachable', 502); writes.push(v); return { ok: true, target: 'TRIPTRAIL', message: 'saved' }; } } });
+    const sin = await loaded(w, d);
+    const s = () => w.db.shipments.find((x) => x.sin === sin);
+    const f = await run(w, w.u.depot, { type: 'findTripInvoices', sin }, d);
+    assert.equal(f.result.rows[0].no, '4280111664');
+    await rejects(run(w, w.u.v1, { type: 'setTripInvoices', sin, invoices: ['4280111664'] }, d), 403);
+    await rejects(run(w, w.u.depot, { type: 'setTripInvoices', sin, invoices: ['4280111666'] }, d), 409, /cancelled/);
+    await rejects(run(w, w.u.depot, { type: 'setTripInvoices', sin, invoices: ['4280111667'] }, d), 409, /already on Trip Trail vehicle/);
+    await rejects(run(w, w.u.depot, { type: 'setTripInvoices', sin, invoices: ['12AB'] }, d), 400);
+    const r = await run(w, w.u.depot, { type: 'setTripInvoices', sin, invoices: ['4280111664', '4280111665'] }, d);
+    assert.equal(r.result.count, 2); assert.equal(r.result.sap.ok, true);
+    assert.equal(writes[0].sin, `TT-${sin}`); assert.deepEqual(writes[0].invoices, ['4280111664', '4280111665']); assert.equal(writes[0].exit, false); assert.equal(writes[0].plant, 'UN13');
+    assert.deepEqual(s().invoices[0].instavans, { sin: 'AVQ01134', vehicle: 'KA57NC4857' });
+    // SAP down: the list is kept on the trip, the failure is recorded, retry works once SAP is back
+    sapDown = true;
+    const r2 = await run(w, w.u.depot, { type: 'setTripInvoices', sin, invoices: ['4280111664'] }, d);
+    assert.equal(r2.result.sap.ok, false); assert.equal(s().invoices.length, 1);
+    sapDown = false;
+    await run(w, w.u.depot, { type: 'syncTripVehicle', sin }, d);
+    assert.equal(s().sapVehicle.ok, true); assert.deepEqual(writes[writes.length - 1].invoices, ['4280111664']);
+    // departure marks the vehicle exited in SAP
+    await run(w, w.u.v1, { type: 'vendorDepart', sin, lrNo: 'LR-9' }, d, NOW + H);
+    assert.equal(writes[writes.length - 1].exit, true);
+});
+
+test('vehicle type: internal cargo size (cm) is all-or-nothing, derives the volume, and survives a save without it', async () => {
+    const w = outwardWorld();
+    const vt = (o) => ({ type: 'upsertVehicleType', code: 'FTL9MT', name: '9 MT truck', maxWeightKg: 9000, ...o });
+    await rejects(run(w, w.u.ho, vt({ maxVolumeM3: 30, lengthCm: 600 })), 400, /length, width and height together/);
+    await run(w, w.u.ho, vt({ lengthCm: 600, widthCm: 240, heightCm: 240 }));          // no volume given: 600*240*240 = 34.56 m3
+    const a = w.db.vehicleTypes.find((x) => x.code === 'FTL9MT');
+    assert.deepEqual([a.lengthCm, a.widthCm, a.heightCm, a.maxVolumeM3], [600, 240, 240, 34.56]);
+    await run(w, w.u.ho, vt({ maxVolumeM3: 33 }));                                      // a save without sizes keeps them
+    const b = w.db.vehicleTypes.find((x) => x.code === 'FTL9MT');
+    assert.deepEqual([b.lengthCm, b.widthCm, b.heightCm, b.maxVolumeM3], [600, 240, 240, 33]);
+    await rejects(run(w, w.u.ho, vt({ code: 'NOVOL' })), 400);                          // neither volume nor size
+    await run(w, w.u.ho, vt({ code: 'OLD', maxVolumeM3: 20 }));                         // sizes stay optional
+    assert.equal(w.db.vehicleTypes.find((x) => x.code === 'OLD').lengthCm, undefined);
+});
+
+test('SAP freight conditions (A964 + transporter + route text): mapping, filter URL, paging, simulated when SAP is off', async () => {
+    const row = { Knumh: '0000552435', Kappl: 'F', Kschl: 'ZB00', Shtyp: 'ZSD1', Route: 'ZDECTK', RouteText: 'Delhi To Cuttack', Add01: 'RTPKG', Add02: 'WEIGHT', Sdabw: 'NORM', Tdlnr: '0000210919', VendorName: 'VRL LOGISTICS LTD.', VendorRegion: 'TNU', AddressNumber: '0000041468', VendorEmail: 'a@vrl.test', Zdays: '5', Vsart: '01', Datab: '/Date(1270080000000)/', Datbi: '/Date(1277856000000)/' };
+    const m = sap.map.freightCond(row);
+    assert.deepEqual([m.condRecord, m.route, m.routeText, m.vendor, m.vendorName, m.vendorRegion, m.vendorEmail, m.validFrom, m.validTo], ['0000552435', 'ZDECTK', 'Delhi To Cuttack', '0000210919', 'VRL LOGISTICS LTD.', 'TNU', 'a@vrl.test', '2010-04-01', '2010-06-30']);
+    delete process.env.TMS_SAP_ODATA_BASE;
+    assert.deepEqual(await sap.freightConditions({ route: 'ZDECTK' }, { email: 'a@x.com' }), { simulated: true, rows: [] });
+    process.env.TMS_SAP_ODATA_BASE = 'https://gw.example/api/EDS/ZTMS_SRV'; process.env.TMS_SAP_CLIENT = '900';
+    const calls = []; const real = global.fetch;
+    global.fetch = async (u) => { calls.push(String(u)); return new Response(JSON.stringify({ d: { results: [row, { Route: 'X' }] } }), { status: 200 }); };
+    try {
+        const r = await sap.freightConditions({ route: 'ZDECTK', vendor: ['0000210919', '0000240628'], top: 99999, skip: 10 }, { email: 'a@x.com' });
+        assert.equal(r.rows.length, 1);                                                    // a row without a condition record is dropped
+        assert.match(calls[0], /FreightCondSet\?\$filter=Route%20eq%20'ZDECTK'%20and%20\(Tdlnr%20eq/);
+        assert.match(calls[0], /\$top=5000&\$skip=10/);                                    // top capped at 5000
+        await sap.freightConditions({}, { email: 'a@x.com' });
+        assert.match(calls[1], /FreightCondSet\?\$top=500/);                               // a bare call is bounded
+    } finally { global.fetch = real; delete process.env.TMS_SAP_ODATA_BASE; delete process.env.TMS_SAP_CLIENT; }
 });

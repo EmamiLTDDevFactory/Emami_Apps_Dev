@@ -188,7 +188,7 @@ function createService(store, depsForCaller) {
 }
 
 const depsFor = (caller) => ({
-    sap: { deliveries: (n) => sapSvc.deliveries(n, caller), shipment: (n) => sapSvc.shipment(n, caller), lanes: () => sapSvc.lanes(caller), vendors: () => sapSvc.vendors(caller), customers: () => sapSvc.customers(caller), checkPoSo: (q) => sapSvc.checkPoSo(q, caller), postFreightInvoice: (i) => sapSvc.postFreightInvoice(i, caller), paymentStatus: (d) => sapSvc.paymentStatus(d, caller) },
+    sap: { deliveries: (n) => sapSvc.deliveries(n, caller), shipment: (n) => sapSvc.shipment(n, caller), lanes: () => sapSvc.lanes(caller), tripInvoices: (q) => sapSvc.tripInvoices(q, caller), freightConditions: (q) => sapSvc.freightConditions(q, caller), writeTripVehicle: (v) => sapSvc.writeTripVehicle(v, caller), parallelCheck: (q) => sapSvc.parallelCheck(q, caller), vendors: () => sapSvc.vendors(caller), customers: () => sapSvc.customers(caller), checkPoSo: (q) => sapSvc.checkPoSo(q, caller), postFreightInvoice: (i) => sapSvc.postFreightInvoice(i, caller), paymentStatus: (d) => sapSvc.paymentStatus(d, caller) },
     consent: integ.consent, eway: integ.eway, mail: integ.mail, ulip,
 });
 const service = createService(pgStore(), depsFor);
@@ -207,7 +207,7 @@ async function requireUser(req, res, next) {
             pool.query('SELECT role FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = $2', [email, APP_ID]),
             pool.query('SELECT is_active FROM emami_apps.authorized_users WHERE email = $1', [email]),
         ]);
-        if (!grant.rows.length || (user.rows[0] && user.rows[0].is_active === false)) return res.status(403).json({ error: 'You do not have access to SmarTruck TMS. Ask an Emami Apps admin for it in Admin Center.' });
+        if (!grant.rows.length || (user.rows[0] && user.rows[0].is_active === false)) return res.status(403).json({ error: 'You do not have access to Trip Trail. Ask an Emami Apps admin for it in Admin Center.' });
         req.caller = { email, hubRole: grant.rows[0].role };
         next();
     } catch (e) { console.error('[tms] access check', e.message); res.status(500).json({ error: 'Could not verify your access.' }); }

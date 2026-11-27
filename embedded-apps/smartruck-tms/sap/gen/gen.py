@@ -34,7 +34,7 @@ m=['"! Model provider of OData service ZTMS_SRV (code based, no SEGW project). E
 '  PUBLIC SECTION.',"    CONSTANTS gc_schema_namespace TYPE string VALUE 'ZTMS_SRV'.",'    METHODS define REDEFINITION.','    METHODS get_last_modified REDEFINITION.',
 '  PROTECTED SECTION.','    METHODS define_entities RAISING /iwbep/cx_mgw_med_exception.','    METHODS define_associations RAISING /iwbep/cx_mgw_med_exception.','    METHODS define_actions RAISING /iwbep/cx_mgw_med_exception.',
 'ENDCLASS.','','CLASS zcl_ztms_mpc IMPLEMENTATION.','  METHOD define.','    model->set_schema_namespace( gc_schema_namespace ).','    define_entities( ).','    define_associations( ).','    define_actions( ).','  ENDMETHOD.','',
-'  METHOD get_last_modified.',"    CONSTANTS lc_gen_date_time TYPE timestamp VALUE '20261119180000'.",'    rv_last_modified = super->get_last_modified( ).','    IF rv_last_modified < lc_gen_date_time.','      rv_last_modified = lc_gen_date_time.','    ENDIF.','  ENDMETHOD.','',
+'  METHOD get_last_modified.',"    CONSTANTS lc_gen_date_time TYPE timestamp VALUE '20261127120000'.",'    rv_last_modified = super->get_last_modified( ).','    IF rv_last_modified < lc_gen_date_time.','      rv_last_modified = lc_gen_date_time.','    ENDIF.','  ENDMETHOD.','',
 '  METHOD define_entities.','    DATA: lo_entity_type TYPE REF TO /iwbep/if_mgw_odata_entity_typ,','          lo_property    TYPE REF TO /iwbep/if_mgw_odata_property,','          lo_entity_set  TYPE REF TO /iwbep/if_mgw_odata_entity_set.','']
 for e in ENT:
     m.append("    lo_entity_type = model->create_entity_type( iv_entity_type_name = '%s' iv_def_entity_set = abap_false )."%e['name'])

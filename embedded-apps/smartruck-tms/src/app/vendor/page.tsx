@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { useTms } from '../../lib/store';
 import TripPanel from '../../components/TripPanel';
-import { Card, Kpi, Modal, PageHead, Pill, StatusPill, Table, Tabs, fmtDT, inr } from '../../components/ui';
+import { Card, Kpi, Modal, PageHead, Pill, StatusPill, Table, Tabs, fmtDT, inr, rateText } from '../../components/ui';
 
 const TABS = ['Indent inbox', 'My trips', 'Invoices'] as const;
 
@@ -35,7 +35,7 @@ export default function VendorPortal() {
       <Tabs tabs={TABS} value={tab} onChange={setTab} counts={{ 'Indent inbox': indents.length }} />
       {tab === 'Indent inbox' && <div className="grid gap-3 md:grid-cols-2">{indents.length === 0 ? <Card><p className="hint">No indents waiting for you.</p></Card> : indents.map((i) => { const o = i.offers.find((x) => x.response === 'Pending')!; return (
         <Card key={i.id} title={`${city(i.fromLocId)} → ${city(i.toLocId)}`} right={<Pill tone="amber">Reply by {fmtDT(o.expiresAt)}</Pill>}>
-          <div className="space-y-1 text-sm"><div><b>{i.vehicleType}</b> · {i.material} {i.qty} MT</div><div>Needed {fmtDT(i.requiredAt)}</div><div>Rate <b>{inr(o.rate)}</b></div></div>
+          <div className="space-y-1 text-sm"><div><b>{i.vehicleType}</b> · {i.material} {i.qty} MT</div><div>Needed {fmtDT(i.requiredAt)}</div><div>Rate <b>{rateText(o)}</b>{o.per === 'KG' ? <span className="hint"> (≈ {inr(o.rate * i.qty * 1000)} on {i.qty} MT)</span> : null}</div></div>
           {vendor && <div className="mt-3 flex gap-2"><button className="btn-success" onClick={() => void respond(i.id, 'accept')}>Accept</button><button className="btn-danger" onClick={() => void respond(i.id, 'reject')}>Reject</button></div>}
         </Card>); })}</div>}
       {tab === 'My trips' && <Card pad={false}><Table rows={trips} rowKey={(s) => s.sin} onRow={(s) => setOpen(s.sin)} empty="No trips yet" cols={[

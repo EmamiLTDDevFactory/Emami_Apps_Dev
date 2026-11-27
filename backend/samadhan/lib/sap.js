@@ -132,7 +132,9 @@ async function deleteRef(ticketId, refId) {
 
 // ---------- reference masters (Admin; typeahead for agents) ----------
 const KINDS = ['SAP_SYSTEM', 'SAP_CLIENT', 'COMPANY_CODE', 'PLANT', 'STORAGE_LOCATION', 'SALES_ORG', 'PURCH_ORG', 'TCODE', 'FIORI_APP', 'SAP_ROLE', 'INTERFACE',
-    'BATCH_JOB', 'SERVER', 'CLOUD_ACCOUNT', 'SITE'];
+    'BATCH_JOB', 'SERVER', 'CLOUD_ACCOUNT', 'SITE',
+    // ITSM support model (7.11): IT assets - laptops, desktops, printers, network devices (asset tag -> model / user).
+    'ASSET'];
 
 async function searchMasters(kind, q, parent) {
     if (!KINDS.includes(kind)) throw fail(400, 'Unknown master.');

@@ -117,6 +117,8 @@ async function runJobs({ force = false } = {}) {
             try { out.approvalReminders = await require('./change').approvalReminders(); } catch (err) { console.error('[samadhan] approval reminders:', err.message); }
             try { out.majorReminders = await require('./problem').majorReminders(); } catch (err) { console.error('[samadhan] major reminders:', err.message); }
             try { out.problemCandidates = await require('./problem').detectCandidates(); } catch (err) { console.error('[samadhan] problem candidates:', err.message); }
+            // ITSM support model (7.11): overdue tickets climb the escalation matrix (hierarchical escalation).
+            try { out.escalations = await require('./itsm').runEscalations(); } catch (err) { if (!['42P01', '42703'].includes(err.code)) console.error('[samadhan] escalations:', err.message); }
             // Bell entries are kept for 30 days.
             try { out.bellPurged = (await pool.query(`DELETE FROM samadhan.notifications WHERE "createdAt" < now() - interval '30 days'`)).rowCount; } catch (err) { console.error('[samadhan] bell purge:', err.message); }
             await client.query(

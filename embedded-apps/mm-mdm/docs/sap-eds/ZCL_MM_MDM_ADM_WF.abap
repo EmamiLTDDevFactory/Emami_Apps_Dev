@@ -715,7 +715,7 @@ CLASS zcl_mm_mdm_adm_wf IMPLEMENTATION.
         rs_cfg-family = 'CONTRACT'.  rs_cfg-gt_label = 'Material Type'.  rs_cfg-gf1_label = 'Origin Group'.  rs_cfg-gf2_label = 'Purch.Organization'.
         rs_cfg-gt_vh = 'MTART'.  rs_cfg-gf2_vh = 'EKORG'.
       ELSEIF lv = 'MVC' OR lv = 'VMX' OR lv1 = 'V'.
-        rs_cfg-family = 'VENDOR'.  rs_cfg-gt_label = 'Account Group'.  rs_cfg-gf1_label = 'Company Code'.  rs_cfg-gf2_label = 'Department'.
+        rs_cfg-family = 'VENDOR'.  rs_cfg-gt_label = 'Account Group'.  rs_cfg-gf1_label = 'Company Code'.  rs_cfg-gf2_label = 'Department'.  rs_cfg-gf2_vh = 'DEPT'.
         rs_cfg-gt_vh = 'KTOKK'.  rs_cfg-gf1_vh = 'BUKRS'.
         rs_cfg-dept_visible = xsdbool( lv = 'VC' OR lv = 'VX' OR lv = 'VE' OR lv = 'MVC' ).
       ELSEIF lv = 'MCC' OR lv = 'MCX' OR lv1 = 'C'.
@@ -735,7 +735,7 @@ CLASS zcl_mm_mdm_adm_wf IMPLEMENTATION.
         rs_cfg-family = 'PIR'.  rs_cfg-gt_label = 'Material type'.  rs_cfg-gf1_label = 'Origin Group'.  rs_cfg-gf2_label = 'Purchase Org.'.
         rs_cfg-gt_vh = 'MTART'.  rs_cfg-gf2_vh = 'EKORG'.  rs_cfg-pir_visible = abap_true.
       ELSEIF lv1 = 'P'.
-        rs_cfg-family = 'PRICING'.  rs_cfg-gt_label = 'Condition Type'.  rs_cfg-gf1_label = 'Department'.  rs_cfg-gf2_visible = abap_false.
+        rs_cfg-family = 'PRICING'.  rs_cfg-gt_label = 'Condition Type'.  rs_cfg-gt_vh = 'KSCHL'.  rs_cfg-gf1_label = 'Department'.  rs_cfg-gf1_vh = 'DEPT'.  rs_cfg-gf2_visible = abap_false.
     ENDIF.
     rs_cfg-wf_id = wf_id( lv ).
   ENDMETHOD.
@@ -2667,6 +2667,12 @@ CLASS zcl_mm_mdm_adm_wf IMPLEMENTATION.
         SELECT vtweg AS key, vtext AS text FROM tvtwt WHERE spras = @sy-langu ORDER BY vtweg INTO CORRESPONDING FIELDS OF TABLE @lt_items.
       WHEN 'EKORG'.
         SELECT ekorg AS key, ekotx AS text FROM t024e ORDER BY ekorg INTO CORRESPONDING FIELDS OF TABLE @lt_items.
+      WHEN 'KSCHL'.
+        "condition types: those already used as key of this application's definitions first, then the pricing condition types of purchasing (M) and sales (V)
+        SELECT DISTINCT gen_type AS key FROM /inowits/wf_def WHERE app_id = @lv_app AND gen_type <> '' INTO CORRESPONDING FIELDS OF TABLE @lt_items.
+        SELECT DISTINCT kschl AS key, vtext AS text FROM t685t WHERE spras = @sy-langu AND kvewe = 'A' AND kappl IN ('M','V') APPENDING CORRESPONDING FIELDS OF TABLE @lt_items.
+        SORT lt_items BY key text DESCENDING.
+        DELETE ADJACENT DUPLICATES FROM lt_items COMPARING key.
       WHEN 'VIEW'.
         IF lv_app IS INITIAL.
           rv_json = fail( iv_text = 'Choose an application first' iv_code = 'APP_ID' ).

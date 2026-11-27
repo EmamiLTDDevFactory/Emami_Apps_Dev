@@ -80,3 +80,31 @@ export function rigidAlerts(o: { calc: RigidCalc; budget: BudgetBreakup | null; 
   }
   return out.sort((a, b) => ({ high: 0, medium: 1, info: 2 }[a.sev] - { high: 0, medium: 1, info: 2 }[b.sev]));
 }
+
+/**
+ * The packing budget build-up applied to the rate SELECTED in this costing (excluding freight), with SAP's own formula (verified on NWP 26.11.2026,
+ * 150010368 @ UN13: 2,787 x 55 % = 1,532.85; x (1 - 2.938 %) = 1,487.81; + 2,787 x 45 % = 1,254.15 -> 2,741.96 per 1,000):
+ *   element base     = rate per price unit x element %          (rate per price unit = rate per piece x price unit)
+ *   element budgeted = element base x (1 + ZBUD % / 100)
+ *   budgeted         = sum of the elements; per piece = budgeted / price unit
+ */
+export interface RateBreakupLine { comp: string; compTxt: string; pct: Decimal; base: Decimal; zbud: Decimal; budgeted: Decimal; flag: string }
+export interface RateBreakup { rate: Decimal; priceUnit: Decimal; lines: RateBreakupLine[]; pctTotal: Decimal; base: Decimal; budgeted: Decimal; budgetedPc: Decimal; change: Decimal; changePct: Decimal | null }
+export function breakupOfRate(h: Pick<PkgItem, 'priceUnit' | 'comps'>, ratePc: Decimal): RateBreakup {
+  const pu = h.priceUnit.gt(0) ? h.priceUnit : new Decimal(1);
+  const rate = ratePc.times(pu);
+  const lines = h.comps.map((c) => {
+    const base = rate.times(c.pctUsed).div(100);
+    return { comp: c.comp, compTxt: c.compTxt, pct: c.pctUsed, base, zbud: c.zbudUsed, budgeted: base.times(new Decimal(1).plus(c.zbudUsed.div(100))), flag: c.flag };
+  });
+  const sum = (f: (l: RateBreakupLine) => Decimal) => lines.reduce((s, l) => s.plus(f(l)), new Decimal(0));
+  const budgeted = sum((l) => l.budgeted);
+  const base = sum((l) => l.base);
+  const change = budgeted.minus(rate);
+  return { rate, priceUnit: pu, lines, pctTotal: sum((l) => l.pct), base, budgeted, budgetedPc: budgeted.div(pu), change, changePct: rate.gt(0) ? change.div(rate).times(100) : null };
+}
+
+/** Budget financial year (April - March) of a day: Nov 2026 -> 2026, Feb 2027 -> 2026. */
+export const budgetYearOf = (day: Date = new Date()): string => String(day.getMonth() >= 3 ? day.getFullYear() : day.getFullYear() - 1);
+/** Only the budget rates of the current budget year (newest validity first); none -> empty. */
+export const currentYearRates = (b: BudgetBreakup, day: Date = new Date()) => b.d.filter((r) => r.gjahr === budgetYearOf(day));

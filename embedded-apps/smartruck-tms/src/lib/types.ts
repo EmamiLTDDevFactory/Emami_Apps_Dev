@@ -10,7 +10,7 @@ export type InvStatus = 'Pending (Logistics)' | 'Pending (Finance)' | 'Approved'
 export type ShipType = 'Primary' | 'Secondary' | 'LTL';
 
 export interface Unit { id: string; code: string; name: string; division: string; city: string }
-export interface Loc { id: string; city: string; state: string; zone: string; lat: number; lon: number; pincode: string }
+export interface Loc { id: string; city: string; state: string; zone: string; lat: number; lon: number; pincode: string; /** SAP route point (TVRAB) */ sapPoint?: string; source?: 'sap' }
 export interface Carrier {
   id: string; name: string; code: string; type: string; shortName: string; paymentTerms: string;
   weightage: number; blocked: boolean; rating: number; fleet: number; lanes: string[]; rejectionPct: number; fulfilledPct: number;
@@ -38,21 +38,29 @@ export interface Shipment {
   pickupAt: string; progress: number; delayH: number; anomaly?: 'Tracking' | 'Speed' | 'Distance'; lr: string; km: number;
   ewayExpiry: string; ewayNo?: string;
   /** Outward tracking (live): trip fields */
-  indentId?: string; deliveries?: Delivery[]; eccShipmentNo?: string; eccCost?: { net: number; tax: number; currency: string; status: string; at: string; source: string };
+  /** Billing documents on the vehicle (replaces Instavans / ZSMART_VEH); instavans = the Instavans vehicle holding it during the parallel run. */
+  invoices?: TripInvoice[]; invoicePlant?: string; sapVehicle?: { ok: boolean; at: string; message: string; target?: string; simulated?: boolean };
+  indentId?: string; freightRate?: { rate: number; per: string; currency: string }; shippingType?: string; deliveries?: Delivery[]; eccShipmentNo?: string; eccCost?: { net: number; tax: number; currency: string; status: string; at: string; source: string };
   loading?: Loading; sealNo?: string; departedAt?: string; arrivedAt?: string; plannedArrival?: string; etaAt?: string; delayFlag?: boolean; events?: TrackEvent[];
   receipt?: Receipt; pod?: { fileId: string; name: string; at: string; by: string }; driverConsent?: { at: string; by: string; version: string }; ulipCheck?: { ok: boolean; simulated: boolean; at: string };
   trackToken?: string; departPhoto?: string; pos?: { lat: number; lon: number; at: string; speed: number; source: string }; material: string; qty: number; customerId: string; log: Activity[]; gpsReason?: string; delayReason?: string;
 }
+export interface TripInvoice { no: string; plant: string; date: string; customer: string; cases: number; value: number; currency: string; grossKg: number; netKg: number; instavans?: { sin: string; vehicle: string } }
 export interface Delivery { no: string; plant?: string; shipTo: string; cartons: number; weightKg: number; volumeM3: number; source: 'sap' | 'manual'; irn?: string; ewbNo?: string; ewbValid?: string }
 export interface Loading { weightKg: number; volumeM3: number; weightPct: number; volumePct: number; effectivePct: number; minPct: number; reason: string; approval: 'NotNeeded' | 'Pending' | 'Approved' | 'Rejected'; approvedBy?: string; at: string; by: string }
 export interface TrackEvent { at: string; source: 'ULIP' | 'Manual' | 'System'; place: string; lat: number; lon: number; note?: string; by?: string }
 export interface Receipt { arrivedAt: string; dispatched: number; cartonsReceived: number; damagedQty: number; shortage: number; unloadingCharge: number; detentionCharge: number; remarks: string; chargesApproval: 'NotNeeded' | 'Pending' | 'Approved' | 'Rejected'; by: string; approvedBy?: string }
-export interface VehicleType { code: string; name: string; maxWeightKg: number; maxVolumeM3: number }
-export interface LaneVendor { carrierId: string; priority: number; rate: number }
-export interface Lane { id: string; fromLocId: string; toLocId: string; distanceKm: number; transitH: number; vendors: LaneVendor[] }
-export interface Offer { carrierId: string; offeredAt: string; expiresAt: string; response: 'Pending' | 'Accepted' | 'Rejected' | 'Timed out' | 'Withdrawn'; reason?: string; respondedAt?: string; rate: number }
+export interface VehicleType { code: string; name: string; maxWeightKg: number; maxVolumeM3: number; /** internal cargo size in cm (for the Loading Optimizer) */ lengthCm?: number; widthCm?: number; heightCm?: number; source?: 'sap' }
+/** One transporter rate on a lane. SAP rows come from freight condition ZB00 (source 'sap'): mode = shippingType (VSART) + sapVehicle (ADD01);
+ *  vehicleType is set only when ADD01 is a truck code, otherwise the rate applies to every vehicle. per = rate unit (KG = per kg gross weight). */
+export interface LaneVendor {
+  carrierId: string; priority: number; rate: number; currency?: string; per?: string; perQty?: number; vehicleType?: string; shippingType?: string;
+  sapVehicle?: string; rateBasis?: string; sdabw?: string; shtyp?: string; route?: string; condTable?: string; condRecord?: string; source?: 'sap';
+}
+export interface Lane { id: string; fromLocId: string; toLocId: string; distanceKm: number; transitH: number; vendors: LaneVendor[]; sapRoutes?: string[]; syncedAt?: string }
+export interface Offer { carrierId: string; offeredAt: string; expiresAt: string; response: 'Pending' | 'Accepted' | 'Rejected' | 'Timed out' | 'Withdrawn'; reason?: string; respondedAt?: string; rate: number; per?: string; currency?: string }
 export interface Indent {
-  id: string; unitId: string; laneId: string; fromLocId: string; toLocId: string; customerId: string; vehicleType: string; vehicles: number; requiredAt: string; deliveries: string[];
+  id: string; unitId: string; laneId: string; fromLocId: string; toLocId: string; customerId: string; vehicleType: string; shippingType?: string; vehicles: number; requiredAt: string; deliveries: string[];
   material: string; qty: number; status: 'Draft' | 'Open' | 'Allocated' | 'Vehicle Assigned' | 'Cancelled'; offers: Offer[]; escalated?: boolean; orderId?: string; sin?: string; createdAt: string; createdBy: string; remarks: string[];
 }
 export interface TmsSettings { offerTimeoutH: number; capacityMinPct: number; invoiceTolerancePct: number; delayMarginH: number; unlinkedAlertH: number; invoiceMailbox: string; consentVersion: string; consentText: string }
@@ -72,6 +80,8 @@ export interface Db {
   invoices: Invoice[]; vouchers: Voucher[]; notes: Note[]; users: AppUser[]; notifications: Notification[]; geofences: Geofence[];
   seq: number;
   vehicleTypes?: VehicleType[]; lanes?: Lane[]; indents?: Indent[]; settings?: Partial<TmsSettings>;
+  /** Texts of SAP codes on lane rates: vehicle / rate method (ADD01) and shipping type (VSART). */
+  sapTexts?: { vehicles: Record<string, string>; shipping: Record<string, string> };
 }
 
 export const ROLE_PERMS: Record<string, { label: string; perms: { key: string; label: string }[] }> = {

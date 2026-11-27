@@ -10,8 +10,8 @@ import { DOMAIN_ICONS, IconChart, IconClock, IconHome, IconLayers, IconMenu, Ico
 const BASE = process.env.NEXT_PUBLIC_BASE_PATH || '';
 
 const ADMIN_LINKS = [
-  { href: '/admin/dashboard', label: 'Dashboard', tcode: 'MDM_DB', Icon: IconChart },
-  { href: '/admin/worklist', label: 'Workflow visibility', tcode: 'UWL', Icon: IconClock },
+  { href: '/admin/dashboard', label: 'Tracking Details', tcode: 'MDM_DB', Icon: IconChart },
+  { href: '/admin/worklist', label: 'Work Inbox', tcode: 'UWL', Icon: IconClock },
   { href: '/admin/workflow', label: 'Workflow maintenance', tcode: 'ROLE_MAIN', Icon: IconLayers },
   { href: '/admin/rules', label: 'Rules maintenance', tcode: 'MDM_CONFIG', Icon: IconTree },
 ];

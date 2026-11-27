@@ -15,14 +15,16 @@ const LISTED = { layer: 'layer', environment: 'environment', platform: 'platform
 const missingTable = (e) => e.code === '42P01' || e.code === '42703';
 
 /** Cleans and validates an IT details body; returns only the keys that were sent. Throws 400 with a readable message. */
-function cleanIt(b = {}) {
+function cleanIt(b = {}, extraHosting = []) {
     const out = {};
     for (const k of TEXT) {
         if (b[k] === undefined) continue;
         out[k] = String(b[k] ?? '').trim().slice(0, LONG[k] ?? 200) || null;
     }
     for (const [k, list] of Object.entries(LISTED)) {
-        if (out[k] && !IT_LISTS[list].includes(out[k])) throw fail(400, `${k === 'os' ? 'Operating system' : k[0].toUpperCase() + k.slice(1)}: one of ${IT_LISTS[list].join(', ')}.`);
+        // Hosting also takes the hyperscalers an Admin keeps in Admin > Support model (7.11).
+        const allowed = k === 'hosting' ? [...IT_LISTS[list], ...extraHosting] : IT_LISTS[list];
+        if (out[k] && !allowed.includes(out[k])) throw fail(400, `${k === 'os' ? 'Operating system' : k[0].toUpperCase() + k.slice(1)}: one of ${allowed.join(', ')}.`);
     }
     if (out.httpStatus && !/^[1-5]\d{2}$/.test(out.httpStatus)) throw fail(400, 'HTTP status: three digits, e.g. 500.');
     if (out.url && !/^https?:\/\//i.test(out.url)) throw fail(400, 'URL: start with http:// or https://');
@@ -43,7 +45,7 @@ async function getIt(ticketId) {
 
 /** Insert or update the IT details of a ticket (only the keys sent change). */
 async function saveIt(ticketId, body) {
-    const data = cleanIt(body);
+    const data = cleanIt(body, await require('./itsm').hostingExtra());
     const keys = Object.keys(data);
     if (!keys.length) return getIt(ticketId);
     const cols = keys.map((k) => `"${k}"`);

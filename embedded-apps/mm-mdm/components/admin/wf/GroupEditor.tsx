@@ -3,12 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AdminApiError } from '@/lib/admin/adminApi';
 import { WfCfg, WfGroup, WfKey, WfMeta, WfMsg, wfApi } from '@/lib/admin/wfApi';
-import { agentSig, emptyGroup, keyText, levelSig, newLevel, recount, snapshot, viewSig, visibleKeyFields } from '@/lib/admin/wfLogic';
+import { agentSig, emptyGroup, keyText, levelSig, newAgent, newLevel, recount, snapshot, viewSig, visibleKeyFields } from '@/lib/admin/wfLogic';
 import { IconCopy, IconPlus, IconRefresh, IconSave, IconTrash, IconUndo } from '../../icons';
 import { ErrorState, LoadingState } from '../../ui';
-import { AgentTable, LevelTable } from './LevelGrid';
+import { AgentTable, LevelTable, SaveBtn } from './LevelGrid';
 import LogPanel from './LogPanel';
-import PreviewPanel, { FlowStrip } from './PreviewPanel';
+import PreviewPanel from './PreviewPanel';
 import ViewsPanel from './ViewsPanel';
 import { ConfirmDialog, MessageBox, OkBox, VhInput } from './parts';
 
@@ -40,6 +40,7 @@ export default function GroupEditor({ target, cfg, meta, onDirty, onSaved, onDel
   const [busy, setBusy] = useState(false);
   const [delErr, setDelErr] = useState<unknown>(null);
   const [stale, setStale] = useState(false);
+  const [agentOpen, setAgentOpen] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
 
   const saved = !isNew;
@@ -119,9 +120,11 @@ export default function GroupEditor({ target, cfg, meta, onDirty, onSaved, onDel
   }
 
   function addLevel() {
-    const l = newLevel(group);
+    const l0 = newLevel(group);
+    const l = { ...l0, agents: [newAgent(l0)] };
     update({ ...group, levels: [...group.levels, l] });
     setScope(l.lvl);
+    setAgentOpen((n) => n + 1);
   }
 
   if (state === 'loading') return <section className="card"><LoadingState text={`Loading ${keyId} from SAP…`} /></section>;
@@ -153,7 +156,6 @@ export default function GroupEditor({ target, cfg, meta, onDirty, onSaved, onDel
         <div className="wf-actions">
           {dirty && <span className="badge badge-warn wf-unsaved" role="status">● Unsaved changes{changes && changes.total > 0 ? `: ${[changes.lv && `${changes.lv} level`, changes.ag && `${changes.ag} agent`, changes.vw && `${changes.vw} view`].filter(Boolean).join(', ')}` : ''}</span>}
           {!isNew && <button type="button" className="btn btn-sm" onClick={() => onCopy(keyOf(group))} disabled={dirty} title={dirty ? 'Save or discard first' : ''}><IconCopy size={14} /> Copy</button>}
-          {!isNew && <button type="button" className="btn btn-sm btn-danger-ghost" onClick={() => setConfirm({ kind: 'delete' })}><IconTrash size={14} /> Delete</button>}
           {!isNew && <button type="button" className="btn btn-sm" onClick={load} disabled={saving}><IconRefresh size={14} /> Reload</button>}
           {dirty && !isNew && <button type="button" className="btn btn-sm" onClick={load} disabled={saving}><IconUndo size={14} /> Discard</button>}
           {isNew && <button type="button" className="btn btn-sm" onClick={onCancelNew} disabled={saving}>Cancel</button>}
@@ -186,17 +188,16 @@ export default function GroupEditor({ target, cfg, meta, onDirty, onSaved, onDel
 
       <div className="wf-mid">
         <LevelTable base={baseGroup} levels={group.levels} cfg={cfg} flagged={flagged} scope={scope} setScope={setScope} pirTypes={meta.pirTypes}
-          onChange={setLevel} onAdd={addLevel} onRemove={(lvl) => setConfirm({ kind: 'level', lvl })} />
-        <AgentTable base={baseGroup} level={group.levels.find((l) => l.lvl === scope)} appId={appId} levelTexts={meta.levelTexts} departments={meta.departments} cfg={cfg} flagged={flagged}
+          onChange={setLevel} onAdd={addLevel} onRemove={(lvl) => setConfirm({ kind: 'level', lvl })} onSave={save} canSave={canSave} saving={saving} />
+        <AgentTable onSave={save} canSave={canSave} saving={saving} openToken={agentOpen} base={baseGroup} level={group.levels.find((l) => l.lvl === scope)} appId={appId} levelTexts={meta.levelTexts} departments={meta.departments} cfg={cfg} flagged={flagged}
           onChange={(nl) => setLevel(group.levels.findIndex((l) => l.lvl === scope), nl)} />
       </div>
-      <section className="card wf-pane wf-right" aria-label="View visibility">
-        <div className="wf-pane-bar"><h2>View Visibility<span className="wf-pane-sub"> · {scope === 'L0' ? 'Initiator L0' : scope}</span></h2></div>
+      <details className="card wf-pane wf-right wf-fold" aria-label="View visibility" open>
+        <summary className="wf-pane-bar"><h2>View Visibility<span className="wf-pane-sub"> · {scope === 'L0' ? 'Initiator L0' : scope}</span></h2><SaveBtn onSave={save} canSave={canSave} saving={saving} /></summary>
         <div className="wf-pane-body"><ViewsPanel base={baseGroup} group={group} cfg={cfg} onChange={update} scope={scope} setScope={setScope} /></div>
-      </section>
+      </details>
 
       <div className="wf-more">
-        <FlowStrip group={group} />
         <div className="wf-more-tabs" role="tablist" aria-label="More">
           <button type="button" role="tab" aria-selected={tab === 'routing'} className={`btn btn-sm ${tab === 'routing' ? 'btn-primary' : ''}`} onClick={() => setTab(tab === 'routing' ? '' : 'routing')}>Routing preview</button>
           {saved && <button type="button" role="tab" aria-selected={tab === 'log'} className={`btn btn-sm ${tab === 'log' ? 'btn-primary' : ''}`} onClick={() => setTab(tab === 'log' ? '' : 'log')}>Change History</button>}

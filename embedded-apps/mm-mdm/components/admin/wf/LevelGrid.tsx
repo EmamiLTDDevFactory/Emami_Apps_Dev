@@ -1,8 +1,16 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import { WfAgent, WfCfg, WfGroup, WfItem, WfLevel } from '@/lib/admin/wfApi';
 import { AREA_LABEL, OPEN_END, agentSig, isCounted, levelSig, newAgent, recount, swapRoles, todayIso } from '@/lib/admin/wfLogic';
-import { IconPlus, IconTrash } from '../../icons';
+import { IconPlus, IconSave, IconTrash } from '../../icons';
+
+export type SaveProps = { onSave?: () => void; canSave?: boolean; saving?: boolean };
+/** Save button of a section: saves the whole combination (SAP stores it as one unit) */
+export function SaveBtn({ onSave, canSave, saving }: SaveProps) {
+  if (!onSave) return null;
+  return <button type="button" className="btn btn-sm btn-primary" onClick={onSave} disabled={!canSave} title="Saves the whole combination"><IconSave size={14} /> {saving ? 'Saving…' : 'Save'}</button>;
+}
 import { VhInput } from './parts';
 
 const RECEIVES: Record<string, { text: string; cls: string }> = {
@@ -12,18 +20,19 @@ const RECEIVES: Record<string, { text: string; cls: string }> = {
 };
 
 /** Level Definition table (one row per level, click to select) */
-export function LevelTable({ base, levels, cfg, flagged, scope, setScope, pirTypes, onChange, onAdd, onRemove }: {
+export function LevelTable({ base, levels, cfg, flagged, scope, setScope, pirTypes, onChange, onAdd, onRemove, onSave, canSave, saving }: SaveProps & {
   base: WfGroup; levels: WfLevel[]; cfg: WfCfg | undefined; flagged: string[]; scope: string; setScope: (s: string) => void; pirTypes: WfItem[];
   onChange: (i: number, l: WfLevel) => void; onAdd: () => void; onRemove: (lvl: string) => void;
 }) {
   return (
-    <section className="card wf-pane" aria-label="Level definition">
-      <div className="wf-pane-bar"><h2>Level Definition</h2>
+    <details className="card wf-pane wf-fold" aria-label="Level definition" open>
+      <summary className="wf-pane-bar"><h2>Level Definition</h2>
         <button type="button" className="btn btn-sm" onClick={onAdd}><IconPlus size={14} /> Add level</button>
-      </div>
+        <SaveBtn onSave={onSave} canSave={canSave} saving={saving} />
+      </summary>
       <div className="wf-pane-body">
         <table className="wf-grid">
-          <thead><tr><th className="wf-c-sel" /><th>Level</th><th>Area</th><th>Type</th><th title="Approvals needed">Min. appr.</th><th>Text</th>{cfg?.pirVisible && <th>PIR</th>}<th>Active</th><th /></tr></thead>
+          <thead><tr><th className="wf-c-sel" /><th>Level</th><th>Area</th><th>Type</th><th title="Approvals needed">Min. appr.</th>{cfg?.pirVisible && <th>PIR</th>}<th>Active</th><th /></tr></thead>
           <tbody>
             <tr className={scope === 'L0' ? 'on' : ''} onClick={() => setScope('L0')}>
               <td className="wf-c-sel"><input type="radio" name="wf-lvl" checked={scope === 'L0'} onChange={() => setScope('L0')} aria-label="Initiator L0" /></td>
@@ -54,7 +63,6 @@ export function LevelTable({ base, levels, cfg, flagged, scope, setScope, pirTyp
                   <td>{level.type === '02'
                     ? <input type="number" min={1} max={99} aria-label={`Approvals needed ${level.lvl}`} value={level.minAppr || ''} onChange={(e) => set({ minAppr: Number(e.target.value) || 0 })} />
                     : <span className="muted">{level.type === '01' ? `all ${counted}` : ''}</span>}</td>
-                  <td><input aria-label={`Text of ${level.lvl}`} value={level.levelText} maxLength={30} placeholder="level text" onChange={(e) => set({ levelText: e.target.value })} /></td>
                   {cfg?.pirVisible && (
                     <td><select aria-label={`PIR type ${level.lvl}`} value={level.pirType} onChange={(e) => set({ pirType: e.target.value })}>
                       <option value="">None</option>{pirTypes.map((p) => <option key={p.key} value={p.key}>{p.key}</option>)}
@@ -70,26 +78,29 @@ export function LevelTable({ base, levels, cfg, flagged, scope, setScope, pirTyp
         </table>
         {levels.some((l) => !l.typeLvl && !l.active) && <p className="alert alert-warn wf-mini-alert">A level without Area / Type is not defined in SAP: choose them to keep its agents and views, otherwise they are removed on save.</p>}
       </div>
-    </section>
+    </details>
   );
 }
 
 /** Agent Assignment of the selected level */
-export function AgentTable({ base, level, appId, levelTexts, departments, cfg, flagged, onChange }: {
-  base: WfGroup; level: WfLevel | undefined; appId: string; levelTexts: WfItem[]; departments: WfItem[]; cfg: WfCfg | undefined; flagged: string[]; onChange: (l: WfLevel) => void;
+export function AgentTable({ onSave, canSave, saving, openToken, base, level, appId, levelTexts, departments, cfg, flagged, onChange }: SaveProps & {
+  openToken?: number; base: WfGroup; level: WfLevel | undefined; appId: string; levelTexts: WfItem[]; departments: WfItem[]; cfg: WfCfg | undefined; flagged: string[]; onChange: (l: WfLevel) => void;
 }) {
   const set = (p: Partial<WfLevel>) => level && onChange(recount({ ...level, ...p }));
   const setAgent = (i: number, p: Partial<WfAgent>) => level && set({ agents: level.agents.map((a, k) => (k === i ? { ...a, ...p, ...(p.isAppr ? { mailId: '' } : {}) } : a)) });
   const counted = level ? level.agents.filter((a) => isCounted(a)).length : 0;
   const verb = level?.typeLvl === 'A' ? 'approve' : 'review';
   const byMail = level?.typeLvl === 'R'; // reviewers are chosen by e-mail id, SAP resolves the SAP user on save
+  const paneRef = useRef<HTMLDetailsElement>(null);
+  useEffect(() => { if (openToken && paneRef.current) paneRef.current.open = true; }, [openToken]);
   const baseSigs = new Set((base.levels.find((l) => l.lvl === level?.lvl)?.agents || []).map(agentSig));
 
   return (
-    <section className="card wf-pane" aria-label="Agent assignment">
-      <div className="wf-pane-bar"><h2>Agent Assignment{level ? <span className="wf-pane-sub"> · {level.lvl} {AREA_LABEL[level.typeLvl] || ''}</span> : ''}</h2>
+    <details ref={paneRef} className="card wf-pane wf-fold" aria-label="Agent assignment" open>
+      <summary className="wf-pane-bar"><h2>Agent Assignment{level ? <span className="wf-pane-sub"> · {level.lvl} {AREA_LABEL[level.typeLvl] || ''}</span> : ''}</h2>
         {level && <button type="button" className="btn btn-sm" onClick={() => set({ agents: [...level.agents, newAgent(level)] })}><IconPlus size={14} /> Add agent</button>}
-      </div>
+        <SaveBtn onSave={onSave} canSave={canSave} saving={saving} />
+      </summary>
       <div className="wf-pane-body">
         {!level && <p className="muted wf-empty-row">The Initiator has no agents. Select a Reviewer or Approver level.</p>}
         {level && (
@@ -156,6 +167,6 @@ export function AgentTable({ base, level, appId, levelTexts, departments, cfg, f
           </>
         )}
       </div>
-    </section>
+    </details>
   );
 }

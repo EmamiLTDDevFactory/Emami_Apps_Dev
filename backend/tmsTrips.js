@@ -34,6 +34,19 @@ function checkFile(f) {
 
 function build(k, outward) {
     const { fail, need, can, inScope, isVendor, str, num, iso, id, log, notify, sees, shipOf, locOf, km, project, completeOrderIfDone, ingestPing } = k;
+    /** SAP key of a trip vehicle in ZTMS_TRIP_* (and in ZINSTA_* after cutover): never the same shape as an Instavans SIN (AVQ.../BLU...). */
+    const sapSinOf = (s) => `TT-${s.sin}`;
+    /** Write the trip vehicle and its invoice list to SAP; failures are kept on the trip (retry from the trip panel), never thrown. */
+    async function pushVehicle(s, deps, now) {
+        const plant = s.invoicePlant || ((s.invoices || [])[0] || {}).plant || ((s.deliveries || []).find((d) => d.plant) || {}).plant || '';
+        if (!plant) { s.sapVehicle = { ok: false, at: iso(now), message: 'No plant known yet (link deliveries or invoices first).' }; return s.sapVehicle; }
+        try {
+            const r = await deps.sap.writeTripVehicle({ sin: sapSinOf(s), shipmentId: s.indentId || s.orderId || '', plant, vehicleNo: s.vehicleNo, exit: !['Accepted', 'Assigned', 'Towards Pickup', 'At Pickup'].includes(s.status),
+                invoices: (s.invoices || []).map((i) => i.no) });
+            s.sapVehicle = { ok: !!r.ok, at: iso(now), message: r.message || '', target: r.target || '', ...(r.simulated ? { simulated: true } : {}) };
+        } catch (e) { s.sapVehicle = { ok: false, at: iso(now), message: e.message || 'SAP is not reachable.' }; }
+        return s.sapVehicle;
+    }
     const ensure = outward.ensure;
     const LIVE = ['Towards Pickup', 'At Pickup', 'In Transit', 'At Delivery'];
 
@@ -99,27 +112,145 @@ function build(k, outward) {
             return { settings: next };
         },
 
-        /** Pull lanes (route, vendor, rate, distance, transit time) from SAP. Lanes whose locations are not in the app's master are reported, not guessed. */
+        /** Pull lanes from SAP: freight condition ZB00 (one row per route x transporter x mode). SAP route end points that are not yet locations are
+            added as locations (coordinates to be filled in Settings); truck codes become vehicle types (capacity from the code, volume unset).
+            Rows without both end points or with an unknown transporter are reported, not guessed. Vendor rows entered by hand are kept. */
         async syncLanes(db, c, u, now, deps) {
             ensure(db); need(u, 'lane.manage', 'sync lanes');
             const rows = await deps.sap.lanes();
             if (rows && rows.simulated) fail('SAP is not connected, so there is nothing to sync.', 503);
-            const by = new Map(), skipped = [];
+            // a gateway still on the old LaneSet model drops condition record, unit and mode: refuse rather than store per-KG rates as trip rates
+            if (rows.length && rows.every((r) => !r.condRecord)) fail('The SAP gateway still serves the old LaneSet model (no condition record, rate unit or mode). Ask Basis to clear the gateway metadata cache for ZTMS_SRV, then sync again.', 503);
+            const ALIAS = { BANGALORE: 'BENGALURU', CALCUTTA: 'KOLKATA', BOMBAY: 'MUMBAI', MADRAS: 'CHENNAI', TRICHUR: 'THRISSUR', PONDICHERR: 'PUDUCHERRY', GURGAON: 'GURUGRAM' };
+            const title = (x) => x.toLowerCase().replace(/\b[a-z]/g, (m) => m.toUpperCase());
+            let locsAdded = 0, vtAdded = 0, carriersAdded = 0;
+            const locFor = (code) => {
+                const k = String(code || '').trim().toUpperCase();
+                if (!k) return null;
+                const city = ALIAS[k] || k;
+                const hit = db.locs.find((l) => l.id.toUpperCase() === k || String(l.sapPoint || '').toUpperCase() === k || String(l.city).toUpperCase() === city);
+                if (hit) return hit.id;
+                const id = k.replace(/[^A-Z0-9]+/g, '-').slice(0, 20);
+                if (!db.locs.some((l) => l.id === id)) { db.locs.push({ id, city: title(k), state: '', zone: '', lat: 0, lon: 0, pincode: '', sapPoint: k, source: 'sap' }); locsAdded++; }
+                return id;
+            };
+            const isTruck = (v) => !!v && !/^(RTP|ABSL)/.test(v);
+            const capKg = (v) => { const m = /(\d+(?:\.\d+)?)\s*(?:MT|T)\b/.exec(v.replace(/-/g, ' ')); return m ? Math.round(Number(m[1]) * 1000) : 0; };
+            const PREF = { A973: 0, A964: 1, A972: 2 };
+            const by = new Map(), skipped = [], texts = { vehicles: {}, shipping: {} };
+            const carByCode = new Map(db.carriers.map((x) => [x.code, x]));
             for (const r of rows) {
-                const car = db.carriers.find((x) => x.code === r.vendor);
-                if (!db.locs.some((l) => l.id === r.fromLoc) || !db.locs.some((l) => l.id === r.toLoc) || !car) { skipped.push(`${r.fromLoc || '?'}-${r.toLoc || '?'} (${r.vendor || 'no vendor'})`); continue; }
-                const key = `${r.fromLoc}|${r.toLoc}`;
-                const e = by.get(key) || { fromLocId: r.fromLoc, toLocId: r.toLoc, distanceKm: r.distanceKm, transitH: r.transitH, vendors: [] };
-                if (!(r.rate > 0)) { skipped.push(`${key} (${r.vendor}: no rate)`); continue; }
-                e.vendors.push({ carrierId: car.id, priority: r.priority || e.vendors.length + 1, rate: r.rate });
+                let car = carByCode.get(r.vendor);
+                // a service agent with a freight rate but outside account group ZTRP (so not in Sync masters) is added from the rate row
+                if (!car && r.vendor && r.vendorName) {
+                    car = { id: `C${String(db.carriers.length + 1).padStart(3, '0')}`, name: r.vendorName, code: r.vendor, type: 'Broker', shortName: r.vendorName.split(' ')[0].toUpperCase(), paymentTerms: 'Net 30', weightage: 0, blocked: false, rating: 4, fleet: 0, lanes: [], rejectionPct: 0, fulfilledPct: 100, source: 'sap-lane' };
+                    db.carriers.push(car); carByCode.set(r.vendor, car); carriersAdded++;
+                }
+                if (!car) { skipped.push(`${r.route || '?'} (${r.vendor || 'no vendor'}: transporter not in SAP vendor master)`); continue; }
+                if (!(r.rate > 0)) { skipped.push(`${r.route || '?'} (${r.vendor}: no rate)`); continue; }
+                const from = locFor(r.fromLoc), to = locFor(r.toLoc);
+                if (!from || !to) { skipped.push(`${r.route || '?'} ${r.routeText || ''} (route has no start/end point in SAP)`.replace(/\s+/g, ' ')); continue; }
+                if (from === to) { skipped.push(`${r.route} ${r.routeText || ''} (local route: start and end are the same point)`.replace(/\s+/g, ' ')); continue; }
+                const vehicleType = isTruck(r.sapVehicle) ? r.sapVehicle : '';
+                if (vehicleType && !db.vehicleTypes.some((v) => v.code === vehicleType) && capKg(vehicleType) > 0) {
+                    db.vehicleTypes.push({ code: vehicleType, name: r.vehicleText || vehicleType, maxWeightKg: capKg(vehicleType), maxVolumeM3: 0, source: 'sap' }); vtAdded++;
+                }
+                const key = `${from}|${to}`;
+                const e = by.get(key) || { fromLocId: from, toLocId: to, distanceKm: r.distanceKm, transitH: r.transitH, sapRoutes: [], rows: new Map() };
+                if (r.route && !e.sapRoutes.includes(r.route)) e.sapRoutes.push(r.route);
+                if (!e.distanceKm && r.distanceKm) e.distanceKm = r.distanceKm;
+                if (!e.transitH && r.transitH) e.transitH = r.transitH;
+                // kept small: the whole document travels to every browser; texts go once into db.sapTexts
+                if (r.sapVehicle && r.vehicleText) texts.vehicles[r.sapVehicle] = r.vehicleText;
+                if (r.shippingType && r.shippingText) texts.shipping[r.shippingType] = r.shippingText;
+                const v = { carrierId: car.id, priority: 0, rate: r.rate, ...(r.currency !== 'INR' ? { currency: r.currency } : {}), per: r.perUnit, ...(r.perQty !== 1 ? { perQty: r.perQty } : {}), ...(vehicleType ? { vehicleType } : {}), sapVehicle: r.sapVehicle,
+                    rateBasis: r.rateBasis, shippingType: r.shippingType, sdabw: r.sdabw, shtyp: r.shtyp, route: r.route, condTable: r.condTable, condRecord: r.condRecord, source: 'sap' };
+                // one rate per transporter and mode; A973 (route + mode) wins over A964 (also needs transit days) and A972 (no shipping type)
+                const mk = [car.id, r.sapVehicle, r.rateBasis, r.shippingType, r.sdabw, r.shtyp].join('|');
+                const cur = e.rows.get(mk);
+                if (!cur || (PREF[v.condTable] ?? 9) < (PREF[cur.condTable] ?? 9) || ((PREF[v.condTable] ?? 9) === (PREF[cur.condTable] ?? 9) && v.rate < cur.rate)) e.rows.set(mk, v);
                 by.set(key, e);
             }
+            db.sapTexts = { vehicles: { ...((db.sapTexts || {}).vehicles || {}), ...texts.vehicles }, shipping: { ...((db.sapTexts || {}).shipping || {}), ...texts.shipping } };
+            let rates = 0;
             for (const e of by.values()) {
                 const lid = `LN-${e.fromLocId}-${e.toLocId}`, i = db.lanes.findIndex((l) => l.id === lid);
-                const row = { id: lid, ...e };
+                const manual = i >= 0 ? (db.lanes[i].vendors || []).filter((v) => v.source !== 'sap') : [];
+                const sapRows = [...e.rows.values()].sort((a, b) => [a.sapVehicle, a.rateBasis, a.shippingType, a.sdabw].join('|').localeCompare([b.sapVehicle, b.rateBasis, b.shippingType, b.sdabw].join('|')) || a.rate - b.rate);
+                let grp = '', n = 0;
+                for (const v of sapRows) { const g = [v.sapVehicle, v.rateBasis, v.shippingType, v.sdabw].join('|'); n = g === grp ? n + 1 : 1; grp = g; v.priority = n; }
+                rates += sapRows.length;
+                const row = { id: lid, fromLocId: e.fromLocId, toLocId: e.toLocId, distanceKm: e.distanceKm, transitH: e.transitH, sapRoutes: e.sapRoutes, vendors: [...manual, ...sapRows], syncedAt: iso(now) };
                 if (i >= 0) db.lanes[i] = row; else db.lanes.push(row);
             }
-            return { lanes: by.size, skipped };
+            return { lanes: by.size, rates, locationsAdded: locsAdded, vehicleTypesAdded: vtAdded, carriersAdded, skippedCount: skipped.length, skipped: [...new Set(skipped)].slice(0, 50) };
+        },
+
+        /* ---------------- Billing invoices on the trip vehicle (replaces Instavans / ZSMART_VEH) ----------------
+           Parallel run: SAP keeps them in ZTMS_TRIP_VEH / ZTMS_TRIP_INV only; the Instavans tables are written by SAP only after the cutover
+           switch (TVARVC ZTMS_INSTA_WRITE). The SAP key is TT-<sin> so it can never clash with an Instavans SIN. No mail is sent. */
+
+        /** Billing documents of the linked deliveries (not saved): what the depot would put on the vehicle. */
+        async findTripInvoices(db, c, u, now, deps) {
+            ensure(db);
+            const s = tripFor(db, u, c.sin);
+            if (isVendor(u)) fail('Invoices are put on the vehicle by the depot.', 403);
+            const dl = (s.deliveries || []).map((d) => d.no);
+            if (!dl.length) fail('Link the deliveries first, or enter the billing numbers.', 409);
+            const r = await deps.sap.tripInvoices({ deliveries: dl });
+            if (r.simulated) fail('SAP is not connected, so billing documents cannot be looked up.', 503);
+            return { rows: r.rows };
+        },
+
+        /** Put the vehicle's complete invoice list on the trip and write it to SAP. The list replaces the previous one (removed ones are flagged in SAP). */
+        async setTripInvoices(db, c, u, now, deps) {
+            ensure(db);
+            const s = tripFor(db, u, c.sin);
+            if (isVendor(u)) fail('Invoices are put on the vehicle by the depot.', 403);
+            if (s.status === 'Cancelled') fail('This trip is cancelled.', 409);
+            if (!s.vehicleNo || s.vehicleNo === '—') fail('Assign the vehicle first.', 409);
+            const nos = [...new Set((Array.isArray(c.invoices) ? c.invoices : []).map((x) => str(x, 12).replace(/^0+/, '')))].filter(Boolean);
+            if (nos.length > 50 || nos.some((x) => !/^\d{6,10}$/.test(x))) fail('Enter up to 50 billing document numbers (digits only).');
+            for (const o of db.shipments) if (o.sin !== s.sin && o.status !== 'Cancelled') for (const i of o.invoices || []) if (nos.includes(i.no)) fail(`Billing document ${i.no} is already on trip ${o.sin} (${o.vehicleNo}).`, 409);
+            const plant = str(c.plant, 4).toUpperCase() || (s.invoices && s.invoices[0] && s.invoices[0].plant) || ((s.deliveries || []).find((d) => d.plant) || {}).plant || '';
+            let rows = [];
+            if (nos.length) {
+                const r = await deps.sap.tripInvoices({ billing: nos, plant });
+                if (r.simulated) fail('SAP is not connected, so billing documents cannot be checked.', 503);
+                for (const no of nos) {
+                    const x = r.rows.find((y) => y.no.replace(/^0+/, '') === no) || fail(`Billing document ${no} was not found in SAP.`, 404);
+                    if (x.message) fail(x.message, 409);
+                    if (x.ttSin && x.ttSin !== sapSinOf(s)) fail(`Billing document ${no} is already on Trip Trail vehicle ${x.ttVehicle} (${x.ttSin}).`, 409);
+                    rows.push({ no, plant: x.plant, date: x.date, customer: x.customerName || x.customer, cases: x.cases, value: x.value, currency: x.currency, grossKg: x.grossKg, netKg: x.netKg,
+                        ...(x.instaSin ? { instavans: { sin: x.instaSin, vehicle: x.instaVehicle } } : {}) });
+                }
+            }
+            const before = (s.invoices || []).map((i) => i.no);
+            s.invoices = rows;
+            s.invoicePlant = rows[0] ? rows[0].plant : plant;
+            log(s, now, u.name, `Invoices on vehicle: ${nos.length ? nos.join(', ') : 'none'}${before.length ? ` (was ${before.join(', ')})` : ''}`);
+            const sap = await pushVehicle(s, deps, now);
+            return { count: rows.length, sap };
+        },
+
+        /** Re-send the trip vehicle to SAP (after SAP was unreachable). */
+        async syncTripVehicle(db, c, u, now, deps) {
+            ensure(db);
+            const s = tripFor(db, u, c.sin);
+            if (isVendor(u)) fail('Only the depot or HO can do this.', 403);
+            if (!s.invoices || (!s.invoices.length && !s.sapVehicle)) fail('There are no invoices on this vehicle.', 409);
+            const sap = await pushVehicle(s, deps, now);
+            if (!sap.ok) fail(`SAP did not take it: ${sap.message}`, 502);
+            return { sap };
+        },
+
+        /** Parallel run report: each billing document on a Trip Trail or Instavans vehicle, side by side (read only). */
+        async parallelCheck(db, c, u, now, deps) {
+            ensure(db);
+            if (isVendor(u) || !(can(u, 'report.view') || can(u, 'indent.create'))) fail('You cannot view this report.', 403);
+            const r = await deps.sap.parallelCheck({ plant: str(c.plant, 4).toUpperCase(), days: Math.min(366, Math.max(1, Number(c.days) || 30)) });
+            if (r.simulated) fail('SAP is not connected.', 503);
+            return { rows: r.rows };
         },
 
         async linkDeliveries(db, c, u, now, deps) {
@@ -178,7 +309,7 @@ function build(k, outward) {
             if (!['Assigned', 'Towards Pickup', 'At Pickup'].includes(s.status)) fail('The loading check applies before departure, once a vehicle is assigned.', 409);
             const vt = db.vehicleTypes.find((v) => v.code === s.vehicleType) || fail(`Vehicle type ${s.vehicleType} has no capacity set; add it under Settings.`, 409);
             const w = s.deliveries.reduce((a, d) => a + d.weightKg, 0), v = s.deliveries.reduce((a, d) => a + d.volumeM3, 0);
-            const wPct = (w / vt.maxWeightKg) * 100, vPct = (v / vt.maxVolumeM3) * 100, eff = Math.max(wPct, vPct);
+            const wPct = (w / vt.maxWeightKg) * 100, vPct = vt.maxVolumeM3 > 0 ? (v / vt.maxVolumeM3) * 100 : 0, eff = Math.max(wPct, vPct); // volume not set (SAP vehicle types): weight only
             const min = db.settings.capacityMinPct, reason = str(c.reason, 300);
             let approval = 'NotNeeded', approvedBy;
             if (eff > 100) {
@@ -245,6 +376,8 @@ function build(k, outward) {
             addEvent(s, { at: iso(at), source: 'System', place: locOf(db, s.fromLocId).city, lat: locOf(db, s.fromLocId).lat, lon: locOf(db, s.fromLocId).lon, note: 'Departed' });
             updateEta(db, s, now);
             log(s, now, u.name, `Departed. LR ${lr}${seal ? `, seal ${seal}` : ''}`);
+            // vehicle left: mark the SAP trip vehicle as exited (best effort; a failure stays on the trip for retry)
+            if (s.invoices && s.invoices.length) await pushVehicle(s, deps, now);
             return { lr, trackToken: s.trackToken, etaAt: s.etaAt };
         },
 
@@ -320,8 +453,11 @@ function build(k, outward) {
             if (db.invoices.some((i) => i.carrierId === s.carrierId && i.invoiceNo === no && i.status !== 'Disapproved')) fail(`Invoice ${no} was already submitted by this vendor.`, 409);
             try { checkFile(c.file); } catch (e) { fail(e.message); }
             const extras = s.receipt && s.receipt.chargesApproval === 'Approved' ? s.receipt.unloadingCharge + s.receipt.detentionCharge : 0;
-            const basis = s.eccCost ? 'ECC shipment cost' : 'Agreed lane rate';
-            const expected = s.eccCost ? s.eccCost.net + (s.eccCost.tax || 0) : s.freight;
+            // per-KG lane rates (SAP ZB00) are priced on the delivered gross weight once deliveries are linked
+            const wKg = (s.deliveries || []).reduce((a, d) => a + (d.weightKg || 0), 0);
+            const perKg = !s.eccCost && s.freightRate && s.freightRate.per === 'KG' && wKg > 0;
+            const basis = s.eccCost ? 'ECC shipment cost' : perKg ? `Lane rate ${s.freightRate.rate}/KG x ${wKg} kg` : 'Agreed lane rate';
+            const expected = s.eccCost ? s.eccCost.net + (s.eccCost.tax || 0) : perKg ? Math.round(s.freightRate.rate * wKg * 100) / 100 : s.freight;
             const allowed = expected + extras;
             const variancePct = Math.round(((amount - allowed) / allowed) * 1000) / 10;
             const tol = db.settings.invoiceTolerancePct;

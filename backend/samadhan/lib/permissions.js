@@ -27,7 +27,9 @@ const CATALOGUE = {
     Contacts: ['contact.edit', 'company.create', 'contact.anonymize'],
     Admin: ['admin.general', 'admin.people', 'admin.groups', 'admin.sla', 'admin.fields', 'admin.statuses', 'admin.templates', 'admin.canned',
         'admin.scenarios', 'admin.masters', 'admin.applications', 'admin.workspaces', 'admin.catalog', 'admin.approvalChains', 'admin.automations',
-        'admin.channels', 'admin.integrations', 'admin.audit', 'admin.parkedMail', 'admin.jobs', 'admin.authorization'],
+        'admin.channels', 'admin.integrations', 'admin.audit', 'admin.parkedMail', 'admin.jobs', 'admin.authorization',
+        // ITSM support model (7.11)
+        'admin.supportModel', 'admin.migration'],
 };
 const ALL_KEYS = Object.values(CATALOGUE).flat();
 const KEY_SET = new Set(ALL_KEYS);

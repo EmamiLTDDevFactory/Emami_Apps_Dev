@@ -923,6 +923,147 @@ const MIGRATIONS = [
             return 'Survey links stay hashed (one-way)';
         },
     },
+    {
+        // ITSM support model (2026-11-26): client / ITSM support vendor / hyperscaler lists (Admin > Support model), the
+        // support vendor on each ticket, a hierarchical escalation matrix (levels climbed once resolution is overdue,
+        // or by hand), the legacy ticket number of tickets moved from the vendor's old tool, more cloud categories for
+        // Infra & IT. Rows inserted into existing tables are recorded in settings 'seed.7.11'; down removes exactly
+        // those, the new tables and the new ticket columns.
+        id: '7.11-itsm',
+        describe: 'ITSM support model: support partners, ticket support vendor / legacy number / escalation level, escalation matrix, cloud categories',
+        async up(client) {
+            const S = ident(activeSchema());
+            const seed = require('../lib/itsmSeed');
+            const m = { choiceIds: [], ruleIds: [], templateAdded: false, sourcesAdded: [], settingsAdded: [] };
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.support_partners (
+                id serial PRIMARY KEY,
+                kind text NOT NULL CHECK (kind IN ('CLIENT', 'ITSM_VENDOR', 'HYPERSCALER')),
+                name text NOT NULL,
+                "shortName" text,
+                active boolean NOT NULL DEFAULT true,
+                "contactName" text, "contactEmail" text, "contactPhone" text,
+                "contractRef" text, "contractStart" date, "contractEnd" date,
+                "slaTargetPct" numeric(5,2) CHECK ("slaTargetPct" IS NULL OR "slaTargetPct" BETWEEN 0 AND 100),
+                notes text,
+                position int NOT NULL DEFAULT 0,
+                "seedKey" text,
+                "createdAt" timestamptz NOT NULL DEFAULT now(),
+                "updatedAt" timestamptz NOT NULL DEFAULT now())`);
+            await q(client, `CREATE UNIQUE INDEX IF NOT EXISTS support_partners_name_uq ON ${S}.support_partners (kind, lower(name))`);
+            for (const [kind, list] of [['CLIENT', seed.CLIENTS], ['ITSM_VENDOR', seed.ITSM_VENDORS], ['HYPERSCALER', seed.HYPERSCALERS]]) {
+                for (const [i, [name, shortName]] of list.entries()) {
+                    await q(client, `INSERT INTO ${S}.support_partners (kind, name, "shortName", position, "seedKey") VALUES ($1, $2, $3, $4, '7.11')
+                                     ON CONFLICT (kind, lower(name)) DO NOTHING`, [kind, name, shortName, i + 1]);
+                }
+            }
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.escalation_contacts (
+                id serial PRIMARY KEY,
+                level int NOT NULL CHECK (level BETWEEN 1 AND 6),
+                party text NOT NULL DEFAULT 'VENDOR' CHECK (party IN ('VENDOR', 'CLIENT')),
+                "workspaceId" int REFERENCES ${S}.workspaces(id) ON DELETE CASCADE,
+                name text NOT NULL,
+                designation text,
+                email text NOT NULL,
+                phone text,
+                "afterHours" numeric(6,2) NOT NULL DEFAULT 0 CHECK ("afterHours" >= 0),
+                priorities int[] NOT NULL DEFAULT '{}',
+                active boolean NOT NULL DEFAULT true,
+                "createdAt" timestamptz NOT NULL DEFAULT now(),
+                "updatedAt" timestamptz NOT NULL DEFAULT now())`);
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.ticket_escalations (
+                id bigserial PRIMARY KEY,
+                "ticketId" int NOT NULL REFERENCES ${S}.tickets(id) ON DELETE CASCADE,
+                level int NOT NULL,
+                manual boolean NOT NULL DEFAULT false,
+                reason text,
+                notified text[] NOT NULL DEFAULT '{}',
+                "byAgentId" int REFERENCES ${S}.agents(id) ON DELETE SET NULL,
+                "createdAt" timestamptz NOT NULL DEFAULT now())`);
+            await q(client, `CREATE INDEX IF NOT EXISTS ticket_escalations_ticket_idx ON ${S}.ticket_escalations ("ticketId", level)`);
+            await q(client, `ALTER TABLE ${S}.tickets
+                ADD COLUMN IF NOT EXISTS "supportPartnerId" int REFERENCES ${S}.support_partners(id) ON DELETE SET NULL,
+                ADD COLUMN IF NOT EXISTS "legacyRef" text,
+                ADD COLUMN IF NOT EXISTS "escalationLevel" int NOT NULL DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS "escalationLevelAt" timestamptz`);
+            await q(client, `CREATE INDEX IF NOT EXISTS tickets_support_partner_idx ON ${S}.tickets ("supportPartnerId")`);
+            await q(client, `CREATE INDEX IF NOT EXISTS tickets_legacy_ref_idx ON ${S}.tickets (lower("legacyRef")) WHERE "legacyRef" IS NOT NULL`);
+
+            // Today's choices: Emami (client), Allied Digital (vendor of Infra & IT and Digital Apps), Azure.
+            const idOf = async (kind, name) => (await q(client, `SELECT id FROM ${S}.support_partners WHERE kind = $1 AND lower(name) = lower($2)`, [kind, name])).rows[0]?.id ?? null;
+            const vendorId = await idOf('ITSM_VENDOR', seed.ITSM_VENDORS[0][0]);
+            const settings = [
+                ['itsm.clientId', await idOf('CLIENT', seed.CLIENTS[0][0])],
+                ['itsm.vendorId', vendorId],
+                ['itsm.hyperscalerId', await idOf('HYPERSCALER', seed.HYPERSCALERS[0][0])],
+                ['itsm.vendorDesks', seed.VENDOR_DESKS],
+                ['itsm.autoEscalate', true],
+            ];
+            for (const [key, value] of settings) {
+                const r = await q(client, `INSERT INTO ${S}.settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING RETURNING key`, [key, JSON.stringify(value)]);
+                m.settingsAdded.push(...r.rows.map((x) => x.key));
+            }
+            // Tickets of the vendor's desks are the vendor's (history included), so its scorecard starts complete.
+            if (vendorId) {
+                await q(client, `UPDATE ${S}.tickets t SET "supportPartnerId" = $1 FROM ${S}.workspaces w
+                                 WHERE w.id = t."workspaceId" AND w.key = ANY($2::text[]) AND t."supportPartnerId" IS NULL`, [vendorId, seed.VENDOR_DESKS]);
+            }
+
+            // Email for an escalation level.
+            const tpl = seed.ESCALATION_TEMPLATE;
+            const tr = await q(client, `INSERT INTO ${S}.email_templates (key, audience, subject, body) VALUES ($1, $2, $3, $4) ON CONFLICT (key) DO NOTHING RETURNING key`,
+                [tpl.key, tpl.audience, tpl.subject, tpl.body]);
+            m.templateAdded = tr.rows.length > 0;
+
+            // Infra & IT: categories for the other hyperscalers, routed like AWS / Azure.
+            const ws = (await q(client, `SELECT id FROM ${S}.workspaces WHERE key = 'INFRA_IT'`)).rows[0]?.id;
+            const field = (await q(client, `SELECT id FROM ${S}.field_definitions WHERE key = 'category'`)).rows[0]?.id;
+            if (ws && field && Number((await q(client, `SELECT count(*) AS n FROM ${S}.field_choices WHERE "fieldId" = $1 AND "workspaceId" = $2`, [field, ws])).rows[0].n) > 0) {
+                let pos = Number((await q(client, `SELECT COALESCE(max(position), 0) AS p FROM ${S}.field_choices WHERE "fieldId" = $1 AND "parentId" IS NULL AND "workspaceId" = $2`, [field, ws])).rows[0].p);
+                const cloudGroup = (await q(client, `SELECT id FROM ${S}.groups WHERE name = 'Cloud Ops (AWS / Azure)'`)).rows[0]?.id;
+                for (const cat of seed.EXTRA_CLOUD_CATEGORIES) {
+                    const exists = await q(client, `SELECT 1 FROM ${S}.field_choices WHERE "fieldId" = $1 AND "parentId" IS NULL AND "workspaceId" = $2 AND lower(value) = lower($3)`, [field, ws, cat]);
+                    if (exists.rows.length) continue;
+                    const pid = (await q(client, `INSERT INTO ${S}.field_choices ("fieldId", "parentId", value, position, "workspaceId", meta) VALUES ($1, NULL, $2, $3, $4, '{}') RETURNING id`, [field, cat, ++pos, ws])).rows[0].id;
+                    m.choiceIds.push(pid);
+                    for (const [j, sub] of seed.CLOUD_SUBS.entries()) {
+                        const c = await q(client, `INSERT INTO ${S}.field_choices ("fieldId", "parentId", value, position, "workspaceId", meta) VALUES ($1, $2, $3, $4, $5, '{}') RETURNING id`, [field, pid, sub, j + 1, ws]);
+                        m.choiceIds.push(c.rows[0].id);
+                    }
+                    if (cloudGroup) {
+                        const r = await q(client, `INSERT INTO ${S}.automation_rules (name, trigger, active, position, conditions, actions, "workspaceId") VALUES ($1, 'ON_CREATE', true, $2, $3, $4, $5)
+                                                  ON CONFLICT (name) DO NOTHING RETURNING id`,
+                        [`Infra: ${cat} to Cloud Ops (AWS / Azure)`, 150 + m.ruleIds.length, JSON.stringify({ all: [{ field: 'groupId', op: 'is_empty' }, { field: 'category', op: 'eq', value: cat }] }),
+                            JSON.stringify([{ type: 'setGroup', value: cloudGroup }]), ws]);
+                        m.ruleIds.push(...r.rows.map((x) => x.id));
+                    }
+                }
+            }
+            // Ticket source for tickets moved from another tool.
+            const cur = (await q(client, `SELECT value FROM ${S}.settings WHERE key = 'sources.extra'`)).rows[0]?.value;
+            const list = Array.isArray(cur) ? cur : [];
+            m.sourcesAdded = ['Migration import'].filter((x) => !list.some((y) => String(y).toLowerCase() === x.toLowerCase()));
+            await q(client, `INSERT INTO ${S}.settings (key, value) VALUES ('sources.extra', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, [JSON.stringify([...list, ...m.sourcesAdded])]);
+            await q(client, `INSERT INTO ${S}.settings (key, value) VALUES ('seed.7.11', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, [JSON.stringify(m)]);
+            return `Support model ready: ${seed.ITSM_VENDORS.length} vendors, ${seed.HYPERSCALERS.length} hyperscalers; ${m.choiceIds.length} cloud choices, ${m.ruleIds.length} routing rules`;
+        },
+        async down(client) {
+            const S = ident(activeSchema());
+            const m = (await q(client, `SELECT value FROM ${S}.settings WHERE key = 'seed.7.11'`)).rows[0]?.value || {};
+            const ids = (k) => m[k] || [];
+            await q(client, `DELETE FROM ${S}.automation_rules WHERE id = ANY($1::int[])`, [ids('ruleIds')]);
+            await q(client, `DELETE FROM ${S}.field_choices WHERE id = ANY($1::int[]) AND "parentId" IS NOT NULL`, [ids('choiceIds')]);
+            await q(client, `DELETE FROM ${S}.field_choices WHERE id = ANY($1::int[])`, [ids('choiceIds')]);
+            if (m.templateAdded) await q(client, `DELETE FROM ${S}.email_templates WHERE key = 'agent.escalation_level'`);
+            const cur = (await q(client, `SELECT value FROM ${S}.settings WHERE key = 'sources.extra'`)).rows[0]?.value;
+            if (Array.isArray(cur)) await q(client, `UPDATE ${S}.settings SET value = $1 WHERE key = 'sources.extra'`, [JSON.stringify(cur.filter((x) => !ids('sourcesAdded').includes(x)))]);
+            await q(client, `DELETE FROM ${S}.settings WHERE key = ANY($1::text[])`, [ids('settingsAdded')]);
+            await q(client, `ALTER TABLE ${S}.tickets DROP COLUMN IF EXISTS "supportPartnerId", DROP COLUMN IF EXISTS "legacyRef",
+                             DROP COLUMN IF EXISTS "escalationLevel", DROP COLUMN IF EXISTS "escalationLevelAt"`);
+            for (const t of ['ticket_escalations', 'escalation_contacts', 'support_partners']) await q(client, `DROP TABLE IF EXISTS ${S}.${t}`);
+            await q(client, `DELETE FROM ${S}.settings WHERE key = 'seed.7.11'`);
+            return 'Support model removed';
+        },
+    },
 ];
 
 async function applied(client, schema) {

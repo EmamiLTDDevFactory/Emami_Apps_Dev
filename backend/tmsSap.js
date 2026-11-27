@@ -26,7 +26,7 @@ const toSapDate = (iso) => `/Date(${Date.parse(`${String(iso).slice(0, 10)}T00:0
 
 function url(path, caller) {
     const { base, client } = config();
-    if (!base) throw new SapError('The SAP connection for SmarTruck TMS is not configured (TMS_SAP_ODATA_BASE).', 503);
+    if (!base) throw new SapError('The SAP connection for Trip Trail is not configured (TMS_SAP_ODATA_BASE).', 503);
     let u = `${base}/${path}`;
     const add = (k, v) => { u += `${u.includes('?') ? '&' : '?'}${k}=${encodeURIComponent(v)}`; };
     if (client) add('sap-client', client);
@@ -73,7 +73,7 @@ const results = (j) => (j && j.d && (j.d.results || (Array.isArray(j.d) ? j.d : 
 
 // ===================================================================================================================== MAPPING
 // Everything below knows the SAP names. Adjust here (and only here) when the contract changes.
-const SET = { vendor: 'VendorSet', customer: 'CustomerSet', poso: 'PoSoCheckSet', invoice: 'FreightInvoiceSet', payment: 'PaymentStatusSet', outDelivery: 'OutDeliverySet', outShipment: 'OutShipmentSet', lane: 'LaneSet' };
+const SET = { vendor: 'VendorSet', customer: 'CustomerSet', poso: 'PoSoCheckSet', invoice: 'FreightInvoiceSet', payment: 'PaymentStatusSet', outDelivery: 'OutDeliverySet', outShipment: 'OutShipmentSet', lane: 'LaneSet', tripInvoice: 'TripInvoiceSet', tripVehicle: 'TripVehicleSet', parallel: 'ParallelCheckSet', freightCond: 'FreightCondSet' };
 
 const map = {
     vendor: (r) => ({ code: str(r.Lifnr), name: str(r.Name1), paymentTerms: str(r.Zterm) ? `Net ${parseInt(str(r.Zterm).replace(/\D/g, ''), 10) || 30}` : '', blocked: isX(r.Sperr) || isX(r.Loevm) }),
@@ -84,7 +84,21 @@ const map = {
     /** Outbound delivery with carton data and e-invoice / e-way bill status (read only). */
     outDelivery: (r) => ({ no: str(r.Vbeln), plant: str(r.Werks), shipTo: str(r.ShipToName) || str(r.Kunnr), cartons: Number(r.Cartons) || 0, weightKg: Number(r.GrossWeightKg) || 0, volumeM3: Number(r.VolumeM3) || 0, pgi: isX(r.Pgi), irn: str(r.Irn), ewbNo: str(r.EwbNo), ewbValid: sapDate(r.EwbValid) }),
     outShipment: (r) => ({ no: str(r.Tknum), type: str(r.Shtyp), serviceAgent: str(r.Tdlnr), deliveries: str(r.Vbelns).split(',').map((x) => x.trim()).filter(Boolean), cost: { net: Number(r.CostNet) || 0, tax: Number(r.CostTax) || 0, currency: str(r.Waers) || 'INR', status: str(r.CostStatus) } }),
-    lane: (r) => ({ fromLoc: str(r.FromLoc), toLoc: str(r.ToLoc), vendor: str(r.Lifnr), rate: Number(r.Rate) || 0, distanceKm: Number(r.Distance) || 0, transitH: Number(r.TransitH) || 0, priority: Number(r.Priority) || 0 }),
+    // ZSMART_VEH replacement: billing document on a trip vehicle (figures as ZSMART_VEH), Trip Trail / Instavans vehicle holding it
+    tripInvoice: (r) => ({ no: str(r.Vbeln), delivery: str(r.Vbelv), plant: str(r.Werks), date: sapDate(r.Fkdat), customer: str(r.Kunnr), customerName: str(r.Name1), cancelled: isX(r.Cancelled),
+        cases: Number(r.Cases) || 0, value: Number(r.Value) || 0, currency: str(r.Waers) || 'INR', grossKg: Number(r.GrossKg) || 0, netKg: Number(r.NetKg) || 0,
+        ttSin: str(r.TtSin), ttVehicle: str(r.TtVehicle), instaSin: str(r.InstaSin), instaVehicle: str(r.InstaVehicle), message: str(r.Message) }),
+    tripVehicleBody: (v) => ({ Sin: v.sin, ShipmentId: v.shipmentId || '', Werks: v.plant, VehicleNo: String(v.vehicleNo || '').toUpperCase().slice(0, 15), Delivery: v.delivery || '', VehExit: v.exit ? 'E' : '',
+        Invoices: (v.invoices || []).join(','), Count: '', Target: '', Ok: '', Message: '' }),
+    parallel: (r) => ({ no: str(r.Vbeln), plant: str(r.Werks), ttSin: str(r.TtSin), ttVehicle: str(r.TtVehicle), ttOn: sapDate(r.TtOn), instaSin: str(r.InstaSin), instaVehicle: str(r.InstaVehicle), instaOn: sapDate(r.InstaOn), status: str(r.Status) }),
+    // Freight condition A964 with the transporter (LFA1: name, region; ADR6: default e-mail) and the route text (CDS ZI_TMS_A964_VENDOR)
+    freightCond: (r) => ({ condRecord: str(r.Knumh), application: str(r.Kappl), condType: str(r.Kschl), shipmentType: str(r.Shtyp), route: str(r.Route), routeText: str(r.RouteText),
+        add01: str(r.Add01), add02: str(r.Add02), specialProcessing: str(r.Sdabw), vendor: str(r.Tdlnr), vendorName: str(r.VendorName), vendorRegion: str(r.VendorRegion),
+        vendorAddressNo: str(r.AddressNumber), vendorEmail: str(r.VendorEmail), transitDays: str(r.Zdays), shippingType: str(r.Vsart), validFrom: sapDate(r.Datab), validTo: sapDate(r.Datbi) }),
+    // ZB00 freight condition record (CDS ZI_TMS_LANERATE): lane = SAP route, mode = shipping type (Vsart) + ADD01 (vehicle type or rate method).
+    lane: (r) => ({ fromLoc: str(r.FromLoc), toLoc: str(r.ToLoc), vendor: str(r.Lifnr), vendorName: str(r.VendorName), rate: Number(r.Rate) || 0, distanceKm: Number(r.Distance) || 0, transitH: Number(r.TransitH) || 0, priority: Number(r.Priority) || 0,
+        route: str(r.Route), routeText: str(r.RouteText), sapVehicle: str(r.VehicleType), vehicleText: str(r.VehicleText), rateBasis: str(r.RateBasis), shippingType: str(r.Vsart), shippingText: str(r.VsartText),
+        sdabw: str(r.Sdabw), shtyp: str(r.Shtyp), zdays: str(r.ZDays), currency: str(r.Waers) || 'INR', perQty: Number(r.PerQty) || 1, perUnit: str(r.PerUnit), condTable: str(r.CondTable), condRecord: str(r.Knumh), validTo: sapDate(r.ValidTo) }),
     payment: (r) => ({ doc: str(r.Belnr), cleared: isX(r.Cleared) || !!str(r.Augbl), clearingDoc: str(r.Augbl), clearedOn: sapDate(r.Augdt) }),
 };
 
@@ -140,6 +154,42 @@ const service = {
     async lanes(caller) {
         if (!isConfigured()) return { simulated: true };
         return results(await request(caller, 'GET', SET.lane)).map(map.lane);
+    },
+    /** Billing documents by number and/or by outbound delivery, optionally for one plant -> { simulated, rows[] }. */
+    async tripInvoices(q, caller) {
+        if (!isConfigured()) return { simulated: true, rows: [] };
+        const rows = [], plant = q.plant ? ` and Werks eq ${enc(q.plant)}` : '';
+        for (const [prop, list] of [['Vbeln', q.billing || []], ['Vbelv', q.deliveries || []]]) {
+            for (let i = 0; i < list.length; i += 20) {
+                const f = `(${list.slice(i, i + 20).map((n) => `${prop} eq ${enc(n)}`).join(' or ')})${plant}`;
+                rows.push(...results(await request(caller, 'GET', `${SET.tripInvoice}?$filter=${encodeURIComponent(f)}`)).map(map.tripInvoice));
+            }
+        }
+        const seen = new Set();
+        return { simulated: false, rows: rows.filter((r) => r.no && !seen.has(r.no) && seen.add(r.no)) };
+    },
+    /** Trip vehicle + its COMPLETE invoice list into ZTMS_TRIP_VEH / ZTMS_TRIP_INV (Instavans tables only after the SAP cutover switch). */
+    async writeTripVehicle(v, caller) {
+        if (!isConfigured()) return { ok: true, simulated: true, target: 'SIMULATED', message: 'SAP not connected - not written.' };
+        const d = (((await request(caller, 'POST', SET.tripVehicle, map.tripVehicleBody(v))) || {}).d) || {};
+        return { ok: isX(d.Ok), target: str(d.Target), count: Number(d.Count) || 0, message: str(d.Message) };
+    },
+    /** Parallel run with Instavans: invoices on either side in the last `days` days. */
+    async parallelCheck(q, caller) {
+        if (!isConfigured()) return { simulated: true, rows: [] };
+        const f = [q.plant && `Werks eq ${enc(q.plant)}`, `Days eq ${enc(String(q.days || 30))}`].filter(Boolean).join(' and ');
+        return { simulated: false, rows: results(await request(caller, 'GET', `${SET.parallel}?$filter=${encodeURIComponent(f)}`)).map(map.parallel) };
+    },
+    /** A964 freight conditions with transporter and route text. q: route, vendor, condType, shippingType, shipmentType, add01 (each one value or an array), top (default 500, max 5000), skip.
+        SAP needs at least one filter or a top; here a top is always sent, so a bare call returns the first 500 rows. -> { simulated, rows[] } */
+    async freightConditions(q = {}, caller) {
+        if (!isConfigured()) return { simulated: true, rows: [] };
+        const one = (v) => (Array.isArray(v) ? v : v ? [v] : []);
+        const f = [['Route', q.route], ['Tdlnr', q.vendor], ['Kschl', q.condType], ['Vsart', q.shippingType], ['Shtyp', q.shipmentType], ['Add01', q.add01]]
+            .map(([prop, v]) => { const l = one(v); return l.length === 1 ? `${prop} eq ${enc(l[0])}` : l.length > 1 ? `(${l.map((x) => `${prop} eq ${enc(x)}`).join(' or ')})` : ''; }).filter(Boolean).join(' and ');
+        const top = Math.min(5000, Math.max(1, Number(q.top) || 500)), skip = Math.max(0, Number(q.skip) || 0);
+        const url = `${SET.freightCond}?${f ? `$filter=${encodeURIComponent(f)}&` : ''}$top=${top}${skip ? `&$skip=${skip}` : ''}`;
+        return { simulated: false, rows: results(await request(caller, 'GET', url)).map(map.freightCond).filter((r) => r.condRecord) };
     },
     /** docs[] -> { [doc]: { cleared, clearingDoc } } */
     async paymentStatus(docs, caller) {

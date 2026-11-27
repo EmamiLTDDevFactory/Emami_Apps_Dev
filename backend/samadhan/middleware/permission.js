@@ -68,6 +68,12 @@ const RULES = [
     ['GET', '/admin/integrations', 'admin.integrations'], ['PUT', '/admin/integrations/:key', 'admin.integrations'], ['POST', '/admin/integrations/:key/rotate', 'admin.integrations'],
     ['POST', '/admin/integrations/monitoring/sources', 'admin.integrations'], ['POST', '/admin/integrations/monitoring/sources/:sid/rotate', 'admin.integrations'],
     ['POST', '/admin/integrations/solman/import', 'admin.integrations'], ['GET', '/analytics/desks', 'screen.analytics'],
+    // itsm.js (ITSM support model, migration 7.11)
+    ['GET', '/admin/support-model', 'admin.supportModel'], ['PUT', '/admin/support-model', 'admin.supportModel'], ['POST', '/admin/support-partners', 'admin.supportModel'],
+    ['POST', '/admin/escalation-contacts', 'admin.supportModel'], ['DELETE', '/admin/escalation-contacts/:cid', 'admin.supportModel'],
+    ['GET', '/tickets/:id/escalations', 'ticket.view'], ['POST', '/tickets/:id/escalate', 'ticket.edit'], ['PUT', '/tickets/:id/support-vendor', 'ticket.edit'],
+    ['GET', '/analytics/vendors', 'screen.analytics'],
+    ['GET', '/admin/migration/:kind/template', 'admin.migration'], ['POST', '/admin/migration/:kind/import', 'admin.migration'],
     // program.js (v7 Phase 8)
     ['GET', '/tickets/:id/program', 'ticket.view'], ['PUT', '/tickets/:id/program', 'ticket.edit'], ['GET', '/program/overview', 'screen.dashboard'],
     ['GET', '/duplicates', 'ticket.create'], ['GET', '/service-health', 'screen.dashboard'],
