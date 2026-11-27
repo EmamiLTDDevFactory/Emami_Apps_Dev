@@ -8,6 +8,7 @@ import type { Counts, Meta, SavedView, TicketRow } from '@/lib/types';
 import { RECORD_CLASS_LABEL, availableApps, fieldsFor, multiDesk, refOf, statusesFor, workspaceByKey } from '@/lib/workspaces';
 import { ActivityLine, PriorityPill, SeverityPill, SlaBadge, StatusPill } from './badges';
 import { Button, Card, Empty, Field, Modal, MultiSelect, Notice, Select, Skeleton, cx, inputCls } from './ui';
+import { ItsmBanner } from './Itsm';
 
 // Quick tabs; every other built-in view (and saved views) is in the "More views" menu.
 const QUICK: { id: string; label: string }[] = [
@@ -158,6 +159,7 @@ export default function Tickets({ preset }: { preset: TicketQuery }) {
 
   return (
     <div className="space-y-3">
+      <ItsmBanner practice={['incident', 'request', 'problem', 'change']}>Every ticket is an incident, service request, problem or change (record class) and follows its ITSM lifecycle.</ItsmBanner>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex max-w-full flex-wrap items-center gap-1.5">
           <div role="tablist" aria-label="Views" className="inline-flex max-w-full gap-1 overflow-x-auto rounded-xl bg-sunken p-1 ring-1 ring-inset ring-line">

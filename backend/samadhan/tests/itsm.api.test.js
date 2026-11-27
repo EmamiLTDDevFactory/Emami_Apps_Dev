@@ -209,6 +209,59 @@ const ticket = (who, body) => call(who, 'POST', '/tickets', { requesterName: 'Of
     r = await call(ADMIN, 'PUT', '/admin/support-model', { vendorId: allied.id, vendorDesks: ['INFRA_IT', 'DIGITAL_APPS'], autoEscalate: true });
     check(r.status === 200 && r.body.moved === 0, 'back to Allied Digital without moving tickets');
 
+    // ---- configuration management (CMDB, 7.12) ----
+    r = await call(A1, 'GET', '/cmdb');
+    check(r.status === 200 && r.body.ready && r.body.items.some((c) => c.code === 'APP-EUC' && c.ciClass === 'Application / Service') && r.body.lists.statuses.includes('Disposed'), 'CMDB starts with one service CI per application', { n: r.body.items?.length });
+    r = await call(A1, 'POST', '/cmdb', { code: 'IND-KOL-L-9001', name: 'Test laptop' });
+    check(r.status === 403, 'agents cannot change the CMDB');
+    r = await call(SUP, 'POST', '/cmdb', { code: 'IND-KOL-L-9001', name: 'Dell Latitude 5440', ciClass: 'laptop', status: 'In stock', siteLocation: 'Kolkata HO', serialNo: 'SN-9001', warrantyEnd: '2026-12-15', supportPartnerId: allied.id, hostingPartnerId: it.hyperscalerId });
+    check(r.status === 200 && r.body.id, 'Supervisor adds a CI (class matched case-insensitively, vendor + hyperscaler hosting)', r.body);
+    const laptop = r.body.id;
+    r = await call(SUP, 'POST', '/cmdb', { code: 'ind-kol-l-9001', name: 'dup' });
+    check(r.status === 400, 'CI codes are unique (case-insensitive)');
+    r = await call(SUP, 'POST', '/cmdb', { code: 'bad code!', name: 'x' });
+    check(r.status === 400, 'CI code format checked');
+    r = await call(SUP, 'POST', '/cmdb', { code: 'EM-SRV-BW01', name: 'BW application server', ciClass: 'Virtual machine', criticality: 'Critical', hostingPartnerId: it.hyperscalerId, environment: 'Production' });
+    const server = r.body.id;
+    r = await call(SUP, 'POST', '/cmdb', { id: laptop, status: 'In use', assignedName: 'Ravi Kumar', assignedEmail: 'ravi.kumar@emamigroup.com' });
+    check(r.status === 200, 'allocate the laptop (status In use, user)');
+    r = await call(SUP, 'POST', `/cmdb/${laptop}/relations`, { toId: server, kind: 'connected to' });
+    check(r.status === 200, 'relationship saved');
+    r = await call(SUP, 'POST', `/cmdb/${laptop}/relations`, { toId: laptop, kind: 'Uses' });
+    check(r.status === 400, 'a CI cannot relate to itself');
+    r = await call(SUP, 'POST', `/cmdb/${laptop}/verify`, {});
+    check(r.status === 200, 'verified (audit)');
+    r = await call(A1, 'GET', `/cmdb/${laptop}`);
+    check(r.status === 200 && r.body.ci.status === 'In use' && r.body.ci.supportPartnerName === 'Allied Digital Services' && r.body.ci.hostingPartnerName === 'Microsoft Azure' && r.body.ci.lastVerifiedAt, 'CI detail: lifecycle, vendor, hosting, verified', r.body.ci);
+    check(r.body.history.some((h) => h.action === 'status_changed' && h.details.status?.from === 'In stock' && h.details.status?.to === 'In use') && r.body.history.some((h) => h.action === 'verified'), 'status accounting in the history');
+    check(r.body.relations.some((x) => x.kind === 'Connected to' && x.code === 'EM-SRV-BW01'), 'relationship listed');
+    r = await call(A1, 'GET', '/cmdb?flag=warranty');
+    check(r.body.items.some((c) => c.id === laptop) && r.body.summary.warrantyEnding >= 1, 'warranty ending within 60 days is flagged');
+    r = await call(A1, 'GET', '/cmdb/search?q=9001');
+    check(r.body.items.some((c) => c.id === laptop), 'CI typeahead');
+    // Ticket <-> CI: the asset tag in the IT details is suggested; linking is in the ticket activity and the CI history.
+    await call(A1, 'PUT', `/tickets/${t1.id}/it`, { assetTag: 'IND-KOL-L-9001' });
+    r = await call(A1, 'GET', `/tickets/${t1.id}/cis`);
+    check(r.body.suggestions.some((c) => c.id === laptop), 'CI suggested from the asset tag', r.body);
+    r = await call(A1, 'POST', `/tickets/${t1.id}/cis`, { ciId: laptop });
+    check(r.status === 200, 'agent links the CI to the ticket');
+    r = await call(A1, 'GET', `/tickets/${t1.id}/cis`);
+    check(r.body.linked.some((c) => c.id === laptop) && !r.body.suggestions.some((c) => c.id === laptop), 'linked CI no longer suggested');
+    r = await call(A1, 'GET', `/cmdb/${laptop}`);
+    check(r.body.tickets.some((x) => x.id === t1.id), 'CI shows its tickets');
+    r = await call(SUP, 'POST', '/cmdb/import', { dryRun: true, rows: [{ code: 'IND-PNE-D-0101', name: 'HP ProDesk', ciClass: 'Desktop' }, { code: 'IND-KOL-L-9001', name: 'Dell Latitude 5440', status: 'In repair' }, { code: 'X', name: '' }, { code: 'IND-PNE-P-0001', name: 'Printer', status: 'Lost' }] });
+    check(r.status === 200 && r.body.added === 1 && r.body.updated === 1 && r.body.errors.length === 2, 'CMDB import dry run: 1 new, 1 update, 2 errors', r.body);
+    r = await call(SUP, 'POST', '/cmdb/import', { dryRun: false, rows: [{ code: 'IND-PNE-D-0101', name: 'HP ProDesk', ciClass: 'Desktop' }, { code: 'IND-KOL-L-9001', name: 'Dell Latitude 5440', status: 'In repair' }] });
+    check(r.status === 200 && r.body.added === 1 && r.body.updated === 1, 'CMDB import saves');
+    r = await call(A1, 'GET', `/cmdb/${laptop}`);
+    check(r.body.ci.status === 'In repair', 'import updated the lifecycle status');
+    r = await call(A1, 'DELETE', `/tickets/${t1.id}/cis/${laptop}`);
+    check(r.status === 200, 'unlink a CI');
+
+    // ---- ITSM overview ----
+    r = await call(A1, 'GET', '/itsm/overview');
+    check(r.status === 200 && r.body.tickets.incidents >= 1 && r.body.cis.total >= 3 && r.body.supplier.vendors >= 22 && typeof r.body.kb.published === 'number', 'ITSM overview: live numbers per practice', r.body);
+
     await call(ADMIN, 'PUT', '/admin/workspaces/flag', { enabled: false });
     await db.end();
     console.log(fails ? `\n${fails} FAILED` : '\nALL PASSED');

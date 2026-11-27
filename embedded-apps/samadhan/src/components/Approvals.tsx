@@ -7,6 +7,7 @@ import { fmtDateTime, relative } from '@/lib/format';
 import type { MyApproval } from '@/lib/types';
 import { PriorityPill } from './badges';
 import { Button, Card, Notice, Skeleton, cx, textareaCls } from './ui';
+import { ItsmTag } from './Itsm';
 
 /** v7 Phase 6 (§N 6 "My approvals"): every step waiting for me, decided in one place. */
 export default function Approvals() {
@@ -20,7 +21,7 @@ export default function Approvals() {
     <div className="space-y-4" data-testid="my-approvals">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h2 className="text-xl font-extrabold tracking-tight">My approvals</h2>
+          <h2 className="flex flex-wrap items-center gap-2 text-xl font-extrabold tracking-tight">My approvals <ItsmTag practice={['change', 'request', 'workflow']} /></h2>
           <p className="text-sm text-muted">Access requests, changes and transports waiting for your decision. You never see requests you raised or are implementing.</p>
         </div>
         <Button onClick={load} aria-label="Refresh"><RefreshCw size={14} /></Button>

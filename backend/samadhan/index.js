@@ -67,6 +67,8 @@ router.use(require('./routes/integrations').router);
 router.use(require('./routes/analyticsDesks'));
 // ITSM support model (7.11): Admin > Support model, ticket support vendor / escalations, vendor scorecard, ticket migration.
 router.use(require('./routes/itsm'));
+// Configuration management (CMDB, 7.12) and the ITSM overview.
+router.use(require('./routes/cmdb'));
 
 // ---------- Transport route ----------
 // The dev web server forwards only one older route name to this backend until its own /api/samadhan block is added

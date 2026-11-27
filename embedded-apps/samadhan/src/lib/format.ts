@@ -75,6 +75,8 @@ export const ACTION_LABEL: Record<string, string> = {
   // ITSM support model (7.11)
   escalated: 'Escalated',
   migrated: 'Moved from the old tool',
+  ci_linked: 'Configuration item linked',
+  ci_unlinked: 'Configuration item unlinked',
   automation: 'Automation',
   email_sent: 'Email sent',
   message: 'Message',

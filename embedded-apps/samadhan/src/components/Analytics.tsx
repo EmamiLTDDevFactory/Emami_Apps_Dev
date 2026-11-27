@@ -13,6 +13,7 @@ import type { DeskAnalytics } from '@/lib/types';
 import { BarList, type BarRow } from './charts';
 import { Button, Card, cx, Empty, Kpi, Notice, Pill, Select, Skeleton, Tabs } from './ui';
 import { VendorScorecard } from './Itsm';
+import { ItsmTag } from './Itsm';
 
 type Tab = 'overview' | 'volume' | 'agents' | 'territory' | 'apps' | 'desks' | 'vendors' | 'csat' | 'calls';
 const TABS: { id: Tab; label: string }[] = [
@@ -91,7 +92,7 @@ function AnalyticsScreen() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h2 className="text-xl font-extrabold tracking-tight">Analytics</h2>
+          <h2 className="flex flex-wrap items-center gap-2 text-xl font-extrabold tracking-tight">Analytics <ItsmTag practice={['slm', 'reporting']} /></h2>
           <p className="text-sm text-muted">Team performance, volume, territory, satisfaction and calls. Times are business hours.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

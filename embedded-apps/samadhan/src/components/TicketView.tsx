@@ -22,7 +22,7 @@ import { ItCard } from './ItDetails';
 import { ApprovalsCard, ChangeCard, TransportsCard } from './Change';
 import { DeclareMajorButton, MajorIncidentBanner, PirCard, ProblemCard } from './Problem';
 import { ProgramCard } from './Program';
-import { IncidentLifecycle, SupportCard } from './Itsm';
+import { CiCard, IncidentLifecycle, ItsmTag, SupportCard, ticketPractice } from './Itsm';
 import { sizeOf } from '@/lib/files';
 
 /**
@@ -141,6 +141,7 @@ function TicketScreen({ data, reload }: { data: TicketDetail; reload: () => Prom
           <TicketAssist ticket={t} reload={reload} />
           <Properties ticket={t} reload={reload} />
           <SupportCard ticket={t} reload={reload} />
+          <CiCard ticketId={t.id} />
           {showSap && <SapCard ticketId={t.id} sap={data.sap} reload={reload} />}
           {showProgram && <ProgramCard ticketId={t.id} program={data.program} isDefect={t.recordClass === 'DEFECT'} reload={reload} />}
           {showPir && <PirCard ticket={t} pir={data.pir} reload={reload} />}
@@ -588,7 +589,7 @@ function Properties({ ticket: t, reload }: Props & { reload: () => Promise<void>
   const fromMatrix = matrixPriority(meta, wsId, Number(form.impact) || null, Number(form.urgency) || null);
   const hasApps = (meta.applications?.length ?? 0) > 0;
   return (
-    <Card title="Properties" sub={matrix ? 'Priority follows Impact × Urgency' : 'Severity and priority follow Category → Function'} actions={changed.length > 0 && <Pill tone="warn">{changed.length} unsaved</Pill>}>
+    <Card title={<span className="inline-flex flex-wrap items-center gap-1.5">Properties <ItsmTag practice={ticketPractice(t.recordClass)} /></span>} sub={matrix ? 'Priority follows Impact × Urgency' : 'Severity and priority follow Category → Function'} actions={changed.length > 0 && <Pill tone="warn">{changed.length} unsaved</Pill>}>
       <div className="space-y-3">
         {hasApps && (
           <div className="grid grid-cols-2 gap-3">

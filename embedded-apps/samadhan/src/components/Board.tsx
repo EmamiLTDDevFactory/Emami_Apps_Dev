@@ -8,6 +8,7 @@ import { SEVERITY_EDGE } from '@/lib/format';
 import type { TicketRow } from '@/lib/types';
 import { PriorityPill, SlaBadge } from './badges';
 import { Button, Notice, Select, Skeleton, cx } from './ui';
+import { ItsmTag } from './Itsm';
 
 export default function Board() {
   const { meta, openTicket, workspace } = useSamadhan();
@@ -61,7 +62,7 @@ export default function Board() {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-xl font-extrabold tracking-tight">Board</h2>
+          <h2 className="flex flex-wrap items-center gap-2 text-xl font-extrabold tracking-tight">Board <ItsmTag practice={'workflow'} /></h2>
           <p className="text-sm text-muted">Drag a card to change its status, or use the card menu. Closed tickets are not shown.</p>
         </div>
         <div className="flex items-center gap-2">

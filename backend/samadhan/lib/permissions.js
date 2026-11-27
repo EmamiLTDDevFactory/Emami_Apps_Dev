@@ -23,6 +23,8 @@ const CATALOGUE = {
     Attachments: ['attachment.upload', 'attachment.download', 'attachment.delete'],
     'Change / SAP': ['transport.manage', 'externalRef.manage', 'approval.decide', 'approval.override', 'change.schedule', 'change.freezeOverride', 'problem.manage'],
     'Knowledge / content': ['article.edit', 'article.publish', 'canned.personal', 'canned.shared.manage', 'scenario.run', 'views.share', 'report.variants.share'],
+    // Configuration management (CMDB, 7.12): add / change configuration items, relationships, verification, import.
+    Configuration: ['cmdb.manage'],
     Insights: ['insights.dashboard', 'insights.ticket', 'insights.ai', 'insights.refresh'],
     Contacts: ['contact.edit', 'company.create', 'contact.anonymize'],
     Admin: ['admin.general', 'admin.people', 'admin.groups', 'admin.sla', 'admin.fields', 'admin.statuses', 'admin.templates', 'admin.canned',
@@ -56,6 +58,7 @@ const SUPERVISOR = [...AGENT,
     'attachment.delete',
     'article.edit', 'article.publish', 'views.share', 'report.variants.share',
     'insights.refresh', 'company.create',
+    'cmdb.manage',
 ];
 const SYSTEM_PROFILES = {
     AGENT: { code: 'AGENT', name: 'Agent (system)', baseRole: 'Agent', keys: AGENT },

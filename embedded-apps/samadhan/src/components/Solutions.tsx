@@ -6,6 +6,7 @@ import { useSamadhan } from '@/lib/context';
 import { fmtDateTime, fmtNum, relative } from '@/lib/format';
 import type { Article, ArticleRow, ArticleStatus } from '@/lib/types';
 import { Button, Card, Drawer, Empty, Field, Modal, Notice, Pill, Select, Skeleton, Spinner, cx, inputCls, textareaCls } from './ui';
+import { ItsmBanner } from './Itsm';
 
 const errText = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
 
@@ -127,6 +128,7 @@ export default function Solutions() {
 
   return (
     <div className="space-y-3">
+      <ItsmBanner practice="knowledge">Solution articles and known errors - write down the fix once, so the next person solves it in minutes.</ItsmBanner>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="relative min-w-0 flex-1 sm:max-w-sm">
           <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />

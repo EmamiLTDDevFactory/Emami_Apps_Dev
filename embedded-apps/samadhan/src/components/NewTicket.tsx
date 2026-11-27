@@ -15,6 +15,7 @@ import { Button, Card, Field, Notice, Spinner, cx, inputBase, inputCls, textarea
 import { FileTray, uploadPending, usePendingFiles } from './Attachments';
 import ApplicationPicker from './ApplicationPicker';
 import { appById, availableApps, groupsFor, matrixPriority, refOf, statusesFor, usesImpactUrgency, workspaceById } from '@/lib/workspaces';
+import { ItsmTag } from './Itsm';
 
 const EMAIL_RE = /^[^\s@']+@[^\s@']+\.[^\s@']+$/;
 const EMPTY_TOP = { requesterName: '', requesterEmail: '', requesterPhone: '', subject: '', description: '', source: 'Phone', statusId: '2', groupId: '', agentId: '', priority: '', tags: '' };
@@ -174,7 +175,7 @@ export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-xl font-extrabold tracking-tight">{parentId ? `New child ticket of #${parentId}` : 'New ticket'}</h2>
+        <h2 className="flex flex-wrap items-center gap-2 text-xl font-extrabold tracking-tight">{parentId ? `New child ticket of #${parentId}` : 'New ticket'} <ItsmTag practice={['incident', 'request']} /></h2>
         <p className="text-sm text-muted">Log a ticket on a requester&apos;s behalf (call, walk-in, message). Their email is needed: replies and updates go there. Email, portal and WhatsApp tickets arrive on their own.</p>
       </div>
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">

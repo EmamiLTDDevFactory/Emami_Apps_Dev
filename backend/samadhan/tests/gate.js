@@ -290,8 +290,8 @@ async function e2e() {
         // v7 Phase 3: 7.2-workspaces down and up again on a new database (seeds + backfill re-run), then the suite.
         freshDb('samadhan_test'); await startBackend('samadhan_test'); await stopBackend();
         // Newest first: 7.6 / 7.9 tables reference the workspaces and applications.
-        migrate('samadhan_test', 'down', '7.11-itsm'); migrate('samadhan_test', 'down', '7.9-integrations'); migrate('samadhan_test', 'down', '7.6-change'); migrate('samadhan_test', 'down', '7.3-generic'); migrate('samadhan_test', 'down', '7.2-workspaces');
-        migrate('samadhan_test', 'up', '7.2-workspaces'); migrate('samadhan_test', 'up', '7.3-generic'); migrate('samadhan_test', 'up', '7.6-change'); migrate('samadhan_test', 'up', '7.9-integrations'); migrate('samadhan_test', 'up', '7.11-itsm');
+        migrate('samadhan_test', 'down', '7.12-cmdb'); migrate('samadhan_test', 'down', '7.11-itsm'); migrate('samadhan_test', 'down', '7.9-integrations'); migrate('samadhan_test', 'down', '7.6-change'); migrate('samadhan_test', 'down', '7.3-generic'); migrate('samadhan_test', 'down', '7.2-workspaces');
+        migrate('samadhan_test', 'up', '7.2-workspaces'); migrate('samadhan_test', 'up', '7.3-generic'); migrate('samadhan_test', 'up', '7.6-change'); migrate('samadhan_test', 'up', '7.9-integrations'); migrate('samadhan_test', 'up', '7.11-itsm'); migrate('samadhan_test', 'up', '7.12-cmdb');
         await startBackend('samadhan_test');
         run('Workspaces suite (applications, references, classification, scope)', process.execPath, [path.join(__dirname, 'workspaces.api.test.js')], {
             env: { ...SAFE_ENV, SAMADHAN_TEST_ALLOW: '1', SAMADHAN_TEST_API: `http://localhost:${API_PORT}/api/samadhan`, SAMADHAN_TEST_PG: `postgres://postgres@localhost:${PG_PORT}/samadhan_test` },
@@ -314,7 +314,7 @@ async function e2e() {
         // v7 Phase 5: 7.5-it down and up again on a new database, then the Digital Apps / Infra & IT suite.
         freshDb('samadhan_test'); await startBackend('samadhan_test'); await stopBackend();
         // 7.11 adds Infra cloud categories: take it down first, or 7.5 would see a desk tree and not seed its own.
-        migrate('samadhan_test', 'down', '7.11-itsm'); migrate('samadhan_test', 'down', '7.5-it'); migrate('samadhan_test', 'up', '7.5-it'); migrate('samadhan_test', 'up', '7.11-itsm');
+        migrate('samadhan_test', 'down', '7.12-cmdb'); migrate('samadhan_test', 'down', '7.11-itsm'); migrate('samadhan_test', 'down', '7.5-it'); migrate('samadhan_test', 'up', '7.5-it'); migrate('samadhan_test', 'up', '7.11-itsm'); migrate('samadhan_test', 'up', '7.12-cmdb');
         await startBackend('samadhan_test');
         run('IT suite (Digital Apps, Infra & IT, IT details, portal application picker)', process.execPath, [path.join(__dirname, 'it.api.test.js')], {
             env: { ...SAFE_ENV, SAMADHAN_TEST_ALLOW: '1', SAMADHAN_TEST_API: `http://localhost:${API_PORT}/api/samadhan`, SAMADHAN_TEST_PG: `postgres://postgres@localhost:${PG_PORT}/samadhan_test` },
@@ -369,9 +369,9 @@ async function e2e() {
         if (wantDb('itsm')) {
         // ITSM support model: 7.11-itsm down and up again on a new database, then the suite.
         freshDb('samadhan_test'); await startBackend('samadhan_test'); await stopBackend();
-        migrate('samadhan_test', 'down', '7.11-itsm'); migrate('samadhan_test', 'up', '7.11-itsm');
+        migrate('samadhan_test', 'down', '7.12-cmdb'); migrate('samadhan_test', 'down', '7.11-itsm'); migrate('samadhan_test', 'up', '7.11-itsm'); migrate('samadhan_test', 'up', '7.12-cmdb');
         await startBackend('samadhan_test');
-        run('ITSM support model suite (vendors, hyperscalers, escalation matrix, scorecard, ticket migration)', process.execPath, [path.join(__dirname, 'itsm.api.test.js')], {
+        run('ITSM suite (vendors, hyperscalers, escalation matrix, scorecard, ticket migration, CMDB, ITSM overview)', process.execPath, [path.join(__dirname, 'itsm.api.test.js')], {
             env: { ...SAFE_ENV, SAMADHAN_TEST_ALLOW: '1', SAMADHAN_TEST_API: `http://localhost:${API_PORT}/api/samadhan`, SAMADHAN_TEST_PG: `postgres://postgres@localhost:${PG_PORT}/samadhan_test` },
             expect: (o) => /ALL PASSED/.test(o) && !/^FAIL/m.test(o),
             detail: (o) => `${(o.match(/^PASS/gm) || []).length} pass, ${(o.match(/^FAIL/gm) || []).length} fail`,

@@ -54,3 +54,54 @@ all servers incl. SAP and BW. The vendor and the cloud may change, so all three 
 
 ## Rollback
 `node backend/samadhan/db/migrate.js down 7.11-itsm --yes`
+
+---
+
+# Update 2026-11-27 — CMDB, ITSM overview, ITSM practice tags (migration 7.12-cmdb)
+
+## ITIL 4 coverage after this update
+
+| ITIL practice | Where in Samadhan |
+|---|---|
+| Service desk | Channels (email, phone, portal, WhatsApp, chat), groups L1 / L2 / L3, Dashboard |
+| Incident management | Tickets (record class Incident), impact × urgency, SLA, lifecycle strip, escalation |
+| Major incident | Banner, bridge, update clock, post-incident review |
+| Service request management | Service catalogue, approval chains, fulfilment, access revoke to-do |
+| Problem management | Problem records, root cause, workaround, KEDB, candidate detection, repeat incidents per CI |
+| Change enablement | Change plan, risk, CAB approvals, freeze windows, change calendar, post-change review |
+| Release management | SAP transports DEV → QAS → PRD with sign-off |
+| **Service configuration management** | **New: Configuration (CMDB)** - identification, control (history), status accounting, relationships, verification / audit, CIs on tickets |
+| **IT asset management** | **New: asset register in the CMDB** - tag, allocation to a user, lifecycle stock → in use → repair → retired → disposed, warranty, Excel import |
+| Knowledge management | Solutions, known errors, "Save the fix as a knowledge article" |
+| Service level management | SLA policies, business hours, reminders, breaches, analytics |
+| Supplier management | Support model, vendor scorecard, report card, contract target |
+| Escalation | Functional (groups / L3) and hierarchical (escalation matrix) |
+| Workflow & automation | Routing rules, approval chains, time automations, scenarios, statuses |
+| Monitoring & event management | Monitoring / Cloud ALM integrations |
+| Measurement & reporting | Analytics, registers, daily report, Excel exports |
+| Availability / service health | Service-health strip on the Dashboard |
+
+Not built (outside a service-desk tool, or later): capacity management, IT continuity / DR plans, financial management of IT
+assets (depreciation). DR is recorded as an environment and in post-incident reviews.
+
+## What a user sees
+- **ITSM overview** (menu, after Dashboard): who is who (client / vendor / hyperscaler), a tile per practice with plain
+  words, live numbers and a button to where it lives, and the step-by-step workflows (incident, request, problem,
+  change, configuration).
+- **ITSM practice tags** ("ITSM · Incident", "ITSM · Change" ...) under every menu item, on screen headings, on the ticket
+  cards (Properties, Lifecycle, Problem, PIR, Change plan, Approvals, Transports, IT details, External references,
+  Support & escalation, Configuration items) and above each Admin section. Hover a tag for its meaning.
+- **Configuration (CMDB)** (menu): KPIs (items, in repair, not verified 180 days, warranty ending, repeat incidents),
+  search and filters, item drawer (facts, relationships, tickets on the item, history), add / edit (Supervisor and up,
+  permission `cmdb.manage`), "Verified" (audit), Excel template + import.
+- **Ticket > Configuration items** card: linked CIs, suggestions from the asset tag / server / application, search to link.
+
+## Backend
+- Migration `7.12-cmdb` (start-up, with down): `config_items`, `ci_relations`, `ci_history`, `ticket_cis`; seeded with
+  copies of the ASSET / SERVER masters and one "Application / Service" CI per active application.
+- `lib/cmdbSeed.js`, `lib/cmdb.js`, `routes/cmdb.js` (CMDB routes and `GET /itsm/overview`, scoped).
+- Permission `cmdb.manage` (Supervisor and Admin); view / link with `ticket.view` / `ticket.edit`; import is a heavy call.
+- Tests: the `itsm` suite now also covers the CMDB and the overview (86 checks); every 7.11 rollback in the gate also
+  rolls 7.12. E2E "ITSM overview, CMDB and ITSM practice tags". Demo: `run.sh load-v7-cmdb`.
+
+Rollback: `node backend/samadhan/db/migrate.js down 7.12-cmdb --yes`

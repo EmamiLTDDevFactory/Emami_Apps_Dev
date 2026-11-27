@@ -74,6 +74,12 @@ const RULES = [
     ['GET', '/tickets/:id/escalations', 'ticket.view'], ['POST', '/tickets/:id/escalate', 'ticket.edit'], ['PUT', '/tickets/:id/support-vendor', 'ticket.edit'],
     ['GET', '/analytics/vendors', 'screen.analytics'],
     ['GET', '/admin/migration/:kind/template', 'admin.migration'], ['POST', '/admin/migration/:kind/import', 'admin.migration'],
+    // cmdb.js (configuration management, migration 7.12) and the ITSM overview
+    ['GET', '/cmdb', 'ticket.view'], ['GET', '/cmdb/search', 'ticket.view'], ['GET', '/cmdb/:cid', 'ticket.view'],
+    ['POST', '/cmdb', 'cmdb.manage'], ['POST', '/cmdb/import', 'cmdb.manage'], ['POST', '/cmdb/:cid/verify', 'cmdb.manage'],
+    ['POST', '/cmdb/:cid/relations', 'cmdb.manage'], ['DELETE', '/cmdb/:cid/relations/:rid', 'cmdb.manage'],
+    ['GET', '/tickets/:id/cis', 'ticket.view'], ['POST', '/tickets/:id/cis', 'ticket.edit'], ['DELETE', '/tickets/:id/cis/:cid', 'ticket.edit'],
+    ['GET', '/itsm/overview', 'screen.dashboard'],
     // program.js (v7 Phase 8)
     ['GET', '/tickets/:id/program', 'ticket.view'], ['PUT', '/tickets/:id/program', 'ticket.edit'], ['GET', '/program/overview', 'screen.dashboard'],
     ['GET', '/duplicates', 'ticket.create'], ['GET', '/service-health', 'screen.dashboard'],
