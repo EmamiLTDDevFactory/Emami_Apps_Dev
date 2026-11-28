@@ -67,6 +67,15 @@ export default function PlantMap() {
       tiles.on('tileload', () => { okTiles++; setTilesBlocked(false); });
       tiles.on('tileerror', () => { badTiles++; if (!okTiles && badTiles >= 4) setTilesBlocked(true); });
       tiles.addTo(map);
+      // the app's own background: India's state outlines in a pane BELOW the street tiles, so the plants always sit on a recognisable map,
+      // and the tiles simply cover it wherever the network lets them through (public/india-states.json, scripts/simplify-india-states.py)
+      map.createPane('indiaBase'); (map.getPane('indiaBase') as HTMLElement).style.zIndex = '150';
+      fetch(`${BASE}/india-states.json`).then((r) => (r.ok ? r.json() : null)).then((g) => {
+        if (!g || !mapRef.current) return;
+        L.geoJSON(g, { pane: 'indiaBase', interactive: false, style: { fillColor: '#f8fafc', fillOpacity: 1, color: '#94a3b8', weight: 1 } }).addTo(map);
+      }).catch(() => null);
+      // requests that hang (proxy) never fire tileerror: no tile at all after 8 s counts as blocked
+      setTimeout(() => { if (!okTiles) setTilesBlocked(true); }, 8000);
       layerRef.current = L.layerGroup().addTo(map);
       mapRef.current = map;
       setMapReady(true);
@@ -178,8 +187,8 @@ export default function PlantMap() {
         </Card>
 
         <div className="relative order-1 overflow-hidden rounded-2xl border border-border lg:order-2">
-          <div ref={mapEl} className="h-[62vh] min-h-[420px] w-full bg-[#e8eef5]" role="region" aria-label="Plant locations map" data-testid="map-canvas" />
-          {tilesBlocked && <div className="absolute left-3 right-3 top-3 z-[1000] rounded-xl border border-amber bg-amber/10 p-2.5 text-xs font-bold text-ink shadow" data-testid="tiles-blocked">The map background (OpenStreetMap tiles) cannot be loaded from this network. The plants are still plotted below; ask IT to allow <span className="font-extrabold">tile.openstreetmap.org</span> to see the street map.</div>}
+          <div ref={mapEl} className="h-[62vh] min-h-[420px] w-full bg-[#dbe7f3]" role="region" aria-label="Plant locations map" data-testid="map-canvas" />
+          {tilesBlocked && <div className="absolute right-3 top-16 z-[1000] max-w-[19rem] rounded-xl border border-amber bg-white/95 p-2.5 text-xs font-bold text-ink shadow" data-testid="tiles-blocked">The street-map background (OpenStreetMap tiles) cannot be loaded from this network, so a plain India outline is shown. The plants are plotted as usual; ask IT to allow <span className="font-extrabold">tile.openstreetmap.org</span> to see the street map.</div>}
           <div className="absolute bottom-3 left-3 z-[1000] rounded-xl border border-border bg-white/95 p-2.5 text-xs shadow">
             <div className="mb-1 font-extrabold text-ink">Legend</div>
             {TYPES.filter((x) => typeCounts[x.id]).map((x) => <div key={x.id} className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-full" style={{ background: x.color }} />{x.label}</div>)}
