@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  validateUnit, validateUnits, validateIndentForm, totals, remaining, emptyRow, buildCreateCommand, rankedCarriers, recomputeStatus, needsHo, mailLabel, vendorView, itemLabel,
+  validateUnit, validateUnits, validateIndentForm, totals, remaining, emptyRow, buildCreateCommand, rankedCarriers, laneOffers, transitText, recomputeStatus, needsHo, mailLabel, vendorView, itemLabel,
   demoCreateIndent, demoSubmitItem, demoRejectItem, demoCancelIndent, demoAddIndentItem,
 } from '../src/lib/indentModel.js';
 
@@ -75,6 +75,14 @@ test('lane-ranked carriers first, blocked never offered', () => {
   const r = rankedCarriers(world(), 'L1', 'TRUCK9MT', '');
   assert.deepEqual(r.map((x) => x.carrier.id), ['C1', 'C2', 'C3']);            // C1 priority 1, C2 priority 2, then the unranked C3; C4 blocked
   assert.equal(r[2].rate, null);
+});
+
+test('lane offers: only carriers with a rate on the lane, with their rows and transit time', () => {
+  const w = world(); for (const v of w.lanes[0].vendors) v.zdays = '3';
+  const o = laneOffers(w, 'L1', 'TRUCK9MT', '');
+  assert.deepEqual(o.map((x) => x.carrier.id), ['C1', 'C2']); assert.equal(o[0].transit, '3 days'); assert.ok(o[0].rows.length >= 1);
+  assert.deepEqual(laneOffers(w, 'nope', 'TRUCK9MT', ''), []);
+  assert.equal(transitText({}, { transitH: 30 }), '30 h'); assert.equal(transitText({ zdays: '1' }, {}), '1 day');
 });
 
 test('demo create: same indent number, item numbers 10/20, totals derived, lane rates, mail per transporter', () => {

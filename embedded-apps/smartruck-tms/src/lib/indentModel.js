@@ -113,6 +113,27 @@ export function rankedCarriers(db, laneId, vehicleType, shippingType) {
   return [...ranked, ...rest];
 }
 
+
+/** Transit time of a lane rate row as text: the SAP days of the freight condition (ZDays, A964) when it has them, else the lane's transit hours. */
+export function transitText(v, lane) {
+  const d = Number(v && v.zdays);
+  if (d > 0) return `${d} day${d === 1 ? '' : 's'}`;
+  const h = Number(lane && lane.transitH);
+  return h > 0 ? (h >= 48 ? `${Math.round(h / 24)} days` : `${h} h`) : '';
+}
+
+/** Transporters that have a freight rate on the lane for this vehicle type / shipping type: one entry per carrier (best row: exact vehicle, priority, lowest rate)
+ *  with all its rate rows, so the screen can show the full rate detail. Blocked carriers are never offered. */
+export function laneOffers(db, laneId, vehicleType, shippingType) {
+  const lane = (db.lanes || []).find((l) => l.id === laneId);
+  if (!lane) return [];
+  const rows = (lane.vendors || []).filter((v) => (!v.vehicleType || v.vehicleType === vehicleType) && (!shippingType || !v.shippingType || v.shippingType === shippingType))
+    .sort((a, b) => (a.vehicleType === vehicleType ? 0 : 1) - (b.vehicleType === vehicleType ? 0 : 1) || a.priority - b.priority || a.rate - b.rate);
+  const by = new Map();
+  for (const v of rows) { const e = by.get(v.carrierId) || []; e.push(v); by.set(v.carrierId, e); }
+  return [...by.entries()].map(([id, list]) => ({ carrier: (db.carriers || []).find((c) => c.id === id), rate: list[0], rows: list, transit: transitText(list[0], lane) })).filter((x) => x.carrier && !x.carrier.blocked);
+}
+
 // ---------------------------------------------------------------------------------------------------- list / status helpers
 const counts = (i) => (i.status === 'Pending' || i.status === 'Submitted') && !i.replacedBy;   // a line that still counts: live, not replaced
 /** Lines HO still has to act on: rejected / expired and not yet replaced. */

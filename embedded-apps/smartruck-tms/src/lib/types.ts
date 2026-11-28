@@ -57,7 +57,7 @@ export interface VehicleType { code: string; name: string; maxWeightKg: number; 
  *  vehicleType is set only when ADD01 is a truck code, otherwise the rate applies to every vehicle. per = rate unit (KG = per kg gross weight). */
 export interface LaneVendor {
   carrierId: string; priority: number; rate: number; currency?: string; per?: string; perQty?: number; vehicleType?: string; shippingType?: string;
-  sapVehicle?: string; rateBasis?: string; sdabw?: string; shtyp?: string; route?: string; condTable?: string; condRecord?: string; source?: 'sap';
+  sapVehicle?: string; zdays?: string; validTo?: string; rateBasis?: string; sdabw?: string; shtyp?: string; route?: string; condTable?: string; condRecord?: string; source?: 'sap';
 }
 export interface Lane { id: string; fromLocId: string; toLocId: string; distanceKm: number; transitH: number; vendors: LaneVendor[]; sapRoutes?: string[]; syncedAt?: string }
 export interface Offer { carrierId: string; offeredAt: string; expiresAt: string; response: 'Pending' | 'Accepted' | 'Rejected' | 'Timed out' | 'Withdrawn'; reason?: string; respondedAt?: string; rate: number; per?: string; currency?: string }

@@ -5,7 +5,7 @@ import { useTms } from '../../lib/store';
 import Combobox from '../Combobox';
 import { Field, Modal, rateText } from '../ui';
 import { carrierLabel } from '../../lib/labels';
-import { MAX_ALLOCATIONS, buildCreateCommand, emptyRow, rankedCarriers, remaining, totals, validateIndentForm } from '../../lib/indentModel';
+import { MAX_ALLOCATIONS, buildCreateCommand, emptyRow, laneOffers, rankedCarriers, remaining, transitText, totals, validateIndentForm } from '../../lib/indentModel';
 
 type Row = { carrierId: string; cases: string; vehicles: string; qty: string; requiredAt: string };
 
@@ -19,8 +19,13 @@ export default function CreateIndent({ onClose, onDone }: { onClose: () => void;
   const [rows, setRows] = useState<Row[]>([emptyRow()]);
   const [shown, setShown] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [showAll, setShowAll] = useState(false);
 
   const ranked = useMemo(() => rankedCarriers(t.db, f.laneId, f.vehicleType, f.shippingType), [t.db, f.laneId, f.vehicleType, f.shippingType]);
+  const offers = useMemo(() => laneOffers(t.db, f.laneId, f.vehicleType, f.shippingType), [t.db, f.laneId, f.vehicleType, f.shippingType]);
+  const laneRow = lanes.find((l) => l.id === f.laneId);
+  const restricted = !!f.laneId && offers.length > 0 && !showAll;
+  const choices = !f.laneId ? [] : restricted ? offers.map((o) => ({ carrier: o.carrier, rate: o.rate })) : ranked;
   const v = validateIndentForm({ laneId: f.laneId, vehicleType: f.vehicleType, rows, targets, now: t.now });
   const tot = totals(rows), rem = remaining(targets, tot);
   const setRow = (i: number, p: Partial<Row>) => setRows((rs) => rs.map((r, k) => (k === i ? { ...r, ...p } : r)));
@@ -74,7 +79,9 @@ export default function CreateIndent({ onClose, onDone }: { onClose: () => void;
                     <tr className={`border-t border-border/60 align-top ${err ? 'bg-redBg' : ''}`}>
                       <td className="px-2 py-2 font-bold">{(i + 1) * 10}</td>
                       <td className="py-2 pr-2"><Combobox ariaLabel={`Transporter for item ${(i + 1) * 10}`} minWidth={260} value={r.carrierId} onChange={(v) => setRow(i, { carrierId: v })} placeholder="Type code or name…"
-                        options={ranked.map(({ carrier, rate }) => ({ value: carrier!.id, label: carrierLabel(carrier), keywords: carrier!.shortName, disabled: used.has(carrier!.id), hint: `${rate ? rateText(rate) : 'no lane rate'}${carrier!.email ? '' : ' · no e-mail'}` }))} /></td>
+                        options={choices.map(({ carrier, rate }) => ({ value: carrier!.id, label: carrierLabel(carrier), keywords: carrier!.shortName, disabled: used.has(carrier!.id), hint: `${rate ? `${rateText(rate)}${transitText(rate, laneRow) ? ` · ${transitText(rate, laneRow)}` : ''}` : 'no lane rate'}${carrier!.email ? '' : ' · no e-mail'}` }))} />
+                        {!f.laneId && <div className="mt-1 text-xs text-inkSoft">Select a lane first.</div>}
+                        {(() => { const o = offers.find((x) => x.carrier!.id === r.carrierId); return o ? <RateDetail o={o} lane={laneRow} sap={t.db.sapTexts} /> : r.carrierId && f.laneId ? <div className="mt-1 text-xs font-bold text-amber">No rate for this lane in SAP.</div> : null; })()}</td>
                       <td className="py-2 pr-2"><input className="input w-24" inputMode="numeric" value={r.cases} onChange={(e) => setRow(i, { cases: e.target.value })} /></td>
                       <td className="py-2 pr-2"><input className="input w-20" inputMode="numeric" value={r.vehicles} onChange={(e) => setRow(i, { vehicles: e.target.value })} /></td>
                       <td className="py-2 pr-2"><input className="input w-24" inputMode="decimal" value={r.qty} onChange={(e) => setRow(i, { qty: e.target.value })} /></td>
@@ -88,6 +95,10 @@ export default function CreateIndent({ onClose, onDone }: { onClose: () => void;
             </table>
           </div>
           {noMail.length > 0 && <div className="mt-2 rounded-xl bg-amber/10 p-2 text-xs font-bold text-amber">No e-mail on file for {noMail.join(', ')}: {noMail.length === 1 ? 'they' : 'they'} will not receive the indent mail. Add the e-mail under Carriers.</div>}
+          {f.laneId && <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">
+            {offers.length > 0 ? <span className="font-bold text-inkSoft">{offers.length} transporter{offers.length === 1 ? '' : 's'} with a SAP freight rate on this lane{restricted ? '' : ' (showing all transporters)'}.</span> : <span className="font-bold text-amber">No transporter has a SAP freight rate on this lane for this vehicle / shipping type - all transporters are listed.</span>}
+            {offers.length > 0 && <label className="flex items-center gap-1"><input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />Show all transporters</label>}
+          </div>}
           {lanePick && <div className="mt-2 text-xs text-inkSoft">Lane-ranked transporters are listed first with their rate. Each transporter gets a mail with only its own line.</div>}
           {shown && v.errors.length > 0 && <ul className="mt-2 list-disc pl-5 text-xs font-bold text-red">{v.errors.map((e) => <li key={e}>{e}</li>)}</ul>}
         </div>
@@ -96,3 +107,17 @@ export default function CreateIndent({ onClose, onDone }: { onClose: () => void;
   );
 }
 const rankedFirst = (r: { rate: unknown }[]) => r.some((x) => x.rate);
+
+const BASIS: Record<string, string> = { A: 'per vehicle', B: 'per kg', C: 'per case' };
+/** Full rate detail of one transporter on the lane: every rate row (vehicle / rate method, mode, rate, unit, valid to) with the transit time. */
+function RateDetail({ o, lane, sap }: { o: { rows: import('../../lib/types').LaneVendor[]; transit: string }; lane?: import('../../lib/types').Lane; sap?: { vehicles: Record<string, string>; shipping: Record<string, string> } }) {
+  return (
+    <div className="mt-1 rounded-lg bg-appBg px-2 py-1 text-[11px] leading-tight text-inkSoft">
+      {o.transit && <div><b className="text-ink">Transit time:</b> {o.transit}{lane?.distanceKm ? ` · ${lane.distanceKm} km` : ''}</div>}
+      {o.rows.slice(0, 4).map((v, i) => (
+        <div key={i}><b className="text-ink">{rateText(v)}</b> · {sap?.vehicles?.[v.sapVehicle ?? ''] ?? v.sapVehicle ?? v.vehicleType ?? 'any vehicle'}{v.shippingType ? ` · ${sap?.shipping?.[v.shippingType] ?? v.shippingType}` : ''}{v.rateBasis ? ` · ${BASIS[v.rateBasis] ?? v.rateBasis}` : ''}{v.validTo ? ` · valid to ${v.validTo}` : ''}</div>
+      ))}
+      {o.rows.length > 4 && <div>+{o.rows.length - 4} more rate rows</div>}
+    </div>
+  );
+}
