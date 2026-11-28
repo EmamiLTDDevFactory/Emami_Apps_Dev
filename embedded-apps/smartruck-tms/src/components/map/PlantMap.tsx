@@ -30,6 +30,7 @@ export default function PlantMap() {
   const [view, setView] = useState<'all' | 'review'>('all');
   const [selected, setSelected] = useState('');
   const [mapReady, setMapReady] = useState(false);
+  const [tilesBlocked, setTilesBlocked] = useState(false);   // the OpenStreetMap background could not be loaded (network / proxy)
 
   const mapEl = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Leaflet.Map | null>(null);
@@ -55,18 +56,25 @@ export default function PlantMap() {
   // ---- the map itself: created once, Leaflet is browser-only so it is imported here, not at module level
   useEffect(() => {
     let dead = false;
+    let ro: ResizeObserver | undefined;
     (async () => {
       const L = (await import('leaflet')).default;
       if (dead || !mapEl.current || mapRef.current) return;
       LRef.current = L;
       const map = L.map(mapEl.current, { zoomControl: true, minZoom: 4, maxZoom: 17 }).setView([22.5, 80], 5);
-      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' }).addTo(map);
+      let okTiles = 0, badTiles = 0;
+      const tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' });
+      tiles.on('tileload', () => { okTiles++; setTilesBlocked(false); });
+      tiles.on('tileerror', () => { badTiles++; if (!okTiles && badTiles >= 4) setTilesBlocked(true); });
+      tiles.addTo(map);
       layerRef.current = L.layerGroup().addTo(map);
       mapRef.current = map;
       setMapReady(true);
       setTimeout(() => map.invalidateSize(), 50);
+      // the container can get its size after the first paint (sidebar, tab or window change): keep Leaflet in step with it
+      if (typeof ResizeObserver !== 'undefined') { ro = new ResizeObserver(() => { if (mapRef.current) mapRef.current.invalidateSize(); }); ro.observe(mapEl.current); }
     })();
-    return () => { dead = true; if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; layerRef.current = null; markers.current = {}; } };
+    return () => { dead = true; if (ro) ro.disconnect(); if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; layerRef.current = null; markers.current = {}; } };
   }, []);
 
   const popupHtml = useCallback((p: Plant) => `
@@ -170,7 +178,8 @@ export default function PlantMap() {
         </Card>
 
         <div className="relative order-1 overflow-hidden rounded-2xl border border-border lg:order-2">
-          <div ref={mapEl} className="h-[62vh] min-h-[420px] w-full" role="region" aria-label="Plant locations map" data-testid="map-canvas" />
+          <div ref={mapEl} className="h-[62vh] min-h-[420px] w-full bg-[#e8eef5]" role="region" aria-label="Plant locations map" data-testid="map-canvas" />
+          {tilesBlocked && <div className="absolute left-3 right-3 top-3 z-[1000] rounded-xl border border-amber bg-amber/10 p-2.5 text-xs font-bold text-ink shadow" data-testid="tiles-blocked">The map background (OpenStreetMap tiles) cannot be loaded from this network. The plants are still plotted below; ask IT to allow <span className="font-extrabold">tile.openstreetmap.org</span> to see the street map.</div>}
           <div className="absolute bottom-3 left-3 z-[1000] rounded-xl border border-border bg-white/95 p-2.5 text-xs shadow">
             <div className="mb-1 font-extrabold text-ink">Legend</div>
             {TYPES.filter((x) => typeCounts[x.id]).map((x) => <div key={x.id} className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-full" style={{ background: x.color }} />{x.label}</div>)}
