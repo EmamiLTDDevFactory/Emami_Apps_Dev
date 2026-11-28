@@ -338,6 +338,20 @@ test('telecom consent callback and ingest through the service', async () => {
     await assert.rejects(svc.ingestConsent({ phone: '9876543210', state: 'Maybe' }), /required/);
 });
 
+test('automatic lane sync: runs when due, skips when fresh, retries after a failure only an hour later, can be switched off', async () => {
+    const w = world(); w.db.lanes = []; let calls = 0, fail = false;
+    const row = { fromLoc: 'AMBALA', toLoc: 'GUWAHATI', vendor: w.db.carriers[0].code, vendorName: w.db.carriers[0].name, rate: 100, perUnit: 'KG', perQty: 1, route: 'ZAMGWH', condRecord: '1', condTable: 'A964', sapVehicle: '15T', shippingType: '01', currency: 'INR' };
+    const store = memoryStore(w.db), svc = createService(store, () => ({ sap: { lanes: async () => { calls++; if (fail) throw new Error('SAP down'); return [row]; } } }));
+    const T0 = Date.parse('2026-11-30T00:00:00Z');
+    const r = await svc.laneSyncIfDue(T0); assert.equal(r.synced, true); assert.equal(calls, 1); assert.ok(store.db.lanes.length >= 1); assert.equal(store.auditLog.at(-1).actor, 'system:lane-sync');
+    assert.deepEqual(await svc.laneSyncIfDue(T0 + 3600_000), { skipped: 'fresh' }); assert.equal(calls, 1);
+    fail = true;
+    assert.match((await svc.laneSyncIfDue(T0 + 25 * 3600_000)).failed, /SAP down/); assert.equal(calls, 2);
+    assert.deepEqual(await svc.laneSyncIfDue(T0 + 25.5 * 3600_000), { skipped: 'retry-wait' }); assert.equal(calls, 2);
+    fail = false; assert.equal((await svc.laneSyncIfDue(T0 + 27 * 3600_000)).synced, true); assert.equal(calls, 3);
+    process.env.TMS_LANE_SYNC_HOURS = 'off'; try { assert.deepEqual(await svc.laneSyncIfDue(T0 + 99 * 3600_000), { skipped: 'off' }); } finally { delete process.env.TMS_LANE_SYNC_HOURS; }
+});
+
 // ------------------------------------------------------------------ service / bootstrap / import / reports
 test('service: unknown user is refused; first hub Admin is bootstrapped; commands are audited; sessions never leak other units', async () => {
     const w = world(); w.db.users = [];
@@ -679,6 +693,19 @@ test('trip: ULIP poll applies events, recomputes ETA; sweep flags unlinked trips
     assert.equal(engine.trips.publicTrack(w.db, tok, NOW + 60 * H).expired, true);
     assert.equal(engine.trips.publicTrack(w.db, 'zz', NOW), null);
     assert.equal(engine.trips.publicTrack(w.db, '0'.repeat(32), NOW), null);
+});
+
+test('lane sync reads the transporter e-mail from the A964 CDS (SAP wins, never blanked, failure does not fail the sync)', async () => {
+    const w = outwardWorld(), d = depsOf(w);
+    const lanes = await d.sap.lanes(); const code = lanes[0].vendor;
+    const car = () => w.db.carriers.find((c) => c.code === code);
+    const withCds = (fc) => ({ ...d, sap: { ...d.sap, freightConditions: fc } });
+    let r = await run(w, w.u.ho, { type: 'syncLanes' }, withCds(async () => ({ simulated: false, rows: [{ vendor: code, vendorEmail: 'Ops@VRL.example' }, { vendor: code, vendorEmail: 'other@x.example' }, { vendor: 'ZZZ', vendorEmail: 'no@lane.example' }] })));
+    assert.equal(car().email, 'ops@vrl.example'); assert.equal(car().emailSource, 'sap'); assert.equal(r.result.emailsFromSap, 1);
+    r = await run(w, w.u.ho, { type: 'syncLanes' }, withCds(async () => ({ simulated: false, rows: [{ vendor: code, vendorEmail: '' }] })));
+    assert.equal(car().email, 'ops@vrl.example'); assert.equal(r.result.emailsFromSap, 0);
+    r = await run(w, w.u.ho, { type: 'syncLanes' }, withCds(async () => { throw new Error('gateway down'); }));
+    assert.match(r.result.emailWarning, /gateway down/); assert.ok(r.result.lanes >= 1);
 });
 
 test('trip: settings and lane sync from SAP are validated; vendor view never carries the tracking token', async () => {

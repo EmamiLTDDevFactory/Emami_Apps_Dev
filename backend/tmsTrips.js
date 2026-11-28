@@ -183,7 +183,23 @@ function build(k, outward) {
                 const row = { id: lid, fromLocId: e.fromLocId, toLocId: e.toLocId, distanceKm: e.distanceKm, transitH: e.transitH, sapRoutes: e.sapRoutes, vendors: [...manual, ...sapRows], syncedAt: iso(now) };
                 if (i >= 0) db.lanes[i] = row; else db.lanes.push(row);
             }
-            return { lanes: by.size, rates, locationsAdded: locsAdded, vehicleTypesAdded: vtAdded, carriersAdded, skippedCount: skipped.length, skipped: [...new Set(skipped)].slice(0, 50) };
+            // E-mail of the transporters on the lanes from the A964 freight-condition CDS (vendor master default address). Vendors outside account group ZTRP never come through
+            // syncMasters, so their mail address would stay empty. SAP wins over a typed address, an existing address is never blanked, a failure here never fails the sync.
+            let emailsFromSap = 0, emailWarning = '';
+            try {
+                const onLanes = new Set(rows.map((r) => r.vendor).filter(Boolean));
+                const mail = new Map();
+                if (typeof deps.sap.freightConditions === 'function') {
+                    for (let skip = 0; skip < 50000; skip += 5000) {
+                        const page = await deps.sap.freightConditions({ condType: 'ZB00', top: 5000, skip });
+                        if (!page || page.simulated) break;
+                        for (const f of page.rows) if (f.vendor && onLanes.has(f.vendor) && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(f.vendorEmail || '').trim()) && !mail.has(f.vendor)) mail.set(f.vendor, String(f.vendorEmail).trim().toLowerCase());
+                        if (page.rows.length < 5000) break;
+                    }
+                }
+                for (const [code, m] of mail) { const car = carByCode.get(code); if (car && car.email !== m) { car.email = m; car.emailSource = 'sap'; emailsFromSap++; } }
+            } catch (e) { emailWarning = `E-mail addresses were not read from SAP: ${e.message}`; }
+            return { emailsFromSap, ...(emailWarning ? { emailWarning } : {}), lanes: by.size, rates, locationsAdded: locsAdded, vehicleTypesAdded: vtAdded, carriersAdded, skippedCount: skipped.length, skipped: [...new Set(skipped)].slice(0, 50) };
         },
 
         /* ---------------- Billing invoices on the trip vehicle (replaces Instavans / ZSMART_VEH) ----------------

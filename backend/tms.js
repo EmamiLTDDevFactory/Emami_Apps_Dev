@@ -190,8 +190,34 @@ function createService(store, depsForCaller) {
                 return { updated: n };
             });
         },
+        /** Automatic lane sync (freight rates ZB00 -> lanes / transporters): runs when the newest synced lane is older than TMS_LANE_SYNC_HOURS (default 24; "off" disables).
+            A failed run is retried after an hour, not every minute. Uses the same syncLanes command as the screen, as a system administrator, and is written to the audit log. */
+        async laneSyncIfDue(nowMs = Date.now()) {
+            const hrs = String(process.env.TMS_LANE_SYNC_HOURS || '24').trim().toLowerCase();
+            if (hrs === 'off' || hrs === '0') return { skipped: 'off' };
+            const every = Math.max(1, Number(hrs) || 24) * 3600_000;
+            if (this._laneRetryAt && nowMs < this._laneRetryAt) return { skipped: 'retry-wait' };
+            const deps = depsFor({ email: '' });
+            try {
+                return await store.withDb(async (db) => {
+                    const newest = Math.max(0, ...(db.lanes || []).map((l) => Date.parse(l.syncedAt || '') || 0));
+                    if (nowMs - newest < every) return { skipped: 'fresh' };
+                    const u = { id: 'SYSTEM', name: 'System (automatic lane sync)', email: 'system:lane-sync', roles: ['Admin'], units: (db.units || []).map((x) => x.id) };
+                    const { result } = await engine.apply(db, { type: 'syncLanes' }, u, deps, nowMs);
+                    await store.audit(u.email, 'syncLanes', true, `auto: ${result.lanes} lanes, ${result.rates} rates, ${result.skippedCount} skipped`);
+                    console.info(`[tms] automatic lane sync: ${result.lanes} lanes, ${result.rates} rates, ${result.carriersAdded} carriers added`);
+                    return { synced: true, ...result };
+                });
+            } catch (e) {
+                this._laneRetryAt = nowMs + 3600_000;
+                console.error('[tms] automatic lane sync failed (retry in 1 h):', e.message);
+                try { await store.audit('system:lane-sync', 'syncLanes', false, e.message); } catch { /* ignore */ }
+                return { failed: e.message };
+            }
+        },
         /** Periodic: close auctions, flag GPS gaps / e-way bills, pull payment status from SAP. */
         async background() {
+            await this.laneSyncIfDue().catch(() => null);
             const deps = depsFor({ email: '' });
             return store.withDb(async (db) => {
                 const s = engine.sweep(db, Date.now());
