@@ -54,7 +54,32 @@ export async function openFile(id: string, name: string): Promise<void> {
   const url = URL.createObjectURL(await res.blob());
   const a = document.createElement('a'); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
+/* ---- Distribution Planning (backend/tmsPlanning.js, <api>/me/smartruck-tms/planning). Shapes: docs/DISTRIBUTION_PLANNING.md */
+export interface PlanningHealth { name?: string; ok?: boolean; rows?: number; error?: string; asOf?: string }
+export interface PlanningStatus {
+  job: { running: boolean; step?: string; error?: string; startedAt?: string };
+  config: { seeded: boolean; sites?: number; lanes?: number; materials?: number; seededAt?: string };
+  forecast: { uploadedAt: string; by: string; rows: number } | null;
+  snapshot: { id: string; builtAt: string; by: string; counts?: Record<string, number>; health?: Record<string, PlanningHealth> | PlanningHealth[]; warnings?: string[]; ms?: number } | null;
+  sapLive: boolean;
+}
+export interface ForecastRow { material: string; plant: string; channel: string; m0: number; m1: number; additional: number; w1?: number; w2?: number; w3?: number; w4?: number }
+/** The dataset is gzip JSON; a browser already inflates Content-Encoding: gzip, a raw application/gzip body (magic 1f 8b) is inflated here. */
+async function planningDatasetFetch(): Promise<unknown> {
+  let res: Response;
+  try { res = await fetch(`${apiBase()}/planning/dataset`, { cache: 'no-store', headers: { Accept: 'application/json', ...(token() ? { Authorization: `Bearer ${token()}` } : {}) } }); } catch { throw new ApiError(0, 'The Emami Apps server cannot be reached. Check your connection and try again.'); }
+  if (!res.ok) { const j = await res.json().catch(() => ({}) as { error?: string }); throw new ApiError(res.status, (j as { error?: string }).error || `The server answered HTTP ${res.status}.`); }
+  const buf = new Uint8Array(await res.arrayBuffer());
+  if (buf.length > 2 && buf[0] === 0x1f && buf[1] === 0x8b) return JSON.parse(await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).text());
+  return JSON.parse(new TextDecoder().decode(buf));
+}
 export const liveApi = {
+  planningStatus: () => send<PlanningStatus>('/planning/status'),
+  planningDataset: () => planningDatasetFetch(),
+  planningRefresh: () => send<{ started: boolean }>('/planning/refresh', { method: 'POST', body: {} }),
+  planningForecast: (rows: ForecastRow[]) => send<{ rows: number; plants?: number; materials?: number }>('/planning/forecast', { method: 'POST', body: { rows } }),
+  planningConfig: () => send<Record<string, unknown>>('/planning/config'),
+  planningSeed: (dpData: unknown) => send<Record<string, unknown>>('/planning/seed', { method: 'POST', body: dpData }),
   me: () => send<Me>('/me'),
   db: (allUnits: boolean) => send<{ db: Db; serverNow: number }>(`/db${allUnits ? '?allUnits=1' : ''}`),
   cmd: <R = Record<string, unknown>>(c: Record<string, unknown>) => send<{ result: R; db: Db }>('/cmd', { method: 'POST', body: c }),

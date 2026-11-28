@@ -63,6 +63,25 @@ ENT = [
   ('Vsart','vsart',S,2,False,'c'),('Datab','datab',DT,0,False,'d'),('Datbi','datbi',DT,0,False,'d'),
   ('VendorName','vendorname',S,35,False,'c'),('VendorRegion','vendorregion',S,3,False,'c'),('AddressNumber','addressnumber',S,10,False,'c'),
   ('VendorEmail','vendoremail',S,241,False,'c'),('RouteText','routetext',S,40,False,'c')]),
+ # ---- Distribution Planning feed (docs/DISTRIBUTION_PLANNING.md). Read only. Every set needs a filter or $top; logic = ZCL_TMS_DP.
+ # Matnr is exposed WITHOUT leading zeros (ALPHA out); filters accept either form. Quantities are base unit of measure.
+ dict(name='DpMaterial', set='DpMaterialSet', create=False, props=[
+  ('Matnr','matnr',S,18,True,'c'),('Maktx','maktx',S,40,False,'c'),('Spart','spart',S,2,False,'c'),('Meins','meins',S,3,False,'c'),
+  ('Brgew','brgew',D,13,False,'p'),('Gewei','gewei',S,3,False,'c'),('CasePack','casepack',D,13,False,'p'),('Brand','brand',S,18,False,'c'),('Mtart','mtart',S,4,False,'c')]),
+ dict(name='DpStock', set='DpStockSet', create=False, props=[
+  ('Matnr','matnr',S,18,True,'c'),('Werks','werks',S,4,True,'c'),('Unr','unr',D,13,False,'p'),('Git','git',D,13,False,'p'),('Qi','qi',D,13,False,'p')]),
+ dict(name='DpLot', set='DpLotSet', create=False, props=[
+  ('Matnr','matnr',S,18,True,'c'),('Werks','werks',S,4,True,'c'),('Charg','charg',S,10,True,'c'),('Hsdat','hsdat',DT,0,False,'d'),('Vfdat','vfdat',DT,0,False,'d'),
+  ('Unr','unr',D,13,False,'p'),('LifePct','lifepct',D,13,False,'p')]),
+ dict(name='DpSto', set='DpStoSet', create=False, props=[
+  ('Matnr','matnr',S,18,True,'c'),('Reswk','reswk',S,4,True,'c'),('Werks','werks',S,4,True,'c'),('OpenQty','openqty',D,13,False,'p')]),
+ dict(name='DpOpenOrder', set='DpOpenOrderSet', create=False, props=[
+  ('Matnr','matnr',S,18,True,'c'),('Werks','werks',S,4,True,'c'),('Vtweg','vtweg',S,2,True,'c'),('Kdgrp','kdgrp',S,2,True,'c'),('OpenQty','openqty',D,13,False,'p')]),
+ dict(name='DpSale', set='DpSaleSet', create=False, props=[
+  ('Datum','datum',DT,0,True,'d'),('Matnr','matnr',S,18,True,'c'),('Werks','werks',S,4,True,'c'),('Vtweg','vtweg',S,2,True,'c'),('Qty','qty',D,13,False,'p')]),
+ dict(name='DpTransit', set='DpTransitSet', create=False, props=[
+  ('Vbeln','vbeln',S,10,True,'c'),('Matnr','matnr',S,18,True,'c'),('Tknum','tknum',S,10,False,'c'),('Swerks','swerks',S,4,False,'c'),('Werks','werks',S,4,False,'c'),
+  ('Qty','qty',D,13,False,'p'),('Budat','budat',DT,0,False,'d'),('Transporter','transporter',S,35,False,'c'),('Vehicle','vehicle',S,20,False,'c')]),
 ]
 ASSOC = []
 ACT = []

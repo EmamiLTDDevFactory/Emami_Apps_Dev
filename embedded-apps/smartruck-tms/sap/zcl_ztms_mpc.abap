@@ -19,7 +19,7 @@ CLASS zcl_ztms_mpc IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD get_last_modified.
-    CONSTANTS lc_gen_date_time TYPE timestamp VALUE '20261127120000'.
+    CONSTANTS lc_gen_date_time TYPE timestamp VALUE '20261128120000'.
     rv_last_modified = super->get_last_modified( ).
     IF rv_last_modified < lc_gen_date_time.
       rv_last_modified = lc_gen_date_time.
@@ -625,6 +625,271 @@ CLASS zcl_ztms_mpc IMPLEMENTATION.
     lo_property->set_maxlength( iv_max_length = 40 ).
     lo_entity_type->bind_structure( iv_structure_name = 'ZCL_TMS_TY=>TS_FREIGHTCOND' iv_bind_conversions = abap_false ).
     lo_entity_set = lo_entity_type->create_entity_set( 'FreightCondSet' ).
+    lo_entity_set->set_creatable( abap_false ).
+    lo_entity_set->set_updatable( abap_false ).
+    lo_entity_set->set_deletable( abap_false ).
+    lo_entity_set->set_pageable( abap_false ).
+    lo_entity_set->set_addressable( abap_true ).
+    lo_entity_set->set_has_ftxt_search( abap_false ).
+    lo_entity_set->set_subscribable( abap_false ).
+    lo_entity_set->set_filter_required( abap_false ).
+
+    lo_entity_type = model->create_entity_type( iv_entity_type_name = 'DpMaterial' iv_def_entity_set = abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Matnr' iv_abap_fieldname = 'MATNR' ).
+    lo_property->set_is_key( ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 18 ).
+    lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Maktx' iv_abap_fieldname = 'MAKTX' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 40 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Spart' iv_abap_fieldname = 'SPART' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 2 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Meins' iv_abap_fieldname = 'MEINS' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 3 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Brgew' iv_abap_fieldname = 'BRGEW' ).
+    lo_property->set_type_edm_decimal( ).
+    lo_property->set_precison( iv_precision = 2 ).
+    lo_property->set_maxlength( iv_max_length = 13 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Gewei' iv_abap_fieldname = 'GEWEI' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 3 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'CasePack' iv_abap_fieldname = 'CASEPACK' ).
+    lo_property->set_type_edm_decimal( ).
+    lo_property->set_precison( iv_precision = 2 ).
+    lo_property->set_maxlength( iv_max_length = 13 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Brand' iv_abap_fieldname = 'BRAND' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 18 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Mtart' iv_abap_fieldname = 'MTART' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 4 ).
+    lo_entity_type->bind_structure( iv_structure_name = 'ZCL_TMS_TY=>TS_DPMATERIAL' iv_bind_conversions = abap_false ).
+    lo_entity_set = lo_entity_type->create_entity_set( 'DpMaterialSet' ).
+    lo_entity_set->set_creatable( abap_false ).
+    lo_entity_set->set_updatable( abap_false ).
+    lo_entity_set->set_deletable( abap_false ).
+    lo_entity_set->set_pageable( abap_false ).
+    lo_entity_set->set_addressable( abap_true ).
+    lo_entity_set->set_has_ftxt_search( abap_false ).
+    lo_entity_set->set_subscribable( abap_false ).
+    lo_entity_set->set_filter_required( abap_false ).
+
+    lo_entity_type = model->create_entity_type( iv_entity_type_name = 'DpStock' iv_def_entity_set = abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Matnr' iv_abap_fieldname = 'MATNR' ).
+    lo_property->set_is_key( ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 18 ).
+    lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Werks' iv_abap_fieldname = 'WERKS' ).
+    lo_property->set_is_key( ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 4 ).
+    lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Unr' iv_abap_fieldname = 'UNR' ).
+    lo_property->set_type_edm_decimal( ).
+    lo_property->set_precison( iv_precision = 2 ).
+    lo_property->set_maxlength( iv_max_length = 13 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Git' iv_abap_fieldname = 'GIT' ).
+    lo_property->set_type_edm_decimal( ).
+    lo_property->set_precison( iv_precision = 2 ).
+    lo_property->set_maxlength( iv_max_length = 13 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Qi' iv_abap_fieldname = 'QI' ).
+    lo_property->set_type_edm_decimal( ).
+    lo_property->set_precison( iv_precision = 2 ).
+    lo_property->set_maxlength( iv_max_length = 13 ).
+    lo_entity_type->bind_structure( iv_structure_name = 'ZCL_TMS_TY=>TS_DPSTOCK' iv_bind_conversions = abap_false ).
+    lo_entity_set = lo_entity_type->create_entity_set( 'DpStockSet' ).
+    lo_entity_set->set_creatable( abap_false ).
+    lo_entity_set->set_updatable( abap_false ).
+    lo_entity_set->set_deletable( abap_false ).
+    lo_entity_set->set_pageable( abap_false ).
+    lo_entity_set->set_addressable( abap_true ).
+    lo_entity_set->set_has_ftxt_search( abap_false ).
+    lo_entity_set->set_subscribable( abap_false ).
+    lo_entity_set->set_filter_required( abap_false ).
+
+    lo_entity_type = model->create_entity_type( iv_entity_type_name = 'DpLot' iv_def_entity_set = abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Matnr' iv_abap_fieldname = 'MATNR' ).
+    lo_property->set_is_key( ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 18 ).
+    lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Werks' iv_abap_fieldname = 'WERKS' ).
+    lo_property->set_is_key( ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 4 ).
+    lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Charg' iv_abap_fieldname = 'CHARG' ).
+    lo_property->set_is_key( ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 10 ).
+    lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Hsdat' iv_abap_fieldname = 'HSDAT' ).
+    lo_property->set_type_edm_datetime( ).
+    lo_property->/iwbep/if_mgw_odata_annotatabl~create_annotation( iv_annotation_namespace = /iwbep/if_mgw_med_odata_types=>gc_sap_namespace )->add( iv_key = 'display-format' iv_value = 'Date' ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Vfdat' iv_abap_fieldname = 'VFDAT' ).
+    lo_property->set_type_edm_datetime( ).
+    lo_property->/iwbep/if_mgw_odata_annotatabl~create_annotation( iv_annotation_namespace = /iwbep/if_mgw_med_odata_types=>gc_sap_namespace )->add( iv_key = 'display-format' iv_value = 'Date' ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Unr' iv_abap_fieldname = 'UNR' ).
+    lo_property->set_type_edm_decimal( ).
+    lo_property->set_precison( iv_precision = 2 ).
+    lo_property->set_maxlength( iv_max_length = 13 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'LifePct' iv_abap_fieldname = 'LIFEPCT' ).
+    lo_property->set_type_edm_decimal( ).
+    lo_property->set_precison( iv_precision = 2 ).
+    lo_property->set_maxlength( iv_max_length = 13 ).
+    lo_entity_type->bind_structure( iv_structure_name = 'ZCL_TMS_TY=>TS_DPLOT' iv_bind_conversions = abap_false ).
+    lo_entity_set = lo_entity_type->create_entity_set( 'DpLotSet' ).
+    lo_entity_set->set_creatable( abap_false ).
+    lo_entity_set->set_updatable( abap_false ).
+    lo_entity_set->set_deletable( abap_false ).
+    lo_entity_set->set_pageable( abap_false ).
+    lo_entity_set->set_addressable( abap_true ).
+    lo_entity_set->set_has_ftxt_search( abap_false ).
+    lo_entity_set->set_subscribable( abap_false ).
+    lo_entity_set->set_filter_required( abap_false ).
+
+    lo_entity_type = model->create_entity_type( iv_entity_type_name = 'DpSto' iv_def_entity_set = abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Matnr' iv_abap_fieldname = 'MATNR' ).
+    lo_property->set_is_key( ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 18 ).
+    lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Reswk' iv_abap_fieldname = 'RESWK' ).
+    lo_property->set_is_key( ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 4 ).
+    lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Werks' iv_abap_fieldname = 'WERKS' ).
+    lo_property->set_is_key( ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 4 ).
+    lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'OpenQty' iv_abap_fieldname = 'OPENQTY' ).
+    lo_property->set_type_edm_decimal( ).
+    lo_property->set_precison( iv_precision = 2 ).
+    lo_property->set_maxlength( iv_max_length = 13 ).
+    lo_entity_type->bind_structure( iv_structure_name = 'ZCL_TMS_TY=>TS_DPSTO' iv_bind_conversions = abap_false ).
+    lo_entity_set = lo_entity_type->create_entity_set( 'DpStoSet' ).
+    lo_entity_set->set_creatable( abap_false ).
+    lo_entity_set->set_updatable( abap_false ).
+    lo_entity_set->set_deletable( abap_false ).
+    lo_entity_set->set_pageable( abap_false ).
+    lo_entity_set->set_addressable( abap_true ).
+    lo_entity_set->set_has_ftxt_search( abap_false ).
+    lo_entity_set->set_subscribable( abap_false ).
+    lo_entity_set->set_filter_required( abap_false ).
+
+    lo_entity_type = model->create_entity_type( iv_entity_type_name = 'DpOpenOrder' iv_def_entity_set = abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Matnr' iv_abap_fieldname = 'MATNR' ).
+    lo_property->set_is_key( ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 18 ).
+    lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Werks' iv_abap_fieldname = 'WERKS' ).
+    lo_property->set_is_key( ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 4 ).
+    lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Vtweg' iv_abap_fieldname = 'VTWEG' ).
+    lo_property->set_is_key( ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 2 ).
+    lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Kdgrp' iv_abap_fieldname = 'KDGRP' ).
+    lo_property->set_is_key( ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 2 ).
+    lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'OpenQty' iv_abap_fieldname = 'OPENQTY' ).
+    lo_property->set_type_edm_decimal( ).
+    lo_property->set_precison( iv_precision = 2 ).
+    lo_property->set_maxlength( iv_max_length = 13 ).
+    lo_entity_type->bind_structure( iv_structure_name = 'ZCL_TMS_TY=>TS_DPOPENORDER' iv_bind_conversions = abap_false ).
+    lo_entity_set = lo_entity_type->create_entity_set( 'DpOpenOrderSet' ).
+    lo_entity_set->set_creatable( abap_false ).
+    lo_entity_set->set_updatable( abap_false ).
+    lo_entity_set->set_deletable( abap_false ).
+    lo_entity_set->set_pageable( abap_false ).
+    lo_entity_set->set_addressable( abap_true ).
+    lo_entity_set->set_has_ftxt_search( abap_false ).
+    lo_entity_set->set_subscribable( abap_false ).
+    lo_entity_set->set_filter_required( abap_false ).
+
+    lo_entity_type = model->create_entity_type( iv_entity_type_name = 'DpSale' iv_def_entity_set = abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Datum' iv_abap_fieldname = 'DATUM' ).
+    lo_property->set_is_key( ).
+    lo_property->set_type_edm_datetime( ).
+    lo_property->/iwbep/if_mgw_odata_annotatabl~create_annotation( iv_annotation_namespace = /iwbep/if_mgw_med_odata_types=>gc_sap_namespace )->add( iv_key = 'display-format' iv_value = 'Date' ).
+    lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Matnr' iv_abap_fieldname = 'MATNR' ).
+    lo_property->set_is_key( ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 18 ).
+    lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Werks' iv_abap_fieldname = 'WERKS' ).
+    lo_property->set_is_key( ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 4 ).
+    lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Vtweg' iv_abap_fieldname = 'VTWEG' ).
+    lo_property->set_is_key( ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 2 ).
+    lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Qty' iv_abap_fieldname = 'QTY' ).
+    lo_property->set_type_edm_decimal( ).
+    lo_property->set_precison( iv_precision = 2 ).
+    lo_property->set_maxlength( iv_max_length = 13 ).
+    lo_entity_type->bind_structure( iv_structure_name = 'ZCL_TMS_TY=>TS_DPSALE' iv_bind_conversions = abap_false ).
+    lo_entity_set = lo_entity_type->create_entity_set( 'DpSaleSet' ).
+    lo_entity_set->set_creatable( abap_false ).
+    lo_entity_set->set_updatable( abap_false ).
+    lo_entity_set->set_deletable( abap_false ).
+    lo_entity_set->set_pageable( abap_false ).
+    lo_entity_set->set_addressable( abap_true ).
+    lo_entity_set->set_has_ftxt_search( abap_false ).
+    lo_entity_set->set_subscribable( abap_false ).
+    lo_entity_set->set_filter_required( abap_false ).
+
+    lo_entity_type = model->create_entity_type( iv_entity_type_name = 'DpTransit' iv_def_entity_set = abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Vbeln' iv_abap_fieldname = 'VBELN' ).
+    lo_property->set_is_key( ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 10 ).
+    lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Matnr' iv_abap_fieldname = 'MATNR' ).
+    lo_property->set_is_key( ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 18 ).
+    lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Tknum' iv_abap_fieldname = 'TKNUM' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 10 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Swerks' iv_abap_fieldname = 'SWERKS' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 4 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Werks' iv_abap_fieldname = 'WERKS' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 4 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Qty' iv_abap_fieldname = 'QTY' ).
+    lo_property->set_type_edm_decimal( ).
+    lo_property->set_precison( iv_precision = 2 ).
+    lo_property->set_maxlength( iv_max_length = 13 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Budat' iv_abap_fieldname = 'BUDAT' ).
+    lo_property->set_type_edm_datetime( ).
+    lo_property->/iwbep/if_mgw_odata_annotatabl~create_annotation( iv_annotation_namespace = /iwbep/if_mgw_med_odata_types=>gc_sap_namespace )->add( iv_key = 'display-format' iv_value = 'Date' ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Transporter' iv_abap_fieldname = 'TRANSPORTER' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 35 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Vehicle' iv_abap_fieldname = 'VEHICLE' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 20 ).
+    lo_entity_type->bind_structure( iv_structure_name = 'ZCL_TMS_TY=>TS_DPTRANSIT' iv_bind_conversions = abap_false ).
+    lo_entity_set = lo_entity_type->create_entity_set( 'DpTransitSet' ).
     lo_entity_set->set_creatable( abap_false ).
     lo_entity_set->set_updatable( abap_false ).
     lo_entity_set->set_deletable( abap_false ).

@@ -28,6 +28,8 @@ const sapSvc = require('./tmsSap');
 const integ = require('./tmsIntegrations');
 const ulip = require('./tmsUlip');
 const { MAX_FILE } = require('./tmsTrips');
+const planningMod = require('./tmsPlanning');
+const { makeFetchSet } = require('./tmsPlanningSap');
 
 const APP_ID = 'smartruck-tms';
 const router = express.Router();
@@ -98,6 +100,7 @@ function createService(store, depsForCaller) {
     };
     return {
         sessionUser,
+        async withUser(caller, fn) { return store.withDb((db) => fn(sessionUser(db, caller)), { write: false }); },
         async me(caller) {
             return store.withDb((db) => {
                 const u = sessionUser(db, caller); u.lastSignin = new Date().toISOString();
@@ -253,6 +256,12 @@ router.get('/file/:id', async (req, res) => {
 });
 router.get('/reports/catalog', handle('reports.catalog', async () => ({ catalog: reports.catalog(), count: reports.count() })));
 router.get('/reports/:name', handle('report', (req) => service.report(req.caller, String(req.params.name), req.query.allUnits === '1')));
+// Distribution Planning: live-SAP dataset for Sanjoy Paul's planning engine (docs/DISTRIBUTION_PLANNING.md). Own tables, own permissions (plan.*).
+const planning = planningMod.create({
+    pool, fetchSet: makeFetchSet(),
+    getUser: (caller) => service.withUser(caller, (u) => ({ email: u.email, roles: u.roles || [], perms: new Set([...engine.permsOf(u)].concat(engine.can(u, '*') ? ['plan.view', 'plan.run', 'plan.admin'] : [])) })),
+});
+router.use('/planning', planning.router);
 router.post('/admin/import', handle('import', (req) => service.importData(req.caller, req.body, req.query.dryRun === '1')));
 
 // Background sweep: only one process should do this per environment; set TMS_BACKGROUND=off on the others.

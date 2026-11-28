@@ -16,6 +16,16 @@ CLASS zcl_ztms_dpc DEFINITION PUBLIC INHERITING FROM /iwbep/cl_mgw_abs_data CREA
     METHODS filter_values
       IMPORTING it_filter TYPE /iwbep/t_mgw_select_option iv_name TYPE string RETURNING VALUE(rt_val) TYPE string_table.
     METHODS hub_user RETURNING VALUE(rv_user) TYPE string.
+    "! Distribution Planning sets: a filter is mandatory (the aggregates scan big tables), $top at most 5000, $skip / $top applied after a stable sort.
+    METHODS dp_guard
+      IMPORTING iv_filtered TYPE abap_bool iv_what TYPE string is_paging TYPE /iwbep/s_mgw_paging
+      RAISING   /iwbep/cx_mgw_busi_exception.
+    METHODS dp_page
+      IMPORTING is_paging TYPE /iwbep/s_mgw_paging CHANGING ct_tab TYPE STANDARD TABLE.
+    "! Date range of a filter on property iv_name (Edm.DateTime arrives as YYYYMMDD or ISO text): from / to, initial = open.
+    METHODS dp_dates
+      IMPORTING it_filter TYPE /iwbep/t_mgw_select_option iv_name TYPE string
+      EXPORTING ev_from TYPE d ev_to TYPE d.
 ENDCLASS.
 
 CLASS zcl_ztms_dpc IMPLEMENTATION.
@@ -41,6 +51,51 @@ CLASS zcl_ztms_dpc IMPLEMENTATION.
           APPEND ls_o-low TO rt_val.
         ENDLOOP.
       ENDIF.
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD dp_guard.
+    IF iv_filtered <> abap_true.
+      busi( |Give a filter ({ iv_what }) - the planning feed does not read the whole system.| ).
+    ENDIF.
+    IF is_paging-top > 5000.
+      busi( `At most 5000 rows per request ($top).` ).
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD dp_page.
+    IF is_paging-skip > 0.
+      DELETE ct_tab TO is_paging-skip.
+    ENDIF.
+    IF is_paging-top > 0 AND lines( ct_tab ) > is_paging-top.
+      DELETE ct_tab FROM is_paging-top + 1.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD dp_dates.
+    CLEAR: ev_from, ev_to.
+    LOOP AT it_filter INTO DATA(ls_f).
+      IF to_upper( ls_f-property ) <> to_upper( iv_name ).
+        CONTINUE.
+      ENDIF.
+      LOOP AT ls_f-select_options INTO DATA(ls_o) WHERE sign = 'I'.
+        DATA(lv_lo) = ls_o-low.
+        DATA(lv_hi) = ls_o-high.
+        REPLACE ALL OCCURRENCES OF REGEX '[^0-9]' IN lv_lo WITH ''.
+        REPLACE ALL OCCURRENCES OF REGEX '[^0-9]' IN lv_hi WITH ''.
+        DATA(lv_d1) = COND d( WHEN strlen( lv_lo ) >= 8 THEN lv_lo(8) ).
+        DATA(lv_d2) = COND d( WHEN strlen( lv_hi ) >= 8 THEN lv_hi(8) ).
+        CASE ls_o-option.
+          WHEN 'EQ'.
+            ev_from = lv_d1. ev_to = lv_d1.
+          WHEN 'GE' OR 'GT'.
+            ev_from = lv_d1.
+          WHEN 'LE' OR 'LT'.
+            ev_to = lv_d1.
+          WHEN 'BT'.
+            ev_from = lv_d1. ev_to = lv_d2.
+        ENDCASE.
+      ENDLOOP.
     ENDLOOP.
   ENDMETHOD.
 
@@ -144,6 +199,76 @@ CLASS zcl_ztms_dpc IMPLEMENTATION.
         DATA(lt_fc) = zcl_tms_core=>get_freight_cond( it_route = lt_fr it_tdlnr = lt_ft it_kschl = lt_fk it_vsart = lt_fv it_shtyp = lt_fs it_add01 = lt_fa
                                                      iv_skip = is_paging-skip iv_top = COND #( WHEN is_paging-top > 0 THEN is_paging-top ELSE 5000 ) ).
         copy_data_to_ref( EXPORTING is_data = lt_fc CHANGING cr_data = er_entityset ).
+      WHEN 'DpMaterialSet'.
+        " Filters (EQ): Spart, Matnr (one or many). Or $top (max 5000) with $skip to page the whole master.
+        DATA(lt_dm_s) = filter_values( it_filter = it_filter_select_options iv_name = 'Spart' ).
+        DATA(lt_dm_m) = filter_values( it_filter = it_filter_select_options iv_name = 'Matnr' ).
+        IF lt_dm_s IS INITIAL AND lt_dm_m IS INITIAL AND is_paging-top = 0.
+          busi( `Give a filter (Spart or Matnr eq '...') or $top.` ).
+        ENDIF.
+        dp_guard( iv_filtered = abap_true iv_what = `` is_paging = is_paging ).
+        DATA(lt_dm) = zcl_tms_dp=>get_materials( it_spart = lt_dm_s it_matnr = lt_dm_m ).
+        dp_page( EXPORTING is_paging = is_paging CHANGING ct_tab = lt_dm ).
+        copy_data_to_ref( EXPORTING is_data = lt_dm CHANGING cr_data = er_entityset ).
+      WHEN 'DpStockSet'.
+        DATA(lt_ds_w) = filter_values( it_filter = it_filter_select_options iv_name = 'Werks' ).
+        DATA(lt_ds_m) = filter_values( it_filter = it_filter_select_options iv_name = 'Matnr' ).
+        dp_guard( iv_filtered = xsdbool( lt_ds_w IS NOT INITIAL OR lt_ds_m IS NOT INITIAL ) iv_what = `Werks or Matnr eq '...'` is_paging = is_paging ).
+        DATA(lt_ds) = zcl_tms_dp=>get_stock( it_werks = lt_ds_w it_matnr = lt_ds_m ).
+        dp_page( EXPORTING is_paging = is_paging CHANGING ct_tab = lt_ds ).
+        copy_data_to_ref( EXPORTING is_data = lt_ds CHANGING cr_data = er_entityset ).
+      WHEN 'DpLotSet'.
+        DATA(lt_dl_w) = filter_values( it_filter = it_filter_select_options iv_name = 'Werks' ).
+        DATA(lt_dl_m) = filter_values( it_filter = it_filter_select_options iv_name = 'Matnr' ).
+        dp_guard( iv_filtered = xsdbool( lt_dl_w IS NOT INITIAL OR lt_dl_m IS NOT INITIAL ) iv_what = `Werks or Matnr eq '...'` is_paging = is_paging ).
+        DATA(lt_dl) = zcl_tms_dp=>get_lots( it_werks = lt_dl_w it_matnr = lt_dl_m ).
+        dp_page( EXPORTING is_paging = is_paging CHANGING ct_tab = lt_dl ).
+        copy_data_to_ref( EXPORTING is_data = lt_dl CHANGING cr_data = er_entityset ).
+      WHEN 'DpStoSet'.
+        DATA(lt_dt_w) = filter_values( it_filter = it_filter_select_options iv_name = 'Werks' ).
+        DATA(lt_dt_r) = filter_values( it_filter = it_filter_select_options iv_name = 'Reswk' ).
+        DATA(lt_dt_m) = filter_values( it_filter = it_filter_select_options iv_name = 'Matnr' ).
+        dp_guard( iv_filtered = xsdbool( lt_dt_w IS NOT INITIAL OR lt_dt_r IS NOT INITIAL OR lt_dt_m IS NOT INITIAL ) iv_what = `Werks, Reswk or Matnr eq '...'` is_paging = is_paging ).
+        DATA(lt_dt) = zcl_tms_dp=>get_sto( it_werks = lt_dt_w it_reswk = lt_dt_r it_matnr = lt_dt_m ).
+        dp_page( EXPORTING is_paging = is_paging CHANGING ct_tab = lt_dt ).
+        copy_data_to_ref( EXPORTING is_data = lt_dt CHANGING cr_data = er_entityset ).
+      WHEN 'DpOpenOrderSet'.
+        DATA(lt_do_w) = filter_values( it_filter = it_filter_select_options iv_name = 'Werks' ).
+        DATA(lt_do_v) = filter_values( it_filter = it_filter_select_options iv_name = 'Vtweg' ).
+        DATA(lt_do_m) = filter_values( it_filter = it_filter_select_options iv_name = 'Matnr' ).
+        dp_guard( iv_filtered = xsdbool( lt_do_w IS NOT INITIAL OR lt_do_m IS NOT INITIAL ) iv_what = `Werks or Matnr eq '...'` is_paging = is_paging ).
+        DATA(lt_do) = zcl_tms_dp=>get_open_orders( it_werks = lt_do_w it_vtweg = lt_do_v it_matnr = lt_do_m ).
+        dp_page( EXPORTING is_paging = is_paging CHANGING ct_tab = lt_do ).
+        copy_data_to_ref( EXPORTING is_data = lt_do CHANGING cr_data = er_entityset ).
+      WHEN 'DpSaleSet'.
+        " Datum ge datetime'..' (required, at most 100 days) and optionally Datum le ..; filters Werks, Vtweg, Matnr (EQ).
+        DATA lv_dp_from TYPE d.
+        DATA lv_dp_to TYPE d.
+        dp_dates( EXPORTING it_filter = it_filter_select_options iv_name = 'Datum' IMPORTING ev_from = lv_dp_from ev_to = lv_dp_to ).
+        IF lv_dp_from IS INITIAL.
+          busi( `Filter Datum ge datetime'<from>' is mandatory (and optionally Datum le).` ).
+        ENDIF.
+        IF lv_dp_to IS INITIAL.
+          lv_dp_to = sy-datum.
+        ENDIF.
+        IF lv_dp_to - lv_dp_from > 100.
+          busi( `At most 100 days per request.` ).
+        ENDIF.
+        DATA(lt_dp_w) = filter_values( it_filter = it_filter_select_options iv_name = 'Werks' ).
+        DATA(lt_dp_v) = filter_values( it_filter = it_filter_select_options iv_name = 'Vtweg' ).
+        DATA(lt_dp_m) = filter_values( it_filter = it_filter_select_options iv_name = 'Matnr' ).
+        dp_guard( iv_filtered = abap_true iv_what = `` is_paging = is_paging ).
+        DATA(lt_dp) = zcl_tms_dp=>get_sales( iv_from = lv_dp_from iv_to = lv_dp_to it_werks = lt_dp_w it_vtweg = lt_dp_v it_matnr = lt_dp_m ).
+        dp_page( EXPORTING is_paging = is_paging CHANGING ct_tab = lt_dp ).
+        copy_data_to_ref( EXPORTING is_data = lt_dp CHANGING cr_data = er_entityset ).
+      WHEN 'DpTransitSet'.
+        DATA(lt_dr_w) = filter_values( it_filter = it_filter_select_options iv_name = 'Werks' ).
+        DATA(lt_dr_s) = filter_values( it_filter = it_filter_select_options iv_name = 'Swerks' ).
+        DATA(lt_dr_m) = filter_values( it_filter = it_filter_select_options iv_name = 'Matnr' ).
+        dp_guard( iv_filtered = xsdbool( lt_dr_w IS NOT INITIAL OR lt_dr_s IS NOT INITIAL OR lt_dr_m IS NOT INITIAL ) iv_what = `Werks, Swerks or Matnr eq '...'` is_paging = is_paging ).
+        DATA(lt_dr) = zcl_tms_dp=>get_transit( it_werks = lt_dr_w it_swerks = lt_dr_s it_matnr = lt_dr_m ).
+        dp_page( EXPORTING is_paging = is_paging CHANGING ct_tab = lt_dr ).
+        copy_data_to_ref( EXPORTING is_data = lt_dr CHANGING cr_data = er_entityset ).
       WHEN 'TripInvoiceSet'.
         " Filter Vbeln eq '<billing>' and/or Vbelv eq '<delivery>' (one is required, at most 50 each); optional Werks eq '<plant>'.
         DATA(lt_tib) = filter_values( it_filter = it_filter_select_options iv_name = 'Vbeln' ).

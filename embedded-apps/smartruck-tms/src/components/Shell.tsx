@@ -3,20 +3,22 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, Radar, PackagePlus, ClipboardList, Truck, Gavel, Receipt, Users, Building2, Settings, FileBarChart, Bell, Menu, X, ArrowLeft, RotateCcw, ShieldCheck, FileInput, Handshake, Boxes } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { LayoutDashboard, Radar, PackagePlus, ClipboardList, Truck, Gavel, Receipt, Users, Building2, Settings, FileBarChart, Bell, Menu, X, ArrowLeft, RotateCcw, ShieldCheck, FileInput, Handshake, Boxes, Network } from 'lucide-react';
 import { TmsProvider, useTms } from '../lib/store';
 import { goBack } from '../lib/goBack';
 import { hasHubSession } from '../lib/hubEmailLogin';
 import { fmtDT } from './ui';
 
 const BASE = '/apps/smartruck-tms';
-const NAV = [
+const NAV: { href: string; label: string; icon: LucideIcon; perm?: string }[] = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/control-tower/', label: 'Control Tower', icon: Radar },
   { href: '/post-order/', label: 'Post Order', icon: PackagePlus },
   { href: '/indents/', label: 'Indents', icon: FileInput },
   { href: '/vehicle-invoices/', label: 'Vehicle Invoices', icon: Receipt },
   { href: '/loading-optimizer/', label: 'Loading Optimizer', icon: Boxes },
+  { href: '/distribution-planning/', label: 'Distribution Planning', icon: Network, perm: 'plan.view' },
   { href: '/vendor/', label: 'Vendor Portal', icon: Handshake },
   { href: '/orders/', label: 'Orders', icon: ClipboardList },
   { href: '/shipments/', label: 'Shipments', icon: Truck },
@@ -42,7 +44,7 @@ function Chrome({ children }: { children: React.ReactNode }) {
   const live = t.mode === 'live';
   const vendor = live && t.me.roles.includes('Carrier Vendor');
   useEffect(() => { if (vendor && (path === '/' || path === '')) router.replace('/vendor/'); }, [vendor, path, router]);
-  const nav = vendor ? NAV.filter((n) => n.href === '/bidding/' || n.href === '/vendor/') : NAV;
+  const nav = vendor ? NAV.filter((n) => n.href === '/bidding/' || n.href === '/vendor/') : NAV.filter((n) => !n.perm || t.can(n.perm));
   const pane = wide ? 'relative w-60 shrink-0 border-r border-border bg-white' : `fixed inset-y-0 left-0 z-40 w-64 bg-white shadow-pop transition-transform ${open ? 'translate-x-0' : '-translate-x-full'}`;
 
   return (

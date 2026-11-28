@@ -73,7 +73,9 @@ const results = (j) => (j && j.d && (j.d.results || (Array.isArray(j.d) ? j.d : 
 
 // ===================================================================================================================== MAPPING
 // Everything below knows the SAP names. Adjust here (and only here) when the contract changes.
-const SET = { vendor: 'VendorSet', customer: 'CustomerSet', poso: 'PoSoCheckSet', invoice: 'FreightInvoiceSet', payment: 'PaymentStatusSet', outDelivery: 'OutDeliverySet', outShipment: 'OutShipmentSet', lane: 'LaneSet', tripInvoice: 'TripInvoiceSet', tripVehicle: 'TripVehicleSet', parallel: 'ParallelCheckSet', freightCond: 'FreightCondSet' };
+const SET = { vendor: 'VendorSet', customer: 'CustomerSet', poso: 'PoSoCheckSet', invoice: 'FreightInvoiceSet', payment: 'PaymentStatusSet', outDelivery: 'OutDeliverySet', outShipment: 'OutShipmentSet', lane: 'LaneSet', tripInvoice: 'TripInvoiceSet', tripVehicle: 'TripVehicleSet', parallel: 'ParallelCheckSet', freightCond: 'FreightCondSet',
+    // --- Distribution Planning feed (docs/DISTRIBUTION_PLANNING.md; ABAP sap/zcl_tms_dp.abap) ---
+    dpMaterial: 'DpMaterialSet', dpStock: 'DpStockSet', dpLot: 'DpLotSet', dpSto: 'DpStoSet', dpOpenOrder: 'DpOpenOrderSet', dpSale: 'DpSaleSet', dpTransit: 'DpTransitSet' };
 
 const map = {
     vendor: (r) => ({ code: str(r.Lifnr), name: str(r.Name1), paymentTerms: str(r.Zterm) ? `Net ${parseInt(str(r.Zterm).replace(/\D/g, ''), 10) || 30}` : '', blocked: isX(r.Sperr) || isX(r.Loevm) }),
@@ -190,6 +192,21 @@ const service = {
         const top = Math.min(5000, Math.max(1, Number(q.top) || 500)), skip = Math.max(0, Number(q.skip) || 0);
         const url = `${SET.freightCond}?${f ? `$filter=${encodeURIComponent(f)}&` : ''}$top=${top}${skip ? `&$skip=${skip}` : ''}`;
         return { simulated: false, rows: results(await request(caller, 'GET', url)).map(map.freightCond).filter((r) => r.condRecord) };
+    },
+    /** Distribution Planning feed: reads ALL pages of one Dp*Set and returns the RAW OData rows (backend/tmsPlanning.js maps them).
+        set = a SET.dp* name; filter = OData $filter text (build values with _test.enc); pageSize <= 5000; maxRows is a safety stop. Each page needs the
+        filter SAP demands (Werks / Matnr / Spart, Datum ge for DpSaleSet). -> { simulated, rows[], pages } */
+    async dpFetch(set, filter, caller, { pageSize = 5000, maxRows = 500000 } = {}) {
+        if (!isConfigured()) return { simulated: true, rows: [], pages: 0 };
+        const size = Math.min(5000, Math.max(1, Number(pageSize) || 5000)), rows = [];
+        let pages = 0;
+        for (let skip = 0; rows.length < maxRows; skip += size) {
+            const q = `${set}?${filter ? `$filter=${encodeURIComponent(filter)}&` : ''}$top=${size}${skip ? `&$skip=${skip}` : ''}`;
+            const got = results(await request(caller, 'GET', q)); pages++;
+            rows.push(...got);
+            if (got.length < size) break;
+        }
+        return { simulated: false, rows, pages };
     },
     /** docs[] -> { [doc]: { cleared, clearingDoc } } */
     async paymentStatus(docs, caller) {

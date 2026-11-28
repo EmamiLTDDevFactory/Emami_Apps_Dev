@@ -143,3 +143,34 @@ OData `FreightCondSet` in ZTMS_SRV (key `Knumh`; `ZCL_TMS_CORE=>GET_FREIGHT_COND
 `Vsart`, `Shtyp`, `Add01` (eq, several values with `or`), `$top` / `$skip`. With no filter `$top` is mandatory (about 20,000 rows); at most 5000
 per request. Newest validity first within route and transporter. Backend: `sapSvc.freightConditions({ route, vendor, condType, shippingType,
 shipmentType, add01, top, skip })` in `backend/tmsSap.js` (a bare call returns the first 500 rows). ABAP Unit 19/19, backend tests 51/51.
+
+## Distribution Planning feed (2026-11-28) - DEPLOYED AND VERIFIED ON EDS
+Transport EDSK9B0EM3 (IT_FCOMMON, modifiable; same request as the rest of ZTMS_SRV). Objects: new class `ZCL_TMS_DP` (+ local test class, 10 ABAP Unit, all green),
+regenerated `ZCL_TMS_TY` / `ZCL_ZTMS_MPC`, patched `ZCL_ZTMS_DPC`. All four active, `inactive objects` empty. `$metadata` on EDS listed the 7 sets immediately (no cache cleanup needed).
+Sources under `sap/`: `zcl_tms_dp.abap`, `zcl_tms_dp.testclasses.abap`, `gen/spec.py`+`gen.py` (-> `zcl_tms_ty.abap`, `zcl_ztms_mpc.abap`), `zcl_ztms_dpc.abap`.
+Every figure below was cross-checked against datapreview SQL (or an independent SQL-side calculation) and matched exactly.
+
+| set | key | fields (OData) | filters | EDS rows |
+|-----|-----|----------------|---------|----------|
+| DpMaterialSet | Matnr | Matnr, Maktx, Spart, Meins, Brgew, Gewei, CasePack, Brand, Mtart | `Spart eq`, `Matnr eq` (either number form), or `$top` | 38,546 (not deleted); Spart 10: 4,218, 03: 1,319 |
+| DpStockSet | Matnr+Werks | Matnr, Werks, Unr, Git, Qi | `Werks eq` or `Matnr eq` | 19,835 over 129 plants (DP15: 609, Unr 2,290,321,596.01 = MARD) |
+| DpLotSet | Matnr+Werks+Charg | Matnr, Werks, Charg, Hsdat, Vfdat, Unr, **LifePct** (0-100, -1 = no expiry date, 0 = expired) | `Werks eq` or `Matnr eq` | 22,440 over the 86 DP/UN/3P plants (DP15: 992 = MCHB sum) |
+| DpStoSet | Matnr+Reswk+Werks | Matnr, Reswk, Werks, OpenQty | `Werks`, `Reswk`, `Matnr` eq | 4,094 over 54 receiving plants (DP15: 257, 4,715,282; Reswk DP29: 60,583,719.12) |
+| DpOpenOrderSet | Matnr+Werks+Vtweg+Kdgrp | Matnr, Werks, Vtweg, Kdgrp, OpenQty | `Werks eq` or `Matnr eq`; optional `Vtweg eq` | 10 rows, 6 plants (DP15, DP16, DP19, DP47, DP59, UN11) - EDS has ~100 order items in 120 days |
+| DpSaleSet | Datum+Matnr+Werks+Vtweg | Datum, Matnr, Werks, Vtweg, Qty | `Datum ge datetime'..'` REQUIRED (+ optional `Datum le`, max 100 days), `Werks`, `Vtweg`, `Matnr` eq | 35 rows for 20 Aug - 27 Nov (14,466 pcs); EDS has ~100 invoices in 2026 |
+| DpTransitSet | Vbeln+Matnr | Vbeln, Matnr, Tknum, Swerks, Werks, Qty, Budat, Transporter, Vehicle | `Werks`, `Swerks`, `Matnr` eq | 9 rows, 2 plants (DP62: 410 pcs / 3 rows, DP59: 1,125,736 / 6 rows) |
+
+Rules: material numbers go out without leading zeros and are accepted either way; quantities are base unit; `$top` <= 5000 with `$skip` paging (stable sort); **stricter than the contract**: the aggregated sets need a
+Werks/Matnr filter (`$top` alone is refused); only DpMaterialSet accepts `$top` alone. Backend reader: `tmsSap.dpFetch`.
+
+Resolved assumptions (against EDS data):
+- **EKET-GLMNG is NOT "issued"**: it is the quantity of deliveries CREATED (a delivery without goods issue already counts). So `DpStoSet.OpenQty = EKET-MENGE - GLMNG` = not yet on any delivery ("not yet issued"). Correct for that meaning.
+- **Transit** therefore = quantity of goods-issued STO deliveries (LIKP-WADAT_IST set, via LIPS-VGBEL/VGPOS) minus received (EKET-WEMNG), newest delivery first, STOs of the last 90 days. The first idea (EKBE VGABE 1 with XBLNR = delivery) was wrong: XBLNR of the goods receipt holds another reference.
+- **MCH1** holds HSDAT/VFDAT (MCHA is empty for 44,821 of 44,822 rows). Left join, so batches without a MCH1 row keep their stock.
+- **VBRP-FKLMG** is the base-unit quantity (a KAR item of 7 cartons x 300 = 2,100 pcs); FKIMG is the sales unit.
+- Customer group is VBKD-KDGRP (header, POSNR 000000) - there is no KDGRP on VBAK. The planner's e-commerce test (his console uses customer-group NAMES) must be a code mapping in the backend (EDS codes seen: 01, 02, 03, 12, 16, 35, 51 ...).
+- **FOR ALL ENTRIES drops duplicate rows**: two identical invoices on an order item counted once and overstated open orders by 10 pcs on DP47; fixed by also selecting the document / item numbers (same guard in transit).
+- Brand = MARA-PRDHA (18-char product hierarchy code; no brand field in MARA). CasePack = MARM KAR (else CS) UMREZ/UMREN: 400001152 -> 900, same as the console.
+
+EDS data limits: SD data is thin (orders/invoices in 2026: ~100 each; max billing date in VBRK is junk 30110730 - ignored by the window), in-transit STOs only at DP59/DP62, open STOs/stock/lots are rich (129 / 54 / 86 plants).
+Basis for NGD: once EDSK9B0EM3 is imported on NGD, run the gateway cache cleanup (/IWFND/CACHE_CLEANUP) for ZTMS_SRV so the 7 new sets appear (same pending step as TripInvoiceSet / FreightCondSet / Out* sets).

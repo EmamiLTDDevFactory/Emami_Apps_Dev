@@ -12,13 +12,14 @@ const LIVE = ['Towards Pickup', 'At Pickup', 'In Transit', 'At Delivery'];
 const INV_FLOW = ['Pending (Logistics)', 'Pending (Finance)', 'Approved', 'Billed', 'Ready For Payment', 'Paid'];
 
 const ROLE_PERMS = {
-    'Allocation Executive': ['order.create', 'order.allocate', 'order.cancel', 'bid.award'],
+    'Allocation Executive': ['order.create', 'order.allocate', 'order.cancel', 'bid.award', 'plan.view'],
     'Carrier Administrator': ['carrier.add', 'carrier.block', 'carrier.delete', 'carrier.weightage'],
     'Finance Executive': ['inv.approve.l', 'voucher.create'],
     'Finance Administrator': ['inv.approve.f', 'inv.pay', 'note.create'],
     Marketing: ['customer.edit', 'report.view'],
-    'Control Tower': ['ship.update', 'sim.manage', 'report.view'],
+    'Control Tower': ['ship.update', 'sim.manage', 'report.view', 'plan.view'],
     'Carrier Vendor': ['bid.place'],
+    'Distribution Planner': ['plan.view', 'plan.run'],
     Admin: ['*'],
 };
 

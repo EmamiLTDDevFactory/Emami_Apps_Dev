@@ -102,5 +102,6 @@ export const ROLE_PERMS: Record<string, { label: string; perms: { key: string; l
   'Depot User': { label: 'Depot User', perms: [{ key: 'indent.create', label: 'Raise indents' }, { key: 'indent.cancel', label: 'Cancel indents' }, { key: 'trip.manage', label: 'Link deliveries, loading check, receipt, POD' }] },
   'Depot Head': { label: 'Depot Head', perms: [{ key: 'trip.manage', label: 'Trip work' }, { key: 'loading.approve', label: 'Approve under-loaded vehicles' }, { key: 'charges.approve', label: 'Approve unloading / detention' }, { key: 'indent.create', label: 'Raise indents' }] },
   'HO Logistics': { label: 'HO Logistics', perms: [{ key: 'lane.manage', label: 'Lanes, vehicle types, SAP lane sync' }, { key: 'indent.override', label: 'Override capacity / offer to a vendor' }, { key: 'invoice.review', label: 'Review out-of-tolerance invoices' }, { key: 'settings.manage', label: 'Thresholds and mailbox' }, { key: 'trip.manage', label: 'Trip work' }] },
+  'Distribution Planner': { label: 'Distribution Planner', perms: [{ key: 'plan.view', label: 'View Distribution Planning' }, { key: 'plan.run', label: 'Refresh from SAP, upload forecast' }] },
   'Admin': { label: 'Admin', perms: [{ key: 'user.manage', label: 'Manage Users' }, { key: '*', label: 'All permissions' }] },
 };
