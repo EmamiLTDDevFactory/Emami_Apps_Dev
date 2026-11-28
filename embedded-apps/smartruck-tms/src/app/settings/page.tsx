@@ -4,6 +4,8 @@ import React, { useState } from 'react';
 import { useTms } from '../../lib/store';
 import { ROLE_PERMS, type AppUser } from '../../lib/types';
 import OutwardRules from '../../components/OutwardRules';
+import Combobox from '../../components/Combobox';
+import { carrierLabel } from '../../lib/labels';
 import { Card, Field, Modal, PageHead, Pill, Table, Tabs, fmtDT } from '../../components/ui';
 import { buildDemoDb } from '../../lib/demo';
 
@@ -14,7 +16,7 @@ export default function Settings() {
   const [tab, setTab] = useState<(typeof TABS)[number]>('User Management');
   const [edit, setEdit] = useState<AppUser>();
   const [alerts, setAlerts] = useState({ delay: true, eway: true, consent: true, bid: true, invoice: false });
-  const save = () => { if (!edit) return; if (!t.can('user.manage')) return t.toast('Only an Admin can manage users', 'err'); if (!edit.name.trim() || !/^\S+@\S+\.\S+$/.test(edit.email)) return t.toast('Valid name and email required', 'err'); if (!edit.roles.length || !edit.units.length) return t.toast('Pick at least one role and one unit', 'err'); t.saveUser(edit); t.toast('User saved'); setEdit(undefined); };
+  const save = () => { if (!edit) return; if (!t.can('user.manage')) return t.toast('Only an Admin can manage users', 'err'); if (!edit.name.trim() || !/^\S+@\S+\.\S+$/.test(edit.email)) return t.toast('Valid name and email required', 'err'); if (!edit.roles.length || !edit.units.length) return t.toast('Pick at least one role and one unit', 'err'); if (edit.roles.includes('Carrier Vendor') && !edit.carrierId) return t.toast('Pick the transporter this vendor login belongs to', 'err'); t.saveUser(edit); t.toast('User saved'); setEdit(undefined); };
   const [imp, setImp] = useState(''); const [impOut, setImpOut] = useState<string[]>([]);
   const runImport = async (raw: unknown, dry: boolean) => {
     const r = await t.importData(raw, dry);
@@ -58,9 +60,10 @@ export default function Settings() {
 
       {edit && <Modal wide title={t.db.users.some((u) => u.id === edit.id) ? 'Edit user' : 'Add user'} onClose={() => setEdit(undefined)} footer={<><button className="btn-ghost" onClick={() => setEdit(undefined)}>Cancel</button><button className="btn-primary" onClick={save}>Save</button></>}>
         <div className="grid gap-3 md:grid-cols-3"><Field label="Name"><input className="input" value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></Field><Field label="Email"><input className="input" value={edit.email} onChange={(e) => setEdit({ ...edit, email: e.target.value })} /></Field><Field label="Designation"><input className="input" value={edit.designation} onChange={(e) => setEdit({ ...edit, designation: e.target.value })} /></Field></div>
+        {edit.roles.includes('Carrier Vendor') && <div className="mt-4 max-w-md rounded-xl border border-rust bg-rust/5 p-3"><Field label="Transporter (required for a Carrier Vendor login)"><Combobox ariaLabel="Transporter" value={edit.carrierId ?? ''} onChange={(v) => setEdit({ ...edit, carrierId: v || undefined })} placeholder="Type code or name…" options={t.db.carriers.filter((c) => !c.blocked).map((c) => ({ value: c.id, label: carrierLabel(c), keywords: c.shortName, hint: c.email ?? 'no e-mail' }))} /></Field><div className="mt-1 text-xs text-inkSoft">This login then sees only this transporter&apos;s requests in the Vendor Portal and can fill the driver and vehicle details.</div></div>}
         <div className="mt-4 text-xs font-bold text-inkSoft">Units</div><div className="mt-1 flex flex-wrap gap-1.5">{t.db.units.map((u) => <button key={u.id} onClick={() => setEdit({ ...edit, units: tog(edit.units, u.id) })} className={`rounded-full border px-3 py-1 text-xs font-bold ${edit.units.includes(u.id) ? 'border-rust bg-rust/10 text-rust' : 'border-border text-inkSoft'}`}>{u.code}</button>)}</div>
         <div className="mt-4 text-xs font-bold text-inkSoft">Roles and permissions</div>
-        <div className="mt-1 grid gap-3 md:grid-cols-2">{Object.entries(ROLE_PERMS).map(([r, v]) => <div key={r} className={`rounded-xl border p-3 ${edit.roles.includes(r) ? 'border-rust bg-rust/5' : 'border-border'}`}><label className="flex items-center gap-2 text-sm font-extrabold"><input type="checkbox" checked={edit.roles.includes(r)} onChange={() => setEdit({ ...edit, roles: tog(edit.roles, r) })} />{r}</label><ul className="mt-2 space-y-1 pl-6 text-xs text-inkSoft">{v.perms.map((p) => <li key={p.key}>{p.label}</li>)}</ul></div>)}</div></Modal>}
+        <div className="mt-1 grid gap-3 md:grid-cols-2">{Object.entries(ROLE_PERMS).map(([r, v]) => <div key={r} className={`rounded-xl border p-3 ${edit.roles.includes(r) ? 'border-rust bg-rust/5' : 'border-border'}`}><label className="flex items-center gap-2 text-sm font-extrabold"><input type="checkbox" checked={edit.roles.includes(r)} onChange={() => setEdit({ ...edit, roles: tog(edit.roles, r), ...(r === 'Carrier Vendor' && edit.roles.includes(r) ? { carrierId: undefined } : {}) })} />{r}</label><ul className="mt-2 space-y-1 pl-6 text-xs text-inkSoft">{v.perms.map((p) => <li key={p.key}>{p.label}</li>)}</ul></div>)}</div></Modal>}
     </div>
   );
 }
