@@ -6,6 +6,7 @@ import { useTms } from '../lib/store';
 import { Card, Kpi, PageHead, Tabs, inr, StatusPill, Table, fmtDT } from '../components/ui';
 import { Bars, Donut, Funnel, Gauge } from '../components/charts';
 
+import { carrierLabel, carrierLabelOf } from '../lib/labels';
 const TABS = ['Home', 'LTL Overview', 'Pre-shipment', 'Ongoing', 'Post-shipment', 'Enterprise', 'Carrier Overview', 'Geofencing'] as const;
 
 export default function Dashboard() {
@@ -57,7 +58,7 @@ export default function Dashboard() {
         <div className="space-y-4"><div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           <Kpi label="LTL shipments" value={l.length} /><Kpi label="Revenue" value={inr(l.reduce((a, s) => a + s.freight, 0))} tone="green" /><Kpi label="MT" value={l.reduce((a, s) => a + s.qty, 0)} tone="blue" />
           <Kpi label="Cases" value={(l.length * 380).toLocaleString('en-IN')} tone="teal" /><Kpi label="TAT %" value={`${l.length ? Math.round((l.filter((s) => s.delayH < 4).length / l.length) * 100) : 0}%`} tone="amber" /></div>
-          <Card title="LTL shipments"><Table rows={l} rowKey={(s) => s.sin} cols={[{ h: 'SIN', r: (s) => s.sin }, { h: 'Carrier', r: (s) => t.db.carriers.find((c) => c.id === s.carrierId)?.shortName }, { h: 'Status', r: (s) => <StatusPill s={s.status} /> }, { h: 'Freight', r: (s) => inr(s.freight), align: 'right' }]} /></Card></div>); })()}
+          <Card title="LTL shipments"><Table rows={l} rowKey={(s) => s.sin} cols={[{ h: 'SIN', r: (s) => s.sin }, { h: 'Carrier', r: (s) => carrierLabelOf(t.db.carriers, s.carrierId, { short: true }) }, { h: 'Status', r: (s) => <StatusPill s={s.status} /> }, { h: 'Freight', r: (s) => inr(s.freight), align: 'right' }]} /></Card></div>); })()}
 
       {tab === 'Pre-shipment' && (<div className="space-y-4"><div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi label="Pending allocation" value={orders.filter((o) => o.status === 'Open' && o.mode === 'FTL').length} tone="amber" />
@@ -73,7 +74,7 @@ export default function Dashboard() {
 
       {tab === 'Post-shipment' && (<div className="space-y-4"><div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi label="Delivered" value={done.length} tone="green" /><Kpi label="ePOD pending" value={epodPending.length} tone="amber" /><Kpi label="ePOD uploaded" value={done.filter((s) => s.ePod === 'Uploaded').length} tone="blue" /><Kpi label="ePOD verified" value={done.filter((s) => s.ePod === 'Verified').length} tone="green" /></div>
-        <Card title="Shipments pending ePOD upload"><Table rows={epodPending} rowKey={(s) => s.sin} cols={[{ h: 'SIN', r: (s) => <b>{s.sin}</b> }, { h: 'Carrier', r: (s) => t.db.carriers.find((c) => c.id === s.carrierId)?.shortName }, { h: 'Delivery', r: (s) => s.toLocId }, { h: 'Freight', r: (s) => inr(s.freight), align: 'right' }]} /></Card></div>)}
+        <Card title="Shipments pending ePOD upload"><Table rows={epodPending} rowKey={(s) => s.sin} cols={[{ h: 'SIN', r: (s) => <b>{s.sin}</b> }, { h: 'Carrier', r: (s) => carrierLabelOf(t.db.carriers, s.carrierId, { short: true }) }, { h: 'Delivery', r: (s) => s.toLocId }, { h: 'Freight', r: (s) => inr(s.freight), align: 'right' }]} /></Card></div>)}
 
       {tab === 'Enterprise' && (<div className="grid gap-4 lg:grid-cols-2">
         <Card title="Month over month (shipments)"><Bars data={['Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov'].map((m, i) => ({ label: m, value: 820 + i * 63 + (i % 2) * 40 }))} /></Card>
@@ -87,7 +88,7 @@ export default function Dashboard() {
           <Gauge value={ships.length ? ((ships.length - by('Requested') - by('Accepted')) / ships.length) * 100 : 0} label="Assignment %" />
           <Gauge value={ships.length ? (by('Rejected') / ships.length) * 100 : 0} label="Rejection %" color="#C0392B" />
           <Gauge value={ships.length ? (done.length / ships.length) * 100 : 0} label="Fulfilled %" color="#1D6FA5" /></div></Card>
-        <Card title="By carrier" pad={false}><Table rows={byCarrier} rowKey={(x) => x.c.id} cols={[{ h: 'Carrier', r: (x) => <b>{x.c.name}</b> }, { h: 'Shipments', r: (x) => x.n }, { h: 'Completed', r: (x) => x.ful }, { h: 'Rejected', r: (x) => x.rej }, { h: 'Rejection %', r: (x) => `${x.rejPct}%` }, { h: 'Rating', r: (x) => `★ ${x.c.rating}` }]} /></Card></div>)}
+        <Card title="By carrier" pad={false}><Table rows={byCarrier} rowKey={(x) => x.c.id} cols={[{ h: 'Carrier', r: (x) => <b>{carrierLabel(x.c)}</b> }, { h: 'Shipments', r: (x) => x.n }, { h: 'Completed', r: (x) => x.ful }, { h: 'Rejected', r: (x) => x.rej }, { h: 'Rejection %', r: (x) => `${x.rejPct}%` }, { h: 'Rating', r: (x) => `★ ${x.c.rating}` }]} /></Card></div>)}
 
       {tab === 'Geofencing' && (<div className="grid gap-4 lg:grid-cols-2">
         <Card title="Geofence completions"><Bars data={gf} color="#0F766E" /></Card>

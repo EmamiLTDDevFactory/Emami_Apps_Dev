@@ -99,14 +99,51 @@ CLASS zcl_tms_core IMPLEMENTATION.
 
   METHOD get_vendors.
     DATA(lv_bukrs) = CONV bukrs( get_param( iv_name = 'ZTMS_BUKRS' iv_default = '1000' ) ).
-    SELECT l~lifnr, l~name1, l~ort01, l~stcd3, b~zterm, l~sperr AS sperr_c, b~sperr AS sperr_b, l~loevm AS loevm_c, b~loevm AS loevm_b
+    SELECT l~lifnr, l~name1, l~ort01, l~stcd3, l~adrnr, b~zterm, l~sperr AS sperr_c, b~sperr AS sperr_b, l~loevm AS loevm_c, b~loevm AS loevm_b
       FROM lfa1 AS l INNER JOIN lfb1 AS b ON b~lifnr = l~lifnr
       WHERE b~bukrs = @lv_bukrs AND l~ktokk = @c_transporter_group
         AND ( @iv_lifnr = '' OR l~lifnr = @iv_lifnr )
       ORDER BY l~lifnr
       INTO TABLE @DATA(lt_raw) UP TO @iv_max ROWS.
+    " Primary e-mail / mobile from the vendor's central address (LFA1-ADRNR): company address only (no person), not flagged 'not used'.
+    " E-mail order: standard sender (DFT_RECEIV) first, then default (FLGDEFAULT), then lowest consecutive number. Mobile = ADR2 with R3_USER '3' (mobile), same order.
+    " DISTINCT-proof: consnumber is selected, so FOR ALL ENTRIES does not merge two different rows.
+    DATA lt_adr TYPE SORTED TABLE OF adrc-addrnumber WITH UNIQUE KEY table_line.
+    LOOP AT lt_raw INTO DATA(ls_a) WHERE adrnr IS NOT INITIAL.
+      INSERT ls_a-adrnr INTO TABLE lt_adr.
+    ENDLOOP.
+    TYPES: BEGIN OF ty_em, addrnumber TYPE adr6-addrnumber, consnumber TYPE adr6-consnumber, flgdefault TYPE adr6-flgdefault, dft_receiv TYPE adr6-dft_receiv, smtp_addr TYPE adr6-smtp_addr, END OF ty_em.
+    TYPES: BEGIN OF ty_mb, addrnumber TYPE adr2-addrnumber, consnumber TYPE adr2-consnumber, flgdefault TYPE adr2-flgdefault, telnr_long TYPE adr2-telnr_long, telnr_call TYPE adr2-telnr_call, END OF ty_mb.
+    DATA lt_em TYPE STANDARD TABLE OF ty_em WITH DEFAULT KEY.
+    DATA lt_mb TYPE STANDARD TABLE OF ty_mb WITH DEFAULT KEY.
+    IF lt_adr IS NOT INITIAL.
+      SELECT m~addrnumber, m~consnumber, m~flgdefault, m~dft_receiv, m~smtp_addr
+        FROM adr6 AS m
+        FOR ALL ENTRIES IN @lt_adr
+        WHERE m~addrnumber = @lt_adr-table_line AND m~persnumber = @space AND m~flg_nouse = @space AND m~smtp_addr <> @space
+        INTO CORRESPONDING FIELDS OF TABLE @lt_em.
+      SELECT t~addrnumber, t~consnumber, t~flgdefault, t~telnr_long, t~telnr_call
+        FROM adr2 AS t
+        FOR ALL ENTRIES IN @lt_adr
+        WHERE t~addrnumber = @lt_adr-table_line AND t~persnumber = @space AND t~flg_nouse = @space AND t~r3_user = '3'
+        INTO CORRESPONDING FIELDS OF TABLE @lt_mb.
+      SORT lt_em BY addrnumber dft_receiv DESCENDING flgdefault DESCENDING consnumber ASCENDING.
+      SORT lt_mb BY addrnumber flgdefault DESCENDING consnumber ASCENDING.
+    ENDIF.
     LOOP AT lt_raw INTO DATA(ls).
-      APPEND VALUE #( lifnr = ls-lifnr name1 = ls-name1 ort01 = ls-ort01 stcd3 = ls-stcd3 zterm = ls-zterm transporter = 'X'
+      DATA(lv_email) = VALUE zcl_tms_ty=>ts_vendor-email( ).
+      DATA(lv_mobile) = VALUE zcl_tms_ty=>ts_vendor-mobile( ).
+      IF ls-adrnr IS NOT INITIAL.
+        READ TABLE lt_em INTO DATA(ls_em) WITH KEY addrnumber = ls-adrnr BINARY SEARCH.
+        IF sy-subrc = 0.
+          lv_email = ls_em-smtp_addr.
+        ENDIF.
+        READ TABLE lt_mb INTO DATA(ls_mb) WITH KEY addrnumber = ls-adrnr BINARY SEARCH.
+        IF sy-subrc = 0.
+          lv_mobile = COND #( WHEN ls_mb-telnr_long IS NOT INITIAL THEN ls_mb-telnr_long ELSE ls_mb-telnr_call ).
+        ENDIF.
+      ENDIF.
+      APPEND VALUE #( lifnr = ls-lifnr name1 = ls-name1 ort01 = ls-ort01 stcd3 = ls-stcd3 zterm = ls-zterm transporter = 'X' email = lv_email mobile = lv_mobile
                       sperr = COND #( WHEN ls-sperr_c IS NOT INITIAL OR ls-sperr_b IS NOT INITIAL THEN 'X' ELSE '' )
                       loevm = COND #( WHEN ls-loevm_c IS NOT INITIAL OR ls-loevm_b IS NOT INITIAL THEN 'X' ELSE '' ) ) TO rt_vendor.
     ENDLOOP.

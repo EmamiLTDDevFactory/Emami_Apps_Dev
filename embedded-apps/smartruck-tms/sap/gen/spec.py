@@ -5,7 +5,8 @@ S = 'str'; D = 'dec'; DT = 'date'; I = 'int'
 ENT = [
  dict(name='Vendor', set='VendorSet', create=False, props=[
   ('Lifnr','lifnr',S,10,True,'c'),('Name1','name1',S,35,False,'c'),('Ort01','ort01',S,35,False,'c'),('Stcd3','stcd3',S,18,False,'c'),
-  ('Zterm','zterm',S,4,False,'c'),('Sperr','sperr',S,1,False,'c'),('Loevm','loevm',S,1,False,'c'),('Transporter','transporter',S,1,False,'c')]),
+  ('Zterm','zterm',S,4,False,'c'),('Sperr','sperr',S,1,False,'c'),('Loevm','loevm',S,1,False,'c'),('Transporter','transporter',S,1,False,'c'),
+  ('Email','email',S,241,False,'c'),('Mobile','mobile',S,30,False,'c')]),
  dict(name='Customer', set='CustomerSet', create=False, props=[
   ('Kunnr','kunnr',S,10,True,'c'),('Name1','name1',S,35,False,'c'),('Ort01','ort01',S,35,False,'c'),('Regio','regio',S,3,False,'c'),('Zone','zone',S,20,False,'c')]),
  dict(name='PoSoCheck', set='PoSoCheckSet', create=False, props=[
@@ -82,6 +83,12 @@ ENT = [
  dict(name='DpTransit', set='DpTransitSet', create=False, props=[
   ('Vbeln','vbeln',S,10,True,'c'),('Matnr','matnr',S,18,True,'c'),('Tknum','tknum',S,10,False,'c'),('Swerks','swerks',S,4,False,'c'),('Werks','werks',S,4,False,'c'),
   ('Qty','qty',D,13,False,'p'),('Budat','budat',DT,0,False,'d'),('Transporter','transporter',S,35,False,'c'),('Vehicle','vehicle',S,20,False,'c')]),
+
+ # Plants (T001W + ADRC address data). Read only; filter Werks / Land1 or $top. Logic = ZCL_TMS_DP=>GET_PLANTS.
+ dict(name='Plant', set='PlantSet', create=False, props=[
+  ('Werks','werks',S,4,True,'c'),('Name1','name1',S,30,False,'c'),('Name2','name2',S,30,False,'c'),('Stras','stras',S,30,False,'c'),('Pstlz','pstlz',S,10,False,'c'),
+  ('Ort01','ort01',S,25,False,'c'),('Regio','regio',S,3,False,'c'),('Land1','land1',S,3,False,'c'),('Adrnr','adrnr',S,10,False,'c'),('Fabkl','fabkl',S,2,False,'c'),
+  ('TimeZone','timezone',S,6,False,'c'),('CityCode','citycode',S,12,False,'c')]),
 ]
 ASSOC = []
 ACT = []

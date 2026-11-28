@@ -6,6 +6,7 @@ import { KV, Modal, StatusPill, Tabs, Timeline, inr, fmtDT, ProgressSteps, Pill 
 import type { Shipment } from '../lib/types';
 import TripPanel from './TripPanel';
 
+import { carrierLabel } from '../lib/labels';
 const STEPS = ['Requested', 'Accepted', 'Assigned', 'Towards Pickup', 'At Pickup', 'In Transit', 'At Delivery', 'Completed'];
 const TABS = ['Shipment Details', 'Activity Timeline', 'Pickup & Delivery', 'Carrier Invoice', 'Lorry Receipt', 'Outward Trip'] as const;
 
@@ -38,7 +39,7 @@ export default function ShipmentDetail({ sin, onClose }: { sin: string; onClose:
       {tab === 'Outward Trip' && <TripPanel s={s} />}
       {tab === 'Shipment Details' && (<div className="space-y-4">
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-          <KV k="Status" v={<StatusPill s={s.status} />} /><KV k="Carrier" v={carrier?.name} /><KV k="Vehicle" v={`${s.vehicleNo} (${s.vehicleType})`} /><KV k="Freight" v={inr(s.freight)} />
+          <KV k="Status" v={<StatusPill s={s.status} />} /><KV k="Carrier" v={carrier ? carrierLabel(carrier) : ''} /><KV k="Vehicle" v={`${s.vehicleNo} (${s.vehicleType})`} /><KV k="Freight" v={inr(s.freight)} />
           <KV k="Driver" v={`${s.driver} ${s.phone !== '—' ? '· ' + s.phone : ''}`} /><KV k="SIM consent" v={<span className="flex items-center gap-1.5"><StatusPill s={s.consent} /><span className="hint">{s.provider}</span></span>} />
           <KV k="Tracking" v={<StatusPill s={s.tracking} />} /><KV k="ePOD" v={<StatusPill s={s.ePod} />} />
           <KV k="Material" v={`${s.material} · ${s.qty} MT`} /><KV k="Customer" v={cust?.name} /><KV k="Distance" v={`${s.km} km`} /><KV k="E-way bill expiry" v={fmtDT(s.ewayExpiry)} />
@@ -61,7 +62,7 @@ export default function ShipmentDetail({ sin, onClose }: { sin: string; onClose:
       {tab === 'Carrier Invoice' && (inv ? <div className="grid grid-cols-2 gap-4 md:grid-cols-4"><KV k="Invoice" v={inv.id} /><KV k="Status" v={<StatusPill s={inv.status} />} /><KV k="Amount" v={inr(inv.amount)} /><KV k="SAP doc no." v={inv.sapDoc} /></div> : <p className="hint">No carrier invoice submitted yet.</p>)}
       {tab === 'Lorry Receipt' && (s.lr ? (
         <div className="rounded-xl border-2 border-dashed border-border p-5"><div className="mb-3 flex justify-between"><div className="text-lg font-extrabold">LORRY RECEIPT</div><div className="font-mono font-bold">{s.lr}</div></div>
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-3"><KV k="Consignor" v="Emami Ltd." /><KV k="Consignee" v={cust?.name} /><KV k="Carrier" v={carrier?.name} /><KV k="From" v={loc(s.fromLocId)?.city} /><KV k="To" v={loc(s.toLocId)?.city} /><KV k="Vehicle" v={s.vehicleNo} /><KV k="Goods" v={s.material} /><KV k="Weight" v={`${s.qty} MT`} /><KV k="Freight" v={inr(s.freight)} /></div>
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3"><KV k="Consignor" v="Emami Ltd." /><KV k="Consignee" v={cust?.name} /><KV k="Carrier" v={carrier ? carrierLabel(carrier) : ''} /><KV k="From" v={loc(s.fromLocId)?.city} /><KV k="To" v={loc(s.toLocId)?.city} /><KV k="Vehicle" v={s.vehicleNo} /><KV k="Goods" v={s.material} /><KV k="Weight" v={`${s.qty} MT`} /><KV k="Freight" v={inr(s.freight)} /></div>
           <button className="btn-ghost mt-4" onClick={() => window.print()}>Print</button></div>) : <p className="hint">LR is generated when a vehicle is assigned.</p>)}
     </Modal>
   );

@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import type { LucideIcon } from 'lucide-react';
-import { LayoutDashboard, Radar, PackagePlus, ClipboardList, Truck, Gavel, Receipt, Users, Building2, Settings, FileBarChart, Bell, Menu, X, ArrowLeft, RotateCcw, ShieldCheck, FileInput, Handshake, Boxes, Network } from 'lucide-react';
+import { LayoutDashboard, Radar, PackagePlus, ClipboardList, Truck, Gavel, Receipt, Users, Building2, Settings, FileBarChart, Bell, Menu, X, ArrowLeft, RotateCcw, ShieldCheck, FileInput, Handshake, Boxes, Network, MapPin } from 'lucide-react';
 import { TmsProvider, useTms } from '../lib/store';
 import { goBack } from '../lib/goBack';
 import { hasHubSession } from '../lib/hubEmailLogin';
@@ -19,6 +19,7 @@ const NAV: { href: string; label: string; icon: LucideIcon; perm?: string }[] = 
   { href: '/vehicle-invoices/', label: 'Vehicle Invoices', icon: Receipt },
   { href: '/loading-optimizer/', label: 'Loading Optimizer', icon: Boxes },
   { href: '/distribution-planning/', label: 'Distribution Planning', icon: Network, perm: 'plan.view' },
+  { href: '/locations-map/', label: 'Plant Map', icon: MapPin },
   { href: '/vendor/', label: 'Vendor Portal', icon: Handshake },
   { href: '/orders/', label: 'Orders', icon: ClipboardList },
   { href: '/shipments/', label: 'Shipments', icon: Truck },

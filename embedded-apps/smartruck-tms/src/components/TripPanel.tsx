@@ -7,6 +7,7 @@ import { readUpload, type Upload } from '../lib/files';
 import { Card, KV, Pill, StatusPill, fmtDT, inr } from './ui';
 import type { Shipment, TripInvoice } from '../lib/types';
 
+import Combobox from './Combobox';
 /** One trip's outward-tracking work, shown to the roles that may do each part (the server enforces it again on every command). */
 export default function TripPanel({ s }: { s: Shipment }) {
   const t = useTms();
@@ -138,7 +139,7 @@ export default function TripPanel({ s }: { s: Shipment }) {
       {s.departedAt && (
         <Card title="Tracking" right={staff && link ? <button className="btn-ghost !py-1 text-xs" onClick={() => { void navigator.clipboard?.writeText(link); t.toast('Recipient link copied'); }}>Copy recipient link</button> : undefined}>
           {s.status === 'In Transit' && (vendor || staff) && <div className="mb-3 flex flex-wrap items-center gap-2">
-            <select className="input !w-auto" value={cp.locId} onChange={(e) => setCp({ ...cp, locId: e.target.value })}><option value="">Checkpoint at a known place…</option>{t.db.locs.map((l) => <option key={l.id} value={l.id}>{l.city}</option>)}</select>
+            <Combobox className="w-64" ariaLabel="Checkpoint place" value={cp.locId} onChange={(v) => setCp({ ...cp, locId: v })} placeholder="Checkpoint at a known place…" options={t.db.locs.map((l) => ({ value: l.id, label: l.city, keywords: `${l.id} ${l.state ?? ''}` }))} />
             <Btn kind="btn-ghost" disabled={!cp.locId} onClick={() => void go({ type: 'vendorCheckpoint', sin: s.sin, locId: cp.locId }, 'Checkpoint added')}>Add manual checkpoint</Btn>
           </div>}
           {s.events?.length ? <ul className="space-y-1.5 text-sm">{[...s.events].reverse().slice(0, 12).map((e, i) => <li key={i} className="flex flex-wrap items-center gap-2"><Pill tone={e.source === 'ULIP' ? 'green' : e.source === 'Manual' ? 'amber' : 'gray'}>{e.source}</Pill><b>{e.place || `${e.lat.toFixed(2)}, ${e.lon.toFixed(2)}`}</b><span className="hint">{fmtDT(e.at)}{e.note ? ` · ${e.note}` : ''}</span></li>)}</ul> : <p className="hint">No tracking events yet.</p>}

@@ -102,6 +102,23 @@ function makeShipments(db, o, carrierId, price, now, actor) {
     return out;
 }
 
+// Vehicle + driver rules, shared by `assign` and the vendor's indent-item submit (tmsOutward.js). Order of checks is part of the contract.
+/** Validates {vehicleNo, phone, driver}; vehicle must not be on another live shipment (except the ones in exceptSins). Returns the cleaned unit. */
+function checkUnit(db, c, exceptSins = []) {
+    const veh = str(c.vehicleNo, 15).toUpperCase().replace(/\s+/g, '');
+    if (!/^[A-Z]{2}\d{1,2}[A-Z]{0,3}\d{3,4}$/.test(veh)) fail('Enter a valid vehicle registration number, for example AS01AB1234.');
+    const phone = str(c.phone, 15).replace(/\D/g, '');
+    if (!/^[6-9]\d{9}$/.test(phone)) fail('Enter a valid 10-digit driver mobile number.');
+    if (db.shipments.some((x) => !exceptSins.includes(x.sin) && x.vehicleNo === veh && LIVE.concat('Assigned').includes(x.status))) fail(`Vehicle ${veh} is already on another live shipment.`, 409);
+    const driver = str(c.driver, 60) || fail('Driver name is required.');
+    return { veh, phone, driver };
+}
+function applyUnit(db, s, unit, u, now) {
+    Object.assign(s, { status: 'Assigned', vehicleNo: unit.veh, driver: unit.driver, phone: unit.phone, lr: s.lr || `LR${770000 + ++db.seq}`, consent: 'Pending' });
+    log(s, now, u.name, `Vehicle ${unit.veh} and driver ${s.driver} assigned; SIM consent requested`);
+    return { consentRequest: { sin: s.sin, phone: unit.phone, provider: s.provider } };
+}
+
 // ------------------------------------------------------------------------------------------------------------- commands
 const PATCHABLE = { consent: ['Granted', 'Pending', 'Expired', 'Declined'], ePod: ['Pending', 'Uploaded', 'Verified'], delayReason: 'text', gpsReason: 'text', ewayNo: 'text' };
 const INV_TARGETS = { 'Pending (Logistics)': {}, 'Pending (Finance)': { perm: 'inv.approve.l', from: ['Pending (Logistics)'] }, Disapproved: { perm: 'inv.approve.l', from: ['Pending (Logistics)', 'Pending (Finance)'] },
@@ -181,14 +198,7 @@ const handlers = {
         if (!(can(u, 'ship.update') || can(u, 'order.allocate') || (isVendor(u)))) fail('Your role does not have permission to assign vehicles.', 403);
         const s = shipOf(db, c.sin); sees(u, s);
         if (s.status !== 'Accepted') fail('Only an accepted shipment can be assigned.', 409);
-        const veh = str(c.vehicleNo, 15).toUpperCase().replace(/\s+/g, '');
-        if (!/^[A-Z]{2}\d{1,2}[A-Z]{0,3}\d{3,4}$/.test(veh)) fail('Enter a valid vehicle registration number, for example AS01AB1234.');
-        const phone = str(c.phone, 15).replace(/\D/g, '');
-        if (!/^[6-9]\d{9}$/.test(phone)) fail('Enter a valid 10-digit driver mobile number.');
-        if (db.shipments.some((x) => x.sin !== s.sin && x.vehicleNo === veh && LIVE.concat('Assigned').includes(x.status))) fail(`Vehicle ${veh} is already on another live shipment.`, 409);
-        Object.assign(s, { status: 'Assigned', vehicleNo: veh, driver: str(c.driver, 60) || fail('Driver name is required.'), phone, lr: s.lr || `LR${770000 + ++db.seq}`, consent: 'Pending' });
-        log(s, now, u.name, `Vehicle ${veh} and driver ${s.driver} assigned; SIM consent requested`);
-        return { consentRequest: { sin: s.sin, phone, provider: s.provider } };
+        return applyUnit(db, s, checkUnit(db, c, [s.sin]), u, now);
     },
 
     advance(db, c, u, now) {
@@ -290,13 +300,14 @@ const handlers = {
         for (const k of Object.keys(p)) {
             if (k === 'blocked') need(u, 'carrier.block', 'block carriers');
             else if (k === 'weightage') need(u, 'carrier.weightage', 'change weightage');
-            else if (['lanes', 'shortName', 'paymentTerms'].includes(k)) need(u, 'carrier.add', 'edit carriers');
+            else if (['lanes', 'shortName', 'paymentTerms', 'email'].includes(k)) need(u, 'carrier.add', 'edit carriers');
             else fail(`The field ${k} cannot be changed here.`, 403);
         }
         if ('blocked' in p) car.blocked = !!p.blocked;
         if ('weightage' in p) car.weightage = num(p.weightage, 'Weightage', { max: 100 });
         if ('shortName' in p) car.shortName = str(p.shortName, 20);
         if ('paymentTerms' in p) car.paymentTerms = str(p.paymentTerms, 20);
+        if ('email' in p) { const m = str(p.email, 120).toLowerCase(); if (m && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(m)) fail('Enter a valid e-mail address.'); car.email = m; if (m) car.emailSource = 'manual'; else delete car.emailSource; }
         if ('lanes' in p) { if (!Array.isArray(p.lanes) || p.lanes.length > 500) fail('Invalid lanes.'); car.lanes = p.lanes.map((l) => str(l, 12).toUpperCase()); }
         return {};
     },
@@ -305,6 +316,7 @@ const handlers = {
         const name = str(c.name, 80) || fail('Carrier name is required.');
         if (db.carriers.some((x) => x.name.toLowerCase() === name.toLowerCase())) fail('A carrier with that name already exists.', 409);
         const car = { id: `C${String(db.carriers.length + 1).padStart(3, '0')}`, name, code: '', type: 'Broker', shortName: name.split(' ')[0].toUpperCase(), paymentTerms: 'Net 30', weightage: 0, blocked: false, rating: 4, fleet: 0, lanes: [], rejectionPct: 0, fulfilledPct: 100 };
+        if (c.email) { const m = str(c.email, 120).toLowerCase(); if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(m)) fail('Enter a valid e-mail address.'); car.email = m; car.emailSource = 'manual'; }
         db.carriers.push(car); return { id: car.id };
     },
     addCustomer(db, c, u) {
@@ -347,11 +359,17 @@ const handlers = {
     },
     async syncMasters(db, c, u, now, deps) {
         need(u, 'user.manage', 'sync masters');
-        const out = { carriers: 0, customers: 0 };
+        const out = { carriers: 0, customers: 0, emailsFromSap: 0, emailsKeptManual: 0, withoutEmail: 0 };
         for (const v of await deps.sap.vendors()) {
-            const cur = db.carriers.find((x) => x.code === v.code);
+            let cur = db.carriers.find((x) => x.code === v.code);
             if (cur) Object.assign(cur, { name: v.name, paymentTerms: v.paymentTerms || cur.paymentTerms, blocked: v.blocked });
-            else db.carriers.push({ id: `C${String(db.carriers.length + 1).padStart(3, '0')}`, name: v.name, code: v.code, type: 'Broker', shortName: v.name.split(' ')[0].toUpperCase(), paymentTerms: v.paymentTerms || 'Net 30', weightage: 0, blocked: v.blocked, rating: 4, fleet: 0, lanes: [], rejectionPct: 0, fulfilledPct: 100 });
+            else { cur = { id: `C${String(db.carriers.length + 1).padStart(3, '0')}`, name: v.name, code: v.code, type: 'Broker', shortName: v.name.split(' ')[0].toUpperCase(), paymentTerms: v.paymentTerms || 'Net 30', weightage: 0, blocked: v.blocked, rating: 4, fleet: 0, lanes: [], rejectionPct: 0, fulfilledPct: 100 }; db.carriers.push(cur); }
+            // E-mail: the SAP vendor master (primary ADR6 address of LFA1-ADRNR) wins whenever it has a valid one. A manually entered e-mail stays only as the fallback
+            // when SAP has none, and an existing e-mail is never blanked because SAP returned nothing. Same validator as the carrier form.
+            const sapMail = str(v.email, 120).toLowerCase();
+            if (sapMail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sapMail)) { cur.email = sapMail; cur.emailSource = 'sap'; out.emailsFromSap++; }
+            else if (cur.email) { cur.emailSource = 'manual'; out.emailsKeptManual++; }
+            if (!cur.email) out.withoutEmail++;
             out.carriers++;
         }
         for (const k of await deps.sap.customers()) {
@@ -481,7 +499,7 @@ function importData(db, payload, { dryRun = false } = {}) {
         next[k] = rows; counts[k] = rows.length;
     }
     const has = (k, v) => (next[k] || []).some((r) => r[keyOf[k]] === v) || db[k].some((r) => r[keyOf[k]] === v);
-    (next.orders || []).forEach((o) => { if (!has('units', o.unitId)) errors.push(`order ${o.id}: unknown unit ${o.unitId}.`); if (!has('customers', o.customerId)) errors.push(`order ${o.id}: unknown customer ${o.customerId}.`); (o.stops || []).forEach((s) => { if (!has('locs', s.locId)) errors.push(`order ${o.id}: unknown location ${s.locId}.`); }); });
+    (next.orders || []).forEach((o) => { if (!has('units', o.unitId)) errors.push(`order ${o.id}: unknown unit ${o.unitId}.`); if (o.customerId && !has('customers', o.customerId)) errors.push(`order ${o.id}: unknown customer ${o.customerId}.`); (o.stops || []).forEach((s) => { if (!has('locs', s.locId)) errors.push(`order ${o.id}: unknown location ${s.locId}.`); }); });
     (next.shipments || []).forEach((s) => { if (!has('orders', s.orderId)) errors.push(`shipment ${s.sin}: unknown order ${s.orderId}.`); if (!has('carriers', s.carrierId)) errors.push(`shipment ${s.sin}: unknown carrier ${s.carrierId}.`); if (!FLOW.concat(['Cancelled', 'Rejected']).includes(s.status)) errors.push(`shipment ${s.sin}: bad status ${s.status}.`); });
     (next.invoices || []).forEach((i) => { if (!has('shipments', i.sin)) errors.push(`invoice ${i.id}: unknown shipment ${i.sin}.`); if (!INV_FLOW.concat(['Disapproved']).includes(i.status)) errors.push(`invoice ${i.id}: bad status ${i.status}.`); });
     if (errors.length) return { ok: false, errors: errors.slice(0, 100), counts };
@@ -508,7 +526,7 @@ async function apply(db, cmd, user, deps = {}, now = Date.now()) {
     return { result: result || {} };
 }
 
-const outward = require('./tmsOutward').build({ fail, need, can, inScope, isAdmin, isVendor, str, num, iso, id, log, notify, makeShipments, sees, locOf, shipOf });
+const outward = require('./tmsOutward').build({ fail, need, can, inScope, isAdmin, isVendor, str, num, iso, id, log, notify, makeShipments, sees, locOf, shipOf, checkUnit, applyUnit });
 const trips = require('./tmsTrips').build({ fail, need, can, inScope, isAdmin, isVendor, str, num, iso, id, log, notify, sees, shipOf, locOf, km, project, completeOrderIfDone, ingestPing }, outward);
 Object.assign(handlers, outward.handlers, trips.handlers);
 Object.assign(ROLE_PERMS, outward.ROLE_PERMS, trips.ROLE_PERMS);

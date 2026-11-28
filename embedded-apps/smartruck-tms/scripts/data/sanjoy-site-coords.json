@@ -1,0 +1,693 @@
+{
+ "note": "Depot / MWH / unit master from the Distribution Planning tool (DP.xlsx), extracted 2026-11-27; lat/lon only where that tool has them",
+ "sites": [
+  {
+   "code": "DP59",
+   "name": "Delhi",
+   "type": "Depot",
+   "lat": 28.67908,
+   "lon": 77.06971
+  },
+  {
+   "code": "DP02",
+   "name": "Ambala",
+   "type": "Depot",
+   "lat": 30.37818,
+   "lon": 76.7767
+  },
+  {
+   "code": "DP12",
+   "name": "Jaipur",
+   "type": "Depot",
+   "lat": 26.91243,
+   "lon": 75.78727
+  },
+  {
+   "code": "DP62",
+   "name": "Dehradun",
+   "type": "Depot",
+   "lat": 30.3165,
+   "lon": 78.03219
+  },
+  {
+   "code": "DP14",
+   "name": "Kanpur",
+   "type": "Depot",
+   "lat": 26.44992,
+   "lon": 80.33187
+  },
+  {
+   "code": "DP26",
+   "name": "Varanasi",
+   "type": "Depot",
+   "lat": 25.31764,
+   "lon": 82.97392
+  },
+  {
+   "code": "DP10",
+   "name": "Hyderabad",
+   "type": "Depot",
+   "lat": 17.38714,
+   "lon": 78.49168
+  },
+  {
+   "code": "DP03",
+   "name": "Banglore",
+   "type": "Depot",
+   "lat": 12.97244,
+   "lon": 77.58064
+  },
+  {
+   "code": "DP30",
+   "name": "Coimbatore",
+   "type": "Depot",
+   "lat": 11.00456,
+   "lon": 76.96163
+  },
+  {
+   "code": "DP09",
+   "name": "Guwahati",
+   "type": "Depot",
+   "lat": 23.82932,
+   "lon": 91.27785
+  },
+  {
+   "code": "DP15",
+   "name": "Kolkata",
+   "type": "Depot",
+   "lat": 22.57265,
+   "lon": 88.36389
+  },
+  {
+   "code": "DP27",
+   "name": "Siliguri",
+   "type": "Depot",
+   "lat": 26.73231,
+   "lon": 88.41029
+  },
+  {
+   "code": "DP19",
+   "name": "Patna",
+   "type": "Depot",
+   "lat": 25.61268,
+   "lon": 85.15887
+  },
+  {
+   "code": "DP36",
+   "name": "Bhagalpur",
+   "type": "Depot",
+   "lat": 25.25339,
+   "lon": 86.98906
+  },
+  {
+   "code": "DP22",
+   "name": "Ranchi",
+   "type": "Depot",
+   "lat": 23.34432,
+   "lon": 85.29601
+  },
+  {
+   "code": "DP05",
+   "name": "Cuttack",
+   "type": "Depot",
+   "lat": 20.46252,
+   "lon": 85.88299
+  },
+  {
+   "code": "DP21",
+   "name": "Raipur",
+   "type": "Depot",
+   "lat": 21.25,
+   "lon": 81.63
+  },
+  {
+   "code": "DP17",
+   "name": "Nagpur",
+   "type": "Depot",
+   "lat": 21.14663,
+   "lon": 79.08886
+  },
+  {
+   "code": "DP16",
+   "name": "Mumbai",
+   "type": "Depot",
+   "lat": 19.07609,
+   "lon": 72.87743
+  },
+  {
+   "code": "DP20",
+   "name": "Pune",
+   "type": "Depot",
+   "lat": 18.51673,
+   "lon": 73.85626
+  },
+  {
+   "code": "DP01",
+   "name": "Ahemedabad",
+   "type": "Depot",
+   "lat": 23.03386,
+   "lon": 72.58502
+  },
+  {
+   "code": "DP11",
+   "name": "Indore",
+   "type": "Depot",
+   "lat": 22.71957,
+   "lon": 75.85773
+  },
+  {
+   "code": "DP28",
+   "name": "Jabalpur",
+   "type": "Depot",
+   "lat": 23.18588,
+   "lon": 79.97438
+  },
+  {
+   "code": "DP38",
+   "name": "Indore MWH",
+   "type": "MWH",
+   "lat": 22.71957,
+   "lon": 75.85773
+  },
+  {
+   "code": "DP39",
+   "name": "Kolkata MWH",
+   "type": "MWH",
+   "lat": 22.57265,
+   "lon": 88.36389
+  },
+  {
+   "code": "DP29",
+   "name": "Hyderabad MWH",
+   "type": "MWH",
+   "lat": 17.38714,
+   "lon": 78.49168
+  },
+  {
+   "code": "DP44",
+   "name": "Ambala MWH",
+   "type": "MWH",
+   "lat": 30.37818,
+   "lon": 76.7767
+  },
+  {
+   "code": "UN08",
+   "name": "Vapi",
+   "type": "Unit",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "UN10",
+   "name": "Masat",
+   "type": "Unit",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "UN13",
+   "name": "Pacharia",
+   "type": "Unit",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "UN02",
+   "name": "Amingaon",
+   "type": "Unit",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "UN11",
+   "name": "Pantnagar",
+   "type": "Unit",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "3P01",
+   "name": "ATHENE",
+   "type": "3P",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "3P02",
+   "name": "Kanj",
+   "type": "3P",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "3P06",
+   "name": "AVALON",
+   "type": "3P",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "3P07",
+   "name": "Helios",
+   "type": "3P",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "3P12",
+   "name": "Rishiveda",
+   "type": "3P",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "3P21",
+   "name": "AVALON-P",
+   "type": "3P",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "3P22",
+   "name": "Indocan",
+   "type": "3P",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "3P34",
+   "name": "Alliance",
+   "type": "3P",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "3P27",
+   "name": "U.Beauty",
+   "type": "3P",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "3P28",
+   "name": "Forever 2",
+   "type": "3P",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "3P36",
+   "name": "Apis",
+   "type": "3P",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "3P30",
+   "name": "Apibee",
+   "type": "3P",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "9981",
+   "name": "BIO",
+   "type": "3P",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "3P38",
+   "name": "Rishiveda II",
+   "type": "3P",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "7566",
+   "name": "Ginni",
+   "type": "3P",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "226459",
+   "name": "Maxima",
+   "type": "3P",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "9937",
+   "name": "BO",
+   "type": "3P",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "10076",
+   "name": "Kapco",
+   "type": "3P",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "3P24",
+   "name": "Cotec",
+   "type": "3P",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "3P25",
+   "name": "Forever",
+   "type": "3P",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "3P41",
+   "name": "Vinayak",
+   "type": "3P",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "3P43",
+   "name": "Hindustan",
+   "type": "3P",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "3P44",
+   "name": "Allrite",
+   "type": "3P",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "UN01",
+   "name": "B.T.RD",
+   "type": "Unit",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "KO02",
+   "name": "KO02",
+   "type": "",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "AM16",
+   "name": "AM16",
+   "type": "",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "KO14",
+   "name": "KO14",
+   "type": "",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "KO46",
+   "name": "KO46",
+   "type": "",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "AM02",
+   "name": "AM02",
+   "type": "",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "AM15",
+   "name": "AM15",
+   "type": "",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "AM01",
+   "name": "AM01",
+   "type": "",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "AM03",
+   "name": "AM03",
+   "type": "",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "AM09",
+   "name": "AM09",
+   "type": "",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "AM10",
+   "name": "AM10",
+   "type": "",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "DP41",
+   "name": "SUKCHER",
+   "type": "Depot",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "AM14",
+   "name": "AM14",
+   "type": "",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "AM20",
+   "name": "AM20",
+   "type": "",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "AM19",
+   "name": "AM19",
+   "type": "",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "AM30",
+   "name": "AM30",
+   "type": "",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "DP25",
+   "name": "Zirakpur",
+   "type": "Depot",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "DP18",
+   "name": "Parwanoo",
+   "type": "Depot",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "DP13",
+   "name": "Jammu",
+   "type": "Depot",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "DP40",
+   "name": "Zirakpur MWH",
+   "type": "Depot",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "DP24",
+   "name": "Vijaywada",
+   "type": "Depot",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "DP23",
+   "name": "Trichur",
+   "type": "Depot",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "DP04",
+   "name": "Chennai",
+   "type": "Depot",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "DP35",
+   "name": "Hubli",
+   "type": "Depot",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "DP45",
+   "name": "Kalbadevi",
+   "type": "Depot",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "UN09",
+   "name": "Dongri-I",
+   "type": "Unit",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "UN9A",
+   "name": "Dongri-II",
+   "type": "Unit",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "3P04",
+   "name": "Sheetal",
+   "type": "3P",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "3P05",
+   "name": "RUBICON",
+   "type": "3P",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "3P23",
+   "name": "MG ELECTRODE",
+   "type": "3P",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "UN07",
+   "name": "ABHYOPUR",
+   "type": "Unit",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "3P31",
+   "name": "UNATI",
+   "type": "3P",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "3P35",
+   "name": "GENIUS",
+   "type": "3P",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "AM07",
+   "name": "AM07",
+   "type": "",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "AM12",
+   "name": "AM12",
+   "type": "",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "3P39",
+   "name": "HBMK",
+   "type": "3P",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "FK16",
+   "name": "FK16",
+   "type": "",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "RK INDUSTRIES",
+   "name": "RK INDUSTRIES",
+   "type": "",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "SANSKAR",
+   "name": "SANSKAR",
+   "type": "",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "INDOCOAR",
+   "name": "INDOCOAR",
+   "type": "",
+   "lat": null,
+   "lon": null
+  },
+  {
+   "code": "UN9B",
+   "name": "U.Beauty",
+   "type": "Unit",
+   "lat": null,
+   "lon": null
+  }
+ ],
+ "fold": {
+  "DP07": "DP59",
+  "DP08": "DP59",
+  "DP46": "DP59",
+  "DP50": "DP59",
+  "DP49": "DP59",
+  "DP47": "DP15",
+  "DP61": "DP15",
+  "DP51": "DP15",
+  "DP52": "DP16",
+  "DP60": "DP16",
+  "DP53": "DP10",
+  "DP42": "DP09",
+  "DP06": "DP62",
+  "DP94": "DP14"
+ }
+}

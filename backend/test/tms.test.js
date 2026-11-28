@@ -251,7 +251,7 @@ test('SAP client: simulated mode is deterministic and flagged; mapping builds th
     assert.notEqual(a.docNo, c.docNo);
     const body = sap.map.invoiceBody({ extRef: 'E', vendor: '100200', amount: 30000, invoiceDate: '2026-11-19T10:00:00Z', unit: 'UN13', sin: 'S', miro: 'M' });
     assert.deepEqual(body, { ExtRef: 'E', Lifnr: '100200', Amount: '30000.00', Waers: 'INR', InvDate: '/Date(1795046400000)/', Werks: 'UN13', Sin: 'S', Miro: 'M' });
-    assert.deepEqual(sap.map.vendor({ Lifnr: '1', Name1: 'A', Zterm: 'Z030', Sperr: 'X' }), { code: '1', name: 'A', paymentTerms: 'Net 30', blocked: true });
+    assert.deepEqual(sap.map.vendor({ Lifnr: '1', Name1: 'A', Zterm: 'Z030', Sperr: 'X' }), { code: '1', name: 'A', paymentTerms: 'Net 30', blocked: true, email: '', mobile: '' });
     assert.equal(sap.mapError({ error: { message: { value: 'Invoice already posted' } } }, 400).status, 409);
     assert.equal(sap.mapError({}, 500).status, 502);
     assert.equal(sap._test.enc("O'Neil"), "'O''Neil'");

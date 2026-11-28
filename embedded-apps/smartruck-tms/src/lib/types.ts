@@ -14,6 +14,8 @@ export interface Loc { id: string; city: string; state: string; zone: string; la
 export interface Carrier {
   id: string; name: string; code: string; type: string; shortName: string; paymentTerms: string;
   weightage: number; blocked: boolean; rating: number; fleet: number; lanes: string[]; rejectionPct: number; fulfilledPct: number;
+  /** Transporter e-mail(s) for indent mails (one address or several separated by , or ;). Missing = the mail shows 'No e-mail'. */
+  email?: string;
 }
 export interface Customer { id: string; name: string; rCode: string; zone: string; contact: string; csl: string; segment: string }
 export interface Stop { type: 'P' | 'D'; locId: string; at: string; actual?: string }
@@ -59,9 +61,22 @@ export interface LaneVendor {
 }
 export interface Lane { id: string; fromLocId: string; toLocId: string; distanceKm: number; transitH: number; vendors: LaneVendor[]; sapRoutes?: string[]; syncedAt?: string }
 export interface Offer { carrierId: string; offeredAt: string; expiresAt: string; response: 'Pending' | 'Accepted' | 'Rejected' | 'Timed out' | 'Withdrawn'; reason?: string; respondedAt?: string; rate: number; per?: string; currency?: string }
+/** One driver / vehicle of an indent item (the vendor fills these three fields; `vehicles` rows per item). */
+export interface IndentUnit { driver: string; phone: string; vehicleNo: string }
+export type IndentItemStatus = 'Pending' | 'Submitted' | 'Rejected' | 'Expired' | 'Cancelled';
+/** A transporter line of an indent: same indent number, item numbers 10, 20, 30 ... (shown IND123-10). docs/PHASE1_TRIP_TRAIL_DOC.md */
+export interface IndentItem {
+  itemNo: number; carrierId: string; cases: number; vehicles: number; qty: number; requiredAt: string; rate: number; per?: string; currency?: string;
+  status: IndentItemStatus; expiresAt: string; units: IndentUnit[]; submittedAt?: string; rejectReason?: string; orderId?: string; sins?: string[];
+  mail?: { to?: string; sent: boolean; simulated?: boolean; error?: string; at?: string };
+  /** Set on a Rejected / Expired line HO has re-offered: the item number of the new line. The old line stops counting. */
+  replacedBy?: number;
+}
 export interface Indent {
   id: string; unitId: string; laneId: string; fromLocId: string; toLocId: string; customerId: string; vehicleType: string; shippingType?: string; vehicles: number; requiredAt: string; deliveries: string[];
-  material: string; qty: number; status: 'Draft' | 'Open' | 'Allocated' | 'Vehicle Assigned' | 'Cancelled'; offers: Offer[]; escalated?: boolean; orderId?: string; sin?: string; createdAt: string; createdBy: string; remarks: string[];
+  material: string; qty: number; status: 'Draft' | 'Open' | 'Allocated' | 'Partly allocated' | 'Vehicle Assigned' | 'Cancelled'; offers: Offer[]; escalated?: boolean; orderId?: string; sin?: string; createdAt: string; createdBy: string; remarks: string[];
+  /** Phase 1: total cases and the transporter items. Absent on legacy single-transporter indents. */
+  cases?: number; items?: IndentItem[];
 }
 export interface TmsSettings { offerTimeoutH: number; capacityMinPct: number; invoiceTolerancePct: number; delayMarginH: number; unlinkedAlertH: number; invoiceMailbox: string; consentVersion: string; consentText: string }
 export interface Invoice {

@@ -75,10 +75,13 @@ const results = (j) => (j && j.d && (j.d.results || (Array.isArray(j.d) ? j.d : 
 // Everything below knows the SAP names. Adjust here (and only here) when the contract changes.
 const SET = { vendor: 'VendorSet', customer: 'CustomerSet', poso: 'PoSoCheckSet', invoice: 'FreightInvoiceSet', payment: 'PaymentStatusSet', outDelivery: 'OutDeliverySet', outShipment: 'OutShipmentSet', lane: 'LaneSet', tripInvoice: 'TripInvoiceSet', tripVehicle: 'TripVehicleSet', parallel: 'ParallelCheckSet', freightCond: 'FreightCondSet',
     // --- Distribution Planning feed (docs/DISTRIBUTION_PLANNING.md; ABAP sap/zcl_tms_dp.abap) ---
-    dpMaterial: 'DpMaterialSet', dpStock: 'DpStockSet', dpLot: 'DpLotSet', dpSto: 'DpStoSet', dpOpenOrder: 'DpOpenOrderSet', dpSale: 'DpSaleSet', dpTransit: 'DpTransitSet' };
+    dpMaterial: 'DpMaterialSet', dpStock: 'DpStockSet', dpLot: 'DpLotSet', dpSto: 'DpStoSet', dpOpenOrder: 'DpOpenOrderSet', dpSale: 'DpSaleSet', dpTransit: 'DpTransitSet',
+    plant: 'PlantSet' };
 
 const map = {
-    vendor: (r) => ({ code: str(r.Lifnr), name: str(r.Name1), paymentTerms: str(r.Zterm) ? `Net ${parseInt(str(r.Zterm).replace(/\D/g, ''), 10) || 30}` : '', blocked: isX(r.Sperr) || isX(r.Loevm) }),
+    vendor: (r) => ({ code: str(r.Lifnr), name: str(r.Name1), paymentTerms: str(r.Zterm) ? `Net ${parseInt(str(r.Zterm).replace(/\D/g, ''), 10) || 30}` : '', blocked: isX(r.Sperr) || isX(r.Loevm), email: str(r.Email).toLowerCase(), mobile: str(r.Mobile) }),
+    // PlantSet (T001W + ADRC). state = SAP region code (e.g. WBL); the state NAME comes from the geo table in tmsPlants.js.
+    plant: (r) => ({ code: str(r.Werks).toUpperCase(), name: str(r.Name1), name2: str(r.Name2), street: str(r.Stras), pincode: str(r.Pstlz), city: str(r.Ort01), region: str(r.Regio), country: str(r.Land1), addressNo: str(r.Adrnr), calendar: str(r.Fabkl), timeZone: str(r.TimeZone), cityCode: str(r.CityCode) }),
     customer: (r) => ({ code: str(r.Kunnr), name: str(r.Name1), zone: str(r.Zone) }),
     /** The app's invoice -> FreightInvoiceSet. ExtRef is the idempotency key: SAP returns the existing document for a repeat. */
     invoiceBody: (i) => ({ ExtRef: str(i.extRef), Lifnr: str(i.vendor), Amount: Number(i.amount).toFixed(2), Waers: 'INR', InvDate: toSapDate(i.invoiceDate), Werks: str(i.unit), Sin: str(i.sin), Miro: str(i.miro) }),
@@ -106,7 +109,8 @@ const map = {
 
 // ===================================================================================================================== SIMULATED
 const sim = {
-    vendors: [['100200', 'Elite Roadways Pvt. Ltd.'], ['100207', 'Gati Freight Carriers'], ['100214', 'Shree Maruti Courier']],
+    vendors: [['100200', 'Elite Roadways Pvt. Ltd.', 'dispatch@eliteroadways.example', '+919830011001'], ['100207', 'Gati Freight Carriers', '', ''], ['100214', 'Shree Maruti Courier', 'ops@shreemaruti.example', '']],
+    plants: [['UN13', 'EMAMI LIMITED', 'Guwahati', '781101', 'IN'], ['DP15', 'EMAMI LIMITED', 'Howrah', '711302', 'IN']],
     docNo: (extRef) => `19${String([...String(extRef)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7)).padStart(8, '0').slice(-8)}`,
 };
 
@@ -114,8 +118,15 @@ const sim = {
 const service = {
     simulated: () => !isConfigured(),
     async vendors(caller) {
-        if (!isConfigured()) return sim.vendors.map(([code, name]) => ({ code, name, paymentTerms: 'Net 30', blocked: false }));
+        if (!isConfigured()) return sim.vendors.map(([code, name, email, mobile]) => ({ code, name, paymentTerms: 'Net 30', blocked: false, email, mobile }));
         return results(await request(caller, 'GET', `${SET.vendor}?$filter=${encodeURIComponent("Transporter eq 'X'")}`)).map(map.vendor).filter((v) => v.code);
+    },
+    /** Plants of SAP (T001W + ADRC) -> { simulated, rows[] }. q.codes (optional array) asks for those plants only; without it all plants (<= 5000) are read. */
+    async plants(q = {}, caller) {
+        if (!isConfigured()) return { simulated: true, rows: [] };
+        const codes = (Array.isArray(q.codes) ? q.codes : q.codes ? [q.codes] : []).map((c) => String(c).trim().toUpperCase()).filter((c) => /^[A-Z0-9]{1,4}$/.test(c));
+        const f = codes.length ? `$filter=${encodeURIComponent(`(${codes.slice(0, 50).map((c) => `Werks eq ${enc(c)}`).join(' or ')})`)}` : '$top=5000';
+        return { simulated: false, rows: results(await request(caller, 'GET', `${SET.plant}?${f}`)).map(map.plant).filter((p) => p.code) };
     },
     async customers(caller) {
         if (!isConfigured()) return [{ code: 'R40010', name: 'Reliance Retail', zone: 'West' }];

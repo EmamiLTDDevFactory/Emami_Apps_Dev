@@ -11,6 +11,10 @@ CLASS ltc_dp DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION MEDIUM.
     METHODS open_orders_positive FOR TESTING.
     METHODS sales_in_window FOR TESTING.
     METHODS transit_rows_have_receiver FOR TESTING.
+    METHODS plants_by_land FOR TESTING.
+    METHODS plants_by_code FOR TESTING.
+    METHODS vendors_email_format FOR TESTING.
+    METHODS vendor_email_is_default FOR TESTING.
     METHODS first_plant RETURNING VALUE(rv_werks) TYPE string.
 ENDCLASS.
 
@@ -112,6 +116,47 @@ CLASS ltc_dp IMPLEMENTATION.
     LOOP AT lt_t INTO DATA(ls_t).
       cl_abap_unit_assert=>assert_not_initial( ls_t-werks ).
       cl_abap_unit_assert=>assert_true( xsdbool( ls_t-qty > 0 ) ).
+    ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD plants_by_land.
+    DATA(lt_p) = zcl_tms_dp=>get_plants( it_land1 = VALUE #( ( `IN` ) ) ).
+    cl_abap_unit_assert=>assert_not_initial( lt_p ).
+    LOOP AT lt_p INTO DATA(ls_p).
+      cl_abap_unit_assert=>assert_equals( act = ls_p-land1 exp = 'IN' ).
+      cl_abap_unit_assert=>assert_not_initial( ls_p-werks ).
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD plants_by_code.
+    DATA(lv_w) = first_plant( ).
+    IF lv_w IS INITIAL.
+      RETURN.
+    ENDIF.
+    DATA(lt_p) = zcl_tms_dp=>get_plants( it_werks = VALUE #( ( lv_w ) ) ).
+    cl_abap_unit_assert=>assert_equals( act = lines( lt_p ) exp = 1 ).
+    cl_abap_unit_assert=>assert_equals( act = lt_p[ 1 ]-werks exp = lv_w ).
+  ENDMETHOD.
+
+  METHOD vendors_email_format.
+    DATA(lt_v) = zcl_tms_core=>get_vendors( iv_max = 400 ).
+    LOOP AT lt_v INTO DATA(ls_v) WHERE email IS NOT INITIAL.
+      cl_abap_unit_assert=>assert_true( xsdbool( ls_v-email CS '@' ) ).
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD vendor_email_is_default.
+    " the e-mail on the entity is one of the vendor's own company-address ADR6 rows, and the standard-sender / default flagged one wins when there are several
+    DATA(lt_v) = zcl_tms_core=>get_vendors( iv_max = 5000 ).
+    LOOP AT lt_v INTO DATA(ls_v) WHERE email IS NOT INITIAL.
+      SELECT SINGLE m~dft_receiv FROM lfa1 AS l INNER JOIN adr6 AS m ON m~addrnumber = l~adrnr
+        WHERE l~lifnr = @ls_v-lifnr AND m~persnumber = @space AND m~smtp_addr = @ls_v-email INTO @DATA(lv_own).
+      cl_abap_unit_assert=>assert_subrc( exp = 0 ).
+      SELECT COUNT(*) FROM lfa1 AS l INNER JOIN adr6 AS m ON m~addrnumber = l~adrnr
+        WHERE l~lifnr = @ls_v-lifnr AND m~persnumber = @space AND m~flg_nouse = @space AND m~smtp_addr <> @space
+          AND m~smtp_addr <> @ls_v-email AND m~dft_receiv = 'X' INTO @DATA(lv_better).
+      cl_abap_unit_assert=>assert_true( xsdbool( lv_better = 0 OR lv_own = 'X' ) ).
     ENDLOOP.
   ENDMETHOD.
 

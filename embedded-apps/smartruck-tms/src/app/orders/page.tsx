@@ -8,12 +8,14 @@ import ShipmentDetail from '../../components/ShipmentDetail';
 import { Search } from 'lucide-react';
 import type { Order } from '../../lib/types';
 
+import Combobox from '../../components/Combobox';
+import { carrierLabel, carrierLabelOf, carrierOptions, filterOptions } from '../../lib/labels';
 export default function Orders() {
   const t = useTms();
   const [q, setQ] = useState(''); const [basis, setBasis] = useState('All'); const [status, setStatus] = useState('All'); const [mine, setMine] = useState(false); const [adv, setAdv] = useState(false);
   const [f, setF] = useState({ pz: '', dz: '', seg: '', carrier: '', so: '' });
   const [view, setView] = useState<string>(); const [alloc, setAlloc] = useState<string>(); const [carrierSel, setCarrierSel] = useState(''); const [ship, setShip] = useState<string>();
-  const [rem, setRem] = useState<{ id: string; text: string }>();
+  const [rem, setRem] = useState<{ id: string; text: string }>(); const [carQ, setCarQ] = useState('');
   const loc = (id: string) => t.db.locs.find((l) => l.id === id);
   const all = t.scoped(t.db.orders);
   const shipsOf = (o: Order) => t.db.shipments.filter((s) => s.orderId === o.id);
@@ -39,7 +41,7 @@ export default function Orders() {
         <Field label="Pickup zone"><select className="input" value={f.pz} onChange={(e) => setF({ ...f, pz: e.target.value })}><option value="">Any</option>{['NE', 'East', 'North', 'West', 'South', 'Central'].map((z) => <option key={z}>{z}</option>)}</select></Field>
         <Field label="Delivery zone"><select className="input" value={f.dz} onChange={(e) => setF({ ...f, dz: e.target.value })}><option value="">Any</option>{['NE', 'East', 'North', 'West', 'South', 'Central'].map((z) => <option key={z}>{z}</option>)}</select></Field>
         <Field label="Segmentation"><select className="input" value={f.seg} onChange={(e) => setF({ ...f, seg: e.target.value })}><option value="">Any</option>{['General Trade', 'Modern Trade', 'E-Commerce', 'CSD', 'Export'].map((z) => <option key={z}>{z}</option>)}</select></Field>
-        <Field label="Carrier"><select className="input" value={f.carrier} onChange={(e) => setF({ ...f, carrier: e.target.value })}><option value="">Any</option>{t.db.carriers.map((c) => <option key={c.id} value={c.id}>{c.shortName}</option>)}</select></Field>
+        <Field label="Carrier"><Combobox ariaLabel="Carrier" value={f.carrier} onChange={(v) => setF({ ...f, carrier: v })} placeholder="Any" options={carrierOptions(t.db.carriers)} /></Field>
         <Field label="SO number"><input className="input" value={f.so} onChange={(e) => setF({ ...f, so: e.target.value })} /></Field></div></Card>}
       <Card pad={false}><Table rows={rows} rowKey={(o) => o.id} onRow={(o) => setView(o.id)} cols={[
         { h: 'Order', r: (o) => <div><b>{o.id}</b><div className="hint">{fmtDT(o.createdAt)}</div></div> },
@@ -47,7 +49,7 @@ export default function Orders() {
         { h: 'Vehicle', r: (o) => `${o.vehicles} × ${o.vehicleType}` },
         { h: 'Fulfilment', r: (o) => { const s = shipsOf(o); return <div className="text-[11px] font-semibold"><span className="text-inkSoft">Req {o.vehicles}</span> · <span className="text-amber">Alloc {s.length}</span> · <span className="text-violet-700">Acc {s.filter((x) => x.status !== 'Requested').length}</span> · <span className="text-green">Done {s.filter((x) => x.status === 'Completed').length}</span></div>; } },
         { h: 'Material', r: (o) => `${o.material} · ${o.qty} MT` },
-        { h: 'Carrier', r: (o) => { const c = shipsOf(o)[0]?.carrierId ?? o.bid?.winner; return c ? t.db.carriers.find((x) => x.id === c)?.shortName : <span className="text-inkSoft">—</span>; } },
+        { h: 'Carrier', r: (o) => { const c = shipsOf(o)[0]?.carrierId ?? o.bid?.winner; return c ? carrierLabelOf(t.db.carriers, c, { short: true }) : <span className="text-inkSoft">—</span>; } },
         { h: 'Status', r: (o) => <div className="flex flex-col items-start gap-1"><StatusPill s={o.status} />{o.mode === 'BID' && <Pill tone="violet">Bid</Pill>}</div> },
         { h: '', r: (o) => <RowMenu items={[
           { label: 'View Order', onClick: () => setView(o.id) },
@@ -73,8 +75,9 @@ export default function Orders() {
 
       {ao && (<Modal title={`Allocate ${ao.id}`} onClose={() => setAlloc(undefined)} footer={<><button className="btn-ghost" onClick={() => setAlloc(undefined)}>Cancel</button><button className="btn-primary" onClick={() => { if (!carrierSel) return t.toast('Pick a carrier', 'err'); t.allocate(ao.id, carrierSel); t.toast(`Allocated — ${ao.vehicles} shipment(s) created`); setAlloc(undefined); }}>Allocate</button></>}>
         <p className="hint mb-3">Ranked by carrier weightage and service quality. Blocked carriers are excluded.</p>
-        <ul className="space-y-2">{t.db.carriers.filter((c) => !c.blocked).sort((a, b) => b.fulfilledPct - a.fulfilledPct).map((c) => (
-          <li key={c.id}><label className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3 ${carrierSel === c.id ? 'border-rust bg-rust/5' : 'border-border'}`}><input type="radio" name="car" checked={carrierSel === c.id} onChange={() => setCarrierSel(c.id)} /><div className="flex-1"><b className="text-sm">{c.name}</b><div className="hint">Fulfilled {c.fulfilledPct}% · Rejection {c.rejectionPct}% · ★ {c.rating}</div></div><Pill tone="violet">{c.weightage}% weight</Pill></label></li>))}</ul>
+        <input className="input mb-2" placeholder="Search by vendor code or name…" aria-label="Search carriers" value={carQ} onChange={(e) => setCarQ(e.target.value)} />
+        <ul className="space-y-2">{(() => { const ok = new Set(filterOptions(carrierOptions(t.db.carriers.filter((c) => !c.blocked)), carQ).map((o: { value: string }) => o.value)); return t.db.carriers.filter((c) => !c.blocked && ok.has(c.id)); })().sort((a, b) => b.fulfilledPct - a.fulfilledPct).map((c) => (
+          <li key={c.id}><label className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3 ${carrierSel === c.id ? 'border-rust bg-rust/5' : 'border-border'}`}><input type="radio" name="car" checked={carrierSel === c.id} onChange={() => setCarrierSel(c.id)} /><div className="flex-1"><b className="text-sm">{carrierLabel(c)}</b><div className="hint">Fulfilled {c.fulfilledPct}% · Rejection {c.rejectionPct}% · ★ {c.rating}</div></div><Pill tone="violet">{c.weightage}% weight</Pill></label></li>))}</ul>
       </Modal>)}
 
       {rem && (<Modal title={`Remarks — ${rem.id}`} onClose={() => setRem(undefined)} footer={<button className="btn-primary" onClick={() => { if (rem.text.trim()) { t.addRemark(rem.id, rem.text.trim()); t.toast('Remark added'); setRem(undefined); } }}>Save</button>}><textarea className="input" rows={3} autoFocus value={rem.text} onChange={(e) => setRem({ ...rem, text: e.target.value })} /></Modal>)}

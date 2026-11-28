@@ -29,6 +29,7 @@ const integ = require('./tmsIntegrations');
 const ulip = require('./tmsUlip');
 const { MAX_FILE } = require('./tmsTrips');
 const planningMod = require('./tmsPlanning');
+const plantsMod = require('./tmsPlants');
 const { makeFetchSet } = require('./tmsPlanningSap');
 
 const APP_ID = 'smartruck-tms';
@@ -112,12 +113,15 @@ function createService(store, depsForCaller) {
         },
         async run(caller, cmd) {
             const deps = depsFor(caller);
-            let consentRequest, mailRequest;
+            let consentRequests = [], mailRequest, mailRequests = [];
             const out = await store.withDb(async (db) => {
                 const u = sessionUser(db, caller);
                 try {
                     const { result } = await engine.apply(db, cmd, u, deps);
-                    consentRequest = result.consentRequest; mailRequest = result.mailRequest; delete result.mailRequest;
+                    if (result.consentRequest) consentRequests.push(result.consentRequest);
+                    if (Array.isArray(result.consentRequests)) consentRequests.push(...result.consentRequests);
+                    mailRequest = result.mailRequest; delete result.mailRequest;
+                    mailRequests = Array.isArray(result.mailRequests) ? result.mailRequests : []; delete result.mailRequests; delete result.consentRequests;
                     await store.audit(u.email, cmd.type, true, '');
                     return { result, db: engine.scopedDb(db, u, !!cmd.allUnits) };
                 } catch (e) { await store.audit(u.email, cmd && cmd.type, false, e.message); throw e; }
@@ -128,7 +132,17 @@ function createService(store, depsForCaller) {
                 out.result.mail = m;
                 if (m.sent) await store.withDb((db) => { const i = db.invoices.find((x) => x.id === mailRequest.invoiceId); if (i) { i.mailedAt = new Date().toISOString(); i.history.push({ at: i.mailedAt, actor: 'System', text: `Mailed to ${mailRequest.to}` }); } });
             }
-            if (consentRequest) { const r = await deps.consent.request(consentRequest).catch(() => ({ requested: false })); out.result.consent = r; }
+            if (mailRequests.length) {
+                // one mail per transporter, each with only that transporter's own lines; a failed mail never fails the command (TMS_MAIL_URL unset => simulated, nothing leaves the box)
+                const mails = [];
+                for (const r of mailRequests) {
+                    const m = await deps.mail.send({ to: r.to, subject: r.subject, text: r.text }).catch((e) => ({ sent: false, error: e.message }));
+                    mails.push({ indentId: r.indentId, itemNo: r.itemNo, carrierId: r.carrierId, to: r.to, sent: !!m.sent, ...(m.simulated ? { simulated: true } : {}), ...(m.error ? { error: m.error } : {}) });
+                }
+                await store.withDb((db) => { for (const m of mails) { const ind = (db.indents || []).find((x) => x.id === m.indentId); const it = ind && (ind.items || []).find((x) => x.itemNo === m.itemNo); if (it) it.mail = { to: m.to, sent: m.sent, ...(m.simulated ? { simulated: true } : {}), ...(m.error ? { error: m.error } : {}), at: new Date().toISOString() }; } }).catch((e) => console.error('[tms] mail outcome', e.message));
+                out.result.mails = mails;
+            }
+            for (const cr of consentRequests) { const r = await deps.consent.request(cr).catch(() => ({ requested: false })); out.result.consent = r; }
             return out;
         },
         /** Recipient link: no session; the token is the credential. Returns only what publicTrack allows. */
@@ -262,6 +276,12 @@ const planning = planningMod.create({
     getUser: (caller) => service.withUser(caller, (u) => ({ email: u.email, roles: u.roles || [], perms: new Set([...engine.permsOf(u)].concat(engine.can(u, '*') ? ['plan.view', 'plan.run', 'plan.admin'] : [])) })),
 });
 router.use('/planning', planning.router);
+// Plants: SAP PlantSet merged with the server-side coordinate table (tms_plant_geo). GET = any TMS user, seed-geo / geo = Admin. See tmsPlants.js.
+const plants = plantsMod.create({
+    pool, sapConfigured: () => !sapSvc.simulated(), sapPlants: (caller, q) => sapSvc.plants(q, caller),
+    getUser: (caller) => service.withUser(caller, (u) => ({ email: u.email, roles: u.roles || [] })),
+});
+router.use('/plants', plants.router);
 router.post('/admin/import', handle('import', (req) => service.importData(req.caller, req.body, req.query.dryRun === '1')));
 
 // Background sweep: only one process should do this per environment; set TMS_BACKGROUND=off on the others.

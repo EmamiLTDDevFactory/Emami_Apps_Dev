@@ -8,6 +8,7 @@ import IndiaMap from '../../components/IndiaMap';
 import { Download } from 'lucide-react';
 import { downloadCsv } from '../../lib/csv';
 
+import { carrierCols, carrierLabelOf } from '../../lib/labels';
 const TABS = ['Outbound', 'Inbound', 'Others', 'All'] as const;
 
 export default function Shipments() {
@@ -18,14 +19,14 @@ export default function Shipments() {
   const all = t.scoped(t.db.shipments);
   const rows = all.filter((s) => (tab === 'All' || s.direction === tab) && (status === 'All' || s.status === status) && (!odc || t.db.orders.find((o) => o.id === s.orderId)?.odc)
     && (!q || [s.sin, s.vehicleNo, s.driver, s.orderId].join(' ').toLowerCase().includes(q.toLowerCase())));
-  const carrier = (id: string) => t.db.carriers.find((c) => c.id === id)?.name;
+  const carrier = (id: string) => carrierLabelOf(t.db.carriers, id);
   const city = (id: string) => t.db.locs.find((l) => l.id === id)?.city;
 
   return (
     <div>
       <PageHead title="Shipments" sub="Execution and tracking — one row per vehicle-load" right={<>
         <button className="btn-ghost" onClick={() => setMap((m) => !m)}>{map ? 'List view' : 'Map view'}</button>
-        <button className="btn-ghost" onClick={() => downloadCsv('shipments.csv', rows.map((s) => ({ SIN: s.sin, Order: s.orderId, Status: s.status, Carrier: carrier(s.carrierId), Vehicle: s.vehicleNo, Driver: s.driver, From: city(s.fromLocId), To: city(s.toLocId), Freight: s.freight, ePOD: s.ePod })))}><Download size={15} />Export</button></>} />
+        <button className="btn-ghost" onClick={() => downloadCsv('shipments.csv', rows.map((s) => ({ SIN: s.sin, Order: s.orderId, Status: s.status, ...carrierCols(t.db.carriers, s.carrierId), Vehicle: s.vehicleNo, Driver: s.driver, From: city(s.fromLocId), To: city(s.toLocId), Freight: s.freight, ePOD: s.ePod })))}><Download size={15} />Export</button></>} />
       <Tabs tabs={TABS} value={tab} onChange={setTab} counts={{ Outbound: all.filter((s) => s.direction === 'Outbound').length, Inbound: all.filter((s) => s.direction === 'Inbound').length, Others: 0, All: all.length }} />
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <input className="input !w-64" placeholder="Search SIN, vehicle, driver, order…" value={q} onChange={(e) => setQ(e.target.value)} />

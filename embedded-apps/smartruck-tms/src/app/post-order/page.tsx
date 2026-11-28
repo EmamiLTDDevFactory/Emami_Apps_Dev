@@ -8,6 +8,8 @@ import { Card, Field, PageHead } from '../../components/ui';
 import IndiaMap from '../../components/IndiaMap';
 import type { Basis, Stop } from '../../lib/types';
 
+import Combobox from '../../components/Combobox';
+import { carrierLabel, carrierOptions, filterOptions } from '../../lib/labels';
 const VT = ['CONT15MT', 'CONT20MT', 'TRUCK9MT', 'TRUCK16MT', 'LCV3MT', 'TRAILER32MT'];
 const localIso = (t: number, plusH = 0) => new Date(t + plusH * 3600_000 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 
@@ -17,7 +19,7 @@ export default function PostOrder() {
   const [f, setF] = useState({ basis: 'Vehicle' as Basis, vehicleType: 'CONT15MT', vehicles: 1, material: 'Navratna Cool Talc', qty: 12, uom: 'MT', packages: 400, po: '', so: '', project: '', segment: 'General Trade', odc: false, tolerance: 2, comments: '', customerId: t.db.customers[0]?.id ?? '' });
   const [stops, setStops] = useState<Stop[]>([{ type: 'P', locId: t.db.locs[0]?.id ?? '', at: localIso(t.now, 8) }, { type: 'D', locId: t.db.locs[1]?.id ?? '', at: localIso(t.now, 40) }]);
   const [bid, setBid] = useState({ expiresAt: localIso(t.now, 4), startPrice: 32000, diffType: 'Percentage' as 'Percentage' | 'Amount', diffValue: 1, paymentTerms: 'Net 30', vendors: t.db.carriers.filter((c) => !c.blocked).map((c) => c.id) });
-  const [err, setErr] = useState('');
+  const [err, setErr] = useState(''); const [vq, setVq] = useState('');
   const [poMsg, setPoMsg] = useState(''); const [poOk, setPoOk] = useState(true);
   const set = (k: string, v: unknown) => setF((p) => ({ ...p, [k]: v }));
   const label = (i: number) => `${stops[i].type}${stops.slice(0, i + 1).filter((s) => s.type === stops[i].type).length}`;
@@ -45,9 +47,9 @@ export default function PostOrder() {
         <div className="space-y-4 xl:col-span-2">
           <Card title="Shipment">
             <div className="grid gap-3 md:grid-cols-3">
-              <Field label="Customer"><select className="input" value={f.customerId} onChange={(e) => set('customerId', e.target.value)}>{t.db.customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
+              <Field label="Customer"><Combobox ariaLabel="Customer" clearable={false} value={f.customerId} onChange={(v) => set('customerId', v)} placeholder="Type customer name or R-code…" options={t.db.customers.map((c) => ({ value: c.id, label: c.name, keywords: c.rCode }))} /></Field>
               <Field label="Allocation basis"><select className="input" value={f.basis} onChange={(e) => set('basis', e.target.value)}>{['Vehicle', 'Weight', 'Pallet'].map((x) => <option key={x}>{x}</option>)}</select></Field>
-              <Field label="Vehicle type"><select className="input" value={f.vehicleType} onChange={(e) => set('vehicleType', e.target.value)}>{VT.map((x) => <option key={x}>{x}</option>)}</select></Field>
+              <Field label="Vehicle type"><Combobox ariaLabel="Vehicle type" clearable={false} value={f.vehicleType} onChange={(v) => set('vehicleType', v)} options={VT.map((x) => ({ value: x, label: x }))} /></Field>
               <Field label="No. of vehicles"><input type="number" min={1} className="input" value={f.vehicles} onChange={(e) => set('vehicles', +e.target.value)} /></Field>
               <Field label="Material"><input className="input" value={f.material} onChange={(e) => set('material', e.target.value)} /></Field>
               <Field label="Total quantity (MT)"><input type="number" min={1} className="input" value={f.qty} onChange={(e) => set('qty', +e.target.value)} /></Field>
@@ -66,7 +68,7 @@ export default function PostOrder() {
             <div className="space-y-2">{stops.map((s, i) => (
               <div key={i} className="flex flex-wrap items-center gap-2 rounded-xl bg-cream p-2">
                 <span className={`flex h-8 w-9 items-center justify-center rounded-lg text-xs font-extrabold text-white ${s.type === 'P' ? 'bg-teal' : 'bg-rust'}`}>{label(i)}</span>
-                <select className="input !w-48" value={s.locId} onChange={(e) => setStops((x) => x.map((y, j) => j === i ? { ...y, locId: e.target.value } : y))}>{t.db.locs.map((l) => <option key={l.id} value={l.id}>{l.city}, {l.state}</option>)}</select>
+                <Combobox className="w-56" ariaLabel={`Stop ${i + 1} location`} clearable={false} value={s.locId} onChange={(v) => setStops((x) => x.map((y, j) => j === i ? { ...y, locId: v } : y))} options={t.db.locs.map((l) => ({ value: l.id, label: `${l.city}, ${l.state}`, keywords: `${l.id} ${l.pincode ?? ''}` }))} />
                 <input type="datetime-local" className="input !w-52" value={s.at} onChange={(e) => setStops((x) => x.map((y, j) => j === i ? { ...y, at: e.target.value } : y))} />
                 {stops.length > 2 && <button aria-label="Remove stop" onClick={() => setStops((x) => x.filter((_, j) => j !== i))} className="text-red"><Trash2 size={16} /></button>}
               </div>))}</div>
@@ -81,7 +83,8 @@ export default function PostOrder() {
                 <Field label={bid.diffType === 'Percentage' ? 'Minimum step (%)' : 'Minimum step (₹)'}><input type="number" className="input" value={bid.diffValue} onChange={(e) => setBid({ ...bid, diffValue: +e.target.value })} /></Field>
               </div>
               <div className="mt-3 text-xs font-bold text-inkSoft">Vendors ({bid.vendors.length} of {t.db.carriers.filter((c) => !c.blocked).length} eligible)</div>
-              <div className="mt-1 flex flex-wrap gap-1.5">{t.db.carriers.filter((c) => !c.blocked).map((c) => { const on = bid.vendors.includes(c.id); return <button key={c.id} onClick={() => setBid({ ...bid, vendors: on ? bid.vendors.filter((v) => v !== c.id) : [...bid.vendors, c.id] })} className={`rounded-full border px-3 py-1 text-xs font-bold ${on ? 'border-rust bg-rust/10 text-rust' : 'border-border text-inkSoft'}`}>{c.shortName}</button>; })}</div>
+              <input className="input mt-1 !w-72" placeholder="Search vendors by code or name…" aria-label="Search vendors" value={vq} onChange={(e) => setVq(e.target.value)} />
+              <div className="mt-1 flex max-h-56 flex-wrap gap-1.5 overflow-y-auto">{(() => { const ok = new Set(filterOptions(carrierOptions(t.db.carriers.filter((c) => !c.blocked)), vq).map((o: { value: string }) => o.value)); return t.db.carriers.filter((c) => !c.blocked && ok.has(c.id)); })().map((c) => { const on = bid.vendors.includes(c.id); return <button key={c.id} onClick={() => setBid({ ...bid, vendors: on ? bid.vendors.filter((v) => v !== c.id) : [...bid.vendors, c.id] })} className={`rounded-full border px-3 py-1 text-xs font-bold ${on ? 'border-rust bg-rust/10 text-rust' : 'border-border text-inkSoft'}`}>{carrierLabel(c, { short: true })}</button>; })}</div>
             </Card>)}
           {err && <div className="rounded-xl bg-redBg px-4 py-2.5 text-sm font-bold text-red">{err}</div>}
           <div className="flex justify-end gap-2"><button className="btn-ghost" onClick={() => router.push('/orders/')}>Cancel</button><button className="btn-primary" onClick={submit}>{mode === 'BID' ? 'Post bid order' : 'Post order'}</button></div>

@@ -52,7 +52,7 @@ export function buildDemoDb(): Db {
   const units = UNITS.map(([code, name, division, city]) => ({ id: code, code, name, division, city }));
   const locs = LOCS.map(([city, state, zone, code, lat, lon, pincode]) => ({ id: code, city, state, zone, lat, lon, pincode }));
   const carriers: Carrier[] = CARRIER_NAMES.map((name, i) => ({
-    id: `C${String(i + 1).padStart(3, '0')}`, name, code: `V${100200 + i * 7}`, type: pick(['Asset-based', 'Broker', 'Fleet owner']),
+    id: `C${String(i + 1).padStart(3, '0')}`, name, code: `${120020 + i * 13}`, type: pick(['Asset-based', 'Broker', 'Fleet owner']),
     shortName: name.split(' ')[0].toUpperCase(), paymentTerms: pick(['Net 15', 'Net 30', 'Net 45']), weightage: Math.round(100 / CARRIER_NAMES.length),
     blocked: i === 10, rating: Math.round((3.4 + r() * 1.5) * 10) / 10, fleet: 20 + Math.floor(r() * 180),
     lanes: Array.from({ length: 3 + Math.floor(r() * 4) }, () => `${pick(locs).id}-${pick(locs).id}`),
@@ -175,9 +175,21 @@ export function buildDemoDb(): Db {
     ['Meera Iyer', 'meera.iyer@emamigroup.com', 'Finance Manager', ['Finance Administrator', 'Finance Executive'], units.map((u) => u.id)],
     ['Vikash Roy', 'vikash.roy@emamigroup.com', 'Control Tower Analyst', ['Control Tower'], ['UN13']],
     ['Pooja Menon', 'pooja.menon@emamigroup.com', 'Marketing Manager', ['Marketing'], ['UN04', 'UN07']],
+    ['Kavita Rao', 'kavita.rao@emamigroup.com', 'Depot User (raises indents)', ['Depot User'], ['UN13', 'UN01']],
+    ['Deepak Nair', 'deepak.nair@emamigroup.com', 'HO Logistics', ['HO Logistics'], units.map((u) => u.id)],
   ].map(([name, email, designation, roles, us], i) => ({
     id: `U${i + 1}`, name: name as string, email: email as string, designation: designation as string, roles: roles as string[], units: us as string[], lastSignin: iso(NOW - (i * 7 + 2) * H),
-  }));
+  })).concat([['C001', 'Elite Roadways'], ['C002', 'Gati Freight'], ['C003', 'Shree Maruti']].map(([cid, nm], k) => ({
+    id: `UV${k + 1}`, name: `${nm} (vendor)`, email: `dispatch@${nm.split(' ')[0].toLowerCase()}.example`, designation: 'Transporter login', roles: ['Carrier Vendor'], units: [] as string[], lastSignin: iso(NOW - (k + 1) * 5 * H), carrierId: cid,
+  })));
+
+  // Phase 1 indents (docs/PHASE1_TRIP_TRAIL_DOC.md): a few lanes with transporter rates and vehicle types so the indent screens work in demo mode.
+  const vehicleTypes = [
+    { code: 'TRUCK9MT', name: 'Truck 9 MT', maxWeightKg: 9000, maxVolumeM3: 38 }, { code: 'TRUCK16MT', name: 'Truck 16 MT', maxWeightKg: 16000, maxVolumeM3: 56 }, { code: 'CONT20MT', name: 'Container 20 MT', maxWeightKg: 20000, maxVolumeM3: 66 },
+  ];
+  const rateRows = (base: number) => ['C001', 'C002', 'C003', 'C004', 'C005'].map((carrierId, k) => ({ carrierId, priority: k + 1, rate: Math.round(base * (1 + k * 0.04)) }));
+  const lanes = [['GAU', 'CCU', 1030, 26, 52000], ['CCU', 'PAT', 590, 14, 31000], ['CCU', 'BBI', 440, 11, 24000]].map(([a, b, distanceKm, transitH, base]) => ({ id: `LN-${a}-${b}`, fromLocId: a as string, toLocId: b as string, distanceKm: distanceKm as number, transitH: transitH as number, vendors: rateRows(base as number) }));
+  const carriersWithEmail = carriers.map((c, i) => (i === 2 || c.blocked ? c : { ...c, email: `dispatch@${c.shortName.toLowerCase().replace(/[^a-z0-9]/g, '')}.example` }));
 
   const geofences = locs.slice(0, 10).flatMap((l, i) => [
     { id: `GF-P${i}`, name: `${l.city} Plant gate`, type: 'Pickup' as const, locId: l.id, radiusM: 500, completions: 20 + Math.floor(r() * 140) },
@@ -191,7 +203,7 @@ export function buildDemoDb(): Db {
     { id: 'N4', at: iso(NOW - 6 * H), level: 'warn' as const, text: '7 carrier invoices waiting for Finance approval > 3 days', read: true },
   ];
 
-  return { units, locs, carriers, customers, orders, shipments, invoices, vouchers: [
+  return { units, locs, carriers: carriersWithEmail, vehicleTypes, lanes, indents: [], settings: { offerTimeoutH: 4 }, customers, orders, shipments, invoices, vouchers: [
     { id: 'PV-1001', carrierId: 'C001', amount: 184500, status: 'Posted', date: iso(NOW - 6 * 24 * H), invoices: [] },
     { id: 'PV-1002', carrierId: 'C004', amount: 96200, status: 'Draft', date: iso(NOW - 2 * 24 * H), invoices: [] },
   ], notes: [

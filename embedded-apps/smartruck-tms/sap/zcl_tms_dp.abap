@@ -27,6 +27,10 @@ CLASS zcl_tms_dp DEFINITION PUBLIC FINAL CREATE PUBLIC.
     CLASS-METHODS get_transit
       IMPORTING it_werks TYPE string_table OPTIONAL it_swerks TYPE string_table OPTIONAL it_matnr TYPE string_table OPTIONAL
       RETURNING VALUE(rt_tr) TYPE zcl_tms_ty=>tt_dptransit.
+    "! Plants from T001W with the central address data of ADRC (time zone, city code). Empty filter tables = no restriction; the caller must restrict or page.
+    CLASS-METHODS get_plants
+      IMPORTING it_werks TYPE string_table OPTIONAL it_land1 TYPE string_table OPTIONAL
+      RETURNING VALUE(rt_plant) TYPE zcl_tms_ty=>tt_plant.
     CLASS-METHODS mat_out
       IMPORTING iv_matnr TYPE matnr RETURNING VALUE(rv_out) TYPE zcl_tms_ty=>ts_dpmaterial-matnr.
   PRIVATE SECTION.
@@ -58,6 +62,22 @@ CLASS zcl_tms_dp IMPLEMENTATION.
 
   METHOD vtweg_range.
     rr_vtweg = VALUE #( FOR v IN it_vtweg ( sign = 'I' option = 'EQ' low = v ) ).
+  ENDMETHOD.
+
+  METHOD get_plants.
+    DATA(lr_werks) = werks_range( it_werks ).
+    DATA lr_land1 TYPE RANGE OF land1.
+    lr_land1 = VALUE #( FOR l IN it_land1 ( sign = 'I' option = 'EQ' low = to_upper( l ) ) ).
+    SELECT t~werks, t~name1, t~name2, t~stras, t~pstlz, t~ort01, t~regio, t~land1, t~adrnr, t~fabkl, a~time_zone, a~city_code
+      FROM t001w AS t
+      LEFT OUTER JOIN adrc AS a ON a~addrnumber = t~adrnr AND a~date_from = '00010101' AND a~nation = @space
+      WHERE t~werks IN @lr_werks AND t~land1 IN @lr_land1
+      ORDER BY t~werks
+      INTO TABLE @DATA(lt_p).
+    LOOP AT lt_p INTO DATA(ls_p).
+      APPEND VALUE #( werks = ls_p-werks name1 = ls_p-name1 name2 = ls_p-name2 stras = ls_p-stras pstlz = ls_p-pstlz ort01 = ls_p-ort01 regio = ls_p-regio
+                      land1 = ls_p-land1 adrnr = ls_p-adrnr fabkl = ls_p-fabkl timezone = ls_p-time_zone citycode = ls_p-city_code ) TO rt_plant.
+    ENDLOOP.
   ENDMETHOD.
 
   METHOD get_materials.

@@ -6,6 +6,7 @@ import { Card, PageHead, Table } from '../../components/ui';
 import { downloadCsv } from '../../lib/csv';
 import { Download, Play } from 'lucide-react';
 
+import { addCarrierCodes } from '../../lib/labels';
 type Row = Record<string, string | number>;
 const CATALOG: Record<string, string[]> = {
   ORDERS: ['To Be Allocated', 'Non Placement Report'], 'LTL ORDERS': ['Orders', 'Logs', 'ActivityTimeline'],
@@ -21,9 +22,9 @@ export default function Reports() {
   const [serverCat, setServerCat] = useState<Record<string, string[]> | null>(null);
   useEffect(() => { if (t.mode === 'live') t.catalog().then(setServerCat); }, [t.mode]); // eslint-disable-line react-hooks/exhaustive-deps
   const CAT = serverCat ?? CATALOG;
-  const rowsFor = async (name: string): Promise<Row[]> => (await t.report(name)) ?? build(name);
+  const rowsFor = async (name: string): Promise<Row[]> => addCarrierCodes((await t.report(name)) ?? build(name), t.db.carriers) as Row[];
   const city = (id: string) => t.db.locs.find((l) => l.id === id)?.city ?? id;
-  const cn = (id: string) => t.db.carriers.find((c) => c.id === id)?.name ?? id;
+  const cn = (id: string) => t.db.carriers.find((c) => c.id === id)?.name ?? id;   // rows carry the name; addCarrierCodes puts the vendor code in its own column
   const ships = t.scoped(t.db.shipments); const orders = t.scoped(t.db.orders); const invs = t.scoped(t.db.invoices);
 
   const build = useMemo(() => (name: string): Row[] => {

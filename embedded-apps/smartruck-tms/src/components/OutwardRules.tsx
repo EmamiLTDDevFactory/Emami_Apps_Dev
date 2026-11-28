@@ -5,6 +5,8 @@ import { useTms } from '../lib/store';
 import { Card, Field, Table, inr, rateText } from './ui';
 import type { Lane, LaneVendor, TmsSettings } from '../lib/types';
 
+import Combobox from './Combobox';
+import { carrierLabelOf, carrierOptions } from '../lib/labels';
 /** HO's rule book for the outward module: vehicle capacities, lanes with ordered vendors and rates, thresholds, mailbox, consent wording. */
 export default function OutwardRules() {
   const t = useTms();
@@ -28,7 +30,8 @@ export default function OutwardRules() {
   const [cfg, setCfg] = useState<Record<string, string>>({});
   const manage = t.can('lane.manage'), settings = t.can('settings.manage');
   const city = (id: string) => t.db.locs.find((l) => l.id === id)?.city ?? id;
-  const car = (id: string) => t.db.carriers.find((c) => c.id === id)?.name ?? id;
+  const car = (id: string) => carrierLabelOf(t.db.carriers, id);
+  const locOpts = t.db.locs.map((l) => ({ value: l.id, label: l.city, keywords: `${l.id} ${l.state ?? ''} ${l.pincode ?? ''}` }));
   const val = (k: keyof TmsSettings) => cfg[k] ?? String(st[k] ?? '');
   if (!live) return <Card><p className="text-sm">These rules are stored on the live server. Open this app with <code>?mode=live</code> on the DEV site.</p></Card>;
 
@@ -71,14 +74,14 @@ export default function OutwardRules() {
         ]} />
         {manage && <div className="space-y-2 border-t border-border p-3">
           <div className="grid gap-2 md:grid-cols-4">
-            <select className="input" value={ln.fromLocId} onChange={(e) => setLn({ ...ln, fromLocId: e.target.value })}><option value="">From…</option>{t.db.locs.map((l) => <option key={l.id} value={l.id}>{l.city}</option>)}</select>
-            <select className="input" value={ln.toLocId} onChange={(e) => setLn({ ...ln, toLocId: e.target.value })}><option value="">To…</option>{t.db.locs.map((l) => <option key={l.id} value={l.id}>{l.city}</option>)}</select>
+            <Combobox ariaLabel="From" value={ln.fromLocId} onChange={(v) => setLn({ ...ln, fromLocId: v })} placeholder="From…" options={locOpts} />
+            <Combobox ariaLabel="To" value={ln.toLocId} onChange={(v) => setLn({ ...ln, toLocId: v })} placeholder="To…" options={locOpts} />
             <input className="input" placeholder="Distance km" value={ln.distanceKm} onChange={(e) => setLn({ ...ln, distanceKm: e.target.value })} /><input className="input" placeholder="Planned transit hours" value={ln.transitH} onChange={(e) => setLn({ ...ln, transitH: e.target.value })} />
           </div>
           {ln.vendors.map((v, i) => <div key={i} className="grid gap-2 md:grid-cols-4"><div className="self-center text-sm font-bold text-inkSoft">Vendor {i + 1}{i === 0 ? ' (offered first)' : ''}</div>
-            <select className="input" value={v.carrierId} onChange={(e) => setLn({ ...ln, vendors: ln.vendors.map((x, k) => (k === i ? { ...x, carrierId: e.target.value } : x)) })}><option value="">Carrier…</option>{t.db.carriers.filter((c) => !c.blocked).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+            <Combobox ariaLabel="Carrier" value={v.carrierId} onChange={(cv) => setLn({ ...ln, vendors: ln.vendors.map((x, k) => (k === i ? { ...x, carrierId: cv } : x)) })} placeholder="Carrier (code or name)…" options={carrierOptions(t.db.carriers.filter((c) => !c.blocked))} />
             <input className="input" placeholder="Freight rate ₹ per trip" value={v.rate} onChange={(e) => setLn({ ...ln, vendors: ln.vendors.map((x, k) => (k === i ? { ...x, rate: e.target.value } : x)) })} />
-            <div className="grid grid-cols-2 gap-2"><select className="input" value={v.vehicleType} onChange={(e) => setLn({ ...ln, vendors: ln.vendors.map((x, k) => (k === i ? { ...x, vehicleType: e.target.value } : x)) })}><option value="">Any vehicle</option>{vts.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}</select>
+            <div className="grid grid-cols-2 gap-2"><Combobox ariaLabel="Vehicle type" value={v.vehicleType} onChange={(vt) => setLn({ ...ln, vendors: ln.vendors.map((x, k) => (k === i ? { ...x, vehicleType: vt } : x)) })} placeholder="Any vehicle" options={vts.map((x) => ({ value: x.code, label: x.name, keywords: x.code }))} />
               <select className="input" value={v.shippingType} onChange={(e) => setLn({ ...ln, vendors: ln.vendors.map((x, k) => (k === i ? { ...x, shippingType: e.target.value } : x)) })}><option value="">Any mode</option>{Object.entries({ '01': 'Truck', '03': 'Train', ...texts.shipping }).map(([c, n]) => <option key={c} value={c}>{n}</option>)}</select></div></div>)}
           <div className="flex gap-2"><button className="btn-ghost" onClick={() => setLn({ ...ln, vendors: [...ln.vendors, { carrierId: '', rate: '', vehicleType: '', shippingType: '' }] })}>Add fallback vendor</button>
             <button className="btn-primary" onClick={async () => { const r = await t.cmd({ type: 'upsertLane', fromLocId: ln.fromLocId, toLocId: ln.toLocId, distanceKm: Number(ln.distanceKm), transitH: Number(ln.transitH), vendors: ln.vendors.map((v, i) => ({ carrierId: v.carrierId, priority: i + 1, rate: Number(v.rate), vehicleType: v.vehicleType, shippingType: v.shippingType })) }); if (r) { t.toast('Lane saved (SAP rates on the lane are kept)'); setLn({ fromLocId: '', toLocId: '', distanceKm: '', transitH: '', vendors: [{ carrierId: '', rate: '', vehicleType: '', shippingType: '' }] }); } }}>Save lane</button></div>

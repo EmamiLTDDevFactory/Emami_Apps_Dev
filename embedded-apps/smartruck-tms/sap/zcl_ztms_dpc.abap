@@ -199,6 +199,17 @@ CLASS zcl_ztms_dpc IMPLEMENTATION.
         DATA(lt_fc) = zcl_tms_core=>get_freight_cond( it_route = lt_fr it_tdlnr = lt_ft it_kschl = lt_fk it_vsart = lt_fv it_shtyp = lt_fs it_add01 = lt_fa
                                                      iv_skip = is_paging-skip iv_top = COND #( WHEN is_paging-top > 0 THEN is_paging-top ELSE 5000 ) ).
         copy_data_to_ref( EXPORTING is_data = lt_fc CHANGING cr_data = er_entityset ).
+      WHEN 'PlantSet'.
+        " Plants (T001W + ADRC). Filters (EQ): Werks, Land1; or $top (at most 5000) with $skip. Otherwise an error: the feed does not hand out unfiltered lists blindly.
+        DATA(lt_pl_w) = filter_values( it_filter = it_filter_select_options iv_name = 'Werks' ).
+        DATA(lt_pl_l) = filter_values( it_filter = it_filter_select_options iv_name = 'Land1' ).
+        IF lt_pl_w IS INITIAL AND lt_pl_l IS INITIAL AND is_paging-top = 0.
+          busi( `Give a filter (Werks or Land1 eq '...') or $top.` ).
+        ENDIF.
+        dp_guard( iv_filtered = abap_true iv_what = `` is_paging = is_paging ).
+        DATA(lt_pl) = zcl_tms_dp=>get_plants( it_werks = lt_pl_w it_land1 = lt_pl_l ).
+        dp_page( EXPORTING is_paging = is_paging CHANGING ct_tab = lt_pl ).
+        copy_data_to_ref( EXPORTING is_data = lt_pl CHANGING cr_data = er_entityset ).
       WHEN 'DpMaterialSet'.
         " Filters (EQ): Spart, Matnr (one or many). Or $top (max 5000) with $skip to page the whole master.
         DATA(lt_dm_s) = filter_values( it_filter = it_filter_select_options iv_name = 'Spart' ).

@@ -3,6 +3,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { buildDemoDb, iso, NOW } from './demo';
 import { ApiError, isLiveMode, liveApi, type Me } from './liveApi';
+import { demoAddIndentItem, demoCancelIndent, demoCreateIndent, demoRejectItem, demoSubmitItem } from './indentModel';
 import { ROLE_PERMS, type AppUser, type Db, type InvStatus, type Order, type Shipment, type ShipStatus, type Bid } from './types';
 
 const KEY = 'smartruck_tms_demo_db_v1';
@@ -38,7 +39,7 @@ interface Ctx {
   addVoucher: (carrierId: string, amount: number) => void;
   addNote: (kind: 'Debit' | 'Credit', carrierId: string, amount: number, reason: string, sin: string) => void;
   patchCarrier: (id: string, patch: Partial<Db['carriers'][number]>) => void;
-  addCarrier: (name: string) => void;
+  addCarrier: (name: string, email?: string) => void;
   addCustomer: (name: string, zone: string, contact: string) => void;
   saveUser: (u: AppUser) => void;
   markRead: () => void;
@@ -48,10 +49,24 @@ interface Ctx {
 const C = createContext<Ctx | null>(null);
 export const useTms = () => { const c = useContext(C); if (!c) throw new Error('useTms outside provider'); return c; };
 
+/** A demo saved before Phase 1 has no lanes / vehicle types / indents / transporter logins: fill only what is missing, keep everything the user did. */
 function load(): Db {
-  try { const raw = window.localStorage.getItem(KEY); if (raw) return JSON.parse(raw) as Db; } catch { /* ignore */ }
+  try {
+    const raw = window.localStorage.getItem(KEY);
+    if (raw) {
+      const d = JSON.parse(raw) as Db;
+      if (!d.lanes || !d.vehicleTypes || !d.indents || !d.users.some((u) => u.carrierId)) {
+        const f = buildDemoDb();
+        d.lanes ??= f.lanes; d.vehicleTypes ??= f.vehicleTypes; d.indents ??= []; d.settings ??= f.settings;
+        d.users = [...d.users, ...f.users.filter((u) => !d.users.some((x) => x.id === u.id))];
+        d.carriers = d.carriers.map((c) => (c.email === undefined ? { ...c, email: f.carriers.find((x) => x.id === c.id)?.email } : c));
+      }
+      return d;
+    }
+  } catch { /* ignore */ }
   return buildDemoDb();
 }
+const ROLE_KEYS = Object.fromEntries(Object.entries(ROLE_PERMS).map(([k, v]) => [k, v.perms.map((p) => p.key)]));
 
 export function TmsProvider({ children }: { children: React.ReactNode }) {
   const [db, setDb] = useState<Db>(() => buildDemoDb());
@@ -152,7 +167,15 @@ export function TmsProvider({ children }: { children: React.ReactNode }) {
     ewayCheck: async () => ({ simulated: true, status: 'ACTIVE' }),
     catalog: async () => null, report: async () => null,
     importData: async () => ({ ok: false, errors: ['Import is available in live mode only.'], counts: {} }),
-    cmd: async () => { toast('Outward tracking needs the live server. Open this app with ?mode=live.', 'err'); return undefined; },
+    // Demo mode runs the Phase 1 indent commands through the same pure rules as the server (indentModel.js); everything else of outward tracking still needs the live server.
+    cmd: async <R,>(c: Record<string, unknown>) => {
+      const run = ({ createIndent: demoCreateIndent, vendorSubmitItem: demoSubmitItem, vendorRejectItem: demoRejectItem, cancelIndent: demoCancelIndent, addIndentItem: demoAddIndentItem } as Record<string, (...a: never[]) => { db: Db; result: unknown }>)[String(c.type)];
+      if (!run) { toast('This outward-tracking action needs the live server. Open this app with ?mode=live.', 'err'); return undefined; }
+      try {
+        const out = (run as unknown as (db: Db, c: Record<string, unknown>, u: AppUser, now: number, roles: Record<string, string[]>) => { db: Db; result: unknown })(db, c, me, now, ROLE_KEYS);
+        setDb(out.db); return out.result as R;
+      } catch (e) { toast(e instanceof Error ? e.message : 'The action failed.', 'err'); return undefined; }
+    },
     db, me, unitId, setUnitId, setMe: (id) => { setMeId(id); try { window.localStorage.setItem(KEY + '_me', id); } catch { /* ignore */ } }, allUnits, setAllUnits, now, can, scoped, toast, toasts,
     createOrder: async (o) => {
       let id = '';
@@ -199,7 +222,7 @@ export function TmsProvider({ children }: { children: React.ReactNode }) {
     addVoucher: (carrierId, amount) => mut((d) => ({ ...d, vouchers: [{ id: `PV-${1001 + d.vouchers.length}`, carrierId, amount, status: 'Draft', date: iso(now), invoices: [] }, ...d.vouchers] })),
     addNote: (kind, carrierId, amount, reason, sin) => mut((d) => ({ ...d, notes: [{ id: `${kind === 'Debit' ? 'DN' : 'CN'}-${500 + d.notes.length}`, kind, carrierId, amount, reason, date: iso(now), sin }, ...d.notes] })),
     patchCarrier: (id, patch) => mut((d) => ({ ...d, carriers: d.carriers.map((c) => c.id === id ? { ...c, ...patch } : c) })),
-    addCarrier: (name) => mut((d) => ({ ...d, carriers: [...d.carriers, { id: `C${String(d.carriers.length + 1).padStart(3, '0')}`, name, code: `V${100900 + d.carriers.length}`, type: 'Broker', shortName: name.split(' ')[0].toUpperCase(), paymentTerms: 'Net 30', weightage: 0, blocked: false, rating: 4, fleet: 0, lanes: [], rejectionPct: 0, fulfilledPct: 100 }] })),
+    addCarrier: (name, email) => mut((d) => ({ ...d, carriers: [...d.carriers, { id: `C${String(d.carriers.length + 1).padStart(3, '0')}`, name, ...(email ? { email: email.toLowerCase() } : {}), code: `${130900 + d.carriers.length}`, type: 'Broker', shortName: name.split(' ')[0].toUpperCase(), paymentTerms: 'Net 30', weightage: 0, blocked: false, rating: 4, fleet: 0, lanes: [], rejectionPct: 0, fulfilledPct: 100 }] })),
     addCustomer: (name, zone, contact) => mut((d) => ({ ...d, customers: [...d.customers, { id: `K${d.customers.length + 1}`, name, rCode: `R${40500 + d.customers.length}`, zone, contact, csl: me.name, segment: 'General Trade' }] })),
     saveUser: (u) => mut((d) => ({ ...d, users: d.users.some((x) => x.id === u.id) ? d.users.map((x) => x.id === u.id ? u : x) : [...d.users, u] })),
     markRead: () => mut((d) => ({ ...d, notifications: d.notifications.map((n) => ({ ...n, read: true })) })),
@@ -241,7 +264,7 @@ export function TmsProvider({ children }: { children: React.ReactNode }) {
     addVoucher: (carrierId, amount) => { void run({ type: 'addVoucher', carrierId, amount }); },
     addNote: (kind, carrierId, amount, reason, sin) => { void run({ type: 'addNote', kind, carrierId, amount, reason, sin }); },
     patchCarrier: (id, patch) => { void run({ type: 'patchCarrier', id, patch }); },
-    addCarrier: (name) => { void run({ type: 'addCarrier', name }); },
+    addCarrier: (name, email) => { void run({ type: 'addCarrier', name, ...(email ? { email } : {}) }); },
     addCustomer: (name, zone, contact) => { void run({ type: 'addCustomer', name, zone, contact }); },
     saveUser: (user) => { void run({ type: 'saveUser', user }); },
     markRead: () => { void run({ type: 'markRead' }); },

@@ -19,7 +19,7 @@ CLASS zcl_ztms_mpc IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD get_last_modified.
-    CONSTANTS lc_gen_date_time TYPE timestamp VALUE '20261128120000'.
+    CONSTANTS lc_gen_date_time TYPE timestamp VALUE '20261128180000'.
     rv_last_modified = super->get_last_modified( ).
     IF rv_last_modified < lc_gen_date_time.
       rv_last_modified = lc_gen_date_time.
@@ -58,6 +58,12 @@ CLASS zcl_ztms_mpc IMPLEMENTATION.
     lo_property = lo_entity_type->create_property( iv_property_name = 'Transporter' iv_abap_fieldname = 'TRANSPORTER' ).
     lo_property->set_type_edm_string( ).
     lo_property->set_maxlength( iv_max_length = 1 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Email' iv_abap_fieldname = 'EMAIL' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 241 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Mobile' iv_abap_fieldname = 'MOBILE' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 30 ).
     lo_entity_type->bind_structure( iv_structure_name = 'ZCL_TMS_TY=>TS_VENDOR' iv_bind_conversions = abap_false ).
     lo_entity_set = lo_entity_type->create_entity_set( 'VendorSet' ).
     lo_entity_set->set_creatable( abap_false ).
@@ -890,6 +896,56 @@ CLASS zcl_ztms_mpc IMPLEMENTATION.
     lo_property->set_maxlength( iv_max_length = 20 ).
     lo_entity_type->bind_structure( iv_structure_name = 'ZCL_TMS_TY=>TS_DPTRANSIT' iv_bind_conversions = abap_false ).
     lo_entity_set = lo_entity_type->create_entity_set( 'DpTransitSet' ).
+    lo_entity_set->set_creatable( abap_false ).
+    lo_entity_set->set_updatable( abap_false ).
+    lo_entity_set->set_deletable( abap_false ).
+    lo_entity_set->set_pageable( abap_false ).
+    lo_entity_set->set_addressable( abap_true ).
+    lo_entity_set->set_has_ftxt_search( abap_false ).
+    lo_entity_set->set_subscribable( abap_false ).
+    lo_entity_set->set_filter_required( abap_false ).
+
+    lo_entity_type = model->create_entity_type( iv_entity_type_name = 'Plant' iv_def_entity_set = abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Werks' iv_abap_fieldname = 'WERKS' ).
+    lo_property->set_is_key( ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 4 ).
+    lo_property->set_nullable( abap_false ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Name1' iv_abap_fieldname = 'NAME1' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 30 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Name2' iv_abap_fieldname = 'NAME2' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 30 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Stras' iv_abap_fieldname = 'STRAS' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 30 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Pstlz' iv_abap_fieldname = 'PSTLZ' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 10 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Ort01' iv_abap_fieldname = 'ORT01' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 25 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Regio' iv_abap_fieldname = 'REGIO' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 3 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Land1' iv_abap_fieldname = 'LAND1' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 3 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Adrnr' iv_abap_fieldname = 'ADRNR' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 10 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'Fabkl' iv_abap_fieldname = 'FABKL' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 2 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'TimeZone' iv_abap_fieldname = 'TIMEZONE' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 6 ).
+    lo_property = lo_entity_type->create_property( iv_property_name = 'CityCode' iv_abap_fieldname = 'CITYCODE' ).
+    lo_property->set_type_edm_string( ).
+    lo_property->set_maxlength( iv_max_length = 12 ).
+    lo_entity_type->bind_structure( iv_structure_name = 'ZCL_TMS_TY=>TS_PLANT' iv_bind_conversions = abap_false ).
+    lo_entity_set = lo_entity_type->create_entity_set( 'PlantSet' ).
     lo_entity_set->set_creatable( abap_false ).
     lo_entity_set->set_updatable( abap_false ).
     lo_entity_set->set_deletable( abap_false ).

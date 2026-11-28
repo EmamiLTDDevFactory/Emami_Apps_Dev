@@ -6,6 +6,8 @@ import { useTms } from '../../lib/store';
 import { Card, Kpi, PageHead, Pill, Table, StatusPill, inr, fmtDT, Field, Modal } from '../../components/ui';
 import { Bars } from '../../components/charts';
 
+import Combobox from '../../components/Combobox';
+import { carrierLabelOf } from '../../lib/labels';
 function countdown(ms: number) { if (ms <= 0) return 'Expired'; const m = Math.floor(ms / 60000); return `${Math.floor(m / 60)}h ${m % 60}m left`; }
 
 export default function Bidding() {
@@ -15,7 +17,7 @@ export default function Bidding() {
   const [manual, setManual] = useState<{ carrierId: string; price: string }>({ carrierId: '', price: '' });
   const cur = orders.find((o) => o.id === sel) ?? orders.find((o) => o.bid?.status === 'Open') ?? orders[0];
   const loc = (id: string) => t.db.locs.find((l) => l.id === id)?.city;
-  const cn = (id: string) => t.db.carriers.find((c) => c.id === id)?.name ?? id;
+  const cn = (id: string) => carrierLabelOf(t.db.carriers, id);
   const open = orders.filter((o) => o.bid?.status === 'Open');
   const [confirmAward, setConfirmAward] = useState<string>();
   const vendor = t.mode === 'live' && t.me.roles.includes('Carrier Vendor');
@@ -58,7 +60,7 @@ export default function Bidding() {
           </Card>
           {!vendor && <Card title="Leaderboard" pad={false}><Table rows={ranked} rowKey={(r) => r.carrierId} page={6} cols={[{ h: 'Rank', r: (r) => `#${ranked.indexOf(r) + 1}` }, { h: 'Vendor', r: (r) => <b>{cn(r.carrierId)}</b> }, { h: 'Best bid', r: (r) => inr(r.price), align: 'right' }, { h: 'Bids', r: (r) => r.n }, { h: 'Saving', r: (r) => `${Math.round((1 - r.price / b.startPrice) * 100)}%` },
             { h: '', r: (r) => b.status === 'Open' ? <button className="btn-success !px-3 !py-1 text-xs" onClick={() => { if (!t.can('bid.award')) return t.toast('You do not have the "Award Bid" permission', 'err'); setConfirmAward(r.carrierId); }}>Award</button> : b.winner === r.carrierId ? <Pill tone="green">Winner</Pill> : null }]} empty="No bids yet — vendors have been notified" /></Card>}
-          {b.status === 'Open' && <Card title="Place bid on behalf of a vendor (demo)"><div className="flex flex-wrap items-end gap-3">{!vendor && <Field label="Vendor" className="min-w-[200px] flex-1"><select className="input" value={manual.carrierId} onChange={(e) => setManual({ ...manual, carrierId: e.target.value })}><option value="">Select…</option>{b.vendors.map((v) => <option key={v} value={v}>{cn(v)}</option>)}</select></Field>}
+          {b.status === 'Open' && <Card title="Place bid on behalf of a vendor (demo)"><div className="flex flex-wrap items-end gap-3">{!vendor && <Field label="Vendor" className="min-w-[260px] flex-1"><Combobox ariaLabel="Vendor" value={manual.carrierId} onChange={(v) => setManual({ ...manual, carrierId: v })} options={b.vendors.map((v) => ({ value: v, label: cn(v) }))} placeholder="Type code or name…" /></Field>}
             <Field label="Price (₹ / vehicle)" className="w-40"><input type="number" className="input" value={manual.price} onChange={(e) => setManual({ ...manual, price: e.target.value })} /></Field><button className="btn-primary" onClick={place}>Place bid</button></div><p className="hint mt-2">New bids from other vendors also arrive automatically every few seconds while an auction is open.</p></Card>}
           <Card title="Bid history" pad={false}><Table rows={[...b.bids].reverse()} rowKey={(x) => x.carrierId + x.at + x.price} page={6} cols={[{ h: 'Time', r: (x) => fmtDT(x.at) }, { h: 'Vendor', r: (x) => cn(x.carrierId) }, { h: 'Price', r: (x) => inr(x.price), align: 'right' }]} /></Card>
         </div>) : <div className="lg:col-span-2"><Card><p className="hint">Select a bid order.</p></Card></div>}

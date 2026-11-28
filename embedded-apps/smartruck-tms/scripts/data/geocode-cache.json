@@ -1,0 +1,542 @@
+{
+ "{\"city\": \"Glaxo More\", \"state\": \"West Bengal\"}": [],
+ "{\"city\": \"Jalpaiguri\", \"state\": \"West Bengal\"}": [
+  {
+   "display": "Jalpaiguri, West Bengal, 735101, India",
+   "lat": 26.5241586,
+   "lon": 88.7197513
+  }
+ ],
+ "{\"city\": \"VARANASI\", \"state\": \"Uttar Pradesh\"}": [
+  {
+   "display": "Varanasi, Sadar, Varanasi, Uttar Pradesh, 221001, India",
+   "lat": 25.3356491,
+   "lon": 83.0076292
+  }
+ ],
+ "{\"postalcode\": \"110044\"}": [
+  {
+   "display": "110044, Mohan Co-op Indl Estate, Central, Delhi, South East Delhi, Delhi, India",
+   "lat": 28.5066381,
+   "lon": 77.2981965
+  }
+ ],
+ "{\"postalcode\": \"110077\"}": [
+  {
+   "display": "110077, Najafgarh, Delhi, South West Delhi, Delhi, India",
+   "lat": 28.5728373,
+   "lon": 77.067301
+  }
+ ],
+ "{\"postalcode\": \"110093\"}": [
+  {
+   "display": "110093, Shahdara North, Delhi, North East Delhi, Delhi, India",
+   "lat": 28.6880216,
+   "lon": 77.2941422
+  }
+ ],
+ "{\"postalcode\": \"122503\"}": [
+  {
+   "display": "122503, Pataudi, Gurugram, Haryana, India",
+   "lat": 28.3270649,
+   "lon": 76.7801237
+  }
+ ],
+ "{\"postalcode\": \"131001\"}": [
+  {
+   "display": "131001, Sonipat, Haryana, India",
+   "lat": 28.9840581,
+   "lon": 77.0232585
+  }
+ ],
+ "{\"postalcode\": \"131104\"}": [],
+ "{\"postalcode\": \"133001\"}": [
+  {
+   "display": "133001, Ambala Cantt, Ambala, Haryana, India",
+   "lat": 30.3415564,
+   "lon": 76.850755
+  }
+ ],
+ "{\"postalcode\": \"133102\"}": [
+  {
+   "display": "133102, Saha, Ambala, Haryana, India",
+   "lat": 30.2342958,
+   "lon": 76.9046711
+  }
+ ],
+ "{\"postalcode\": \"140401\"}": [
+  {
+   "display": "140401, Rajpura Tahsil, Patiala, Punjab, India",
+   "lat": 30.4780501,
+   "lon": 76.5641622
+  }
+ ],
+ "{\"postalcode\": \"140603\"}": [
+  {
+   "display": "140603, Dera Bassi Tahsil, Sahibzada Ajit Singh Nagar, Punjab, India",
+   "lat": 30.6481543,
+   "lon": 76.8185401
+  }
+ ],
+ "{\"postalcode\": \"144216\"}": [
+  {
+   "display": "144216, Mukerian Tahsil, Hoshiarpur, Punjab, India",
+   "lat": 31.9461362,
+   "lon": 75.8690439
+  }
+ ],
+ "{\"postalcode\": \"173025\"}": [
+  {
+   "display": "173025, Paonta Sahib, Sirmaur, Himachal Pradesh, India",
+   "lat": 30.454609,
+   "lon": 77.640891
+  }
+ ],
+ "{\"postalcode\": \"173030\"}": [
+  {
+   "display": "173030, Nahan, Sirmaur, Himachal Pradesh, India",
+   "lat": 30.4987395,
+   "lon": 77.213007
+  }
+ ],
+ "{\"postalcode\": \"173205\"}": [
+  {
+   "display": "173205, Baddi, Solan, Himachal Pradesh, India",
+   "lat": 30.943522,
+   "lon": 76.8067193
+  }
+ ],
+ "{\"postalcode\": \"174103\"}": [
+  {
+   "display": "174103, Kalka, Panchkula, Haryana, India",
+   "lat": 30.9202693,
+   "lon": 76.8233284
+  }
+ ],
+ "{\"postalcode\": \"180001\"}": [
+  {
+   "display": "180001, Jammu, Jammu district, Jammu and Kashmir, India",
+   "lat": 32.7253656,
+   "lon": 74.8625505
+  }
+ ],
+ "{\"postalcode\": \"184143\"}": [
+  {
+   "display": "184143, Kathua, Kathua district, Jammu and Kashmir, India",
+   "lat": 32.4525719,
+   "lon": 75.4045208
+  }
+ ],
+ "{\"postalcode\": \"201003\"}": [
+  {
+   "display": "201003, Ghaziabad, Uttar Pradesh, India",
+   "lat": 28.7114913,
+   "lon": 77.37926
+  }
+ ],
+ "{\"postalcode\": \"209801\"}": [
+  {
+   "display": "209801, Unnao, Uttar Pradesh, India",
+   "lat": 26.5919142,
+   "lon": 80.4643356
+  }
+ ],
+ "{\"postalcode\": \"221103\"}": [],
+ "{\"postalcode\": \"246722\"}": [
+  {
+   "display": "246722, Afzalgarh, Bijnor, Uttar Pradesh, India",
+   "lat": 29.3907648,
+   "lon": 78.676551
+  }
+ ],
+ "{\"postalcode\": \"247661\"}": [
+  {
+   "display": "247661, Roorkee, Haridwar, Uttarakhand, India",
+   "lat": 29.9710445,
+   "lon": 77.7987926
+  }
+ ],
+ "{\"postalcode\": \"247667\"}": [
+  {
+   "display": "247667, Roorkee, Haridwar, Uttarakhand, India",
+   "lat": 29.8702366,
+   "lon": 77.8883167
+  }
+ ],
+ "{\"postalcode\": \"248001\"}": [
+  {
+   "display": "248001, Dehradun, Uttarakhand, India",
+   "lat": 30.3314,
+   "lon": 78.0409095
+  }
+ ],
+ "{\"postalcode\": \"249403\"}": [
+  {
+   "display": "249403, Hardwar, Haridwar, Uttarakhand, India",
+   "lat": 29.9321338,
+   "lon": 78.0969227
+  }
+ ],
+ "{\"postalcode\": \"263153\"}": [
+  {
+   "display": "263153, Kichha, Udham Singh Nagar, Uttarakhand, India",
+   "lat": 28.9850569,
+   "lon": 79.3939559
+  }
+ ],
+ "{\"postalcode\": \"301705\"}": [
+  {
+   "display": "301705, Neemrana Tehsil, Kotputli-Behror, Rajasthan, India",
+   "lat": 28.0178417,
+   "lon": 76.3763999
+  }
+ ],
+ "{\"postalcode\": \"302013\"}": [
+  {
+   "display": "302013, Jaipur Municipal Corporation, Jaipur Tehsil, Jaipur, Rajasthan, India",
+   "lat": 26.9123273,
+   "lon": 75.7052901
+  }
+ ],
+ "{\"postalcode\": \"370201\"}": [
+  {
+   "display": "370201, Gandhidham Taluka, Kutch, Gujarat, India",
+   "lat": 23.0745988,
+   "lon": 70.1311043
+  }
+ ],
+ "{\"postalcode\": \"382425\"}": [
+  {
+   "display": "382425, Daskroi Taluka, Ahmedabad, Gujarat, India",
+   "lat": 22.8707927,
+   "lon": 72.5597262
+  }
+ ],
+ "{\"postalcode\": \"394230\"}": [
+  {
+   "display": "394230, Chorasi Taluka, Surat, Gujarat, India",
+   "lat": 21.0864381,
+   "lon": 72.8706607
+  }
+ ],
+ "{\"postalcode\": \"396195\"}": [
+  {
+   "display": "396195, Vapi Taluka, Valsad, Gujarat, India",
+   "lat": 20.3644746,
+   "lon": 72.926304
+  }
+ ],
+ "{\"postalcode\": \"396230\"}": [
+  {
+   "display": "396230, Nagar Haveli, Dadra and Nagar Haveli, Dadra and Nagar Haveli and Daman and Diu, India",
+   "lat": 20.241037,
+   "lon": 73.0317041
+  }
+ ],
+ "{\"postalcode\": \"400002\"}": [
+  {
+   "display": "400002, B Ward, Mumbai Zone 1, Mumbai City District, Maharashtra, India",
+   "lat": 18.9532212,
+   "lon": 72.8323716
+  }
+ ],
+ "{\"postalcode\": \"400710\"}": [
+  {
+   "display": "400710, Navi Mumbai, Thane Subdistrict, Thane, Maharashtra, India",
+   "lat": 19.1098737,
+   "lon": 73.0198141
+  }
+ ],
+ "{\"postalcode\": \"401601\"}": [
+  {
+   "display": "401601, Dahanu Taluka, Palghar, Maharashtra, India",
+   "lat": 19.9735644,
+   "lon": 72.7532609
+  }
+ ],
+ "{\"postalcode\": \"401606\"}": [
+  {
+   "display": "401606, Talasari Taluka, Palghar, Maharashtra, India",
+   "lat": 20.1463227,
+   "lon": 72.9461313
+  }
+ ],
+ "{\"postalcode\": \"410206\"}": [
+  {
+   "display": "410206, Panvel, Panvel Subdistrict, Raigad, Maharashtra, India",
+   "lat": 18.9941434,
+   "lon": 73.1145137
+  }
+ ],
+ "{\"postalcode\": \"412308\"}": [
+  {
+   "display": "412308, Haveli Subdistrict, Pune, Maharashtra, India",
+   "lat": 18.4714616,
+   "lon": 73.9687312
+  }
+ ],
+ "{\"postalcode\": \"421302\"}": [
+  {
+   "display": "421302, Bhiwandi - Nizampur, Bhiwandi Subdistrict, Thane, Maharashtra, India",
+   "lat": 19.2883878,
+   "lon": 73.0523568
+  }
+ ],
+ "{\"postalcode\": \"421312\"}": [
+  {
+   "display": "421312, Wada Subdistrict, Palghar, Maharashtra, India",
+   "lat": 19.4916323,
+   "lon": 73.0668091
+  }
+ ],
+ "{\"postalcode\": \"431136\"}": [
+  {
+   "display": "431136, Chhatrapati Sambhajinagar, Maharashtra, India",
+   "lat": 19.8548721,
+   "lon": 75.2457185
+  }
+ ],
+ "{\"postalcode\": \"431154\"}": [
+  {
+   "display": "431154, Chhatrapati Sambhajinagar, Maharashtra, India",
+   "lat": 19.9282664,
+   "lon": 75.5206689
+  }
+ ],
+ "{\"postalcode\": \"440023\"}": [
+  {
+   "display": "440023, Hingna, Nagpur, Maharashtra, India",
+   "lat": 21.1379043,
+   "lon": 78.9343021
+  }
+ ],
+ "{\"postalcode\": \"441501\"}": [
+  {
+   "display": "441501, Seloo, Wardha, Maharashtra, India",
+   "lat": 20.8925616,
+   "lon": 78.5718956
+  }
+ ],
+ "{\"postalcode\": \"452010\"}": [
+  {
+   "display": "452010, Indore City, Juni Indore Tahsil, Indore, Madhya Pradesh, India",
+   "lat": 22.7546331,
+   "lon": 75.8948406
+  }
+ ],
+ "{\"postalcode\": \"482002\"}": [
+  {
+   "display": "482002, Basaha, Adhartal Tahsil, Jabalpur, Madhya Pradesh, India",
+   "lat": 23.1786803,
+   "lon": 79.8882236
+  }
+ ],
+ "{\"postalcode\": \"493221\"}": [
+  {
+   "display": "493221, Raipur Tahsil, Raipur, Chhattisgarh, India",
+   "lat": 21.3266082,
+   "lon": 81.6426329
+  }
+ ],
+ "{\"postalcode\": \"500072\"}": [
+  {
+   "display": "500072, Ward 115 Balaji Nagar, Greater Hyderabad Municipal Corporation West Zone, Hyderabad, Kukatpally mandal, Medchal\u2013Malkajgiri, Telangan",
+   "lat": 17.4906828,
+   "lon": 78.4014226
+  }
+ ],
+ "{\"postalcode\": \"500078\"}": [
+  {
+   "display": "500078, Shamirpet mandal, Medchal\u2013Malkajgiri, Telangana, India",
+   "lat": 17.5809519,
+   "lon": 78.5518563
+  }
+ ],
+ "{\"postalcode\": \"501505\"}": [
+  {
+   "display": "501505, Hayathnagar mandal, Greater Hyderabad Municipal Corporation East Zone, Hyderabad, Ranga Reddy, Telangana, India",
+   "lat": 17.3262397,
+   "lon": 78.6087774
+  }
+ ],
+ "{\"postalcode\": \"520012\"}": [
+  {
+   "display": "520012, Vijayawada Urban Mandal, NTR District, Andhra Pradesh, India",
+   "lat": 16.5290828,
+   "lon": 80.6009554
+  }
+ ],
+ "{\"postalcode\": \"560083\"}": [
+  {
+   "display": "560083, Bilvaradhahalli, Anekal, Bengaluru Urban, Karnataka, India",
+   "lat": 12.8223352,
+   "lon": 77.5729031
+  }
+ ],
+ "{\"postalcode\": \"580031\"}": [
+  {
+   "display": "580031, Hubballi Urban Taluku, Dharwad, Karnataka, India",
+   "lat": 15.3769704,
+   "lon": 75.1074755
+  }
+ ],
+ "{\"postalcode\": \"600060\"}": [
+  {
+   "display": "600060, Ward 66, Zone 6 Thiru. Vi. Ka. Nagar, Chennai, Chennai Metropolitan Area, Chennai District, Tamil Nadu, India",
+   "lat": 13.1149952,
+   "lon": 80.2235719
+  }
+ ],
+ "{\"postalcode\": \"605009\"}": [
+  {
+   "display": "605009, Vanur, Viluppuram, Tamil Nadu, India",
+   "lat": 12.050146,
+   "lon": 79.7830066
+  }
+ ],
+ "{\"postalcode\": \"641402\"}": [
+  {
+   "display": "641402, Sulur, Coimbatore, Tamil Nadu, India",
+   "lat": 11.0150401,
+   "lon": 77.1072459
+  }
+ ],
+ "{\"postalcode\": \"683101\"}": [
+  {
+   "display": "683101, Aluva, Ernakulam, Kerala, India",
+   "lat": 10.0964324,
+   "lon": 76.3619455
+  }
+ ],
+ "{\"postalcode\": \"700002\"}": [
+  {
+   "display": "700002, Kolkata, Greater Kolkata, Kolkata, West Bengal, India",
+   "lat": 22.6192761,
+   "lon": 88.379767
+  }
+ ],
+ "{\"postalcode\": \"700056\"}": [
+  {
+   "display": "700056, Greater Kolkata, Kolkata, West Bengal, India",
+   "lat": 22.661364,
+   "lon": 88.3820999
+  }
+ ],
+ "{\"postalcode\": \"700073\"}": [
+  {
+   "display": "700073, Kolkata, Greater Kolkata, Kolkata, West Bengal, India",
+   "lat": 22.5751058,
+   "lon": 88.3595003
+  }
+ ],
+ "{\"postalcode\": \"700088\"}": [],
+ "{\"postalcode\": \"711302\"}": [
+  {
+   "display": "711302, Domjur, Howrah, West Bengal, India",
+   "lat": 22.5811532,
+   "lon": 88.2027507
+  }
+ ],
+ "{\"postalcode\": \"711303\"}": [
+  {
+   "display": "711303, Bagnan - I, Howrah, West Bengal, India",
+   "lat": 22.4866652,
+   "lon": 87.9506482
+  }
+ ],
+ "{\"postalcode\": \"712223\"}": [
+  {
+   "display": "712223, Serampur Uttarpara, Hooghly, West Bengal, India",
+   "lat": 22.7807532,
+   "lon": 88.3108636
+  }
+ ],
+ "{\"postalcode\": \"735135\"}": [
+  {
+   "display": "735135, Rajganj, Jalpaiguri, West Bengal, India",
+   "lat": 26.6215654,
+   "lon": 88.5029658
+  }
+ ],
+ "{\"postalcode\": \"751009\"}": [
+  {
+   "display": "751009, Ward 52, South West Zone, Bhubaneswar Municipal Corporation, Bhubaneswar (M.Corp.), Khordha, Odisha, India",
+   "lat": 20.2571029,
+   "lon": 85.8289485
+  }
+ ],
+ "{\"postalcode\": \"754025\"}": [
+  {
+   "display": "754025, Choudwar, Cuttack, Odisha, India",
+   "lat": 20.5269004,
+   "lon": 85.9203975
+  }
+ ],
+ "{\"postalcode\": \"756040\"}": [
+  {
+   "display": "756040, Nilagiri, Baleshwar, Odisha, India",
+   "lat": 21.4757275,
+   "lon": 86.7794671
+  }
+ ],
+ "{\"postalcode\": \"781031\"}": [
+  {
+   "display": "781031, North Guwahati (Pt), Kamrup Metropolitan, Assam, India",
+   "lat": 26.1982087,
+   "lon": 91.6900387
+  }
+ ],
+ "{\"postalcode\": \"781104\"}": [
+  {
+   "display": "781104, Dispur, Kamrup Metropolitan, Assam, India",
+   "lat": 26.1716458,
+   "lon": 91.7823318
+  }
+ ],
+ "{\"postalcode\": \"799001\"}": [
+  {
+   "display": "799001, Mandai, Jirania, West Tripura, Tripura, India",
+   "lat": 23.8629663,
+   "lon": 91.3577457
+  }
+ ],
+ "{\"postalcode\": \"800008\"}": [
+  {
+   "display": "800008, Sonepur, Saran, Bihar, India",
+   "lat": 25.6304342,
+   "lon": 85.1772017
+  }
+ ],
+ "{\"postalcode\": \"812001\"}": [
+  {
+   "display": "812001, Nathnagar, Bhagalpur, Bihar, India",
+   "lat": 25.2906307,
+   "lon": 86.9381821
+  }
+ ],
+ "{\"postalcode\": \"835303\"}": [
+  {
+   "display": "835303, Nagri, Ranchi, Jharkhand, India",
+   "lat": 23.3627203,
+   "lon": 85.2499727
+  }
+ ],
+ "{\"q\": \"Glaxo More, West Bengal, India\"}": [],
+ "{\"q\": \"Jalpaiguri, West Bengal, India\"}": [
+  {
+   "display": "Jalpaiguri, West Bengal, India",
+   "lat": 26.6262805,
+   "lon": 88.7334485
+  },
+  {
+   "display": "Jalpaiguri, West Bengal, 735101, India",
+   "lat": 26.5241586,
+   "lon": 88.7197513
+  },
+  {
+   "display": "Jalpaiguri, West Bengal, India",
+   "lat": 26.4733048,
+   "lon": 88.6788669
+  }
+ ]
+}

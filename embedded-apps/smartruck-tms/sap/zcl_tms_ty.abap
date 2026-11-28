@@ -11,6 +11,8 @@ CLASS zcl_tms_ty DEFINITION PUBLIC FINAL CREATE PUBLIC.
         sperr TYPE c LENGTH 1,
         loevm TYPE c LENGTH 1,
         transporter TYPE c LENGTH 1,
+        email TYPE c LENGTH 241,
+        mobile TYPE c LENGTH 30,
       END OF ts_vendor,
       tt_vendor TYPE STANDARD TABLE OF ts_vendor WITH DEFAULT KEY,
       BEGIN OF ts_customer,
@@ -241,7 +243,22 @@ CLASS zcl_tms_ty DEFINITION PUBLIC FINAL CREATE PUBLIC.
         transporter TYPE c LENGTH 35,
         vehicle TYPE c LENGTH 20,
       END OF ts_dptransit,
-      tt_dptransit TYPE STANDARD TABLE OF ts_dptransit WITH DEFAULT KEY.
+      tt_dptransit TYPE STANDARD TABLE OF ts_dptransit WITH DEFAULT KEY,
+      BEGIN OF ts_plant,
+        werks TYPE c LENGTH 4,
+        name1 TYPE c LENGTH 30,
+        name2 TYPE c LENGTH 30,
+        stras TYPE c LENGTH 30,
+        pstlz TYPE c LENGTH 10,
+        ort01 TYPE c LENGTH 25,
+        regio TYPE c LENGTH 3,
+        land1 TYPE c LENGTH 3,
+        adrnr TYPE c LENGTH 10,
+        fabkl TYPE c LENGTH 2,
+        timezone TYPE c LENGTH 6,
+        citycode TYPE c LENGTH 12,
+      END OF ts_plant,
+      tt_plant TYPE STANDARD TABLE OF ts_plant WITH DEFAULT KEY.
 ENDCLASS.
 
 CLASS zcl_tms_ty IMPLEMENTATION.
